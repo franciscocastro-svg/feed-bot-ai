@@ -1,0 +1,267 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, Calendar, Send, Trash2, Pencil, RefreshCw, AlertTriangle, Zap, Clock } from "lucide-react";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+export default function Scheduled() {
+  const fmtBR = (d: string | Date) =>
+    new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) + " (Brasília)";
+  const [posts, setPosts] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [running, setRunning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [editAccount, setEditAccount] = useState<string>("");
+  const [editWhen, setEditWhen] = useState<string>("");
+
+  const load = async () => {
+    const sel = "*, news_items(rewritten_title, generated_image_url, generated_video_url, caption), instagram_accounts(username)";
+    const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
+      supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "failed"]).order("scheduled_for", { ascending: true }).limit(500),
+      supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(50),
+      supabase.from("instagram_accounts").select("id, username, active").eq("active", true),
+    ]);
+    const p = [...(pending || []), ...(postedRows || [])];
+    const rank = (s: string) => (s === "scheduled" ? 0 : s === "failed" ? 1 : 2);
+    const sorted = p.slice().sort((a: any, b: any) => {
+      const r = rank(a.status) - rank(b.status);
+      if (r !== 0) return r;
+      if (a.status === "posted" && b.status === "posted") {
+        return new Date(b.posted_at || b.scheduled_for).getTime() - new Date(a.posted_at || a.scheduled_for).getTime();
+      }
+      return new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime();
+    });
+    setPosts(sorted);
+    setAccounts(a || []);
+  };
+  useEffect(() => {
+    load();
+    const i = setInterval(load, 15000);
+    return () => clearInterval(i);
+  }, []);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+    toast.success("Lista atualizada");
+  };
+
+  const runNow = async () => {
+    setRunning(true);
+    const { data, error } = await supabase.functions.invoke("publish-scheduler");
+    setRunning(false);
+    if (error) return toast.error(error.message);
+    toast.success(`${data?.processed || 0} posts processados`);
+    load();
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Apagar este agendamento?")) return;
+    const { error } = await supabase.from("scheduled_posts").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Removido");
+    load();
+  };
+
+  const openEdit = (p: any) => {
+    setEditing(p);
+    setEditAccount(p.instagram_account_id || (accounts[0]?.id ?? ""));
+    const d = new Date(p.scheduled_for);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setEditWhen(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const { error } = await supabase.from("scheduled_posts").update({
+      instagram_account_id: editAccount || null,
+      scheduled_for: new Date(editWhen).toISOString(),
+      status: "scheduled",
+      error_message: null,
+      retry_count: 0,
+    }).eq("id", editing.id);
+    if (error) return toast.error(error.message);
+    toast.success("Atualizado");
+    setEditing(null);
+    load();
+  };
+
+  const retry = async (id: string) => {
+    const { error } = await supabase.from("scheduled_posts").update({
+      status: "scheduled",
+      error_message: null,
+      retry_count: 0,
+      scheduled_for: new Date().toISOString(),
+    }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Reenfileirado");
+    load();
+  };
+
+  const publishNow = async (id: string) => {
+    if (!confirm("Publicar este post AGORA no Instagram?")) return;
+    setPublishingId(id);
+    try {
+      const { error: updErr } = await supabase.from("scheduled_posts").update({
+        scheduled_for: new Date(Date.now() - 1000).toISOString(),
+        status: "scheduled",
+        error_message: null,
+      }).eq("id", id);
+      if (updErr) throw updErr;
+      const { data, error } = await supabase.functions.invoke("publish-scheduler");
+      if (error) throw error;
+      toast.success(`Publicação enviada (${data?.processed || 0} processado(s))`);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao publicar");
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const getFriendlyError = (message?: string | null) => {
+    if (!message) return null;
+    if (/token do instagram expirou|session has expired|validating access token|oauth/i.test(message)) {
+      return "Token do Instagram expirou. Atualize em Contas Instagram antes de tentar novamente.";
+    }
+    return message;
+  };
+
+  return (
+    <div className="p-4 md:p-8 space-y-6 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold">Agendados</h1>
+          <p className="text-muted-foreground mt-1">Fila de publicações no Instagram.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={refresh} disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} /> Atualizar
+          </Button>
+          <Button onClick={runNow} disabled={running}>
+            {running ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />} Executar agora
+          </Button>
+        </div>
+      </div>
+      {posts.length === 0 ? (
+        <Card className="p-12 text-center text-muted-foreground border-dashed">
+          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-50" />
+          Nada agendado ainda.
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {posts.map(p => {
+            const missingAccount = !p.instagram_account_id;
+            const failed = p.status === "failed";
+            const friendlyError = getFriendlyError(p.error_message);
+            const scheduledAt = new Date(p.scheduled_for);
+            const minutesUntilPost = Math.round((scheduledAt.getTime() - Date.now()) / 60000);
+            const isDelayed = p.status === "scheduled" && minutesUntilPost >= 60;
+            return (
+              <Card key={p.id} className="p-3 md:p-5">
+                <div className="flex gap-3 md:gap-4 items-start">
+                  {p.news_items?.generated_image_url && (
+                    <img src={p.news_items.generated_image_url} className="w-16 h-16 md:w-20 md:h-20 rounded-lg object-cover shrink-0" alt="" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-sm md:text-base line-clamp-2 flex-1 min-w-0">{p.news_items?.rewritten_title}</p>
+                      <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{p.status}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      @{p.instagram_accounts?.username || <span className="text-destructive">conta faltando</span>}
+                      {" · "}
+                      <span title="Horário de publicação agendado">
+                        {p.status === "posted" && p.posted_at
+                          ? `publicado em ${fmtBR(p.posted_at)}`
+                          : `agendado para ${fmtBR(p.scheduled_for)}`}
+                      </span>
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate">
+                      gerado em {fmtBR(p.created_at)}
+                    </p>
+                    {isDelayed && (
+                      <p className="text-xs text-amber-500 mt-1 flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> Publica em ~{minutesUntilPost >= 60 ? `${Math.floor(minutesUntilPost/60)}h${minutesUntilPost%60 ? ` ${minutesUntilPost%60}min` : ""}` : `${minutesUntilPost} min`} (fila espaçada a cada 10 min)
+                      </p>
+                    )}
+                    {p.media_type === "reel" && p.status !== "posted" && (
+                      p.news_items?.generated_video_url ? (
+                        <p className="text-xs text-emerald-500 mt-1">🎬 Reel · vídeo pronto</p>
+                      ) : (
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · vídeo gerando…</p>
+                      )
+                    )}
+                    {p.media_type === "story" && p.status !== "posted" && (
+                      <p className="text-xs text-purple-400 mt-1 line-clamp-2">⭐ Story · {p.news_items?.generated_video_url ? "vídeo 9:16" : "imagem 9:16"}</p>
+                    )}
+                    {p.media_type === "feed" && p.status !== "posted" && (
+                      <p className="text-xs text-blue-400 mt-1">📷 Feed · imagem 1:1</p>
+                    )}
+                    {friendlyError && (
+                      <p className="text-xs text-destructive mt-1 flex items-start gap-1">
+                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">{friendlyError}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/50">
+                  {p.status !== "posted" && p.instagram_account_id && (
+                    <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title="Publicar agora" className="flex-1 md:flex-none">
+                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-1" /> Publicar agora</>}
+                    </Button>
+                  )}
+                  {(missingAccount || failed) && (
+                    <Button size="sm" variant="outline" onClick={() => retry(p.id)} title="Tentar novamente">
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => openEdit(p)} title="Editar">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => remove(p.id)} title="Apagar">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar agendamento</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Conta do Instagram</Label>
+              <Select value={editAccount} onValueChange={setEditAccount}>
+                <SelectTrigger><SelectValue placeholder="Selecione uma conta" /></SelectTrigger>
+                <SelectContent>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Data e hora</Label>
+              <Input type="datetime-local" value={editWhen} onChange={(e) => setEditWhen(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
+            <Button onClick={saveEdit}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

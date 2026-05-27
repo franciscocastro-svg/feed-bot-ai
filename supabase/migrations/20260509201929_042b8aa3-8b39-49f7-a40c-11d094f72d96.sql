@@ -1,0 +1,1 @@
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0;

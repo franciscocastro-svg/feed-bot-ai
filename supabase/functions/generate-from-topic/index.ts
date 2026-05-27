@@ -1,0 +1,196 @@
+// Gera um item de conteúdo a partir de uma "pauta" cadastrada pelo usuário.
+// Não substitui o fluxo de notícias; insere em news_items com content_type='topic'.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const FORMAT_GUIDE: Record<string, string> = {
+  dica: "DICA RÁPIDA: gancho curto + 3 a 5 dicas práticas numeradas + CTA. Tom direto, útil.",
+  mini_aula: "MINI-AULA: conceito explicado em linguagem simples, com exemplo prático e takeaway final.",
+  pergunta: "ENGAJAMENTO: pergunta provocativa que faça o público comentar. Comece com a pergunta forte, contexto curto, peça opinião.",
+  carrossel: "CARROSSEL: divida o conteúdo em 5-7 slides (slide 1 gancho, slides 2-6 desenvolvimento, slide final CTA). Use marcadores '— Slide N —'.",
+  frase: "FRASE/CITAÇÃO: uma frase curta e impactante sobre o tema + 1-2 linhas explicando o porquê.",
+};
+
+async function generateContent(topic: any, format: string, settings: any, profile: any) {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
+  const guide = FORMAT_GUIDE[format] || FORMAT_GUIDE.dica;
+  const tone = profile?.voice_tone || settings?.ai_tone || "engajante e descontraído";
+  const niche = profile?.niche_detail || settings?.default_niche || "";
+  const contextNote = topic.notes ? `\nContexto da pauta: ${topic.notes}` : "";
+
+  const profileBlock = profile ? `
+PERFIL DO CRIADOR (use isso pra personalizar TUDO):
+- Nicho: ${profile.niche_detail || "—"}
+- Público-alvo: ${profile.target_audience || "—"}
+- Tom de voz: ${profile.voice_tone || tone}
+- Expertise/autoridade: ${profile.expertise_summary || "—"}
+${profile.signature_phrases?.length ? `- Frases de assinatura (use 1 quando fizer sentido): ${profile.signature_phrases.join(" | ")}` : ""}
+${profile.forbidden_words?.length ? `- NUNCA use/mencione: ${profile.forbidden_words.join(", ")}` : ""}
+${profile.cta_style ? `- Estilo de CTA preferido: ${profile.cta_style}` : ""}
+${profile.example_posts?.length ? `- Exemplos do estilo do criador:\n${profile.example_posts.slice(0, 3).map((x: string, i: number) => `  [${i + 1}] ${x.slice(0, 300)}`).join("\n")}` : ""}
+${profile.extra_notes ? `- Observações: ${profile.extra_notes}` : ""}
+` : "";
+
+  const systemPrompt = `Você é o ghostwriter pessoal de um criador de conteúdo de Instagram, nicho "${niche}". Tom de voz base: ${tone}.
+Você produz conteúdo PERENE (não notícia) baseado em uma pauta dada.
+Formato solicitado: ${format.toUpperCase()}.
+Diretriz do formato: ${guide}${contextNote}
+${profileBlock}
+REGRAS:
+- Caption rica em informação real, ensinando algo concreto.
+- Escreva COMO O CRIADOR escreveria, não como uma IA genérica.
+- NÃO invente dados estatísticos. Use conhecimento amplamente aceito.
+- Hashtags: 8-15, mix de nicho e amplas, em pt-BR.
+- Título curto (até 80 chars) para usar em capa.
+
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa"}`;
+
+  const userPrompt = `Pauta: "${topic.title}"\nGere o conteúdo no formato ${format}.`;
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    if (res.status === 402) {
+      const err: any = new Error("Sem créditos de IA — adicione créditos em Configurações da Workspace para gerar conteúdo a partir de pautas.");
+      err.code = "no_credits";
+      throw err;
+    }
+    if (res.status === 429) {
+      const err: any = new Error("Limite de requisições atingido. Tente novamente em alguns segundos.");
+      err.code = "rate_limited";
+      throw err;
+    }
+    throw new Error(`AI ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content || "{}";
+  const parsed = JSON.parse(content);
+  return {
+    title: String(parsed.title || topic.title).slice(0, 200),
+    caption: String(parsed.caption || ""),
+    hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 20) : [],
+    cover_text: String(parsed.cover_text || parsed.title || topic.title).slice(0, 120),
+  };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  try {
+    const auth = req.headers.get("Authorization") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const body = await req.json().catch(() => ({} as any));
+    const topicId: string | null = body?.topic_id || null;
+    const forcedFormat: string | null = body?.format || null;
+    let userId: string | null = body?.user_id || null;
+    let supabase;
+
+    if (userId) {
+      const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
+      const provided = req.headers.get("x-internal-secret");
+      if (!internalSecret || provided !== internalSecret) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+    } else {
+      if (!auth) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      userId = user.id;
+    }
+
+    // Settings + Perfil de criador
+    const { data: settings } = await supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle();
+    const { data: profile } = await supabase.from("creator_profiles").select("*").eq("user_id", userId).maybeSingle();
+
+    // Seleciona pauta: específica ou menos usada recentemente
+    let topicQuery = supabase.from("content_topics").select("*").eq("user_id", userId).eq("active", true);
+    if (topicId) topicQuery = topicQuery.eq("id", topicId);
+    const { data: topics } = await topicQuery;
+    if (!topics || topics.length === 0) {
+      return new Response(JSON.stringify({ error: "no_active_topics" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    // ordena por last_used_at asc nulls first, depois use_count asc
+    const sorted = [...topics].sort((a, b) => {
+      const av = a.last_used_at ? new Date(a.last_used_at).getTime() : 0;
+      const bv = b.last_used_at ? new Date(b.last_used_at).getTime() : 0;
+      if (av !== bv) return av - bv;
+      return (a.use_count || 0) - (b.use_count || 0);
+    });
+    const topic = sorted[0];
+
+    // Escolhe formato
+    const allowed: string[] = (topic.formats && topic.formats.length > 0) ? topic.formats : ["dica"];
+    const format = forcedFormat && allowed.includes(forcedFormat)
+      ? forcedFormat
+      : allowed[Math.floor(Math.random() * allowed.length)];
+
+    // Gera conteúdo
+    const generated = await generateContent(topic, format, settings, profile);
+
+    // Insere em news_items (pending; segue o mesmo cano de aprovação/agendamento)
+    const insertRow: any = {
+      user_id: userId,
+      source_id: null,
+      source_name: "Pauta",
+      instagram_account_id: topic.instagram_account_id,
+      original_title: topic.title,
+      original_content: topic.notes || topic.title,
+      original_url: `topic://${topic.id}/${Date.now()}`,
+      original_image_url: null,
+      published_at: new Date().toISOString(),
+      niche: settings?.default_niche || null,
+      status: "pending",
+      rewritten_title: generated.title,
+      rewritten_summary: generated.cover_text,
+      caption: generated.caption,
+      hashtags: generated.hashtags,
+      content_type: "topic",
+      topic_id: topic.id,
+      content_format: format,
+      editorial_ready: true,
+    };
+    const { data: inserted, error: insErr } = await supabase.from("news_items").insert(insertRow).select("id").single();
+    if (insErr) throw insErr;
+
+    // marca pauta como usada
+    await supabase.from("content_topics").update({
+      last_used_at: new Date().toISOString(),
+      use_count: (topic.use_count || 0) + 1,
+    }).eq("id", topic.id);
+
+    await supabase.from("activity_logs").insert({
+      user_id: userId,
+      action: "generate_from_topic",
+      entity_type: "news_item",
+      entity_id: inserted.id,
+      details: { topic_id: topic.id, format, title: generated.title },
+    });
+
+    return new Response(JSON.stringify({ ok: true, news_item_id: inserted.id, format, topic_id: topic.id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    console.error(e);
+    const msg = e instanceof Error ? e.message : "unknown";
+    const code = e?.code || null;
+    // Fix: status HTTP semântico (não retornar 200 para erros)
+    const status = code === "no_credits" ? 402 : code === "rate_limited" ? 429 : 500;
+    return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+});

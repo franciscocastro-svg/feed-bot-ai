@@ -1,0 +1,40 @@
+project_id = "gewnaxrhiyylfizgbqdi"
+
+[functions.publish-scheduler]
+verify_jwt = false
+
+[functions.fetch-rss]
+verify_jwt = false
+
+[functions.fetch-insights]
+verify_jwt = false
+
+[functions.process-news]
+verify_jwt = false
+
+[functions.autopilot]
+verify_jwt = false
+
+[functions.keep-ig-token-alive]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.create-portal-session]
+verify_jwt = false
+
+[functions.instagram-oauth-callback]
+verify_jwt = false
+
+[functions.instagram-deauthorize]
+verify_jwt = false
+
+[functions.instagram-data-deletion]
+verify_jwt = false
+
+[functions.retry-failed-news]
+verify_jwt = false

@@ -1,0 +1,1 @@
+UPDATE public.news_items SET status='rejected', error_message='Travado em processing por mais de 15 min - liberado automaticamente' WHERE status='processing' AND updated_at < now() - interval '15 minutes';

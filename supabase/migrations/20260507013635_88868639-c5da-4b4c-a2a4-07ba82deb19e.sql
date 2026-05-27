@@ -1,0 +1,1 @@
+ALTER TABLE public.news_items ADD COLUMN IF NOT EXISTS editorial_ready boolean NOT NULL DEFAULT false;

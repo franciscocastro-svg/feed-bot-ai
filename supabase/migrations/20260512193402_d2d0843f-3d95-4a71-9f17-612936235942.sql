@@ -1,0 +1,1 @@
+UPDATE public.scheduled_posts SET error_message = NULL WHERE error_message ILIKE '%intervalo mínimo de 30 min%';

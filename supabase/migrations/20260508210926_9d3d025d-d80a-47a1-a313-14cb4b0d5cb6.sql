@@ -1,0 +1,1 @@
+UPDATE public.plan_limits SET max_posts_per_day = -1 WHERE plan = 'business';

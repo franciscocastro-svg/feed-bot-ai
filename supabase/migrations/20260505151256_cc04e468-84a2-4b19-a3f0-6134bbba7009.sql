@@ -1,0 +1,1 @@
+CREATE POLICY "own logs delete" ON public.activity_logs FOR DELETE USING (auth.uid() = user_id);

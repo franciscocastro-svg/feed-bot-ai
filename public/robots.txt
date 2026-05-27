@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /checkout
+Disallow: /reset-password
+
+Sitemap: https://feed-bot-ai.lovable.app/sitemap.xml
