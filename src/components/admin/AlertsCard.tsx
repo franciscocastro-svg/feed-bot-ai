@@ -11,7 +11,7 @@ export function AlertsCard({ rows }: { rows: any[] }) {
 
   useEffect(() => {
     const load = async () => {
-      const dayAgo = new Date(Date.now() - 86400000).toISOString();
+      const nowIso2 = new Date(Date.now() - 86400000).toISOString(); void nowIso2;
       const nowIso = new Date().toISOString();
       const [s, o] = await Promise.all([
         supabase.from("news_sources").select("id, last_fetched_at, fetch_interval_minutes", { count: "exact" }).eq("active", true),
