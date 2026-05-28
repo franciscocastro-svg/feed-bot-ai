@@ -114,7 +114,7 @@ export default function News() {
 
   const process = async (item: any, style: "template" | "ai" = "template") => {
     setLoad(item.id, true);
-    const { data, error } = await supabase.functions.invoke("process-news", { body: { news_item_id: item.id, image_style: style } });
+    const { error } = await supabase.functions.invoke("process-news", { body: { news_item_id: item.id, image_style: style } });
     if (error) {
       setLoad(item.id, false);
       const msg = error.message.includes("402") || error.message.includes("credits")
