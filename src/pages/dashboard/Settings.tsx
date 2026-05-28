@@ -124,7 +124,7 @@ export default function Settings() {
     toast.success("Logo enviada");
   };
 
-  const uploadAudio = async (file: File) => {
+  const _uploadAudio = async (file: File) => {
     setUploading(true);
     const ext = file.name.split(".").pop() || "mp3";
     const path = `${s.user_id}/reel-audio.${ext}`;
