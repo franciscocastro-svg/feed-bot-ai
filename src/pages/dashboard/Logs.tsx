@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Search, Activity, AlertCircle, CheckCircle2, Sparkles, Send, Rss, Bot, RefreshCw, Trash2 } from "lucide-react";
+import { Search, Activity, AlertCircle, Sparkles, Send, Rss, Bot, RefreshCw, Trash2 } from "lucide-react";
 
 const ICONS: Record<string, any> = {
   fetch_rss: Rss,
