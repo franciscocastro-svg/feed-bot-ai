@@ -6,7 +6,7 @@
  * garantir que a lógica de negócio central está correta.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ─── Funções extraídas do publish-scheduler/index.ts ───────────────────────
 // (Mantemos sincronizadas manualmente; qualquer mudança lá deve refletir aqui)
