@@ -137,6 +137,7 @@ export default function Settings() {
     setUploading(false);
     toast.success("Trilha enviada");
   };
+  void _uploadAudio;
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-2xl">
