@@ -321,7 +321,7 @@ export default function Index() {
             transition={{ duration: 0.8, delay: 0.7 }}
             className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto"
           >
-            {stats.map((s, i) => (
+            {stats.map((s) => (
               <motion.div
                 key={s.label}
                 whileHover={{ y: -4 }}

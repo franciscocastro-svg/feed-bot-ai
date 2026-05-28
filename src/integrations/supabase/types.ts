@@ -769,6 +769,66 @@ export type Database = {
         }
         Relationships: []
       }
+      reel_render_jobs: {
+        Row: {
+          attempts: number
+          audio_url: string | null
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          cover_url: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          max_attempts: number
+          news_item_id: string
+          output_url: string | null
+          scheduled_post_id: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          audio_url?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          cover_url?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          max_attempts?: number
+          news_item_id: string
+          output_url?: string | null
+          scheduled_post_id?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          audio_url?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          cover_url?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          max_attempts?: number
+          news_item_id?: string
+          output_url?: string | null
+          scheduled_post_id?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       release_notes: {
         Row: {
           content: string
@@ -811,9 +871,12 @@ export type Database = {
       scheduled_posts: {
         Row: {
           comments: number | null
+          container_created_at: string | null
+          container_last_checked_at: string | null
           created_at: string
           error_message: string | null
           id: string
+          ig_creation_id: string | null
           ig_media_id: string | null
           impressions: number | null
           insights_updated_at: string | null
@@ -833,9 +896,12 @@ export type Database = {
         }
         Insert: {
           comments?: number | null
+          container_created_at?: string | null
+          container_last_checked_at?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
+          ig_creation_id?: string | null
           ig_media_id?: string | null
           impressions?: number | null
           insights_updated_at?: string | null
@@ -855,9 +921,12 @@ export type Database = {
         }
         Update: {
           comments?: number | null
+          container_created_at?: string | null
+          container_last_checked_at?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
+          ig_creation_id?: string | null
           ig_media_id?: string | null
           impressions?: number | null
           insights_updated_at?: string | null
@@ -1238,6 +1307,34 @@ export type Database = {
         Args: { _resource: string; _user_id: string }
         Returns: Json
       }
+      claim_reel_jobs: {
+        Args: { _limit?: number; _worker: string }
+        Returns: {
+          attempts: number
+          audio_url: string | null
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          cover_url: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          max_attempts: number
+          news_item_id: string
+          output_url: string | null
+          scheduled_post_id: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reel_render_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_current_usage: {
         Args: { _user_id: string }
         Returns: {
@@ -1348,7 +1445,13 @@ export type Database = {
         | "posted"
         | "failed"
         | "rejected"
-      post_status: "scheduled" | "posting" | "posted" | "failed" | "cancelled"
+      post_status:
+        | "scheduled"
+        | "posting"
+        | "posted"
+        | "failed"
+        | "cancelled"
+        | "awaiting_container"
       source_type: "rss" | "newsapi"
     }
     CompositeTypes: {
@@ -1489,7 +1592,14 @@ export const Constants = {
         "failed",
         "rejected",
       ],
-      post_status: ["scheduled", "posting", "posted", "failed", "cancelled"],
+      post_status: [
+        "scheduled",
+        "posting",
+        "posted",
+        "failed",
+        "cancelled",
+        "awaiting_container",
+      ],
       source_type: ["rss", "newsapi"],
     },
   },

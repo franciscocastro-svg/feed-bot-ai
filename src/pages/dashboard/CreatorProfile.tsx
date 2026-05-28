@@ -45,7 +45,7 @@ export default function CreatorProfile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data } = await supabase.from("creator_profiles").select("*").eq("user_id", user.id).maybeSingle();
-      if (data) setP({ ...empty, ...data });
+      if (data) setP({ ...empty, ...(data as any) });
       setLoading(false);
     })();
   }, []);

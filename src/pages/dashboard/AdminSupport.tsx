@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { MessageSquare, Send, Loader2, ArrowLeft, CheckCircle2, Clock, ShieldCheck, RefreshCw } from "lucide-react";
+import { MessageSquare, Send, Loader2, ArrowLeft, ShieldCheck, RefreshCw } from "lucide-react";
 import { AudioRecorder } from "@/components/support/AudioRecorder";
 import { AudioBubble } from "@/components/support/AudioBubble";
 import { ImageBubble } from "@/components/support/ImageBubble";

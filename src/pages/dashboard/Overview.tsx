@@ -8,7 +8,7 @@ import { ArrowRight, AlertTriangle, Zap, Calendar, Sparkles, TrendingUp, ArrowUp
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
 
-type DayBucket = { day: string; count: number };
+
 
 function Sparkline({ data }: { data: number[] }) {
   if (!data.length) return null;
