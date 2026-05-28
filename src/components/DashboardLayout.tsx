@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Sparkles, LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, ShieldCheck, Shield, Image as ImageIcon, Camera, Film, CreditCard, Gauge, Megaphone, LifeBuoy, BookOpen, UserCircle2 } from "lucide-react";
+import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2 } from "lucide-react";
 import { ReleaseNotesBell } from "@/components/ReleaseNotes";
 import { PlanUsageCard } from "@/components/PlanUsageCard";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
