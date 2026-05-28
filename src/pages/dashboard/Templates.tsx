@@ -207,7 +207,7 @@ export default function Templates() {
     }
     setTemplates((tpls || []) as Template[]);
     setDefaultId(settings?.default_template_id || null);
-    setBrand({ handle: settings?.brand_handle, name: settings?.brand_name, logo: settings?.brand_logo_url });
+    setBrand({ handle: settings?.brand_handle ?? undefined, name: settings?.brand_name ?? undefined, logo: settings?.brand_logo_url ?? undefined });
   }
   useEffect(() => { load(); }, [user]);
 
