@@ -19,7 +19,12 @@ export function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const allowed = !!user && isPathVisible(location.pathname, { isAdmin, userId: user.id });
+  const isAdminArea = location.pathname.startsWith("/dashboard/admin");
+  const allowed = !!user && (
+    isAdminArea
+      ? isAdmin
+      : isPathVisible(location.pathname, { isAdmin, userId: user.id })
+  );
 
   if (!allowed) {
     return (

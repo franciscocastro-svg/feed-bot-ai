@@ -6,7 +6,7 @@ const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
-const APP_ORIGIN = 'https://feed-bot-ai.lovable.app';
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://feed-bot-ai.lovable.app';
 
 const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -27,6 +27,41 @@ function htmlRedirect(target: string, message: string) {
     `<!doctype html><meta charset="utf-8"><title>${message}</title><meta http-equiv="refresh" content="0;url=${target}"><p>${message} <a href="${target}">Continuar</a></p>`,
     { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
   );
+}
+
+async function canInsertInstagramAccount(admin: any, userId: string): Promise<boolean> {
+  const { count } = await admin
+    .from('instagram_accounts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('active', true);
+
+  const { data: sub } = await admin
+    .from('user_subscriptions')
+    .select('plan, status, created_at, current_period_end, expires_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let plan = sub?.plan || 'free';
+  const periodEnd = sub?.current_period_end || sub?.expires_at;
+  if (
+    (plan === 'free' && sub?.created_at && new Date(sub.created_at).getTime() < Date.now() - 7 * 86400000) ||
+    (plan !== 'free' && periodEnd && new Date(periodEnd).getTime() < Date.now()) ||
+    (plan !== 'free' && ['canceled', 'unpaid', 'incomplete_expired'].includes(String(sub?.status || '')))
+  ) {
+    plan = 'expired';
+  }
+
+  const { data: limits } = await admin
+    .from('plan_limits')
+    .select('max_ig_accounts')
+    .eq('plan', plan)
+    .maybeSingle();
+
+  const maxAccounts = limits?.max_ig_accounts ?? 0;
+  return maxAccounts < 0 || (count || 0) < maxAccounts;
 }
 
 Deno.serve(async (req) => {
@@ -110,6 +145,10 @@ Deno.serve(async (req) => {
         verification_status: 'pending',
       }).eq('id', existing.id);
     } else {
+      if (!(await canInsertInstagramAccount(admin, userId))) {
+        throw new Error('account_limit_reached');
+      }
+
       await admin.from('instagram_accounts').insert({
         user_id: userId,
         username,

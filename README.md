@@ -63,7 +63,7 @@ Localizadas em `/supabase/functions`. São chamadas via triggers HTTP ou agendad
    Crie um arquivo `.env` na raiz do projeto com as credenciais do Supabase:
    ```env
    VITE_SUPABASE_URL=https://sua-url-do-supabase.supabase.co
-   VITE_SUPABASE_ANON_KEY=seu-token-anon-do-supabase
+   VITE_SUPABASE_PUBLISHABLE_KEY=seu-token-publico-do-supabase
    ```
 3. Inicie o servidor de desenvolvimento local:
    ```bash
@@ -91,4 +91,4 @@ Para implantar todas as Edge Functions:
 ```bash
 supabase functions deploy
 ```
-*Lembre-se de configurar as variáveis de ambiente necessárias (como `LOVABLE_API_KEY`, `INTERNAL_CRON_SECRET` e `SUPABASE_SERVICE_ROLE_KEY`) no painel de controle do Supabase em Edge Functions -> Secrets.*
+*Lembre-se de configurar as variáveis de ambiente necessárias (como `APP_ORIGIN`, `LOVABLE_API_KEY`, `INTERNAL_CRON_SECRET` e `SUPABASE_SERVICE_ROLE_KEY`) no painel de controle do Supabase em Edge Functions -> Secrets.*

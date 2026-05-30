@@ -6,6 +6,7 @@ const APP_ID = Deno.env.get('INSTAGRAM_APP_ID')!;
 const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://feed-bot-ai.lovable.app';
 
 const SCOPES = [
   'instagram_business_basic',
@@ -43,6 +44,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const userId = claims.claims.sub as string;
+
+    const { data: quota } = await supabase.rpc('can_create_resource', {
+      _user_id: userId,
+      _resource: 'ig_account',
+    });
+    const quotaResult = quota as { allowed?: boolean; used?: number; limit?: number } | null;
+    if (quotaResult && quotaResult.allowed === false) {
+      return new Response(JSON.stringify({
+        error: 'account_limit_reached',
+        used: quotaResult.used,
+        limit: quotaResult.limit,
+        upgrade_url: `${APP_ORIGIN}/pricing`,
+      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const ts = Date.now().toString();
     const payload = `${userId}.${ts}`;
     const sig = await hmac(payload, APP_SECRET);
