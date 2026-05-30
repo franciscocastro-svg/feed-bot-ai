@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import dotenv from "dotenv";
+import WebSocket from "ws";
 
 const execAsync = promisify(exec);
 
@@ -29,7 +30,15 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+  realtime: {
+    transport: WebSocket,
+  },
+});
 
 const TEMP_DIR = path.join(__dirname, "temp");
 const FONTS_DIR = path.join(__dirname, "fonts");
