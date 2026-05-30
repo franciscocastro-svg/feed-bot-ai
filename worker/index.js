@@ -53,16 +53,28 @@ async function setupFonts() {
 
   if (!fs.existsSync(fontRegularPath)) {
     console.log("Baixando fonte Inter-Regular.ttf...");
-    await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Regular.ttf", fontRegularPath);
+    try {
+      await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Regular.ttf", fontRegularPath);
+    } catch (err) {
+      console.warn("Aviso: não foi possível baixar Inter-Regular.ttf; usando fonte padrão do sistema.", err);
+    }
   }
   if (!fs.existsSync(fontBoldPath)) {
     console.log("Baixando fonte Inter-Bold.ttf...");
-    await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Bold.ttf", fontBoldPath);
+    try {
+      await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Bold.ttf", fontBoldPath);
+    } catch (err) {
+      console.warn("Aviso: não foi possível baixar Inter-Bold.ttf; usando fonte padrão do sistema.", err);
+    }
   }
 
   // Registra as fontes no Canvas global
-  GlobalFonts.registerFromPath(fontRegularPath, "Inter");
-  GlobalFonts.registerFromPath(fontBoldPath, "InterBold");
+  if (fs.existsSync(fontRegularPath)) {
+    GlobalFonts.registerFromPath(fontRegularPath, "Inter");
+  }
+  if (fs.existsSync(fontBoldPath)) {
+    GlobalFonts.registerFromPath(fontBoldPath, "InterBold");
+  }
   console.log("Fontes Inter carregadas com sucesso!");
 }
 
