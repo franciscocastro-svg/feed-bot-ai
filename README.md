@@ -64,6 +64,8 @@ Localizadas em `/supabase/functions`. São chamadas via triggers HTTP ou agendad
    ```env
    VITE_SUPABASE_URL=https://sua-url-do-supabase.supabase.co
    VITE_SUPABASE_PUBLISHABLE_KEY=seu-token-publico-do-supabase
+   # Compatibilidade com builds antigos da Lovable:
+   # VITE_SUPABASE_ANON_KEY=tambem-e-aceito-como-fallback
    ```
 3. Inicie o servidor de desenvolvimento local:
    ```bash
