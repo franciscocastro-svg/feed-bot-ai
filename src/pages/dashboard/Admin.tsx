@@ -15,6 +15,7 @@ import {
   Shield, Users, CheckCircle2, XCircle, AlertTriangle, RefreshCw, DollarSign,
   Activity, Clock, Check, X, ArrowUpDown, Rss, Instagram, Calendar, Zap, TrendingUp,
   LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map,
+  Server, Radio, ListChecks, Database,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -53,6 +54,16 @@ const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
 type SortKey = "created_at" | "last_activity" | "posts_published" | "posts_failed" | "plan";
+type EndpointHealth = { label: string; status: "online" | "offline"; detail: string };
+type QueueSummary = {
+  scheduled: number;
+  posting: number;
+  failed: number;
+  postedToday: number;
+  reelQueued: number;
+  reelProcessing: number;
+  reelFailed: number;
+};
 
 export default function Admin() {
   const { user } = useAuth();
@@ -83,6 +94,18 @@ export default function Admin() {
   const [recentFailed, setRecentFailed] = useState<any[]>([]);
   const [staleSources, setStaleSources] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [endpointHealth, setEndpointHealth] = useState<EndpointHealth[]>([]);
+  const [queueSummary, setQueueSummary] = useState<QueueSummary>({
+    scheduled: 0,
+    posting: 0,
+    failed: 0,
+    postedToday: 0,
+    reelQueued: 0,
+    reelProcessing: 0,
+    reelFailed: 0,
+  });
+  const [lastPublished, setLastPublished] = useState<any | null>(null);
+  const [stuckPosting, setStuckPosting] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -114,7 +137,29 @@ export default function Admin() {
     setSysLoading(true);
     const nowIso = new Date().toISOString();
     const dayAgo = new Date(Date.now() - 86400000).toISOString();
-    const [a, b, c, d] = await Promise.all([
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60000).toISOString();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const checkEndpoint = async (path: string, label: string): Promise<EndpointHealth> => {
+      const started = Date.now();
+      try {
+        const res = await fetch(path, { cache: "no-store" });
+        return {
+          label,
+          status: res.ok ? "online" : "offline",
+          detail: res.ok ? `${Date.now() - started} ms` : `HTTP ${res.status}`,
+        };
+      } catch {
+        return { label, status: "offline", detail: "sem resposta" };
+      }
+    };
+
+    const [
+      a, b, c, d, health, deployHealth, scheduledCount, postingCount,
+      failedCount, postedTodayCount, reelQueuedCount, reelProcessingCount,
+      reelFailedCount, lastPost, stuck,
+    ] = await Promise.all([
       supabase.from("scheduled_posts")
         .select("id, scheduled_for, user_id, error_message, news_items(rewritten_title)")
         .eq("status", "scheduled")
@@ -136,9 +181,42 @@ export default function Admin() {
         .select("id, created_at, user_id, action, entity_type, details")
         .order("created_at", { ascending: false })
         .limit(15),
+      checkEndpoint("/health", "Site"),
+      checkEndpoint("/deploy-health", "Deploy"),
+      supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
+      supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posting"),
+      supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", dayAgo),
+      supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posted").gte("posted_at", todayStart.toISOString()),
+      supabase.from("reel_render_jobs").select("id", { count: "exact", head: true }).eq("status", "queued"),
+      supabase.from("reel_render_jobs").select("id", { count: "exact", head: true }).eq("status", "processing"),
+      supabase.from("reel_render_jobs").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", dayAgo),
+      supabase.from("scheduled_posts")
+        .select("id, posted_at, media_type, ig_media_id, error_message, news_items(rewritten_title)")
+        .eq("status", "posted")
+        .order("posted_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from("scheduled_posts")
+        .select("id, updated_at, user_id, media_type, error_message, news_items(rewritten_title)")
+        .eq("status", "posting")
+        .lt("updated_at", fifteenMinAgo)
+        .order("updated_at", { ascending: true })
+        .limit(10),
     ]);
     setOverdue(a.data || []);
     setRecentFailed(b.data || []);
+    setEndpointHealth([health, deployHealth]);
+    setQueueSummary({
+      scheduled: scheduledCount.count || 0,
+      posting: postingCount.count || 0,
+      failed: failedCount.count || 0,
+      postedToday: postedTodayCount.count || 0,
+      reelQueued: reelQueuedCount.count || 0,
+      reelProcessing: reelProcessingCount.count || 0,
+      reelFailed: reelFailedCount.count || 0,
+    });
+    setLastPublished(lastPost.data || null);
+    setStuckPosting(stuck.data || []);
     // filter sources where last_fetched is older than 3x interval
     const stale = (c.data || []).filter((s: any) => {
       if (!s.last_fetched_at) return true;
@@ -338,7 +416,7 @@ export default function Admin() {
 
   const adminTabs = [
     { value: "users", label: "Usuários", icon: Users },
-    { value: "system", label: "Sistema", icon: Activity },
+    { value: "system", label: "Saúde", icon: Activity },
     { value: "finance", label: "Financeiro", icon: DollarSign },
     { value: "plans", label: "Planos", icon: Settings2 },
     { value: "team", label: "Equipe", icon: UserCog },
@@ -536,10 +614,102 @@ export default function Admin() {
 
         {/* ====== SISTEMA ====== */}
         <TabsContent value="system" className="mt-4 space-y-4">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Saúde operacional</h2>
+              <p className="text-sm text-muted-foreground">Visão admin do VPS, fila de publicação e geração de Reels.</p>
+            </div>
             <Button variant="outline" size="sm" onClick={loadSystem} disabled={sysLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${sysLoading ? "animate-spin" : ""}`}/> Recarregar
             </Button>
+          </div>
+
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {endpointHealth.map((h) => (
+              <Card key={h.label} className={h.status === "offline" ? "border-destructive/50" : "border-green-600/30"}>
+                <CardContent className="pt-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      {h.label === "Deploy" ? <Radio className="h-4 w-4" /> : <Server className="h-4 w-4" />}
+                    </div>
+                    <Badge className={h.status === "online" ? "bg-green-600" : "bg-destructive"}>
+                      {h.status === "online" ? "Online" : "Offline"}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{h.label}</p>
+                    <p className="text-xs text-muted-foreground">{h.detail}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {endpointHealth.length === 0 && (
+              <>
+                <Card><CardContent className="pt-5"><div className="h-20 animate-pulse rounded-md bg-muted" /></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="h-20 animate-pulse rounded-md bg-muted" /></CardContent></Card>
+              </>
+            )}
+            <Card>
+              <CardContent className="pt-5 space-y-3">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
+                  <ListChecks className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Fila de publicação</p>
+                  <p className="text-xs text-muted-foreground">
+                    {queueSummary.scheduled} agendados · {queueSummary.posting} enviando · {queueSummary.failed} falhas 24h
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-5 space-y-3">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-fuchsia-500/10 text-fuchsia-400">
+                  <Database className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Reels no worker</p>
+                  <p className="text-xs text-muted-foreground">
+                    {queueSummary.reelQueued} na fila · {queueSummary.reelProcessing} processando · {queueSummary.reelFailed} falhas 24h
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><CheckCircle2 className="h-4 w-4"/> Última publicação</CardTitle></CardHeader>
+              <CardContent>
+                {!lastPublished ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma publicação encontrada.</p>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    <div className="font-medium line-clamp-2">{lastPublished.news_items?.rewritten_title || "Sem título"}</div>
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                      <Badge variant="outline">{lastPublished.media_type}</Badge>
+                      <span>{new Date(lastPublished.posted_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                      {lastPublished.ig_media_id && <span>ID {lastPublished.ig_media_id}</span>}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className={stuckPosting.length ? "border-destructive/50" : ""}>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4"/> Envios travados</CardTitle></CardHeader>
+              <CardContent className="space-y-2 max-h-40 overflow-y-auto">
+                {stuckPosting.length === 0 && <p className="text-sm text-muted-foreground">Nenhum post travado em envio.</p>}
+                {stuckPosting.map((p: any) => (
+                  <div key={p.id} className="text-xs border-b border-border/50 pb-2">
+                    <div className="font-medium line-clamp-1">{p.news_items?.rewritten_title || "—"}</div>
+                    <div className="text-destructive">
+                      Enviando desde {new Date(p.updated_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
 
           <div className="grid md:grid-cols-4 gap-3">
