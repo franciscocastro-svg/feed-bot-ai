@@ -22,6 +22,7 @@ if (fs.existsSync(path.join(__dirname, ".env"))) {
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const WORKER_ID = process.env.WORKER_ID || `vps-${process.pid}`;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("ERRO: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não definidos no .env!");
@@ -477,6 +478,106 @@ async function generateReelVideoNode(item, settings) {
   }
 }
 
+async function generateReelVideoFromJob(job) {
+  if (!job.cover_url) throw new Error("Job de Reel sem cover_url");
+
+  const idStr = `${job.user_id.substring(0, 5)}_${job.news_item_id.substring(0, 8)}_${job.id.substring(0, 8)}`;
+  const tempImgPath = path.join(TEMP_DIR, `job_cover_${idStr}.jpg`);
+  const tempAudioPath = path.join(TEMP_DIR, `job_audio_${idStr}.mp3`);
+  const tempVideoPath = path.join(TEMP_DIR, `job_reel_${idStr}.mp4`);
+
+  try {
+    for (const f of [tempImgPath, tempAudioPath, tempVideoPath]) {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+
+    console.log(`[job:${job.id}] Baixando capa do Reel...`);
+    await downloadFile(job.cover_url, tempImgPath);
+
+    let hasAudio = false;
+    if (job.audio_url) {
+      try {
+        console.log(`[job:${job.id}] Baixando áudio do Reel...`);
+        await downloadFile(job.audio_url.split("?")[0], tempAudioPath);
+        hasAudio = true;
+      } catch (err) {
+        console.warn(`[job:${job.id}] Falha ao baixar áudio, gerando sem som.`, err);
+      }
+    }
+
+    const ffmpegCmd = hasAudio
+      ? `ffmpeg -y -loop 1 -i "${tempImgPath}" -i "${tempAudioPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -c:a aac -shortest -b:v 6M -b:a 128k "${tempVideoPath}"`
+      : `ffmpeg -y -loop 1 -i "${tempImgPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -b:v 6M "${tempVideoPath}"`;
+
+    console.log(`[job:${job.id}] Gerando MP4 com FFmpeg...`);
+    const { stderr } = await execAsync(ffmpegCmd);
+    if (!fs.existsSync(tempVideoPath) || fs.statSync(tempVideoPath).size < 1000) {
+      throw new Error(`Vídeo não foi gerado ou está vazio. stderr: ${stderr}`);
+    }
+
+    const videoBuffer = await fs.promises.readFile(tempVideoPath);
+    const pathStorage = `${job.user_id}/${job.news_item_id}.mp4`;
+    const { error: uploadError } = await supabase.storage.from("post-images").upload(pathStorage, videoBuffer, {
+      contentType: "video/mp4",
+      upsert: true,
+    });
+    if (uploadError) throw uploadError;
+
+    const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
+    const videoUrl = pub.publicUrl;
+
+    await supabase.from("news_items")
+      .update({ generated_video_url: videoUrl, editorial_ready: true, error_message: null })
+      .eq("id", job.news_item_id);
+
+    await supabase.from("reel_render_jobs")
+      .update({ status: "done", output_url: videoUrl, completed_at: new Date().toISOString(), error_message: null })
+      .eq("id", job.id);
+
+    console.log(`[job:${job.id}] Reel pronto: ${videoUrl}`);
+    return videoUrl;
+  } catch (err) {
+    const message = err?.message || String(err);
+    const finalStatus = job.attempts >= job.max_attempts ? "failed" : "queued";
+    await supabase.from("reel_render_jobs")
+      .update({
+        status: finalStatus,
+        claimed_at: null,
+        claimed_by: null,
+        error_message: message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+    await supabase.from("news_items")
+      .update({ error_message: `Worker VPS erro: ${message}` })
+      .eq("id", job.news_item_id);
+    throw err;
+  } finally {
+    for (const f of [tempImgPath, tempAudioPath, tempVideoPath]) {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+    }
+  }
+}
+
+async function processQueuedReelJobs() {
+  const { data: jobs, error } = await supabase.rpc("claim_reel_jobs", { _worker: WORKER_ID, _limit: 3 });
+  if (error) {
+    console.error("Erro ao reclamar jobs de Reel:", error);
+    return 0;
+  }
+  if (!jobs?.length) return 0;
+
+  console.log(`Fila reel_render_jobs: ${jobs.length} job(s) reclamado(s).`);
+  for (const job of jobs) {
+    try {
+      await generateReelVideoFromJob(job);
+    } catch (err) {
+      console.error(`[job:${job.id}] Falha ao gerar Reel:`, err);
+    }
+  }
+  return jobs.length;
+}
+
 // Processa uma publicação agendada
 async function processPost(post) {
   const news = post.news_items;
@@ -531,6 +632,8 @@ async function main() {
 
   while (true) {
     try {
+      await processQueuedReelJobs();
+
       // Busca posts agendados
       const { data: pending, error } = await supabase
         .from("scheduled_posts")
