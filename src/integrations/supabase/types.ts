@@ -1335,6 +1335,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      enqueue_reel_render_job_for_post: {
+        Args: { _scheduled_post_id: string }
+        Returns: undefined
+      }
       get_current_usage: {
         Args: { _user_id: string }
         Returns: {
