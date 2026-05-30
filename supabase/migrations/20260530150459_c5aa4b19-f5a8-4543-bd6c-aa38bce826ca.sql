@@ -16,7 +16,7 @@ BEGIN
     sp.status,
     sp.media_type,
     ni.generated_video_url,
-    COALESCE(ni.generated_cover_url, ni.generated_image_url) AS cover_url,
+    ni.generated_cover_url AS cover_url,
     COALESCE(ni.chosen_audio_url, us.reel_audio_url) AS audio_url
   INTO v_post
   FROM public.scheduled_posts sp
@@ -103,11 +103,10 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF COALESCE(NEW.generated_cover_url, NEW.generated_image_url) IS NOT NULL
+  IF NEW.generated_cover_url IS NOT NULL
      AND (
        TG_OP = 'INSERT'
        OR OLD.generated_cover_url IS DISTINCT FROM NEW.generated_cover_url
-       OR OLD.generated_image_url IS DISTINCT FROM NEW.generated_image_url
        OR OLD.chosen_audio_url IS DISTINCT FROM NEW.chosen_audio_url
      ) THEN
     FOR v_post_id IN
@@ -134,7 +133,7 @@ EXECUTE FUNCTION public.tg_enqueue_reel_job_from_scheduled_post();
 
 DROP TRIGGER IF EXISTS enqueue_reel_job_from_news_item ON public.news_items;
 CREATE TRIGGER enqueue_reel_job_from_news_item
-AFTER INSERT OR UPDATE OF generated_cover_url, generated_image_url, chosen_audio_url, generated_video_url
+AFTER INSERT OR UPDATE OF generated_cover_url, chosen_audio_url, generated_video_url
 ON public.news_items
 FOR EACH ROW
 EXECUTE FUNCTION public.tg_enqueue_reel_job_from_news_item();

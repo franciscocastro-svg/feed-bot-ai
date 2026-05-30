@@ -479,8 +479,6 @@ async function generateReelVideoNode(item, settings) {
 }
 
 async function generateReelVideoFromJob(job) {
-  if (!job.cover_url) throw new Error("Job de Reel sem cover_url");
-
   const idStr = `${job.user_id.substring(0, 5)}_${job.news_item_id.substring(0, 8)}_${job.id.substring(0, 8)}`;
   const tempImgPath = path.join(TEMP_DIR, `job_cover_${idStr}.jpg`);
   const tempAudioPath = path.join(TEMP_DIR, `job_audio_${idStr}.mp3`);
@@ -491,8 +489,43 @@ async function generateReelVideoFromJob(job) {
       if (fs.existsSync(f)) fs.unlinkSync(f);
     }
 
+    let sourceUrl = job.cover_url;
+    try {
+      const { data: item, error: itemError } = await supabase
+        .from("news_items")
+        .select("*")
+        .eq("id", job.news_item_id)
+        .single();
+
+      if (itemError || !item) {
+        throw itemError || new Error("Notícia não encontrada");
+      }
+
+      const { data: settings, error: settingsError } = await supabase
+        .from("user_settings")
+        .select("brand_handle, brand_name, brand_logo_url, reel_audio_url")
+        .eq("user_id", job.user_id)
+        .maybeSingle();
+
+      if (settingsError) {
+        throw settingsError;
+      }
+
+      console.log(`[job:${job.id}] Gerando capa editorial do Reel...`);
+      sourceUrl = await composeAndUploadStoryNode(item, settings, { withFollowCta: true });
+
+      await supabase.from("reel_render_jobs")
+        .update({ cover_url: sourceUrl, updated_at: new Date().toISOString() })
+        .eq("id", job.id);
+    } catch (coverErr) {
+      if (!sourceUrl) {
+        throw new Error(`Job de Reel sem cover_url e falha ao gerar capa editorial: ${coverErr?.message || coverErr}`);
+      }
+      console.warn(`[job:${job.id}] Falha ao gerar capa editorial; usando cover_url existente.`, coverErr);
+    }
+
     console.log(`[job:${job.id}] Baixando capa do Reel...`);
-    await downloadFile(job.cover_url, tempImgPath);
+    await downloadFile(sourceUrl, tempImgPath);
 
     let hasAudio = false;
     if (job.audio_url) {
