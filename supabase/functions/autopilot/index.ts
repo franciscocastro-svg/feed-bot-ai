@@ -300,6 +300,15 @@ Deno.serve(async (req) => {
         userSummary.steps.expired = staleIds.length;
 
         // 2) processar pendentes — UMA POR VEZ por execução do autopilot.
+        // Se já existe algo agendado/publicando, não prepara outra notícia.
+        // O autopiloto só volta a carregar conteúdo novo depois que a atual
+        // sair da fila, preservando o fluxo antigo: pegar -> carregar -> postar.
+        const { count: activeQueueCount } = await supabase
+          .from("scheduled_posts")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .in("status", ["scheduled", "posting"]);
+
         // Só notícias frescas (<12h) E publicadas DEPOIS que o auto-piloto foi
         // ligado (ignora histórico antigo). Cron roda periodicamente, então a
         // próxima notícia só entra quando a atual estiver pronta + agendada.
@@ -349,9 +358,8 @@ Deno.serve(async (req) => {
           .eq("user_id", userId)
           .eq("status", "processing")
           .gte("updated_at", stuckCutoff);
-        // Processa até 3 notícias em paralelo por rodada (mais rápido pra encher a fila).
-        // O agendamento posterior continua respeitando intervalos e one-at-a-time por IG.
-        const pending = (inFlight && inFlight > 0) ? [] : ranked.slice(0, 3);
+        const shouldLoadNextNews = !(activeQueueCount && activeQueueCount > 0) && !(inFlight && inFlight > 0);
+        const pending = shouldLoadNextNews ? ranked.slice(0, 1) : [];
 
         const results = await Promise.all(pending.map(async (it) => {
           const r = await callFn("process-news", {
@@ -365,8 +373,8 @@ Deno.serve(async (req) => {
         }));
         const processed = results.filter((x): x is string => !!x);
         userSummary.steps.processed = processed.length;
+        userSummary.steps.active_queue = activeQueueCount || 0;
         userSummary.steps.in_flight = inFlight || 0;
-        userSummary.steps.processed = processed.length;
 
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase
