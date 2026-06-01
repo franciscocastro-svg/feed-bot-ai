@@ -328,6 +328,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const body = await req.json().catch(() => ({} as any));
     let userId: string | undefined = body?.user_id;
+    const targetPostId = typeof body?.scheduled_post_id === "string" ? body.scheduled_post_id : undefined;
     let supabase;
     if (userId) {
       const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
@@ -421,12 +422,18 @@ Deno.serve(async (req) => {
       }).in("id", expiringIds);
     }
 
-    const { data: due } = await supabase.from("scheduled_posts")
+    let dueQuery = supabase.from("scheduled_posts")
       .select("*, news_items(*), instagram_accounts(*)")
       .eq("user_id", userId).eq("status", "scheduled")
-      .lte("scheduled_for", new Date().toISOString())
-      .order("scheduled_for", { ascending: true })
-      .limit(5);
+      .lte("scheduled_for", new Date().toISOString());
+
+    if (targetPostId) {
+      dueQuery = dueQuery.eq("id", targetPostId).limit(1);
+    } else {
+      dueQuery = dueQuery.order("scheduled_for", { ascending: true }).limit(5);
+    }
+
+    const { data: due } = await dueQuery;
 
     // Pega último posted_at de cada conta IG envolvida
     const accountIds = Array.from(new Set((due || []).map((p: any) => p.instagram_account_id).filter(Boolean)));
@@ -622,6 +629,43 @@ Deno.serve(async (req) => {
         if (expiredAccountIds.has(acc.id)) throw new Error("Token do Instagram expirou. Atualize o Access Token em Contas Instagram e clique em Verificar token antes de publicar novamente.");
         if (acc.token_expires_at && new Date(acc.token_expires_at).getTime() <= Date.now()) {
           throw new Error("TOKEN_EXPIRED: Token do Instagram expirou. Atualize o Access Token em Contas Instagram e clique em Verificar token antes de publicar novamente.");
+        }
+
+        // Trava final anti-concorrência: a escolha do post acontece antes da
+        // chamada à Meta e pode ficar obsoleta se outro cron/manual publicar
+        // a mesma conta enquanto esta execução aguardava. Revalidamos o
+        // intervalo depois de marcar "posting", imediatamente antes do envio.
+        const postCfg = getPostConfig(p);
+        if (acc.id) {
+          const { data: latestPosted } = await supabase.from("scheduled_posts")
+            .select("posted_at")
+            .eq("user_id", userId)
+            .eq("status", "posted")
+            .eq("instagram_account_id", acc.id)
+            .neq("id", p.id)
+            .not("posted_at", "is", null)
+            .order("posted_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const latestPostedAt = latestPosted?.posted_at ? new Date(latestPosted.posted_at).getTime() : 0;
+          const minGapMs = postCfg.minIntervalMin * 60_000;
+          if (latestPostedAt && Date.now() - latestPostedAt < minGapMs) {
+            const nextAt = new Date(latestPostedAt + minGapMs).toISOString();
+            await supabase.from("scheduled_posts").update({
+              status: "scheduled",
+              scheduled_for: nextAt,
+              error_message: `Aguardando intervalo mínimo de ${postCfg.minIntervalMin} min entre posts`,
+            }).eq("id", p.id);
+            await supabase.from("activity_logs").insert({
+              user_id: userId,
+              action: "publish_postponed",
+              entity_type: "scheduled_post",
+              entity_id: p.id,
+              details: { reason: "account_cooldown_final_check", account_id: acc.id, retry_at: nextAt, min_interval_minutes: postCfg.minIntervalMin },
+            });
+            continue;
+          }
         }
 
         // === AUTO-FREIO ANTES DE BATER 100% NO LIMITE DA META ===

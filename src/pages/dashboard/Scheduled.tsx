@@ -116,7 +116,9 @@ export default function Scheduled() {
         error_message: null,
       }).eq("id", id);
       if (updErr) throw updErr;
-      const { data, error } = await supabase.functions.invoke("publish-scheduler");
+      const { data, error } = await supabase.functions.invoke("publish-scheduler", {
+        body: { scheduled_post_id: id },
+      });
       if (error) throw error;
       toast.success(`Publicação enviada (${data?.processed || 0} processado(s))`);
       load();
