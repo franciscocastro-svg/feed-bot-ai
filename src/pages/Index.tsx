@@ -49,25 +49,31 @@ function buildFeatures(p: any): string[] {
 
 
 const features = [
-  { icon: Newspaper, title: "Captação de notícias", text: "Conecte feeds RSS de qualquer fonte (G1, UOL, NewsAPI). Atualização automática a cada X minutos.", color: "from-pink-500 to-rose-500" },
-  { icon: Bot, title: "Reescrita com IA", text: "Resumo, título viral e legenda otimizada com hashtags — sem plágio, em segundos.", color: "from-purple-500 to-pink-500" },
-  { icon: ImageIcon, title: "Imagem 1080x1080", text: "Templates dinâmicos ou geração visual com IA. Fonte discreta e layout profissional.", color: "from-orange-500 to-pink-500" },
-  { icon: Instagram, title: "Publicação automática", text: "Integração com a Meta Graph API. Postar agora ou agendar para o melhor horário.", color: "from-fuchsia-500 to-purple-500" },
-  { icon: Calendar, title: "Painel administrativo", text: "Aprovação manual opcional, status de cada notícia, frequência por nicho.", color: "from-pink-500 to-orange-400" },
-  { icon: Shield, title: "Regras e segurança", text: "Limite diário, anti-spam, log completo de atividade.", color: "from-purple-500 to-fuchsia-500" },
+  { icon: Newspaper, title: "Captação de notícias", text: "Conecte feeds RSS por nicho e deixe o sistema buscar as melhores pautas automaticamente.", color: "from-pink-500 to-rose-500" },
+  { icon: Bot, title: "Texto pronto com IA", text: "Título, resumo e legenda adaptados para Instagram, com revisão manual opcional.", color: "from-purple-500 to-pink-500" },
+  { icon: ImageIcon, title: "Reels e artes com template", text: "Gere vídeos, capas e posts com identidade visual consistente para cada conta.", color: "from-orange-500 to-pink-500" },
+  { icon: Instagram, title: "Publicação pela API oficial", text: "Agende ou publique usando a Meta Graph API, sem depender de navegador aberto.", color: "from-fuchsia-500 to-purple-500" },
+  { icon: Calendar, title: "Fila inteligente", text: "Acompanhe status, erros, horários e próximas tentativas em um painel simples.", color: "from-pink-500 to-orange-400" },
+  { icon: Shield, title: "Intervalo seguro", text: "Controle ritmo, limite diário e horários para reduzir excesso de ações no Instagram.", color: "from-purple-500 to-fuchsia-500" },
 ];
 
 const stats = [
-  { value: "10k+", label: "Posts gerados" },
-  { value: "98%", label: "Aprovação IA" },
-  { value: "24/7", label: "Automação" },
-  { value: "<3s", label: "Por publicação" },
+  { value: "RSS", label: "Fontes automáticas" },
+  { value: "Reels", label: "Templates prontos" },
+  { value: "API", label: "Meta oficial" },
+  { value: "Seguro", label: "Intervalos por conta" },
 ];
 
 const steps = [
-  { n: "01", title: "Conecte suas fontes", text: "Adicione feeds RSS, contas Instagram e templates em minutos." },
-  { n: "02", title: "IA reescreve tudo", text: "Título viral, legenda otimizada e imagem profissional automaticamente." },
-  { n: "03", title: "Publique no piloto", text: "Agende ou publique na hora. Você só revisa o que importa." },
+  { n: "01", title: "Conecte fontes RSS", text: "Escolha os sites, nichos e contas do Instagram que receberão as notícias." },
+  { n: "02", title: "A IA prepara o conteúdo", text: "O NewsFlow reescreve, cria legenda e monta o Reel ou post com template." },
+  { n: "03", title: "Publica com controle", text: "A fila respeita horário, limite diário e intervalo mínimo de cada conta." },
+];
+
+const heroQueue = [
+  { title: "Mercado reage a nova decisão de juros", status: "Reel pronto", time: "12:30" },
+  { title: "Tecnologia impulsiona pequenas empresas", status: "Agendado", time: "13:30" },
+  { title: "Nova pauta em análise pela IA", status: "Preparando", time: "A seguir" },
 ];
 
 function FloatingBlobs() {
@@ -230,7 +236,7 @@ export default function Index() {
             <span className="font-display font-bold text-2xl">NewsFlow</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+            <a href="#features" className="hover:text-foreground transition-colors">Recursos</a>
             <a href="#como-funciona" className="hover:text-foreground transition-colors">Como funciona</a>
             <a href="#planos" className="hover:text-foreground transition-colors">Planos</a>
           </nav>
@@ -252,82 +258,142 @@ export default function Index() {
       </motion.header>
 
       {/* HERO */}
-      <section ref={heroRef} className="relative pt-40 pb-32 md:pt-48 md:pb-40 overflow-hidden">
+      <section ref={heroRef} className="relative pt-32 pb-24 md:pt-40 md:pb-28 overflow-hidden">
         <div className="absolute inset-0 bg-grid" />
         <div className="absolute inset-0 spotlight opacity-60" />
         <FloatingBlobs />
 
-        <div className="container relative z-10 text-center">
+        <div className="container relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-8"
+            className="mx-auto flex w-fit items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-8 lg:mx-0"
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            Automação de conteúdo com IA
+            RSS + IA + Instagram em um fluxo seguro
           </motion.div>
 
-          <h1
-            className="font-display text-5xl md:text-7xl lg:text-8xl font-bold leading-[1.02] tracking-tight max-w-5xl mx-auto"
-          >
-            Transforme notícias em{" "}
-            <span className="relative inline-block">
-              <span className="text-gradient glow-text">posts virais</span>
-              <motion.span
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
-                className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-brand origin-left rounded-full"
-              />
-            </span>
-            <br />no piloto automático.
-          </h1>
+          <div className="grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
+            <div className="text-center lg:text-left">
+              <h1
+                className="font-display text-5xl md:text-7xl lg:text-8xl font-bold leading-[1.02] tracking-tight"
+              >
+                Transforme notícias em{" "}
+                <span className="relative inline-block">
+                  <span className="text-gradient glow-text">Reels prontos</span>
+                  <motion.span
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: 1 }}
+                    transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
+                    className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-brand origin-left rounded-full"
+                  />
+                </span>
+                <br />para postar no Instagram.
+              </h1>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-8 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto"
-          >
-            Capte feeds, reescreva com IA, gere imagens 1080×1080 e publique no Instagram —
-            tudo em um único painel.
-          </motion.p>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="mt-8 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto lg:mx-0"
+              >
+                O NewsFlow busca notícias por RSS, reescreve com IA, monta artes e Reels com template
+                e publica respeitando horários, limite diário e intervalo de cada conta.
+              </motion.p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.45 }}
-            className="mt-10 flex flex-wrap items-center justify-center gap-3"
-          >
-            <Button size="lg" asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 group h-12 px-7">
-              <Link to="/auth">
-                Começar agora
-                <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild className="glass h-12 px-7 group">
-              <Link to="/auth"><Play className="h-4 w-4 mr-2 group-hover:scale-125 transition-transform" /> Ver demo</Link>
-            </Button>
-          </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.45 }}
+                className="mt-10 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
+              >
+                <Button size="lg" asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 group h-12 px-7">
+                  <Link to="/auth">
+                    Criar meu autopiloto
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild className="glass h-12 px-7 group">
+                  <a href="#como-funciona"><Play className="h-4 w-4 mr-2 group-hover:scale-125 transition-transform" /> Ver como funciona</a>
+                </Button>
+              </motion.div>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 32, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="relative"
+            >
+              <div className="absolute -inset-8 rounded-[2rem] bg-gradient-brand opacity-20 blur-3xl" />
+              <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">Fila do autopiloto</div>
+                    <div className="text-xs text-muted-foreground">1 notícia por vez, com intervalo seguro</div>
+                  </div>
+                  <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">Online</span>
+                </div>
+                <div className="grid gap-4 p-5">
+                  <div className="rounded-xl border border-border/60 bg-background/70 p-4">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Conta conectada</span>
+                      <span>@showdeesportes</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+                      <div className="rounded-lg bg-muted/50 p-3">
+                        <div className="text-lg font-bold text-gradient">60m</div>
+                        <div className="text-[11px] text-muted-foreground">Intervalo</div>
+                      </div>
+                      <div className="rounded-lg bg-muted/50 p-3">
+                        <div className="text-lg font-bold text-gradient">Reel</div>
+                        <div className="text-[11px] text-muted-foreground">Formato</div>
+                      </div>
+                      <div className="rounded-lg bg-muted/50 p-3">
+                        <div className="text-lg font-bold text-gradient">API</div>
+                        <div className="text-[11px] text-muted-foreground">Publicação</div>
+                      </div>
+                    </div>
+                  </div>
+                  {heroQueue.map((item, index) => (
+                    <div key={item.title} className="flex items-center gap-4 rounded-xl border border-border/50 bg-background/55 p-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-sm font-bold text-primary-foreground">
+                        {String(index + 1).padStart(2, "0")}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-foreground">{item.title}</div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{item.status}</span>
+                          <span>•</span>
+                          <span>{item.time}</span>
+                        </div>
+                      </div>
+                      <Check className="h-4 w-4 text-primary" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
 
           {/* Stats */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.7 }}
-            className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto"
+            className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto"
           >
             {stats.map((s) => (
               <motion.div
                 key={s.label}
                 whileHover={{ y: -4 }}
-                className="glass rounded-2xl p-5"
+                className="glass rounded-2xl p-5 text-center"
               >
-                <div className="font-display text-3xl md:text-4xl font-bold text-gradient">{s.value}</div>
+                <div className="font-display text-2xl md:text-3xl font-bold text-gradient">{s.value}</div>
                 <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
               </motion.div>
             ))}
@@ -343,15 +409,15 @@ export default function Index() {
         <div className="marquee whitespace-nowrap">
           {[...Array(2)].map((_, k) => (
             <div key={k} className="flex items-center gap-12 text-muted-foreground/60 text-sm font-medium pr-12">
-              <span className="flex items-center gap-2"><Zap className="h-4 w-4 text-primary" /> Powered by GPT-5 & Gemini 2.5</span>
+              <span className="flex items-center gap-2"><Zap className="h-4 w-4 text-primary" /> Reescrita com IA generativa</span>
               <span>•</span>
               <span className="flex items-center gap-2"><Instagram className="h-4 w-4 text-primary" /> Meta Graph API oficial</span>
               <span>•</span>
-              <span className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Anti-spam integrado</span>
+              <span className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Intervalos seguros por conta</span>
               <span>•</span>
-              <span className="flex items-center gap-2"><Rocket className="h-4 w-4 text-primary" /> Auto-publicação 24/7</span>
+              <span className="flex items-center gap-2"><Rocket className="h-4 w-4 text-primary" /> Fila automática de publicação</span>
               <span>•</span>
-              <span className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Insights avançados</span>
+              <span className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Painel de status em tempo real</span>
               <span>•</span>
             </div>
           ))}
