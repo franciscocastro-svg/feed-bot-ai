@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
-import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers } from "lucide-react";
+import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog";
 
 type PostFormat = "feed" | "stories" | "reels";
@@ -29,6 +29,18 @@ const FORMATS: { key: PostFormat; label: string; icon: any; description: string;
   { key: "stories", label: "Stories", icon: Camera, description: "Vertical 1080×1920 — 24h", aspect: "aspect-[9/16]" },
   { key: "reels", label: "Reels", icon: Film, description: "Capa de vídeo vertical 1080×1920", aspect: "aspect-[9/16]" },
 ];
+
+const TEMPLATE_REQUIREMENTS: Record<PostFormat, { width: number; height: number; label: string }> = {
+  feed: { width: 1080, height: 1080, label: "1080x1080" },
+  stories: { width: 1080, height: 1920, label: "1080x1920" },
+  reels: { width: 1080, height: 1920, label: "1080x1920" },
+};
+
+const DEFAULT_COLUMN_BY_FORMAT: Record<PostFormat, string> = {
+  feed: "default_feed_template_id",
+  stories: "default_story_template_id",
+  reels: "default_reel_template_id",
+};
 
 type NichePreset = {
   key: string;
@@ -185,7 +197,7 @@ const DEFAULT_CONFIG = {
 export default function Templates() {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [defaultIds, setDefaultIds] = useState<Record<PostFormat, string | null>>({ feed: null, stories: null, reels: null });
   const [editing, setEditing] = useState<Template | null>(null);
   const [previewing, setPreviewing] = useState<Template | null>(null);
   const [brand, setBrand] = useState<{ handle?: string; name?: string; logo?: string }>({});
@@ -198,26 +210,86 @@ export default function Templates() {
     if (!user) return;
     const [{ data: tpls }, settingsRes] = await Promise.all([
       supabase.from("post_templates").select("*").order("created_at", { ascending: false }),
-      supabase.from("user_settings").select("default_template_id, brand_handle, brand_name, brand_logo_url").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("user_settings")
+        .select("default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
+        .eq("user_id", user.id)
+        .maybeSingle(),
     ]);
     let settings = settingsRes.data;
     if (!settings) {
-      const { data: created } = await supabase.from("user_settings").insert({ user_id: user.id }).select("default_template_id, brand_handle, brand_name, brand_logo_url").single();
+      const { data: created } = await supabase
+        .from("user_settings")
+        .insert({ user_id: user.id })
+        .select("default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
+        .single();
       settings = created;
     }
     setTemplates((tpls || []) as Template[]);
-    setDefaultId(settings?.default_template_id || null);
+    const legacyDefault = settings?.default_template_id || null;
+    setDefaultIds({
+      feed: settings?.default_feed_template_id || legacyDefault,
+      stories: settings?.default_story_template_id || legacyDefault,
+      reels: settings?.default_reel_template_id || legacyDefault,
+    });
     setBrand({ handle: settings?.brand_handle ?? undefined, name: settings?.brand_name ?? undefined, logo: settings?.brand_logo_url ?? undefined });
   }
   useEffect(() => { load(); }, [user]);
 
-  async function setDefault(id: string) {
-    await supabase.from("user_settings").update({ default_template_id: id }).eq("user_id", user!.id);
-    setDefaultId(id);
-    toast.success("Template padrão definido");
+  async function setDefault(id: string, format: PostFormat) {
+    const column = DEFAULT_COLUMN_BY_FORMAT[format];
+    const update: Record<string, string> = { [column]: id };
+    if (format === "feed") update.default_template_id = id;
+    const { error } = await supabase.from("user_settings").update(update as any).eq("user_id", user!.id);
+    if (error) return toast.error(error.message);
+    setDefaultIds(prev => ({ ...prev, [format]: id }));
+    toast.success(`Template padrão de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido`);
+  }
+
+  function getImageSize(file: File): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Não consegui ler as dimensões da imagem."));
+      };
+      img.src = url;
+    });
+  }
+
+  async function validateTemplateFile(file: File, format: PostFormat) {
+    const req = TEMPLATE_REQUIREMENTS[format];
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      throw new Error("Use apenas PNG ou JPG.");
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error("O arquivo precisa ter até 5 MB.");
+    }
+    const size = await getImageSize(file);
+    if (size.width !== req.width || size.height !== req.height) {
+      throw new Error(`Este formato precisa ser ${req.label}. Sua imagem tem ${size.width}x${size.height}.`);
+    }
+  }
+
+  async function ensureTemplateLimit() {
+    const { data } = await supabase.rpc("can_create_resource", { _user_id: user!.id, _resource: "template" });
+    const result = data as any;
+    if (result && result.allowed === false) {
+      throw new Error(`Seu plano permite ${result.limit} template(s). Remova um template antigo ou ajuste o plano.`);
+    }
   }
 
   async function addPreset(p: NichePreset, format: PostFormat) {
+    try {
+      await ensureTemplateLimit();
+    } catch (e: any) {
+      return toast.error(e.message);
+    }
     const mergedConfig = { ...DEFAULT_CONFIG, ...p.config };
     const { data, error } = await supabase.from("post_templates").insert({
       user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig, format,
@@ -232,6 +304,8 @@ export default function Templates() {
     if (!user) return;
     setUploading(true);
     try {
+      await ensureTemplateLimit();
+      await validateTemplateFile(file, uploadFormatRef.current);
       const ext = file.name.split(".").pop() || "png";
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("template-backgrounds").upload(path, file, { upsert: false });
@@ -243,7 +317,7 @@ export default function Templates() {
       }).select().single();
       if (error) throw error;
       setTemplates(t => [data as Template, ...t]);
-      toast.success("Template enviado");
+      toast.success("Template enviado e validado");
       setEditing(data as Template);
     } catch (e: any) {
       toast.error(e.message);
@@ -389,6 +463,7 @@ export default function Templates() {
       {FORMATS.map(fmt => {
         const Icon = fmt.icon;
         const list = templates.filter(t => (t.format || "feed") === fmt.key);
+        const activeDefaultId = defaultIds[fmt.key];
         return (
           <section key={fmt.key} className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border pb-2">
@@ -397,6 +472,15 @@ export default function Templates() {
                 <h2 className="text-xl font-semibold">{fmt.label}</h2>
                 <Badge variant="outline" className="text-xs">{list.length}</Badge>
                 <span className="text-xs text-muted-foreground hidden sm:inline">— {fmt.description}</span>
+                {activeDefaultId ? (
+                  <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-400">
+                    <ShieldCheck className="h-3 w-3" /> Padrão ativo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-400">
+                    <AlertTriangle className="h-3 w-3" /> Sem padrão
+                  </Badge>
+                )}
               </div>
               <Button size="sm" onClick={() => triggerUpload(fmt.key)} disabled={uploading}>
                 <Upload className="h-4 w-4 mr-2" /> Subir arte
@@ -481,7 +565,7 @@ export default function Templates() {
                         ) : (
                           <div className="w-full h-full" style={{ background: PRESETS.find(p => p.key === t.preset_key)?.preview }} />
                         )}
-                        {defaultId === t.id && (
+                        {activeDefaultId === t.id && (
                           <Badge className="absolute top-2 left-2 bg-primary"><Star className="h-3 w-3 mr-1" />Padrão</Badge>
                         )}
                       </div>
@@ -495,8 +579,8 @@ export default function Templates() {
                           <Button size="sm" variant="secondary" className="flex-1 min-w-[80px]" onClick={() => setPreviewing(t)}>
                             <Eye className="h-4 w-4 mr-1" /> Prévia
                           </Button>
-                          {defaultId !== t.id && (
-                            <Button size="sm" variant="ghost" onClick={() => setDefault(t.id)}><Check className="h-4 w-4" /></Button>
+                          {activeDefaultId !== t.id && (
+                            <Button size="sm" variant="ghost" title={`Definir como padrão de ${fmt.label}`} onClick={() => setDefault(t.id, fmt.key)}><Check className="h-4 w-4" /></Button>
                           )}
                           <Button size="sm" variant="ghost" onClick={() => remove(t.id)}><Trash2 className="h-4 w-4" /></Button>
                         </div>

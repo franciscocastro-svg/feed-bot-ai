@@ -131,9 +131,151 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
+function templateIdForFormat(settings, format) {
+  if (format === "story" || format === "stories") {
+    return settings?.default_story_template_id || settings?.default_template_id || null;
+  }
+  if (format === "reel" || format === "reels") {
+    return settings?.default_reel_template_id || settings?.default_template_id || null;
+  }
+  return settings?.default_feed_template_id || settings?.default_template_id || null;
+}
+
+async function loadTemplateForFormat(userId, settings, format) {
+  const templateId = templateIdForFormat(settings, format);
+  if (!templateId) return null;
+  const normalized = format === "story" ? "stories" : format === "reel" ? "reels" : "feed";
+  const { data, error } = await supabase
+    .from("post_templates")
+    .select("*")
+    .eq("id", templateId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn(`[template] Falha ao buscar template ${templateId}:`, error.message);
+    return null;
+  }
+  if (!data || (data.format || "feed") !== normalized) return null;
+  return data;
+}
+
+function drawPresetBackground(ctx, presetKey, width, height) {
+  if (presetKey?.includes("yellow")) {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#FFD400";
+    ctx.fillRect(0, 0, width, Math.min(240, height));
+    return;
+  }
+  if (presetKey?.includes("breaking")) {
+    ctx.fillStyle = "#0A0A0A";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#DC2626";
+    ctx.fillRect(0, 0, width, Math.min(220, height));
+    return;
+  }
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#18181B";
+  ctx.fillRect(0, Math.max(0, height - 440), width, 440);
+}
+
+function drawCoverImage(ctx, img, x, y, w, h) {
+  const ratio = Math.max(w / img.width, h / img.height);
+  const sw = w / ratio;
+  const sh = h / ratio;
+  const sx = (img.width - sw) / 2;
+  const sy = (img.height - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+async function drawConfiguredTemplate(ctx, item, settings, template, width, height, opts = {}) {
+  const cfg = {
+    titleY: height === 1080 ? 540 : 1160,
+    titleSize: height === 1080 ? 64 : 76,
+    titleColor: "#FFFFFF",
+    titleMaxChars: 22,
+    subtitleY: height === 1080 ? 800 : 1480,
+    subtitleSize: height === 1080 ? 26 : 32,
+    subtitleColor: "#FFFFFF",
+    showHandle: true,
+    handleY: 100,
+    handleColor: "#FFFFFF",
+    showBadge: true,
+    badgeText: opts.withFollowCta && (settings?.brand_handle || settings?.brand_name)
+      ? `SIGA @${(settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").toUpperCase()} PARA MAIS`
+      : "LEIA A LEGENDA →",
+    badgeBg: "#FFD400",
+    badgeColor: "#000000",
+    badgeY: height === 1080 ? 980 : 1540,
+    overlayOpacity: 0.45,
+    showPhoto: true,
+    photoX: 90,
+    photoY: height === 1080 ? 600 : 500,
+    photoW: 420,
+    photoH: 280,
+    ...(template.config || {}),
+  };
+  const title = (item.rewritten_title || item.original_title || "Notícia").toUpperCase();
+  const subtitle = item.rewritten_summary || "";
+  const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
+
+  if (template.background_url) {
+    const bgImg = await loadImageHelper(template.background_url);
+    if (bgImg) drawCoverImage(ctx, bgImg, 0, 0, width, height);
+    else drawPresetBackground(ctx, template.preset_key, width, height);
+  } else {
+    drawPresetBackground(ctx, template.preset_key, width, height);
+  }
+
+  if (cfg.showPhoto && item.original_image_url) {
+    const photoImg = await loadImageHelper(item.original_image_url);
+    if (photoImg) drawCoverImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+  }
+
+  if (!template.background_url && cfg.overlayOpacity > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  if (cfg.showHandle && handle) {
+    ctx.fillStyle = cfg.handleColor;
+    ctx.font = "800 22px InterBold, Inter, sans-serif";
+    ctx.fillText(`@${handle.toUpperCase()}`, 60, cfg.handleY);
+  }
+
+  ctx.fillStyle = cfg.titleColor;
+  ctx.font = `900 ${cfg.titleSize}px InterBold, Inter, sans-serif`;
+  wrapText(ctx, title, width - 120).slice(0, 5).forEach((line, i) => {
+    ctx.fillText(line, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05));
+  });
+
+  if (subtitle) {
+    ctx.fillStyle = cfg.subtitleColor;
+    ctx.font = `500 ${cfg.subtitleSize}px Inter, sans-serif`;
+    wrapText(ctx, subtitle, width - 120).slice(0, 3).forEach((line, i) => {
+      ctx.fillText(line, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3));
+    });
+  }
+
+  if (cfg.showBadge && cfg.badgeText) {
+    const bw = Math.min(width - 120, Math.max(280, cfg.badgeText.length * 18 + 40));
+    const bh = 60;
+    const bx = width - bw - 60;
+    ctx.fillStyle = cfg.badgeBg;
+    ctx.fillRect(bx, cfg.badgeY, bw, bh);
+    ctx.fillStyle = cfg.badgeColor;
+    ctx.font = "900 22px InterBold, Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(cfg.badgeText, bx + bw / 2, cfg.badgeY + 40);
+    ctx.textAlign = "left";
+  }
+}
+
 // 1. Renderiza e faz upload do Post (1080x1080)
 async function composeAndUploadPostNode(item, settings) {
   const SIZE = 1080;
+  const template = await loadTemplateForFormat(item.user_id, settings, "feed");
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
   const subtitle = item.rewritten_summary || "";
@@ -145,6 +287,21 @@ async function composeAndUploadPostNode(item, settings) {
 
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
+
+  if (template) {
+    await drawConfiguredTemplate(ctx, item, settings, template, SIZE, SIZE);
+    const buffer = await canvas.encode("png");
+    const pathStorage = `${item.user_id}/${item.id}.png`;
+    const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+      contentType: "image/png",
+      upsert: true,
+    });
+    if (error) throw error;
+    const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
+    const url = `${pub.publicUrl}?t=${Date.now()}`;
+    await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+    return url;
+  }
 
   // Fundo branco no topo
   const headerH = 528;
@@ -246,6 +403,7 @@ async function composeAndUploadPostNode(item, settings) {
 async function composeAndUploadStoryNode(item, settings, opts = {}) {
   const W = 1080;
   const H = 1920;
+  const template = await loadTemplateForFormat(item.user_id, settings, opts.withFollowCta ? "reel" : "story");
 
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia");
   const subtitle = (item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "");
@@ -257,6 +415,21 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
+
+  if (template) {
+    await drawConfiguredTemplate(ctx, item, settings, template, W, H, opts);
+    const buffer = await canvas.encode("jpeg");
+    const pathStorage = `${item.user_id}/${item.id}-story.jpg`;
+    const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+    if (error) throw error;
+    const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
+    const url = `${pub.publicUrl}?t=${Date.now()}`;
+    await supabase.from("news_items").update({ generated_cover_url: url }).eq("id", item.id);
+    return url;
+  }
 
   // Imagem fullscreen
   if (photoImg) {
@@ -640,7 +813,7 @@ async function processPost(post) {
   // Busca configurações da marca do usuário
   const { data: settings, error: settingsError } = await supabase
     .from("user_settings")
-    .select("brand_handle, brand_name, brand_logo_url, reel_audio_url")
+    .select("brand_handle, brand_name, brand_logo_url, reel_audio_url, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id")
     .eq("user_id", post.user_id)
     .maybeSingle();
 

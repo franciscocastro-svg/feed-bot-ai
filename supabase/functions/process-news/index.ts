@@ -506,8 +506,10 @@ function customTemplateSvg(opts: {
   presetKey: string | null;
   config: any;
   photoDataUrl?: string | null;
+  height?: number;
 }) {
   const { title, subtitle, brandHandle, brandName, bgDataUrl, presetKey, config: c, photoDataUrl } = opts;
+  const height = opts.height || 1080;
   const handle = (brandHandle || brandName || "").replace(/^@/, "");
   const cfg = {
     titleY: 540, titleSize: 64, titleColor: "#FFFFFF", titleMaxChars: 22,
@@ -535,16 +537,16 @@ function customTemplateSvg(opts: {
   let presetBg = "";
   if (!bgDataUrl) {
     if (presetKey === "bold_stripe") {
-      presetBg = `<rect width="1080" height="1080" fill="#FFFFFF"/><rect width="1080" height="240" fill="#FFD400"/>`;
+      presetBg = `<rect width="1080" height="${height}" fill="#FFFFFF"/><rect width="1080" height="240" fill="#FFD400"/>`;
     } else if (presetKey === "breaking_news") {
-      presetBg = `<rect width="1080" height="1080" fill="#0A0A0A"/><rect width="1080" height="200" fill="#DC2626"/>`;
+      presetBg = `<rect width="1080" height="${height}" fill="#0A0A0A"/><rect width="1080" height="200" fill="#DC2626"/>`;
     } else {
-      presetBg = `<rect width="1080" height="1080" fill="#FFFFFF"/><rect y="640" width="1080" height="440" fill="#18181B"/>`;
+      presetBg = `<rect width="1080" height="${height}" fill="#FFFFFF"/><rect y="${Math.min(640, height - 440)}" width="1080" height="440" fill="#18181B"/>`;
     }
   }
 
   // Para presets sem background, usa overlay; para template custom, sem overlay (preserva arte)
-  const overlay = bgDataUrl ? "" : `<rect width="1080" height="1080" fill="rgba(0,0,0,${cfg.overlayOpacity})"/>`;
+  const overlay = bgDataUrl ? "" : `<rect width="1080" height="${height}" fill="rgba(0,0,0,${cfg.overlayOpacity})"/>`;
 
   // Foto da notícia encaixada na "caixa de foto" do template
   const photoBlock = (cfg.showPhoto && photoDataUrl)
@@ -552,9 +554,9 @@ function customTemplateSvg(opts: {
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="1080" viewBox="0 0 1080 1080">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="${height}" viewBox="0 0 1080 ${height}">
   ${bgDataUrl
-    ? `<image href="${bgDataUrl}" x="0" y="0" width="1080" height="1080" preserveAspectRatio="xMidYMid slice"/>`
+    ? `<image href="${bgDataUrl}" x="0" y="0" width="1080" height="${height}" preserveAspectRatio="xMidYMid slice"/>`
     : presetBg}
   ${photoBlock}
   ${overlay}
@@ -657,7 +659,30 @@ async function generateAIImage(prompt: string): Promise<Uint8Array> {
   return arr;
 }
 
-async function doProcessing(supabase: any, item: any, userId: string, image_style: string) {
+function templateIdForFormat(settings: any, format: string) {
+  if (format === "story" || format === "stories") {
+    return settings?.default_story_template_id || settings?.default_template_id || null;
+  }
+  if (format === "reel" || format === "reels") {
+    return settings?.default_reel_template_id || settings?.default_template_id || null;
+  }
+  return settings?.default_feed_template_id || settings?.default_template_id || null;
+}
+
+async function loadTemplate(supabase: any, userId: string, templateId: string | null, format: string) {
+  if (!templateId) return null;
+  const normalized = format === "story" ? "stories" : format === "reel" ? "reels" : "feed";
+  const { data: tpl } = await supabase
+    .from("post_templates")
+    .select("*")
+    .eq("id", templateId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!tpl) return null;
+  return (tpl.format || "feed") === normalized ? tpl : null;
+}
+
+async function doProcessing(supabase: any, item: any, userId: string, image_style: string, requestedMediaType = "") {
   try {
     // Prefer per-account overrides if this news_item is bound to an IG account
     let settings: any = null;
@@ -666,14 +691,16 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       if (eff) settings = eff;
     }
     if (!settings) {
-      const { data: us } = await supabase.from("user_settings").select("ai_tone, brand_name, brand_handle, brand_logo_url, default_template_id").eq("user_id", userId).maybeSingle();
+      const { data: us } = await supabase
+        .from("user_settings")
+        .select("ai_tone, brand_name, brand_handle, brand_logo_url, default_media_type, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id")
+        .eq("user_id", userId)
+        .maybeSingle();
       settings = us;
     }
-    let activeTemplate: any = null;
-    if (settings?.default_template_id) {
-      const { data: tpl } = await supabase.from("post_templates").select("*").eq("id", settings.default_template_id).eq("user_id", userId).maybeSingle();
-      activeTemplate = tpl;
-    }
+    const intendedMediaType = requestedMediaType || settings?.default_media_type || "feed";
+    const activeFeedTemplate = await loadTemplate(supabase, userId, templateIdForFormat(settings, "feed"), "feed");
+    const activeVerticalTemplate = await loadTemplate(supabase, userId, templateIdForFormat(settings, intendedMediaType), intendedMediaType);
     let srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {};
     if (item.source_id) {
       const { data: src } = await supabase.from("news_sources").select("source_language, translate_to_pt, cultural_adaptation").eq("id", item.source_id).maybeSingle();
@@ -787,11 +814,11 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       const brandName  = settings?.brand_name  || "";
       const brandHandle = settings?.brand_handle || brandName;
 
-      if (activeTemplate && (activeTemplate.background_url || activeTemplate.preset_key)) {
+      if (activeFeedTemplate && (activeFeedTemplate.background_url || activeFeedTemplate.preset_key)) {
         // Template customizado: busca background se houver URL
         let bgDataUrl: string | null = null;
-        if (activeTemplate.background_url) {
-          bgDataUrl = await fetchAsDataUrl(activeTemplate.background_url);
+        if (activeFeedTemplate.background_url) {
+          bgDataUrl = await fetchAsDataUrl(activeFeedTemplate.background_url);
         }
         feedSvg = customTemplateSvg({
           title: ai.title,
@@ -799,9 +826,10 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           brandHandle,
           brandName,
           bgDataUrl,
-          presetKey: activeTemplate.preset_key ?? null,
-          config: activeTemplate.config ?? {},
+          presetKey: activeFeedTemplate.preset_key ?? null,
+          config: activeFeedTemplate.config ?? {},
           photoDataUrl: rawPhotoDataUrl,
+          height: 1080,
         });
       } else {
         // Template padrão (Minimal Editorial)
@@ -837,14 +865,33 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     // ── 4. Capa do Reel (1080×1920 PNG) ─────────────────────────────────────
     let reelCoverUrl: string | null = null;
     try {
-      const rcSvg = reelCoverSvg({
-        title: ai.title,
-        hook: ai.hook || "URGENTE",
-        brandName: settings?.brand_name || "",
-        brandHandle: settings?.brand_handle || settings?.brand_name || "",
-        logoDataUrl,
-        photoDataUrl: rawPhotoDataUrl,
-      });
+      let rcSvg: string;
+      if (activeVerticalTemplate && (activeVerticalTemplate.background_url || activeVerticalTemplate.preset_key)) {
+        let bgDataUrl: string | null = null;
+        if (activeVerticalTemplate.background_url) {
+          bgDataUrl = await fetchAsDataUrl(activeVerticalTemplate.background_url);
+        }
+        rcSvg = customTemplateSvg({
+          title: ai.title,
+          subtitle: ai.subtitle,
+          brandHandle: settings?.brand_handle || settings?.brand_name || "",
+          brandName: settings?.brand_name || "",
+          bgDataUrl,
+          presetKey: activeVerticalTemplate.preset_key ?? null,
+          config: activeVerticalTemplate.config ?? {},
+          photoDataUrl: rawPhotoDataUrl,
+          height: 1920,
+        });
+      } else {
+        rcSvg = reelCoverSvg({
+          title: ai.title,
+          hook: ai.hook || "URGENTE",
+          brandName: settings?.brand_name || "",
+          brandHandle: settings?.brand_handle || settings?.brand_name || "",
+          logoDataUrl,
+          photoDataUrl: rawPhotoDataUrl,
+        });
+      }
       const rcBytes = await svgToPngSize(rcSvg, 1080);
       const rcPath = `${userId}/${item.id}_reel_cover.png`;
       const { error: rcErr } = await supabase.storage
@@ -1009,7 +1056,7 @@ Deno.serve(async (req) => {
     const providedSecret = req.headers.get("x-internal-secret");
     const isInternal = !!internalSecretEnv && providedSecret === internalSecretEnv;
     const body = await req.json();
-    const { news_item_id, image_style = "template" } = body;
+    const { news_item_id, image_style = "template", media_type = "" } = body;
     let userId: string;
     let supabase;
     if (isInternal) {
@@ -1033,7 +1080,7 @@ Deno.serve(async (req) => {
 
     // Processa em background — libera o worker imediatamente para evitar CPU Time exceeded
     // @ts-ignore EdgeRuntime existe no Supabase Edge Functions
-    EdgeRuntime.waitUntil(doProcessing(supabase, item, userId, image_style));
+    EdgeRuntime.waitUntil(doProcessing(supabase, item, userId, image_style, media_type));
 
     return new Response(JSON.stringify({ ok: true, queued: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

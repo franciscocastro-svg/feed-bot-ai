@@ -35,6 +35,111 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): st
   return lines;
 }
 
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const ratio = Math.max(w / img.width, h / img.height);
+  const sw = w / ratio;
+  const sh = h / ratio;
+  const sx = (img.width - sw) / 2;
+  const sy = (img.height - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | undefined) {
+  if (presetKey?.includes("yellow")) {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#FFD400";
+    ctx.fillRect(0, 0, W, 360);
+    return;
+  }
+  if (presetKey?.includes("breaking")) {
+    ctx.fillStyle = "#0A0A0A";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#DC2626";
+    ctx.fillRect(0, 0, W, 320);
+    return;
+  }
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#18181B";
+  ctx.fillRect(0, H - 700, W, 700);
+}
+
+async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any, opts: { withFollowCta?: boolean }) {
+  const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
+  const cfg = {
+    titleY: 1160,
+    titleSize: 76,
+    titleColor: "#FFFFFF",
+    subtitleY: 1480,
+    subtitleSize: 32,
+    subtitleColor: "#FFFFFF",
+    showHandle: true,
+    handleY: 120,
+    handleColor: "#FFFFFF",
+    showBadge: true,
+    badgeText: opts.withFollowCta && handle ? `SIGA @${handle.toUpperCase()} PARA MAIS` : "URGENTE",
+    badgeBg: "#FFD400",
+    badgeColor: "#000000",
+    badgeY: 1540,
+    overlayOpacity: 0.45,
+    showPhoto: true,
+    photoX: 70,
+    photoY: 440,
+    photoW: 940,
+    photoH: 620,
+    ...(template.config || {}),
+  };
+  const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia").toUpperCase();
+  const subtitle = item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "";
+
+  if (template.background_url) {
+    try {
+      const bg = await loadImage(proxify(template.background_url, 1080, 1920));
+      drawCover(ctx, bg, 0, 0, W, H);
+    } catch {
+      drawPreset(ctx, template.preset_key);
+    }
+  } else {
+    drawPreset(ctx, template.preset_key);
+  }
+
+  if (cfg.showPhoto && item.original_image_url) {
+    try {
+      const photo = await loadImage(proxify(item.original_image_url, 1080, 1920));
+      drawCover(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+    } catch {}
+  }
+  if (!template.background_url && cfg.overlayOpacity > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (cfg.showHandle && handle) {
+    ctx.fillStyle = cfg.handleColor;
+    ctx.font = "800 28px Inter, system-ui, sans-serif";
+    ctx.fillText(`@${handle.toUpperCase()}`, 60, cfg.handleY);
+  }
+  ctx.fillStyle = cfg.titleColor;
+  ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
+  wrap(ctx, title, W - 120).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
+  if (subtitle) {
+    ctx.fillStyle = cfg.subtitleColor;
+    ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
+    wrap(ctx, subtitle, W - 120).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
+  }
+  if (cfg.showBadge && cfg.badgeText) {
+    const bw = Math.min(W - 120, Math.max(300, cfg.badgeText.length * 18 + 52));
+    const bx = W - bw - 60;
+    ctx.fillStyle = cfg.badgeBg;
+    ctx.fillRect(bx, cfg.badgeY, bw, 64);
+    ctx.fillStyle = cfg.badgeColor;
+    ctx.font = "900 24px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(cfg.badgeText, bx + bw / 2, cfg.badgeY + 42);
+    ctx.textAlign = "left";
+  }
+}
+
 export async function composeAndUploadStory(item: any, opts: { withFollowCta?: boolean } = {}): Promise<string> {
   // Fallbacks: se o AI rewrite ainda não populou os campos, usa os originais
   // para nunca renderizar um Story em branco.
@@ -53,9 +158,20 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   // handle da marca para CTA discreto de "siga"
   const { data: settings } = await supabase
     .from("user_settings")
-    .select("brand_handle, brand_name")
+    .select("brand_handle, brand_name, default_template_id, default_story_template_id, default_reel_template_id")
     .maybeSingle();
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
+  const templateId = opts.withFollowCta
+    ? (settings?.default_reel_template_id || settings?.default_template_id)
+    : (settings?.default_story_template_id || settings?.default_template_id);
+  const { data: template } = templateId
+    ? await supabase
+      .from("post_templates")
+      .select("*")
+      .eq("id", templateId)
+      .eq("format", opts.withFollowCta ? "reels" : "stories")
+      .maybeSingle()
+    : { data: null };
 
   let photoImg: HTMLImageElement | null = null;
   if (item.original_image_url) {
@@ -70,6 +186,23 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d")!;
+
+  if (template) {
+    await drawTemplate(ctx, item, settings, template, opts);
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error("blob fail")), "image/jpeg", 0.92)
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    const path = `${user!.id}/${item.id}-story.jpg`;
+    const { error } = await supabase.storage.from("post-images").upload(path, blob, {
+      contentType: "image/jpeg", upsert: true,
+    });
+    if (error) throw error;
+    const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
+    const url = `${pub.publicUrl}?t=${Date.now()}`;
+    await supabase.from("news_items").update({ generated_cover_url: url }).eq("id", item.id);
+    return url;
+  }
 
   // ===== Foto fullscreen (cover) =====
   if (photoImg) {

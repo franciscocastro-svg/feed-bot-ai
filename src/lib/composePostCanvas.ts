@@ -34,11 +34,120 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const ratio = Math.max(w / img.width, h / img.height);
+  const sw = w / ratio;
+  const sh = h / ratio;
+  const sx = (img.width - sw) / 2;
+  const sy = (img.height - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | undefined, width: number, height: number) {
+  if (presetKey?.includes("yellow")) {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#FFD400";
+    ctx.fillRect(0, 0, width, 240);
+    return;
+  }
+  if (presetKey?.includes("breaking")) {
+    ctx.fillStyle = "#0A0A0A";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#DC2626";
+    ctx.fillRect(0, 0, width, 220);
+    return;
+  }
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#18181B";
+  ctx.fillRect(0, height - 440, width, 440);
+}
+
+async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any) {
+  const cfg = {
+    titleY: 540,
+    titleSize: 64,
+    titleColor: "#FFFFFF",
+    subtitleY: 800,
+    subtitleSize: 26,
+    subtitleColor: "#FFFFFF",
+    showHandle: true,
+    handleY: 100,
+    handleColor: "#FFFFFF",
+    showBadge: true,
+    badgeText: "LEIA A LEGENDA →",
+    badgeBg: "#FFD400",
+    badgeColor: "#000000",
+    badgeY: 980,
+    overlayOpacity: 0.45,
+    showPhoto: true,
+    photoX: 90,
+    photoY: 600,
+    photoW: 420,
+    photoH: 280,
+    ...(template.config || {}),
+  };
+  const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
+  const title = (item.rewritten_title || item.original_title || "").toUpperCase();
+  const subtitle = item.rewritten_summary || "";
+
+  if (template.background_url) {
+    try {
+      const bg = await loadImage(proxify(template.background_url, SIZE));
+      drawCover(ctx, bg, 0, 0, SIZE, SIZE);
+    } catch {
+      drawPreset(ctx, template.preset_key, SIZE, SIZE);
+    }
+  } else {
+    drawPreset(ctx, template.preset_key, SIZE, SIZE);
+  }
+
+  if (cfg.showPhoto && item.original_image_url) {
+    try {
+      const photo = await loadImage(proxify(item.original_image_url, 1080));
+      drawCover(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+    } catch {}
+  }
+  if (!template.background_url && cfg.overlayOpacity > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+  }
+  if (cfg.showHandle && handle) {
+    ctx.fillStyle = cfg.handleColor;
+    ctx.font = "800 22px Inter, system-ui, sans-serif";
+    ctx.fillText(`@${handle.toUpperCase()}`, 60, cfg.handleY);
+  }
+  ctx.fillStyle = cfg.titleColor;
+  ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
+  wrapText(ctx, title, SIZE - 120).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
+  if (subtitle) {
+    ctx.fillStyle = cfg.subtitleColor;
+    ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
+    wrapText(ctx, subtitle, SIZE - 120).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
+  }
+  if (cfg.showBadge && cfg.badgeText) {
+    const bw = Math.min(SIZE - 120, Math.max(280, cfg.badgeText.length * 18 + 40));
+    const bx = SIZE - bw - 60;
+    ctx.fillStyle = cfg.badgeBg;
+    ctx.fillRect(bx, cfg.badgeY, bw, 60);
+    ctx.fillStyle = cfg.badgeColor;
+    ctx.font = "900 22px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(cfg.badgeText, bx + bw / 2, cfg.badgeY + 40);
+    ctx.textAlign = "left";
+  }
+}
+
 export async function composeAndUploadPost(item: any): Promise<string> {
   const { data: settings } = await supabase
     .from("user_settings")
-    .select("brand_handle, brand_name, brand_logo_url")
+    .select("brand_handle, brand_name, brand_logo_url, default_template_id, default_feed_template_id")
     .maybeSingle();
+  const templateId = settings?.default_feed_template_id || settings?.default_template_id;
+  const { data: template } = templateId
+    ? await supabase.from("post_templates").select("*").eq("id", templateId).eq("format", "feed").maybeSingle()
+    : { data: null };
 
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
@@ -52,6 +161,23 @@ export async function composeAndUploadPost(item: any): Promise<string> {
   const canvas = document.createElement("canvas");
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext("2d")!;
+
+  if (template) {
+    await drawTemplate(ctx, item, settings, template);
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error("blob fail")), "image/png", 0.95)
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    const path = `${user!.id}/${item.id}.png`;
+    const { error } = await supabase.storage.from("post-images").upload(path, blob, {
+      contentType: "image/png", upsert: true,
+    });
+    if (error) throw error;
+    const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
+    const url = `${pub.publicUrl}?t=${Date.now()}`;
+    await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+    return url;
+  }
 
   // header
   const headerH = 528;
