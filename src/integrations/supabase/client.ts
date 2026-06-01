@@ -7,7 +7,8 @@ const SUPABASE_URL =
   || "https://gewnaxrhiyylfizgbqdi.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-  || import.meta.env.VITE_SUPABASE_ANON_KEY;
+  || import.meta.env.VITE_SUPABASE_ANON_KEY
+  || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdld25heHJoaXl5bGZpemdicWRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDYyMzgsImV4cCI6MjA5MzQ4MjIzOH0.tgm5u65fQVJAmH8UmTra6e6vOtazs1gFSiIghaN7eWM";
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
