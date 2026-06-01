@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, Sparkles, MessageCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, CreditCard, Instagram, Loader2, MessageCircle, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { StripeEmbeddedCheckout } from "@/components/StripeEmbeddedCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
@@ -24,6 +24,32 @@ const PRICE_ID_MAP: Record<string, string | null> = {
 };
 
 const HIGHLIGHT_PLAN = "pro";
+
+const PLAN_POSITIONING: Record<string, { bestFor: string; promise: string }> = {
+  free: {
+    bestFor: "Teste sem compromisso",
+    promise: "Veja o fluxo RSS + IA + Instagram antes de assinar.",
+  },
+  starter: {
+    bestFor: "Uma conta em crescimento",
+    promise: "Para publicar com consistência sem montar uma operação grande.",
+  },
+  pro: {
+    bestFor: "Criadores e agências",
+    promise: "Mais volume, mais contas e prioridade para escalar com controle.",
+  },
+  business: {
+    bestFor: "Operações com várias contas",
+    promise: "Para portais, times e projetos que precisam de acompanhamento próximo.",
+  },
+};
+
+const TRUST_ITEMS = [
+  { icon: CreditCard, title: "Pagamento seguro", text: "Checkout processado pela Stripe." },
+  { icon: Instagram, title: "API oficial", text: "Publicação via Meta Graph API." },
+  { icon: ShieldCheck, title: "Controle anti-excesso", text: "Intervalos, limites e fila por conta." },
+  { icon: Zap, title: "Ativação rápida", text: "Comece pelo trial e faça upgrade quando quiser." },
+];
 
 function parseWhatsAppNumber(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
@@ -128,11 +154,22 @@ export default function Pricing() {
         </div>
         <header className="text-center space-y-3 py-4">
           <Badge variant="secondary" className="mx-auto"><Sparkles className="h-3 w-3 mr-1" /> Planos</Badge>
-          <h1 className="font-display text-4xl md:text-5xl font-bold">Escolha seu plano</h1>
+          <h1 className="font-display text-4xl md:text-5xl font-bold">Escolha como quer escalar seu Instagram</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Automatize seu Instagram com IA. Cancele quando quiser.
+            Comece testando o NewsFlow e evolua para mais contas, fontes e volume quando sua operação crescer.
+            Sem fidelidade.
           </p>
         </header>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          {TRUST_ITEMS.map((item) => (
+            <div key={item.title} className="rounded-xl border border-border/60 bg-card/70 p-4">
+              <item.icon className="h-5 w-5 text-primary" />
+              <div className="mt-3 text-sm font-semibold">{item.title}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{item.text}</div>
+            </div>
+          ))}
+        </div>
 
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -145,21 +182,28 @@ export default function Pricing() {
               const isFree = p.plan === "free";
               const isBusinessContact = p.is_negotiable;
               const features = buildFeatures(p);
+              const positioning = PLAN_POSITIONING[p.plan] || {
+                bestFor: "Plano flexível",
+                promise: "Escolha o volume ideal para sua rotina.",
+              };
               const subtitle = isFree
                 ? (p.trial_days ? `Trial ${p.trial_days} dias` : "Grátis")
                 : isBusinessContact ? "negociado" : "/mês";
 
               return (
-                <Card key={p.plan} className={`p-6 flex flex-col relative ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20" : ""}`}>
+                <Card key={p.plan} className={`p-6 flex flex-col relative overflow-hidden ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20" : ""}`}>
+                  {highlight && <div className="absolute inset-x-0 top-0 h-1 bg-gradient-brand" />}
                   {highlight && (
                     <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Mais popular</Badge>
                   )}
                   <div className="space-y-1 mb-4">
                     <h3 className="text-xl font-bold">{p.display_name || p.plan}</h3>
+                    <p className="text-xs font-medium text-primary">{positioning.bestFor}</p>
                     <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-bold">{formatPrice(p.price_brl, p.is_negotiable)}</span>
                       <span className="text-sm text-muted-foreground">{subtitle}</span>
                     </div>
+                    <p className="pt-2 text-xs text-muted-foreground min-h-10">{positioning.promise}</p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     {features.map((f) => (
@@ -185,21 +229,54 @@ export default function Pricing() {
                     </Button>
                   ) : priceId ? (
                     <Button onClick={() => openCheckout(priceId)} className="w-full" variant={highlight ? "default" : "outline"}>
-                      Assinar {p.display_name || p.plan}
+                      {highlight ? "Assinar plano recomendado" : `Assinar ${p.display_name || p.plan}`}
                     </Button>
                   ) : (
-                    <Button disabled variant="secondary" className="w-full">Trial grátis</Button>
+                    <Button variant="secondary" className="w-full" onClick={() => navigate(user ? "/dashboard" : "/auth")}>
+                      Começar trial grátis
+                    </Button>
                   )}
                 </Card>
               );
             })}
           </div>
         )}
+
+        <section className="rounded-2xl border border-border/60 bg-card/70 p-6 md:p-8">
+          <div className="grid gap-6 md:grid-cols-[1fr_1.2fr] md:items-center">
+            <div>
+              <Badge variant="secondary">Recomendação</Badge>
+              <h2 className="mt-3 font-display text-2xl font-bold">Comece seguro e aumente o ritmo aos poucos</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Para evitar excesso de ações no Instagram, use intervalos maiores nos primeiros dias e aumente volume depois que a conta estiver estável.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-background/70 p-4">
+                <div className="text-sm font-semibold">Conta nova</div>
+                <div className="mt-1 text-xs text-muted-foreground">60 a 120 min entre posts.</div>
+              </div>
+              <div className="rounded-xl bg-background/70 p-4">
+                <div className="text-sm font-semibold">Conta ativa</div>
+                <div className="mt-1 text-xs text-muted-foreground">30 a 60 min com limite diário.</div>
+              </div>
+              <div className="rounded-xl bg-background/70 p-4">
+                <div className="text-sm font-semibold">Operação alta</div>
+                <div className="mt-1 text-xs text-muted-foreground">Use Pro ou Business e monitore a fila.</div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Finalizar assinatura</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Finalizar assinatura</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Pagamento seguro pela Stripe. Depois da confirmação, seu plano é ativado automaticamente no painel.
+            </p>
+          </DialogHeader>
           {selectedPriceId && (
             <StripeEmbeddedCheckout
               priceId={selectedPriceId}
