@@ -55,6 +55,7 @@ const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
 type SortKey = "created_at" | "last_activity" | "posts_published" | "posts_failed" | "plan";
 type EndpointHealth = { label: string; status: "online" | "offline"; detail: string };
+type CustomerHealth = "healthy" | "attention" | "critical";
 type QueueSummary = {
   scheduled: number;
   posting: number;
@@ -228,7 +229,12 @@ export default function Admin() {
     setSysLoading(false);
   };
 
-  useEffect(() => { if (allowed) load(); }, [allowed]);
+  useEffect(() => {
+    if (allowed) {
+      load();
+      loadSystem();
+    }
+  }, [allowed]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -294,6 +300,37 @@ export default function Admin() {
     });
     return { expired, soon, ok, none };
   }, [rows]);
+
+  const operationalAlerts = useMemo(() => {
+    const alerts: { label: string; detail: string; tone: "critical" | "warning" | "ok" }[] = [];
+    const offline = endpointHealth.filter(h => h.status === "offline");
+    if (offline.length) alerts.push({ label: "Serviço offline", detail: offline.map(h => h.label).join(", "), tone: "critical" });
+    if (stuckPosting.length) alerts.push({ label: "Posts travados", detail: `${stuckPosting.length} envio(s) em posting há mais de 15 min`, tone: "critical" });
+    if (recentFailed.length) alerts.push({ label: "Falhas recentes", detail: `${recentFailed.length} falha(s) nas últimas 24h`, tone: "warning" });
+    if (overdue.length) alerts.push({ label: "Fila atrasada", detail: `${overdue.length} post(s) com horário vencido`, tone: "warning" });
+    if (staleSources.length) alerts.push({ label: "RSS parado", detail: `${staleSources.length} fonte(s) sem atualização`, tone: "warning" });
+    if (tokenStats.expired || tokenStats.soon) alerts.push({ label: "Tokens IG", detail: `${tokenStats.expired} expirado(s), ${tokenStats.soon} vencendo`, tone: "warning" });
+    if (!alerts.length) alerts.push({ label: "Operação saudável", detail: "Sem alertas críticos no momento", tone: "ok" });
+    return alerts.slice(0, 5);
+  }, [endpointHealth, stuckPosting, recentFailed, overdue, staleSources, tokenStats]);
+
+  const customerHealth = (r: Row): CustomerHealth => {
+    if (r.sub_status === "blocked" || r.approval_status === "rejected") return "critical";
+    if ((r.posts_failed || 0) > 0) return "attention";
+    if (r.ig_accounts > 0 && r.ig_token_expires) {
+      const days = (new Date(r.ig_token_expires).getTime() - Date.now()) / 86400000;
+      if (days < 0) return "critical";
+      if (days < 7) return "attention";
+    }
+    if (!r.ig_accounts || !r.sources_active) return "attention";
+    return "healthy";
+  };
+
+  const healthBadge = (health: CustomerHealth) => {
+    if (health === "critical") return <Badge variant="destructive">Crítico</Badge>;
+    if (health === "attention") return <Badge className="bg-orange-500">Atenção</Badge>;
+    return <Badge className="bg-green-600">Saudável</Badge>;
+  };
 
   const setApproval = async (uid: string, status: "approved" | "rejected" | "pending") => {
     const { error } = await supabase.from("user_subscriptions")
@@ -409,7 +446,9 @@ export default function Admin() {
     { key: "users", icon: Users, label: "Usuários", value: totals.users, tint: "bg-blue-500/10 text-blue-400" },
     { key: "pending", icon: Clock, label: "Pendentes", value: totals.pending, tint: "bg-amber-500/10 text-amber-400", emphasis: totals.pending > 0 },
     { key: "paid", icon: DollarSign, label: "Pagantes", value: totals.paid, tint: "bg-emerald-500/10 text-emerald-400" },
+    { key: "mrr", icon: TrendingUp, label: "MRR estimado", value: fmtBRL(mrr.total), tint: "bg-green-500/10 text-green-400" },
     { key: "blocked", icon: XCircle, label: "Bloqueados", value: totals.blocked, tint: "bg-rose-500/10 text-rose-400" },
+    { key: "queue", icon: ListChecks, label: "Na fila", value: queueSummary.scheduled, tint: "bg-cyan-500/10 text-cyan-400" },
     { key: "pub", icon: CheckCircle2, label: "Posts publicados", value: totals.published, tint: "bg-fuchsia-500/10 text-fuchsia-400" },
     { key: "fail", icon: AlertTriangle, label: "Falhas", value: totals.failed, tint: "bg-orange-500/10 text-orange-400" },
   ];
@@ -451,7 +490,7 @@ export default function Admin() {
       </div>
 
       {/* KPIs refinados */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
         {kpis.map(k => (
           <Card key={k.key} className={`border-border/60 transition-colors hover:border-primary/30 ${k.emphasis ? "border-amber-500/40" : ""}`}>
             <CardContent className="pt-5 pb-4 space-y-3">
@@ -465,6 +504,79 @@ export default function Admin() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
+        <Card className={operationalAlerts.some(a => a.tone === "critical") ? "border-destructive/50" : ""}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-400" /> Central de alertas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {operationalAlerts.map((alert) => (
+              <div key={alert.label} className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-background/45 p-3">
+                <div>
+                  <div className="text-sm font-medium">{alert.label}</div>
+                  <div className="text-xs text-muted-foreground">{alert.detail}</div>
+                </div>
+                <Badge
+                  variant={alert.tone === "critical" ? "destructive" : "outline"}
+                  className={alert.tone === "ok" ? "bg-green-600 text-white border-green-600" : alert.tone === "warning" ? "border-orange-500/60 text-orange-400" : ""}
+                >
+                  {alert.tone === "ok" ? "OK" : alert.tone === "critical" ? "Crítico" : "Atenção"}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ListChecks className="h-4 w-4 text-cyan-400" /> Fila operacional
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3">
+            {[
+              ["Agendados", queueSummary.scheduled, "text-cyan-400"],
+              ["Enviando", queueSummary.posting, "text-fuchsia-400"],
+              ["Publicados hoje", queueSummary.postedToday, "text-green-500"],
+              ["Falhas 24h", queueSummary.failed, "text-orange-500"],
+              ["Reels na fila", queueSummary.reelQueued, "text-blue-400"],
+              ["Reels processando", queueSummary.reelProcessing, "text-primary"],
+            ] as const).map(([label, value, color]) => (
+              <div key={label as string} className="rounded-lg bg-background/50 p-3">
+                <div className={`text-2xl font-bold ${color}`}>{value}</div>
+                <div className="text-xs text-muted-foreground">{label}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-green-500" /> Financeiro rápido
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="text-xs text-muted-foreground">MRR estimado</div>
+              <div className="text-3xl font-bold text-green-600">{fmtBRL(mrr.total)}</div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(mrr.byPlan).length === 0 && <p className="text-sm text-muted-foreground">Sem assinantes pagantes ainda.</p>}
+              {Object.entries(mrr.byPlan).map(([plan, info]) => (
+                <div key={plan} className="flex items-center justify-between text-sm">
+                  <Badge variant="outline" className="capitalize">{plan}</Badge>
+                  <span className="text-muted-foreground">{info.count} cliente(s)</span>
+                  <span className="font-medium">{fmtBRL(info.total)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <AlertsCard rows={rows} />
@@ -544,6 +656,7 @@ export default function Admin() {
                       />
                     </th>
                     <SortHeader k="created_at">Usuário</SortHeader>
+                    <th className="text-left p-2">Saúde</th>
                     <th className="text-left p-2">Aprovação</th>
                     <SortHeader k="plan">Plano / Status</SortHeader>
                     <th className="text-left p-2">Expira</th>
@@ -569,6 +682,7 @@ export default function Admin() {
                         <div className="text-xs text-muted-foreground">{r.email}</div>
                         <div className="text-[10px] text-muted-foreground">Cadastro: {new Date(r.created_at).toLocaleDateString("pt-BR")}</div>
                       </td>
+                      <td className="p-2">{healthBadge(customerHealth(r))}</td>
                       <td className="p-2">{approvalBadge(r.approval_status)}</td>
                       <td className="p-2">
                         <div className="flex flex-col gap-1">
@@ -604,7 +718,7 @@ export default function Admin() {
                     </tr>
                   ))}
                   {!filtered.length && !loading && (
-                    <tr><td colSpan={10} className="text-center text-muted-foreground p-6">Nenhum usuário</td></tr>
+                    <tr><td colSpan={11} className="text-center text-muted-foreground p-6">Nenhum usuário</td></tr>
                   )}
                 </tbody>
               </table>
