@@ -5,7 +5,8 @@ import { motion, useTransform, useMotionValue, useSpring } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles, Newspaper, Bot, Image as ImageIcon, Instagram, Calendar, Shield,
-  ArrowRight, Check, MessageCircle, Zap, Rocket, TrendingUp, Star, Play, HelpCircle
+  ArrowRight, Check, MessageCircle, Zap, Rocket, TrendingUp, Star, Play, HelpCircle,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,6 +15,7 @@ import whatsappBot from "@/assets/whatsapp-bot.png";
 import logoImg from "@/assets/logo.png";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
+import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
 
 const PLAN_SUBTITLES: Record<string, string> = {
   free: "Ideal para testar o fluxo",
@@ -90,6 +92,30 @@ const proofItems = [
   { label: "998 conteúdos compartilhados", text: "Volume real publicado em um ciclo de operação intensa." },
   { label: "292,6 mil visualizações", text: "Alcance exibido no painel profissional do Instagram." },
   { label: "3,3 mil interações", text: "Conteúdo recorrente gerando atividade na conta." },
+];
+
+const proofSlides = [
+  {
+    image: proofInstagramProfile,
+    title: "Perfil com volume real",
+    description: "964 posts publicados com identidade visual consistente.",
+    alt: "Perfil do Instagram com posts gerados pelo NewsFlow",
+    crop: "object-top",
+  },
+  {
+    image: proofInstagramInsights,
+    title: "Painel profissional",
+    description: "292,6 mil visualizações, 3,3 mil interações e 194 novos seguidores.",
+    alt: "Painel profissional do Instagram com 292,6 mil visualizações",
+    crop: "object-top",
+  },
+  {
+    image: proofInstagramStories,
+    title: "Stories com público real",
+    description: "Stories recebendo visualizações recorrentes ao longo da operação.",
+    alt: "Stories do Instagram com contagem de visualizações",
+    crop: "object-[center_top]",
+  },
 ];
 
 function FloatingBlobs() {
@@ -207,6 +233,7 @@ export default function Index() {
   const heroRef = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [livePlans, setLivePlans] = useState<any[] | null>(null);
+  const [proofSlide, setProofSlide] = useState(0);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -224,6 +251,17 @@ export default function Index() {
       if (data) setLivePlans(data);
     })();
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setProofSlide((current) => (current + 1) % proofSlides.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const activeProof = proofSlides[proofSlide];
+  const previousProof = () => setProofSlide((current) => (current - 1 + proofSlides.length) % proofSlides.length);
+  const nextProof = () => setProofSlide((current) => (current + 1) % proofSlides.length);
 
   return (
     <div className="min-h-screen overflow-x-hidden">
@@ -536,22 +574,43 @@ export default function Index() {
                 </div>
                 <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">Ativo</span>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
-                  <img
-                    src={proofInstagramProfile}
-                    alt="Perfil do Instagram com posts gerados pelo NewsFlow"
-                    className="aspect-[9/16] w-full object-cover object-top"
-                    loading="lazy"
-                  />
+              <div className="relative overflow-hidden rounded-xl border border-border/60 bg-background/70">
+                <img
+                  src={activeProof.image}
+                  alt={activeProof.alt}
+                  className={`h-[430px] w-full object-cover transition-all duration-500 md:h-[520px] ${activeProof.crop}`}
+                  loading="lazy"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/80 to-transparent p-5">
+                  <div className="text-sm font-semibold text-foreground">{activeProof.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{activeProof.description}</div>
                 </div>
-                <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
-                  <img
-                    src={proofInstagramInsights}
-                    alt="Painel profissional do Instagram com 292,6 mil visualizações"
-                    className="aspect-[9/16] w-full object-cover object-top"
-                    loading="lazy"
-                  />
+                <button
+                  type="button"
+                  onClick={previousProof}
+                  className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/80 text-foreground backdrop-blur transition hover:bg-background"
+                  aria-label="Ver prova anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={nextProof}
+                  className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/80 text-foreground backdrop-blur transition hover:bg-background"
+                  aria-label="Ver próxima prova"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <div className="absolute left-1/2 top-4 flex -translate-x-1/2 gap-2">
+                  {proofSlides.map((slide, index) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setProofSlide(index)}
+                      className={`h-2 rounded-full transition-all ${index === proofSlide ? "w-7 bg-primary" : "w-2 bg-foreground/35"}`}
+                      aria-label={`Ver ${slide.title}`}
+                    />
+                  ))}
                 </div>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-4">
