@@ -14,10 +14,10 @@ import whatsappBot from "@/assets/whatsapp-bot.png";
 import logoImg from "@/assets/logo.png";
 
 const PLAN_SUBTITLES: Record<string, string> = {
-  free: "Trial 7 dias",
-  starter: "Para quem está escalando",
-  pro: "Profissionais e agências",
-  business: "Operação em escala",
+  free: "Ideal para testar o fluxo",
+  starter: "Para uma conta em crescimento",
+  pro: "Para criadores e agências",
+  business: "Para operação com várias contas",
 };
 const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean }> = {
   free: { label: "Começar grátis", to: "/auth" },
@@ -67,13 +67,27 @@ const stats = [
 const steps = [
   { n: "01", title: "Conecte fontes RSS", text: "Escolha os sites, nichos e contas do Instagram que receberão as notícias." },
   { n: "02", title: "A IA prepara o conteúdo", text: "O NewsFlow reescreve, cria legenda e monta o Reel ou post com template." },
-  { n: "03", title: "Publica com controle", text: "A fila respeita horário, limite diário e intervalo mínimo de cada conta." },
+  { n: "03", title: "A fila organiza tudo", text: "Cada conta segue horários, limite diário e intervalo mínimo configurado." },
+  { n: "04", title: "Você acompanha em tempo real", text: "Veja status, erros, próximos horários e posts publicados dentro do painel." },
 ];
 
 const heroQueue = [
   { title: "Mercado reage a nova decisão de juros", status: "Reel pronto", time: "12:30" },
   { title: "Tecnologia impulsiona pequenas empresas", status: "Agendado", time: "13:30" },
   { title: "Nova pauta em análise pela IA", status: "Preparando", time: "A seguir" },
+];
+
+const planBestFor: Record<string, string> = {
+  free: "Teste o autopiloto sem cartão.",
+  starter: "Uma marca, um nicho e rotina simples.",
+  pro: "Mais contas, volume e suporte prioritário.",
+  business: "Times, portais e operações em escala.",
+};
+
+const proofItems = [
+  { label: "Quase 1.000 publicações", text: "Operação real em 15 dias de uso intenso." },
+  { label: "Reels com template", text: "Capa editorial, legenda e vídeo prontos para Instagram." },
+  { label: "Fila com controle", text: "Intervalos por conta para reduzir excesso de ações." },
 ];
 
 function FloatingBlobs() {
@@ -470,6 +484,90 @@ export default function Index() {
         </div>
       </section>
 
+      {/* PROVA VISUAL */}
+      <section className="container py-24 relative">
+        <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
+              <TrendingUp className="h-3 w-3 text-primary" /> Operação real
+            </div>
+            <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+              Feito para quem publica <span className="text-gradient">todo dia</span>
+            </h2>
+            <p className="mt-5 text-lg text-muted-foreground">
+              O NewsFlow foi pensado para portais, criadores e páginas de nicho que precisam transformar
+              notícias em conteúdo visual com velocidade, controle e consistência.
+            </p>
+            <div className="mt-8 grid gap-3">
+              {proofItems.map((item) => (
+                <div key={item.label} className="flex gap-3 rounded-xl border border-border/50 bg-card/50 p-4">
+                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">{item.label}</div>
+                    <div className="text-sm text-muted-foreground">{item.text}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7 }}
+            className="relative"
+          >
+            <div className="absolute -inset-8 rounded-[2rem] bg-primary/20 blur-3xl" />
+            <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 shadow-2xl backdrop-blur-xl">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Painel de produção</div>
+                  <div className="text-xs text-muted-foreground">RSS, IA, template e publicação em uma fila</div>
+                </div>
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">Ativo</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {[
+                  ["Notícias", "Capturadas por RSS"],
+                  ["Reels", "Gerados com template"],
+                  ["Agenda", "Intervalo por conta"],
+                ].map(([title, text]) => (
+                  <div key={title} className="rounded-xl bg-background/70 p-4">
+                    <div className="text-2xl font-bold text-gradient">{title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{text}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-xl bg-background/70 p-4">
+                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Fluxo automático</span>
+                  <span>Próxima publicação segura</span>
+                </div>
+                <div className="grid gap-3">
+                  {["Buscar notícia", "Reescrever com IA", "Criar Reel", "Publicar no horário"].map((label, i) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <div className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary))]" />
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${96 - i * 16}%` }} />
+                      </div>
+                      <span className="w-32 text-right text-xs text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* COMO FUNCIONA */}
       <section id="como-funciona" className="container py-32 relative">
         <motion.div
@@ -483,11 +581,11 @@ export default function Index() {
             <Rocket className="h-3 w-3 text-primary" /> Como funciona
           </div>
           <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
-            Do feed ao feed em <span className="text-gradient">3 passos</span>
+            Do feed ao feed em <span className="text-gradient">4 passos</span>
           </h2>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6 relative">
+        <div className="grid md:grid-cols-4 gap-6 relative">
           <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
           {steps.map((s, i) => (
             <motion.div
@@ -527,7 +625,7 @@ export default function Index() {
             Escolha seu <span className="text-gradient">volume</span>
           </h2>
           <p className="mt-4 text-muted-foreground text-lg">
-            Cobrança mensal recorrente. Cancele quando quiser. Sem fidelidade.
+            Comece pequeno, valide sua operação e escale para mais contas quando precisar.
           </p>
         </motion.div>
 
@@ -539,6 +637,7 @@ export default function Index() {
               price: fmtBRL(row.price_brl, row.is_negotiable),
               suffix: row.plan === "free" ? (row.trial_days ? `/${row.trial_days} dias` : "") : (row.is_negotiable ? "" : "/mês"),
               subtitle: PLAN_SUBTITLES[row.plan] || "",
+              bestFor: planBestFor[row.plan] || "Escolha o volume ideal para sua rotina.",
               cta: cta.label,
               to: cta.to,
               whatsapp: !!cta.whatsapp,
@@ -563,6 +662,7 @@ export default function Index() {
               <div className="mb-4">
                 <h3 className="font-display font-bold text-xl">{p.name}</h3>
                 <p className="text-xs text-muted-foreground mt-1">{p.subtitle}</p>
+                <p className="mt-3 rounded-lg bg-muted/45 px-3 py-2 text-xs text-muted-foreground">{p.bestFor}</p>
               </div>
               <div className="mb-5">
                 <div className="flex items-baseline gap-1 flex-wrap">
@@ -601,6 +701,9 @@ export default function Index() {
             );
           })}
         </div>
+        <p className="mx-auto mt-8 max-w-2xl text-center text-sm text-muted-foreground">
+          Todos os planos usam publicação pela API oficial da Meta. O ritmo de postagem depende dos limites configurados e das políticas do Instagram.
+        </p>
       </section>
 
       {/* FAQ */}
@@ -624,6 +727,9 @@ export default function Index() {
             {[
               { q: "Como funciona o trial gratuito?", a: "Você tem 7 dias para testar todos os recursos do plano Free sem precisar de cartão. Pode cancelar a qualquer momento." },
               { q: "Vocês usam a API oficial do Instagram?", a: "Sim, usamos integração oficial e segura com o Instagram." },
+              { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o NewsFlow usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
+              { q: "Preciso deixar meu computador ligado?", a: "Não. A geração de mídia e a fila rodam na infraestrutura do sistema, então o painel pode ficar fechado." },
+              { q: "Funciona com Reels?", a: "Sim. O sistema gera Reels com capa/template, áudio configurado e vídeo pronto para publicação." },
               { q: "Posso conectar mais de uma conta?", a: "Sim. O plano Pro permite até 3 contas e o Business 10+. Cada conta tem agenda e regras independentes." },
               { q: "A IA pode publicar sem revisão?", a: "Você escolhe. Tem o modo de aprovação manual (você revisa cada post) e o modo piloto automático (publica direto seguindo seus filtros e horários)." },
               { q: "Posso cancelar quando quiser?", a: "Sim. Cobrança mensal recorrente sem fidelidade. Cancele em um clique pelo painel — o acesso fica até o fim do período pago." },
@@ -653,14 +759,14 @@ export default function Index() {
           <div className="absolute inset-0 bg-grid opacity-50" />
           <div className="relative">
             <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight max-w-3xl mx-auto">
-              Pronto para colocar seu Instagram no <span className="text-gradient">piloto automático?</span>
+              Crie seu autopiloto de notícias para <span className="text-gradient">Instagram</span>
             </h2>
             <p className="mt-6 text-muted-foreground text-lg max-w-xl mx-auto">
-              Comece grátis. Sem cartão. Cancele quando quiser.
+              Teste grátis, sem cartão, com RSS, IA, templates e fila de publicação em um único painel.
             </p>
             <Button size="lg" asChild className="mt-10 bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 h-14 px-10 text-base group">
               <Link to="/auth">
-                Começar agora <ArrowRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                Criar meu autopiloto <ArrowRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>
           </div>
