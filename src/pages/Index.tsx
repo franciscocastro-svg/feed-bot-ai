@@ -12,6 +12,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import whatsappBot from "@/assets/whatsapp-bot.png";
 import logoImg from "@/assets/logo.png";
+import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
+import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 
 const PLAN_SUBTITLES: Record<string, string> = {
   free: "Ideal para testar o fluxo",
@@ -85,9 +87,9 @@ const planBestFor: Record<string, string> = {
 };
 
 const proofItems = [
-  { label: "Quase 1.000 publicações", text: "Operação real em 15 dias de uso intenso." },
-  { label: "Reels com template", text: "Capa editorial, legenda e vídeo prontos para Instagram." },
-  { label: "Fila com controle", text: "Intervalos por conta para reduzir excesso de ações." },
+  { label: "998 conteúdos compartilhados", text: "Volume real publicado em um ciclo de operação intensa." },
+  { label: "292,6 mil visualizações", text: "Alcance exibido no painel profissional do Instagram." },
+  { label: "3,3 mil interações", text: "Conteúdo recorrente gerando atividade na conta." },
 ];
 
 function FloatingBlobs() {
@@ -529,39 +531,41 @@ export default function Index() {
             <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 shadow-2xl backdrop-blur-xl">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold">Painel de produção</div>
-                  <div className="text-xs text-muted-foreground">RSS, IA, template e publicação em uma fila</div>
+                  <div className="text-sm font-semibold">Resultados em conta real</div>
+                  <div className="text-xs text-muted-foreground">Prints reais do painel profissional e do perfil</div>
                 </div>
                 <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">Ativo</span>
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
+                  <img
+                    src={proofInstagramProfile}
+                    alt="Perfil do Instagram com posts gerados pelo NewsFlow"
+                    className="aspect-[9/16] w-full object-cover object-top"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
+                  <img
+                    src={proofInstagramInsights}
+                    alt="Painel profissional do Instagram com 292,6 mil visualizações"
+                    className="aspect-[9/16] w-full object-cover object-top"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
                 {[
-                  ["Notícias", "Capturadas por RSS"],
-                  ["Reels", "Gerados com template"],
-                  ["Agenda", "Intervalo por conta"],
-                ].map(([title, text]) => (
-                  <div key={title} className="rounded-xl bg-background/70 p-4">
-                    <div className="text-2xl font-bold text-gradient">{title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{text}</div>
+                  ["964", "posts"],
+                  ["292,6 mil", "visualizações"],
+                  ["3,3 mil", "interações"],
+                  ["194", "novos seguidores"],
+                ].map(([value, label]) => (
+                  <div key={label} className="rounded-xl bg-background/70 p-3 text-center">
+                    <div className="font-display text-xl font-bold text-gradient">{value}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">{label}</div>
                   </div>
                 ))}
-              </div>
-              <div className="mt-4 rounded-xl bg-background/70 p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Fluxo automático</span>
-                  <span>Próxima publicação segura</span>
-                </div>
-                <div className="grid gap-3">
-                  {["Buscar notícia", "Reescrever com IA", "Criar Reel", "Publicar no horário"].map((label, i) => (
-                    <div key={label} className="flex items-center gap-3">
-                      <div className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary))]" />
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${96 - i * 16}%` }} />
-                      </div>
-                      <span className="w-32 text-right text-xs text-muted-foreground">{label}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           </motion.div>
