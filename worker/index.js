@@ -787,7 +787,7 @@ async function generateReelVideoFromJob(job) {
 }
 
 async function processQueuedReelJobs() {
-  const { data: jobs, error } = await supabase.rpc("claim_reel_jobs", { _worker: WORKER_ID, _limit: 3 });
+  const { data: jobs, error } = await supabase.rpc("claim_reel_jobs", { _worker: WORKER_ID, _limit: 1 });
   if (error) {
     console.error("Erro ao reclamar jobs de Reel:", error);
     return 0;
@@ -866,7 +866,7 @@ async function main() {
         .from("scheduled_posts")
         .select("id, user_id, media_type, news_item_id, news_items(*)")
         .eq("status", "scheduled")
-        .limit(15);
+        .limit(5);
 
       if (error) {
         console.error("Erro ao buscar posts da fila:", error);
@@ -887,7 +887,7 @@ async function main() {
 
         if (todo.length > 0) {
           console.log(`Fila: ${todo.length} posts pendentes encontrados.`);
-          for (const post of todo) {
+          for (const post of todo.slice(0, 1)) {
             await processPost(post);
           }
         }
@@ -896,8 +896,8 @@ async function main() {
       console.error("Erro no ciclo do worker:", err);
     }
     
-    // Aguarda 20 segundos antes do próximo polling
-    await new Promise((resolve) => setTimeout(resolve, 20000));
+    // Aguarda 30 segundos antes do próximo polling para reduzir picos de CPU no VPS.
+    await new Promise((resolve) => setTimeout(resolve, 30000));
   }
 }
 
