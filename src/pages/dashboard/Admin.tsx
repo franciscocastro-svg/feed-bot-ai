@@ -15,7 +15,7 @@ import {
   Shield, Users, CheckCircle2, XCircle, AlertTriangle, RefreshCw, DollarSign,
   Activity, Clock, Check, X, ArrowUpDown, Rss, Instagram, Calendar, Zap, TrendingUp,
   LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map,
-  Server, Radio, ListChecks, Database,
+  Server, Radio, ListChecks, Database, Plus, Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -51,11 +51,22 @@ type Row = {
 
 const PLANS = ["free", "starter", "pro", "business"];
 const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
+const EXPENSE_CATEGORIES = ["IA", "Servidor", "Tráfego pago", "Ferramentas", "Equipe", "Outros"];
 
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
 type SortKey = "created_at" | "last_activity" | "posts_published" | "posts_failed" | "plan";
 type EndpointHealth = { label: string; status: "online" | "offline"; detail: string };
 type CustomerHealth = "healthy" | "attention" | "critical";
+type AdminExpense = {
+  id: string;
+  category: string;
+  description: string;
+  amount_brl: number;
+  spent_at: string;
+  recurring: boolean;
+  notes: string | null;
+  created_at: string;
+};
 type QueueSummary = {
   scheduled: number;
   posting: number;
@@ -85,6 +96,16 @@ export default function Admin() {
 
   const [detail, setDetail] = useState<Row | null>(null);
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
+  const [expenses, setExpenses] = useState<AdminExpense[]>([]);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({
+    category: "IA",
+    description: "",
+    amount_brl: "",
+    spent_at: new Date().toISOString().slice(0, 10),
+    recurring: true,
+    notes: "",
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkPlan, setBulkPlan] = useState("free");
@@ -120,9 +141,10 @@ export default function Admin() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data, error }, { data: plans }] = await Promise.all([
+    const [{ data, error }, { data: plans }, expenseRes] = await Promise.all([
       supabase.rpc("admin_overview"),
       supabase.from("plan_limits").select("plan, price_brl"),
+      supabase.from("admin_expenses" as any).select("*").order("spent_at", { ascending: false }).limit(100),
     ]);
     if (error) { toast.error("Erro ao carregar: " + error.message); setRows([]); }
     else setRows((data || []) as Row[]);
@@ -131,6 +153,7 @@ export default function Admin() {
       plans.forEach((p: any) => { map[p.plan] = Number(p.price_brl || 0); });
       setPlanPrices(map);
     }
+    if (!expenseRes.error) setExpenses((expenseRes.data || []) as unknown as AdminExpense[]);
     setLoading(false);
   };
 
@@ -288,6 +311,25 @@ export default function Admin() {
     return { total, byPlan };
   }, [rows, planPrices]);
 
+  const financeSummary = useMemo(() => {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthExpenses = expenses.filter(e => new Date(e.spent_at) >= monthStart);
+    const totalExpenses = monthExpenses.reduce((sum, e) => sum + Number(e.amount_brl || 0), 0);
+    const recurringExpenses = expenses.filter(e => e.recurring).reduce((sum, e) => sum + Number(e.amount_brl || 0), 0);
+    const byCategory = monthExpenses.reduce<Record<string, number>>((acc, e) => {
+      acc[e.category] = (acc[e.category] || 0) + Number(e.amount_brl || 0);
+      return acc;
+    }, {});
+    return {
+      totalExpenses,
+      recurringExpenses,
+      estimatedProfit: mrr.total - totalExpenses,
+      byCategory,
+    };
+  }, [expenses, mrr.total]);
+
   const tokenStats = useMemo(() => {
     let expired = 0, soon = 0, ok = 0, none = 0;
     rows.forEach(r => {
@@ -403,6 +445,40 @@ export default function Admin() {
     }, { onConflict: "user_id" });
     if (error) toast.error(error.message);
     else { toast.success("Atualizado"); setEditing(null); load(); }
+  };
+
+  const saveExpense = async () => {
+    const amount = Number(String(expenseForm.amount_brl).replace(",", "."));
+    if (!expenseForm.description.trim()) return toast.error("Informe a descrição do gasto.");
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Informe um valor válido.");
+    const { error } = await supabase.from("admin_expenses" as any).insert({
+      category: expenseForm.category,
+      description: expenseForm.description.trim(),
+      amount_brl: amount,
+      spent_at: new Date(expenseForm.spent_at).toISOString(),
+      recurring: expenseForm.recurring,
+      notes: expenseForm.notes.trim() || null,
+      created_by: user?.id,
+    } as any);
+    if (error) return toast.error(error.message);
+    toast.success("Gasto adicionado");
+    setExpenseOpen(false);
+    setExpenseForm({
+      category: "IA",
+      description: "",
+      amount_brl: "",
+      spent_at: new Date().toISOString().slice(0, 10),
+      recurring: true,
+      notes: "",
+    });
+    load();
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!confirm("Remover este gasto?")) return;
+    const { error } = await supabase.from("admin_expenses" as any).delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Gasto removido"); load(); }
   };
 
   const tokenBadge = (date: string | null, count: number) => {
@@ -909,15 +985,51 @@ export default function Admin() {
 
         {/* ====== FINANCEIRO ====== */}
         <TabsContent value="finance" className="mt-4 space-y-4">
-          <div className="grid md:grid-cols-3 gap-3">
-            <Card className="md:col-span-1">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Finanças do projeto</h2>
+              <p className="text-sm text-muted-foreground">Receita, custos, lucro estimado e gastos operacionais.</p>
+            </div>
+            <Button onClick={() => setExpenseOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Adicionar gasto
+            </Button>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-3">
+            <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-2 text-muted-foreground text-xs"><TrendingUp className="h-3.5 w-3.5"/> MRR estimado</div>
                 <div className="text-3xl font-bold text-green-600 mt-1">{fmtBRL(mrr.total)}</div>
                 <div className="text-xs text-muted-foreground mt-1">{totals.paid} assinantes ativos</div>
               </CardContent>
             </Card>
-            <Card className="md:col-span-2">
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs"><DollarSign className="h-3.5 w-3.5"/> Gastos do mês</div>
+                <div className="text-3xl font-bold text-orange-500 mt-1">{fmtBRL(financeSummary.totalExpenses)}</div>
+                <div className="text-xs text-muted-foreground mt-1">{expenses.length} gasto(s) registrados</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs"><RefreshCw className="h-3.5 w-3.5"/> Custos recorrentes</div>
+                <div className="text-3xl font-bold text-fuchsia-500 mt-1">{fmtBRL(financeSummary.recurringExpenses)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Base mensal cadastrada</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs"><Activity className="h-3.5 w-3.5"/> Lucro estimado</div>
+                <div className={`text-3xl font-bold mt-1 ${financeSummary.estimatedProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
+                  {fmtBRL(financeSummary.estimatedProfit)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">MRR - gastos do mês</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card>
               <CardHeader><CardTitle className="text-base">Receita por plano</CardTitle></CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -932,7 +1044,67 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Gastos por categoria</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {Object.entries(financeSummary.byCategory).length === 0 && <p className="text-sm text-muted-foreground">Nenhum gasto registrado neste mês.</p>}
+                {Object.entries(financeSummary.byCategory).map(([category, total]) => (
+                  <div key={category} className="flex items-center justify-between text-sm border-b border-border/50 pb-1.5">
+                    <Badge variant="outline">{category}</Badge>
+                    <div className="font-bold text-orange-500">{fmtBRL(total)}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between gap-3">
+                <span>Gastos cadastrados</span>
+                <Button size="sm" variant="outline" onClick={() => setExpenseOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Novo gasto
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground border-b">
+                  <tr>
+                    <th className="text-left p-2">Data</th>
+                    <th className="text-left p-2">Categoria</th>
+                    <th className="text-left p-2">Descrição</th>
+                    <th className="text-left p-2">Recorrente</th>
+                    <th className="text-right p-2">Valor</th>
+                    <th className="text-right p-2">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map(e => (
+                    <tr key={e.id} className="border-b hover:bg-muted/30">
+                      <td className="p-2 text-xs">{new Date(e.spent_at).toLocaleDateString("pt-BR")}</td>
+                      <td className="p-2"><Badge variant="outline">{e.category}</Badge></td>
+                      <td className="p-2">
+                        <div className="font-medium">{e.description}</div>
+                        {e.notes && <div className="text-xs text-muted-foreground line-clamp-1">{e.notes}</div>}
+                      </td>
+                      <td className="p-2">{e.recurring ? <Badge className="bg-blue-600">Sim</Badge> : <Badge variant="outline">Não</Badge>}</td>
+                      <td className="p-2 text-right font-medium text-orange-500">{fmtBRL(Number(e.amount_brl || 0))}</td>
+                      <td className="p-2 text-right">
+                        <Button size="sm" variant="ghost" onClick={() => deleteExpense(e.id)} title="Remover gasto">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {expenses.length === 0 && (
+                    <tr><td colSpan={6} className="text-center text-muted-foreground p-6">Nenhum gasto cadastrado</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base">Assinantes pagantes</CardTitle></CardHeader>
@@ -1008,6 +1180,65 @@ export default function Admin() {
         </TabsContent>
         </div>
       </Tabs>
+
+      <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Adicionar gasto do projeto</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Categoria</label>
+                <Select value={expenseForm.category} onValueChange={(category) => setExpenseForm(f => ({ ...f, category }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Data</label>
+                <Input type="date" value={expenseForm.spent_at} onChange={e => setExpenseForm(f => ({ ...f, spent_at: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Descrição</label>
+              <Input
+                value={expenseForm.description}
+                onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Ex: OpenAI, Contabo VPS, Meta Ads..."
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Valor em R$</label>
+              <Input
+                inputMode="decimal"
+                value={expenseForm.amount_brl}
+                onChange={e => setExpenseForm(f => ({ ...f, amount_brl: e.target.value }))}
+                placeholder="Ex: 129,90"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={expenseForm.recurring}
+                onCheckedChange={(checked) => setExpenseForm(f => ({ ...f, recurring: !!checked }))}
+              />
+              Gasto recorrente mensal
+            </label>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notas</label>
+              <Textarea
+                value={expenseForm.notes}
+                onChange={e => setExpenseForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Observação interna opcional"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExpenseOpen(false)}>Cancelar</Button>
+            <Button onClick={saveExpense}>Salvar gasto</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk: mudar plano */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
