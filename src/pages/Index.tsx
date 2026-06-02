@@ -119,17 +119,17 @@ function FloatingBlobs() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <motion.div
-        className="blob absolute -top-40 -left-40 w-[500px] h-[500px] bg-primary/40"
+        className="blob absolute -top-24 -left-24 h-[260px] w-[260px] bg-primary/40 sm:-top-40 sm:-left-40 sm:h-[500px] sm:w-[500px]"
         animate={{ x: [0, 100, 0], y: [0, 60, 0] }}
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="blob absolute top-1/3 -right-40 w-[600px] h-[600px] bg-accent/30"
+        className="blob absolute top-1/3 -right-24 h-[300px] w-[300px] bg-accent/30 sm:-right-40 sm:h-[600px] sm:w-[600px]"
         animate={{ x: [0, -120, 0], y: [0, -80, 0] }}
         transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="blob absolute bottom-0 left-1/3 w-[450px] h-[450px]"
+        className="blob absolute bottom-0 left-1/3 h-[260px] w-[260px] sm:h-[450px] sm:w-[450px]"
         style={{ background: "hsl(280 95% 65% / 0.4)" }}
         animate={{ x: [0, 80, 0], y: [0, -50, 0] }}
         transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
@@ -275,31 +275,31 @@ export default function Index() {
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         className={`fixed top-0 inset-x-0 z-50 transition-all duration-500 ${scrolled ? "glass border-b border-border/40" : ""}`}
       >
-        <div className="container flex items-center justify-between py-4">
-          <Link to="/" className="flex items-center gap-2 group">
+        <div className="container flex items-center justify-between gap-3 py-3 md:py-4">
+          <Link to="/" className="flex min-w-0 items-center gap-2 group">
             <motion.img
               src={logoImg}
               alt="NewsFlow logo"
               whileHover={{ scale: 1.1 }}
               transition={{ duration: 0.3 }}
-              className="h-14 w-14 md:h-16 md:w-16 rounded-xl object-contain shadow-glow"
+              className="h-10 w-10 rounded-xl object-contain shadow-glow sm:h-12 sm:w-12 md:h-16 md:w-16"
             />
-            <span className="font-display font-bold text-2xl">NewsFlow</span>
+            <span className="truncate font-display text-xl font-bold sm:text-2xl">NewsFlow</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Recursos</a>
             <a href="#como-funciona" className="hover:text-foreground transition-colors">Como funciona</a>
             <a href="#planos" className="hover:text-foreground transition-colors">Planos</a>
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {user ? (
-              <Button asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90">
+              <Button asChild className="bg-gradient-brand px-3 text-primary-foreground shadow-glow hover:opacity-90 sm:px-4">
                 <Link to="/dashboard">Abrir painel <ArrowRight className="h-4 w-4 ml-1" /></Link>
               </Button>
             ) : (
               <>
-                <Button variant="ghost" asChild><Link to="/auth">Entrar</Link></Button>
-                <Button asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90">
+                <Button variant="ghost" asChild className="px-3 sm:px-4"><Link to="/auth">Entrar</Link></Button>
+                <Button asChild className="hidden bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 sm:inline-flex">
                   <Link to="/auth">Testar 7 dias</Link>
                 </Button>
               </>
@@ -309,7 +309,7 @@ export default function Index() {
       </motion.header>
 
       {/* HERO */}
-      <section ref={heroRef} className="relative pt-32 pb-24 md:pt-40 md:pb-28 overflow-hidden">
+      <section ref={heroRef} className="relative overflow-hidden pb-16 pt-28 sm:pb-20 md:pt-40 md:pb-28">
         <div className="absolute inset-0 bg-grid" />
         <div className="absolute inset-0 spotlight opacity-60" />
         <FloatingBlobs />
@@ -328,10 +328,10 @@ export default function Index() {
             RSS + IA + Instagram em um fluxo seguro
           </motion.div>
 
-          <div className="grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12">
             <div className="text-center lg:text-left">
               <h1
-                className="font-display text-5xl md:text-7xl lg:text-8xl font-bold leading-[1.02] tracking-tight"
+                className="font-display text-4xl font-bold leading-[1.04] tracking-normal sm:text-5xl md:text-7xl lg:text-8xl"
               >
                 Transforme notícias em{" "}
                 <span className="relative inline-block">
@@ -350,7 +350,7 @@ export default function Index() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.3 }}
-                className="mt-8 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto lg:mx-0"
+                className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg md:mt-8 md:text-xl lg:mx-0"
               >
                 O NewsFlow busca notícias por RSS, reescreve com IA, monta artes e Reels com template
                 e publica respeitando horários, limite diário e intervalo de cada conta.
@@ -360,15 +360,15 @@ export default function Index() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.45 }}
-                className="mt-10 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
+                className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center md:mt-10 lg:justify-start"
               >
-                <Button size="lg" asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 group h-12 px-7">
+                <Button size="lg" asChild className="h-12 w-full bg-gradient-brand px-5 text-primary-foreground shadow-glow hover:opacity-90 group sm:w-auto sm:px-7">
                   <Link to="/auth">
                     Testar 7 dias com cartão
                     <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Link>
                 </Button>
-                <Button size="lg" variant="outline" asChild className="glass h-12 px-7 group">
+                <Button size="lg" variant="outline" asChild className="glass h-12 w-full px-5 group sm:w-auto sm:px-7">
                   <a href="#como-funciona"><Play className="h-4 w-4 mr-2 group-hover:scale-125 transition-transform" /> Ver como funciona</a>
                 </Button>
               </motion.div>
@@ -380,9 +380,9 @@ export default function Index() {
               transition={{ duration: 0.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
               className="relative"
             >
-              <div className="absolute -inset-8 rounded-[2rem] bg-gradient-brand opacity-20 blur-3xl" />
+              <div className="absolute -inset-4 rounded-[2rem] bg-gradient-brand opacity-20 blur-3xl sm:-inset-8" />
               <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-5">
                   <div>
                     <div className="text-sm font-semibold text-foreground">Fila do autopiloto</div>
                     <div className="text-xs text-muted-foreground">1 notícia por vez, com intervalo seguro</div>
@@ -395,7 +395,7 @@ export default function Index() {
                       <span>Conta conectada</span>
                       <span>@showdeesportes</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+                    <div className="mt-3 grid gap-3 text-center sm:grid-cols-3">
                       <div className="rounded-lg bg-muted/50 p-3">
                         <div className="text-lg font-bold text-gradient">60m</div>
                         <div className="text-[11px] text-muted-foreground">Intervalo</div>
@@ -411,7 +411,7 @@ export default function Index() {
                     </div>
                   </div>
                   {heroQueue.map((item, index) => (
-                    <div key={item.title} className="flex items-center gap-4 rounded-xl border border-border/50 bg-background/55 p-4">
+                    <div key={item.title} className="flex items-center gap-3 rounded-xl border border-border/50 bg-background/55 p-4 sm:gap-4">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-sm font-bold text-primary-foreground">
                         {String(index + 1).padStart(2, "0")}
                       </div>
@@ -436,7 +436,7 @@ export default function Index() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.7 }}
-            className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto"
+            className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-3 sm:gap-4 md:mt-16 md:grid-cols-4"
           >
             {stats.map((s) => (
               <motion.div
@@ -476,21 +476,21 @@ export default function Index() {
       </section>
 
       {/* FEATURES */}
-      <section id="features" className="container py-32 relative">
+      <section id="features" className="container relative py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-2xl mx-auto mb-16"
+          className="mx-auto mb-12 max-w-2xl text-center md:mb-16"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
             <Sparkles className="h-3 w-3 text-primary" /> Tudo que você precisa
           </div>
-          <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
             Uma plataforma. <span className="text-gradient">Zero esforço.</span>
           </h2>
-          <p className="mt-4 text-muted-foreground text-lg">
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
             Da captação à publicação — automatizamos cada etapa do seu fluxo de conteúdo.
           </p>
         </motion.div>
@@ -522,7 +522,7 @@ export default function Index() {
       </section>
 
       {/* PROVA VISUAL */}
-      <section className="container py-24 relative">
+      <section className="container relative py-20 md:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -533,10 +533,10 @@ export default function Index() {
             <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
               <TrendingUp className="h-3 w-3 text-primary" /> Operação real
             </div>
-            <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+            <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
               Feito para quem publica <span className="text-gradient">todo dia</span>
             </h2>
-            <p className="mt-5 text-lg text-muted-foreground">
+            <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
               O NewsFlow foi pensado para portais, criadores e páginas de nicho que precisam transformar
               notícias em conteúdo visual com velocidade, controle e consistência.
             </p>
@@ -562,9 +562,9 @@ export default function Index() {
             transition={{ duration: 0.7 }}
             className="relative"
           >
-            <div className="absolute -inset-8 rounded-[2rem] bg-primary/20 blur-3xl" />
-            <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 shadow-2xl backdrop-blur-xl">
-              <div className="mb-4 flex items-center justify-between">
+            <div className="absolute -inset-4 rounded-[2rem] bg-primary/20 blur-3xl sm:-inset-8" />
+            <div className="relative rounded-2xl border border-border/60 bg-card/80 p-3 shadow-2xl backdrop-blur-xl sm:p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold">Resultados em conta real</div>
                   <div className="text-xs text-muted-foreground">Prints reais do painel profissional e do perfil</div>
@@ -575,7 +575,7 @@ export default function Index() {
                 <img
                   src={activeProof.image}
                   alt={activeProof.alt}
-                  className={`h-[430px] w-full object-cover transition-all duration-500 md:h-[520px] ${activeProof.crop}`}
+                  className={`h-[360px] w-full object-cover transition-all duration-500 sm:h-[430px] md:h-[520px] ${activeProof.crop}`}
                   loading="lazy"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/80 to-transparent p-5">
@@ -610,7 +610,7 @@ export default function Index() {
                   ))}
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                 {[
                   ["964", "posts"],
                   ["292,6 mil", "visualizações"],
@@ -629,23 +629,23 @@ export default function Index() {
       </section>
 
       {/* COMO FUNCIONA */}
-      <section id="como-funciona" className="container py-32 relative">
+      <section id="como-funciona" className="container relative py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-2xl mx-auto mb-16"
+          className="mx-auto mb-12 max-w-2xl text-center md:mb-16"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
             <Rocket className="h-3 w-3 text-primary" /> Como funciona
           </div>
-          <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
             Do feed ao feed em <span className="text-gradient">4 passos</span>
           </h2>
         </motion.div>
 
-        <div className="grid md:grid-cols-4 gap-6 relative">
+        <div className="relative grid gap-8 md:grid-cols-4 md:gap-6">
           <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
           {steps.map((s, i) => (
             <motion.div
@@ -662,29 +662,29 @@ export default function Index() {
                   <span className="font-display font-bold text-2xl text-primary-foreground">{s.n}</span>
                 </div>
               </div>
-              <h3 className="font-display font-semibold text-2xl mb-2">{s.title}</h3>
-              <p className="text-muted-foreground">{s.text}</p>
+              <h3 className="mb-2 font-display text-xl font-semibold sm:text-2xl">{s.title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">{s.text}</p>
             </motion.div>
           ))}
         </div>
       </section>
 
       {/* PLANOS */}
-      <section id="planos" className="container py-32 relative">
+      <section id="planos" className="container relative py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-2xl mx-auto mb-16"
+          className="mx-auto mb-12 max-w-2xl text-center md:mb-16"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
             <Star className="h-3 w-3 text-primary" /> Planos
           </div>
-          <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
             Escolha seu <span className="text-gradient">volume</span>
           </h2>
-          <p className="mt-4 text-muted-foreground text-lg">
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
             Comece pequeno, valide sua operação e escale para mais contas quando precisar.
           </p>
         </motion.div>
@@ -767,18 +767,18 @@ export default function Index() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="container py-32">
+      <section id="faq" className="container py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-2xl mx-auto mb-12"
+          className="mx-auto mb-10 max-w-2xl text-center md:mb-12"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
             <HelpCircle className="h-3 w-3 text-primary" /> Perguntas frequentes
           </div>
-          <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
             Ainda tem <span className="text-gradient">dúvidas?</span>
           </h2>
         </motion.div>
@@ -807,24 +807,24 @@ export default function Index() {
       </section>
 
 
-      <section className="container py-32">
+      <section className="container py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
-          className="relative overflow-hidden rounded-3xl glass p-12 md:p-20 text-center"
+          className="relative overflow-hidden rounded-2xl glass p-6 text-center sm:p-10 md:rounded-3xl md:p-20"
         >
           <div className="absolute inset-0 spotlight opacity-50" />
           <div className="absolute inset-0 bg-grid opacity-50" />
           <div className="relative">
-            <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tight max-w-3xl mx-auto">
+            <h2 className="mx-auto max-w-3xl font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
               Crie seu autopiloto de notícias para <span className="text-gradient">Instagram</span>
             </h2>
-            <p className="mt-6 text-muted-foreground text-lg max-w-xl mx-auto">
+            <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg">
               Teste grátis, sem cartão, com RSS, IA, templates e fila de publicação em um único painel.
             </p>
-            <Button size="lg" asChild className="mt-10 bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 h-14 px-10 text-base group">
+            <Button size="lg" asChild className="mt-8 h-14 w-full bg-gradient-brand px-6 text-base text-primary-foreground shadow-glow hover:opacity-90 group sm:mt-10 sm:w-auto sm:px-10">
               <Link to="/auth">
                 Criar meu autopiloto <ArrowRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Link>
@@ -835,12 +835,12 @@ export default function Index() {
 
       {/* Footer */}
       <footer className="border-t border-border/40 py-10">
-        <div className="container flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
+        <div className="container flex flex-col items-center justify-between gap-4 text-center text-sm text-muted-foreground md:flex-row md:text-left">
           <div className="flex items-center gap-2">
             <img src={logoImg} alt="NewsFlow logo" className="h-10 w-10 rounded-lg object-contain" />
             <span className="font-display font-bold text-foreground">NewsFlow</span>
           </div>
-          <nav className="flex items-center gap-6">
+          <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
             <a href="https://wa.me/5547996080134" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
@@ -855,7 +855,7 @@ export default function Index() {
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Falar no WhatsApp"
-        className="fixed bottom-6 right-6 z-50 h-16 w-16 rounded-full overflow-hidden shadow-glow hover:scale-110 transition-transform"
+        className="fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full overflow-hidden shadow-glow transition-transform hover:scale-110 sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
       >
         <img src={whatsappBot} alt="Falar no WhatsApp" className="h-full w-full object-cover" />
       </a>

@@ -90,10 +90,14 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background-image: var(--gradient-radial);
     background-attachment: fixed;
+    overflow-x: hidden;
   }
   h1, h2, h3, h4 {
     font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
+  }
+  html, #root {
+    overflow-x: hidden;
   }
 }
 
@@ -192,3 +196,18 @@
   50% { transform: translateY(-20px); }
 }
 .animate-float { animation: float-y 6s ease-in-out infinite; }
+
+@media (max-width: 767px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .spotlight {
+    filter: blur(56px);
+  }
+
+  .blob {
+    filter: blur(64px);
+    opacity: 0.42;
+  }
+}
