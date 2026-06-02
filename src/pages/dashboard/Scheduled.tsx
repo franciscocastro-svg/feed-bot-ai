@@ -154,7 +154,7 @@ export default function Scheduled() {
   const statusLabel = (status: string) => {
     if (status === "scheduled") return "agendado";
     if (status === "posting") return "enviando";
-    if (status === "awaiting_container") return "aguardando Instagram";
+    if (status === "awaiting_container") return "aguardando IG";
     if (status === "posted") return "publicado";
     if (status === "failed") return "falhou";
     return status;
@@ -170,16 +170,16 @@ export default function Scheduled() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold">Agendados</h1>
           <p className="text-muted-foreground mt-1">Fila de publicações no Instagram.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={refresh} disabled={refreshing}>
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" onClick={refresh} disabled={refreshing} className="min-w-0">
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} /> Atualizar
           </Button>
-          <Button onClick={runNow} disabled={running}>
+          <Button onClick={runNow} disabled={running} className="min-w-0">
             {running ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />} Executar agora
           </Button>
         </div>
@@ -207,9 +207,9 @@ export default function Scheduled() {
                     <img src={p.news_items.generated_image_url} className="w-16 h-16 md:w-20 md:h-20 rounded-lg object-cover shrink-0" alt="" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
                       <p className="font-medium text-sm md:text-base line-clamp-2 flex-1 min-w-0">{p.news_items?.rewritten_title}</p>
-                      <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{statusLabel(p.status)}</span>
+                      <span className="w-fit max-w-full truncate text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{statusLabel(p.status)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       @{p.instagram_accounts?.username || <span className="text-destructive">conta faltando</span>}
@@ -257,12 +257,12 @@ export default function Scheduled() {
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/50">
                   {awaitingContainer && p.instagram_account_id && (
-                    <Button size="sm" variant="outline" onClick={() => checkContainerNow(p.id)} disabled={publishingId === p.id} title="Verificar processamento na Meta" className="flex-1 md:flex-none">
+                    <Button size="sm" variant="outline" onClick={() => checkContainerNow(p.id)} disabled={publishingId === p.id} title="Verificar processamento na Meta" className="min-w-[9rem] flex-1 md:flex-none">
                       {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-4 w-4 mr-1" /> Verificar Meta</>}
                     </Button>
                   )}
                   {p.status !== "posted" && !awaitingContainer && p.instagram_account_id && (
-                    <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title="Publicar agora" className="flex-1 md:flex-none">
+                    <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title="Publicar agora" className="min-w-[9rem] flex-1 md:flex-none">
                       {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-1" /> Publicar agora</>}
                     </Button>
                   )}

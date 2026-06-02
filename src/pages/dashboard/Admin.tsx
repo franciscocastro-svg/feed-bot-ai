@@ -577,9 +577,9 @@ export default function Admin() {
               <div className={`inline-flex items-center justify-center h-8 w-8 rounded-lg ${k.tint}`}>
                 <k.icon className="h-4 w-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{k.label}</p>
-                <p className="text-2xl font-bold mt-0.5">{k.value}</p>
+                <p className="text-xl sm:text-2xl font-bold mt-0.5 break-words">{k.value}</p>
               </div>
             </CardContent>
           </Card>
@@ -628,8 +628,8 @@ export default function Admin() {
               ["Reels processando", queueSummary.reelProcessing, "text-primary"],
             ] as const).map(([label, value, color]) => (
               <div key={label as string} className="rounded-lg bg-background/50 p-3">
-                <div className={`text-2xl font-bold ${color}`}>{value}</div>
-                <div className="text-xs text-muted-foreground">{label}</div>
+                <div className={`text-xl sm:text-2xl font-bold ${color}`}>{value}</div>
+                <div className="text-xs text-muted-foreground leading-snug">{label}</div>
               </div>
             ))}
           </CardContent>
@@ -851,8 +851,11 @@ export default function Admin() {
                 </div>
                 <div>
                   <p className="text-sm font-medium">Fila de publicação</p>
-                  <p className="text-xs text-muted-foreground">
-                    {queueSummary.scheduled} agendados · {queueSummary.posting} enviando · {queueSummary.awaitingContainer} aguardando Meta · {queueSummary.failed} falhas 24h
+                  <p className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span>{queueSummary.scheduled} agendados</span>
+                    <span>{queueSummary.posting} enviando</span>
+                    <span>{queueSummary.awaitingContainer} aguardando Meta</span>
+                    <span>{queueSummary.failed} falhas 24h</span>
                   </p>
                 </div>
               </CardContent>
