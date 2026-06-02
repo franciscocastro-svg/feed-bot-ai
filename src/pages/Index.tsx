@@ -18,13 +18,11 @@ import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
 
 const PLAN_SUBTITLES: Record<string, string> = {
-  free: "Ideal para testar o fluxo",
   starter: "Para uma conta em crescimento",
   pro: "Para criadores e agências",
   business: "Para operação com várias contas",
 };
 const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean }> = {
-  free: { label: "Começar grátis", to: "/auth" },
   starter: { label: "Assinar Starter", to: "/pricing?plan=starter_monthly" },
   pro: { label: "Assinar Pro", to: "/pricing?plan=pro_monthly" },
   business: { label: "Falar com vendas", whatsapp: true },
@@ -82,7 +80,6 @@ const heroQueue = [
 ];
 
 const planBestFor: Record<string, string> = {
-  free: "Teste o autopiloto sem cartão.",
   starter: "Uma marca, um nicho e rotina simples.",
   pro: "Mais contas, volume e suporte prioritário.",
   business: "Times, portais e operações em escala.",
@@ -267,7 +264,7 @@ export default function Index() {
     <div className="min-h-screen overflow-x-hidden">
       <SEO
         title="NewsFlow — Automação Instagram com IA"
-        description="Capture notícias por RSS, reescreva com IA e publique no Instagram automaticamente. Teste grátis 7 dias, planos a partir de R$ 29/mês."
+        description="Capture notícias por RSS, reescreva com IA e publique no Instagram automaticamente. Ative 7 dias de teste com cartão."
         path="/"
       />
       <CursorGlow />
@@ -303,7 +300,7 @@ export default function Index() {
               <>
                 <Button variant="ghost" asChild><Link to="/auth">Entrar</Link></Button>
                 <Button asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90">
-                  <Link to="/auth">Começar grátis</Link>
+                  <Link to="/auth">Testar 7 dias</Link>
                 </Button>
               </>
             )}
@@ -367,7 +364,7 @@ export default function Index() {
               >
                 <Button size="lg" asChild className="bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 group h-12 px-7">
                   <Link to="/auth">
-                    Criar meu autopiloto
+                    Testar 7 dias com cartão
                     <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Link>
                 </Button>
@@ -692,13 +689,13 @@ export default function Index() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 max-w-7xl mx-auto">
-          {(livePlans ?? []).map((row, i) => {
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 max-w-7xl mx-auto">
+          {(livePlans ?? []).filter(row => row.plan !== "free").map((row, i) => {
             const cta = PLAN_CTA[row.plan] || { label: "Saiba mais", to: "/pricing" };
             const p = {
               name: row.display_name?.split(" (")[0] || row.plan,
               price: fmtBRL(row.price_brl, row.is_negotiable),
-              suffix: row.plan === "free" ? (row.trial_days ? `/${row.trial_days} dias` : "") : (row.is_negotiable ? "" : "/mês"),
+              suffix: row.is_negotiable ? "" : "/mês",
               subtitle: PLAN_SUBTITLES[row.plan] || "",
               bestFor: planBestFor[row.plan] || "Escolha o volume ideal para sua rotina.",
               cta: cta.label,
