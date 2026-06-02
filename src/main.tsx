@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
+import { registerServiceWorker } from "@/lib/pwa";
 import "./index.css";
 
 function renderStartupError(error: unknown) {
@@ -43,5 +44,6 @@ import("./App.tsx")
         <App />
       </HelmetProvider>
     );
+    registerServiceWorker();
   })
   .catch(renderStartupError);

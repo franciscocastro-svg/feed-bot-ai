@@ -1,15 +1,34 @@
 {
+  "id": "/",
   "name": "NewsFlow — Automação para Instagram",
   "short_name": "NewsFlow",
   "description": "Capture notícias, reescreva com IA e publique no Instagram automaticamente.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#0a0a0a",
   "theme_color": "#ec4899",
+  "categories": ["business", "productivity", "social"],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Notícias",
+      "short_name": "Notícias",
+      "description": "Abrir fila de notícias",
+      "url": "/dashboard/news",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Agendados",
+      "short_name": "Fila",
+      "description": "Abrir publicações agendadas",
+      "url": "/dashboard/scheduled",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }
