@@ -9,11 +9,45 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Rss, Trash2, RefreshCw, Loader2, Pencil, Sparkles, Instagram, CheckCircle2, AlertTriangle, XCircle, Play } from "lucide-react";
+import { Plus, Rss, Trash2, RefreshCw, Loader2, Pencil, Sparkles, Instagram, CheckCircle2, AlertTriangle, XCircle, Play, UserRound, Hash, Link as LinkIcon, Newspaper } from "lucide-react";
 import { toast } from "sonner";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+type SourceMode = "rss" | "person" | "topic" | "url";
+
+const sourceModeOptions: Array<{ value: SourceMode; label: string; description: string; icon: any }> = [
+  { value: "rss", label: "RSS/Site", description: "Feed direto de notícia ou blog", icon: Rss },
+  { value: "person", label: "Pessoa", description: "Famoso, atleta, político, artista", icon: UserRound },
+  { value: "topic", label: "Tema", description: "Assunto, nicho ou palavra-chave", icon: Hash },
+  { value: "url", label: "URL", description: "Monitorar um site ou página", icon: LinkIcon },
+];
+
+const googleNewsSearchUrl = (query: string) =>
+  `https://news.google.com/rss/search?q=${encodeURIComponent(query.trim())}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+
+const getHostname = (value: string) => {
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+
+const isLikelyFeedUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return /rss|feed|xml/i.test(`${url.pathname}${url.search}`);
+  } catch {
+    return false;
+  }
+};
+
+const cleanLabelPrefix = (value?: string | null) => {
+  if (!value) return "";
+  return value.replace(/^(Pessoa|Tema|URL|RSS):\s*/i, "");
+};
 
 export default function Sources() {
   const [sources, setSources] = useState<any[]>([]);
@@ -28,6 +62,8 @@ export default function Sources() {
   const [discoverIgIds, setDiscoverIgIds] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [sourceMode, setSourceMode] = useState<SourceMode>("rss");
+  const [smartInput, setSmartInput] = useState("");
   const [form, setForm] = useState({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [] as string[], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
   const [upgrade, setUpgrade] = useState<{ open: boolean; used?: number; limit?: number }>({ open: false });
   const [validating, setValidating] = useState(false);
@@ -36,6 +72,20 @@ export default function Sources() {
 
   const openEdit = (s: any) => {
     setEditingId(s.id);
+    const niche = s.niche || "";
+    if (/^Pessoa:/i.test(niche)) {
+      setSourceMode("person");
+      setSmartInput(cleanLabelPrefix(niche));
+    } else if (/^Tema:/i.test(niche)) {
+      setSourceMode("topic");
+      setSmartInput(cleanLabelPrefix(niche));
+    } else if (/^URL:/i.test(niche)) {
+      setSourceMode("url");
+      setSmartInput(s.url || "");
+    } else {
+      setSourceMode("rss");
+      setSmartInput("");
+    }
     setForm({
       name: s.name, url: s.url, niche: s.niche || "",
       fetch_interval_minutes: s.fetch_interval_minutes,
@@ -49,8 +99,58 @@ export default function Sources() {
 
   const openNew = () => {
     setEditingId(null);
+    setSourceMode("rss");
+    setSmartInput("");
     setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: igAccounts.length === 1 ? [igAccounts[0].id] : [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
     setOpen(true);
+  };
+
+  const buildSourcePayload = () => {
+    const base = {
+      fetch_interval_minutes: form.fetch_interval_minutes,
+      source_language: form.source_language,
+      translate_to_pt: form.translate_to_pt,
+      cultural_adaptation: form.cultural_adaptation,
+    };
+
+    if (sourceMode === "person") {
+      const person = smartInput.trim();
+      return {
+        ...base,
+        name: form.name.trim() || person,
+        url: googleNewsSearchUrl(`"${person}"`),
+        niche: `Pessoa: ${person}`,
+      };
+    }
+
+    if (sourceMode === "topic") {
+      const topic = smartInput.trim();
+      return {
+        ...base,
+        name: form.name.trim() || topic,
+        url: googleNewsSearchUrl(topic),
+        niche: `Tema: ${topic}`,
+      };
+    }
+
+    if (sourceMode === "url") {
+      const url = form.url.trim();
+      const host = getHostname(url);
+      const generatedUrl = isLikelyFeedUrl(url) ? url : googleNewsSearchUrl(`site:${host || url}`);
+      return {
+        ...base,
+        name: form.name.trim() || host || "Fonte por URL",
+        url: generatedUrl,
+        niche: `URL: ${host || url}`,
+      };
+    }
+
+    return {
+      ...base,
+      name: form.name.trim(),
+      url: form.url.trim(),
+      niche: form.niche.trim() ? `RSS: ${form.niche.trim()}` : "",
+    };
   };
 
   const syncLinks = async (sourceId: string, userId: string, igIds: string[]) => {
@@ -63,25 +163,36 @@ export default function Sources() {
   };
 
   const save = async () => {
-    if (!form.name || !form.url) return toast.error("Preencha nome e URL");
+    if (sourceMode === "person" && !smartInput.trim()) return toast.error("Digite o nome da pessoa");
+    if (sourceMode === "topic" && !smartInput.trim()) return toast.error("Digite o tema");
+    if ((sourceMode === "rss" || sourceMode === "url") && !form.url.trim()) return toast.error("Preencha a URL");
+    if (sourceMode === "rss" && !form.name.trim()) return toast.error("Preencha o nome da fonte");
     if (form.ig_ids.length === 0) return toast.error("Selecione pelo menos um Instagram");
+    if (sourceMode === "url") {
+      try {
+        new URL(form.url.trim());
+      } catch {
+        return toast.error("Digite uma URL válida");
+      }
+    }
+    const payload = buildSourcePayload();
     try {
-      new URL(form.url);
+      new URL(payload.url);
     } catch {
       return toast.error("URL inválida");
     }
     setValidating(true);
-    const { data: validation, error: vErr } = await supabase.functions.invoke("fetch-rss", { body: { validate_url: form.url } });
+    const { data: validation, error: vErr } = await supabase.functions.invoke("fetch-rss", { body: { validate_url: payload.url } });
     setValidating(false);
     if (vErr) return toast.error("Não foi possível validar o feed: " + vErr.message);
-    if (!validation?.valid) return toast.error("Feed RSS inválido: " + (validation?.error || "sem itens encontrados"));
-    toast.success(`Feed válido! ${validation.items_count} itens encontrados.`);
+    if (!validation?.valid) return toast.error("Fonte sem conteúdo captável: " + (validation?.error || "sem itens encontrados"));
+    toast.success(`Fonte válida! ${validation.items_count} itens encontrados.`);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (editingId) {
       const { error } = await supabase.from("news_sources").update({
-        name: form.name, url: form.url, niche: form.niche, fetch_interval_minutes: form.fetch_interval_minutes,
-        source_language: form.source_language, translate_to_pt: form.translate_to_pt, cultural_adaptation: form.cultural_adaptation,
+        name: payload.name, url: payload.url, niche: payload.niche, fetch_interval_minutes: payload.fetch_interval_minutes,
+        source_language: payload.source_language, translate_to_pt: payload.translate_to_pt, cultural_adaptation: payload.cultural_adaptation,
       }).eq("id", editingId);
       if (error) return toast.error(error.message);
       await syncLinks(editingId, user!.id, form.ig_ids);
@@ -97,8 +208,8 @@ export default function Sources() {
         return;
       }
       const { data: inserted, error } = await supabase.from("news_sources").insert({
-        name: form.name, url: form.url, niche: form.niche, fetch_interval_minutes: form.fetch_interval_minutes,
-        source_language: form.source_language, translate_to_pt: form.translate_to_pt, cultural_adaptation: form.cultural_adaptation,
+        name: payload.name, url: payload.url, niche: payload.niche, fetch_interval_minutes: payload.fetch_interval_minutes,
+        source_language: payload.source_language, translate_to_pt: payload.translate_to_pt, cultural_adaptation: payload.cultural_adaptation,
         user_id: user!.id,
       }).select("id").single();
       if (error) return toast.error(error.message);
@@ -107,6 +218,8 @@ export default function Sources() {
     }
     setOpen(false);
     setEditingId(null);
+    setSourceMode("rss");
+    setSmartInput("");
     setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
     load();
   };
@@ -161,7 +274,7 @@ export default function Sources() {
     const { data, error } = await supabase.functions.invoke("fetch-rss", { body: { force: true } });
     setFetching(false);
     if (error) return toast.error(error.message);
-    toast.success(`${data?.fetched || 0} notícias captadas`);
+    toast.success(`${data?.fetched || 0} conteúdos captados`);
     load();
   };
 
@@ -170,7 +283,7 @@ export default function Sources() {
     const { data, error } = await supabase.functions.invoke("fetch-rss", { body: { force: true, source_id: sourceId } });
     setPerSourceFetching(null);
     if (error) return toast.error(error.message);
-    toast.success(`${data?.fetched || 0} notícias captadas desta fonte`);
+    toast.success(`${data?.fetched || 0} conteúdos captados desta fonte`);
     load();
   };
 
@@ -183,6 +296,14 @@ export default function Sources() {
     if (ageMin > 1440) return { status: "error", label: "Sem captar há +24h" };
     if (ageMin > expected) return { status: "warning", label: "Atrasada" };
     return { status: "ok", label: "Saudável" };
+  };
+
+  const sourceKind = (s: any): { label: string; icon: any } => {
+    const niche = String(s.niche || "");
+    if (/^Pessoa:/i.test(niche)) return { label: "Pessoa", icon: UserRound };
+    if (/^Tema:/i.test(niche)) return { label: "Tema", icon: Hash };
+    if (/^URL:/i.test(niche)) return { label: "URL", icon: LinkIcon };
+    return { label: "RSS", icon: Rss };
   };
 
   const discover = async () => {
@@ -239,8 +360,8 @@ export default function Sources() {
     <div className="p-4 md:p-8 space-y-6 max-w-5xl">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl md:text-3xl font-bold">Fontes de notícias</h1>
-          <p className="text-sm md:text-base text-muted-foreground mt-1">RSS de qualquer site público. Cada fonte publica nos IGs vinculados.</p>
+          <h1 className="font-display text-2xl md:text-3xl font-bold">Fontes de conteúdo</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">RSS, sites, pessoas, temas e URLs. Cada fonte alimenta os IGs vinculados.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={fetchNow} disabled={fetching} className="flex-1 sm:flex-none">
@@ -278,14 +399,70 @@ export default function Sources() {
               </div>
             </DialogContent>
           </Dialog>
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false }); } }}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setSourceMode("rss"); setSmartInput(""); setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false }); } }}>
             <DialogTrigger asChild><Button onClick={openNew} className="flex-1 sm:flex-none"><Plus className="h-4 w-4 mr-2" /> Nova fonte</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{editingId ? "Editar fonte RSS" : "Adicionar fonte RSS"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{editingId ? "Editar fonte" : "Adicionar fonte de conteúdo"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="G1 Tecnologia" /></div>
-                <div><Label>URL do feed RSS</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://g1.globo.com/rss/g1/tecnologia/" /></div>
-                <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="tecnologia" /></div>
+                <div>
+                  <Label>Tipo de fonte</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {sourceModeOptions.map(option => {
+                      const Icon = option.icon;
+                      const active = sourceMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            setSourceMode(option.value);
+                            setSmartInput("");
+                            setForm({ ...form, name: "", url: "", niche: "" });
+                          }}
+                          className={`text-left rounded-lg border p-3 transition-colors ${active ? "border-primary bg-primary/10" : "hover:bg-muted/50"}`}
+                        >
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Icon className="h-4 w-4" /> {option.label}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {sourceMode === "rss" && (
+                  <>
+                    <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="G1 Tecnologia" /></div>
+                    <div><Label>URL do feed RSS</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://g1.globo.com/rss/g1/tecnologia/" /></div>
+                    <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="tecnologia" /></div>
+                  </>
+                )}
+
+                {sourceMode === "person" && (
+                  <>
+                    <div><Label>Nome da pessoa</Label><Input value={smartInput} onChange={e => setSmartInput(e.target.value)} placeholder="Virginia Fonseca, Neymar, Lula..." /></div>
+                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Virginia Fonseca" /></div>
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">O sistema vai monitorar notícias e conteúdos públicos sobre essa pessoa automaticamente.</p>
+                  </>
+                )}
+
+                {sourceMode === "topic" && (
+                  <>
+                    <div><Label>Tema ou palavra-chave</Label><Input value={smartInput} onChange={e => setSmartInput(e.target.value)} placeholder="mercado financeiro, fofoca, futebol, tecnologia..." /></div>
+                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Mercado Financeiro" /></div>
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Use temas amplos para captar novidades do nicho ou termos específicos para acompanhar um assunto.</p>
+                  </>
+                )}
+
+                {sourceMode === "url" && (
+                  <>
+                    <div><Label>URL do site ou feed</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://site.com/noticias ou https://site.com/feed" /></div>
+                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Site de famosos" /></div>
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se for um feed RSS, ele será usado direto. Se for um site comum, o sistema monitora conteúdos públicos desse domínio.</p>
+                  </>
+                )}
+
                 <div><Label>Frequência (minutos)</Label><Input type="number" value={form.fetch_interval_minutes} onChange={e => setForm({ ...form, fetch_interval_minutes: +e.target.value })} /></div>
 
                 {translationEnabled ? (
@@ -348,7 +525,7 @@ export default function Sources() {
                   <p className="text-xs text-muted-foreground mt-1">Cada IG marcado recebe uma cópia da notícia. Cada cópia consome 1 cota.</p>
                 </div>
                 <Button onClick={save} disabled={validating} className="w-full">
-                  {validating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Validando feed...</> : (editingId ? "Salvar" : "Adicionar")}
+                  {validating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Validando fonte...</> : (editingId ? "Salvar" : "Adicionar fonte")}
                 </Button>
               </div>
             </DialogContent>
@@ -358,8 +535,8 @@ export default function Sources() {
 
       {sources.length === 0 ? (
         <Card className="p-12 text-center text-muted-foreground border-dashed">
-          <Rss className="h-10 w-10 mx-auto mb-3 opacity-50" />
-          Nenhuma fonte. Adicione um RSS para começar a captar notícias.
+          <Newspaper className="h-10 w-10 mx-auto mb-3 opacity-50" />
+          Nenhuma fonte. Adicione RSS, pessoa, tema ou URL para começar a captar conteúdos.
         </Card>
       ) : (
         <div className="grid gap-3">
@@ -368,15 +545,20 @@ export default function Sources() {
               .map(id => igAccounts.find(ig => ig.id === id))
               .filter(Boolean);
             const health = sourceHealth(s);
+            const kind = sourceKind(s);
+            const KindIcon = kind.icon;
             const HealthIcon = health.status === "ok" ? CheckCircle2 : health.status === "warning" ? AlertTriangle : XCircle;
             const healthColor = health.status === "ok" ? "text-green-600" : health.status === "warning" ? "text-yellow-600" : "text-destructive";
             return (
               <Card key={s.id} className={`p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4 ${!s.active ? "opacity-60" : ""}`}>
                 <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                  <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center shrink-0"><Rss className="h-5 w-5 text-primary" /></div>
+                  <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center shrink-0"><KindIcon className="h-5 w-5 text-primary" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium truncate">{s.name} {s.niche && <span className="text-xs text-muted-foreground ml-1">· {s.niche}</span>}</p>
+                      <p className="font-medium truncate">{s.name} {s.niche && <span className="text-xs text-muted-foreground ml-1">· {cleanLabelPrefix(s.niche)}</span>}</p>
+                      <Badge variant="outline" className="text-xs gap-1">
+                        <KindIcon className="h-3 w-3" /> {kind.label}
+                      </Badge>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
