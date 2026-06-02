@@ -796,9 +796,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
 
     // Converte rawPhotoBytes para data-URL (para incorporar no SVG)
     if (rawPhotoBytes) {
-      let bin = "";
-      for (let i = 0; i < rawPhotoBytes.length; i++) bin += String.fromCharCode(rawPhotoBytes[i]);
-      rawPhotoDataUrl = `data:image/jpeg;base64,${btoa(bin)}`;
+      const b64 = btoa(Array.from(rawPhotoBytes).map(b => String.fromCharCode(b)).join(""));
+      rawPhotoDataUrl = `data:image/jpeg;base64,${b64}`;
     }
 
     // Upload da foto crua (gerada por IA ou baixada da notícia)
