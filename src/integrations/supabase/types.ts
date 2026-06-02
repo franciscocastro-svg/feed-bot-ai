@@ -22,9 +22,12 @@ export type Database = {
           brand_logo_url: string | null
           brand_name: string | null
           created_at: string
+          default_feed_template_id: string | null
           default_image_style: Database["public"]["Enums"]["image_style"] | null
           default_media_type: string | null
           default_niche: string | null
+          default_reel_template_id: string | null
+          default_story_template_id: string | null
           default_template_id: string | null
           id: string
           instagram_account_id: string
@@ -42,11 +45,14 @@ export type Database = {
           brand_logo_url?: string | null
           brand_name?: string | null
           created_at?: string
+          default_feed_template_id?: string | null
           default_image_style?:
             | Database["public"]["Enums"]["image_style"]
             | null
           default_media_type?: string | null
           default_niche?: string | null
+          default_reel_template_id?: string | null
+          default_story_template_id?: string | null
           default_template_id?: string | null
           id?: string
           instagram_account_id: string
@@ -64,11 +70,14 @@ export type Database = {
           brand_logo_url?: string | null
           brand_name?: string | null
           created_at?: string
+          default_feed_template_id?: string | null
           default_image_style?:
             | Database["public"]["Enums"]["image_style"]
             | null
           default_media_type?: string | null
           default_niche?: string | null
+          default_reel_template_id?: string | null
+          default_story_template_id?: string | null
           default_template_id?: string | null
           id?: string
           instagram_account_id?: string
@@ -108,6 +117,45 @@ export type Database = {
           entity_type?: string | null
           id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      admin_expenses: {
+        Row: {
+          amount_brl: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          notes: string | null
+          recurring: boolean
+          spent_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount_brl: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_brl?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1133,9 +1181,12 @@ export type Database = {
           brand_logo_url: string | null
           brand_name: string | null
           created_at: string
+          default_feed_template_id: string | null
           default_image_style: Database["public"]["Enums"]["image_style"]
           default_media_type: string
           default_niche: string | null
+          default_reel_template_id: string | null
+          default_story_template_id: string | null
           default_template_id: string | null
           max_posts_per_day: number
           meta_usage_pause_threshold: number
@@ -1155,9 +1206,12 @@ export type Database = {
           brand_logo_url?: string | null
           brand_name?: string | null
           created_at?: string
+          default_feed_template_id?: string | null
           default_image_style?: Database["public"]["Enums"]["image_style"]
           default_media_type?: string
           default_niche?: string | null
+          default_reel_template_id?: string | null
+          default_story_template_id?: string | null
           default_template_id?: string | null
           max_posts_per_day?: number
           meta_usage_pause_threshold?: number
@@ -1177,9 +1231,12 @@ export type Database = {
           brand_logo_url?: string | null
           brand_name?: string | null
           created_at?: string
+          default_feed_template_id?: string | null
           default_image_style?: Database["public"]["Enums"]["image_style"]
           default_media_type?: string
           default_niche?: string | null
+          default_reel_template_id?: string | null
+          default_story_template_id?: string | null
           default_template_id?: string | null
           max_posts_per_day?: number
           meta_usage_pause_threshold?: number
