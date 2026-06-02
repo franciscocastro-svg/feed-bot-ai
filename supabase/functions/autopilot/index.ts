@@ -440,6 +440,7 @@ Deno.serve(async (req) => {
             news_item_id: it.id,
             image_style: u.default_image_style || "template",
             media_type: u.default_media_type || "feed",
+            sync: true,
           });
           if (!r.ok) return null;
           const done = await waitForProcessedNews(supabase, userId, it.id);

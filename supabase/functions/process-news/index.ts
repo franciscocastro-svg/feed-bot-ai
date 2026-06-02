@@ -1076,7 +1076,7 @@ Deno.serve(async (req) => {
     const providedSecret = req.headers.get("x-internal-secret");
     const isInternal = !!internalSecretEnv && providedSecret === internalSecretEnv;
     const body = await req.json();
-    const { news_item_id, image_style = "template", media_type = "" } = body;
+    const { news_item_id, image_style = "template", media_type = "", sync = false } = body;
     let userId: string;
     let supabase;
     if (isInternal) {
@@ -1098,11 +1098,18 @@ Deno.serve(async (req) => {
 
     await supabase.from("news_items").update({ status: "processing", error_message: null }).eq("id", item.id);
 
-    // Processa em background — libera o worker imediatamente para evitar CPU Time exceeded
-    // @ts-ignore EdgeRuntime existe no Supabase Edge Functions
-    EdgeRuntime.waitUntil(doProcessing(supabase, item, userId, image_style, media_type));
+    // Chamadas internas do autopilot precisam de processamento confirmado.
+    // O modo background pode ser interrompido depois que a resposta HTTP volta,
+    // deixando a notícia presa em "processing". Para o cron, processa síncrono.
+    if (sync || isInternal) {
+      await doProcessing(supabase, item, userId, image_style, media_type);
+    } else {
+      // Manual pelo painel continua em background para não travar a interface.
+      // @ts-ignore EdgeRuntime existe no Supabase Edge Functions
+      EdgeRuntime.waitUntil(doProcessing(supabase, item, userId, image_style, media_type));
+    }
 
-    return new Response(JSON.stringify({ ok: true, queued: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, queued: !sync && !isInternal }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error(e);
     const msg = e instanceof Error ? e.message : "unknown";
