@@ -328,22 +328,26 @@ export default function Index() {
             RSS + IA + Instagram em um fluxo seguro
           </motion.div>
 
-          <div className="grid items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12">
-            <div className="text-center lg:text-left">
+          <div className="grid min-w-0 items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12">
+            <div className="min-w-0 text-center lg:text-left">
               <h1
-                className="font-display text-4xl font-bold leading-[1.04] tracking-normal sm:text-5xl md:text-7xl lg:text-8xl"
+                className="mx-auto max-w-[22rem] font-display text-3xl font-bold leading-[1.08] tracking-normal sm:max-w-2xl sm:text-5xl md:text-7xl lg:mx-0 lg:text-8xl"
               >
-                Transforme notícias em{" "}
-                <span className="relative inline-block">
-                  <span className="text-gradient glow-text">Reels prontos</span>
-                  <motion.span
-                    initial={{ scaleX: 0 }}
-                    animate={{ scaleX: 1 }}
-                    transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
-                    className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-brand origin-left rounded-full"
-                  />
+                <span className="block sm:inline">Transforme notícias</span>{" "}
+                <span className="block sm:inline">
+                  em{" "}
+                  <span className="relative inline-block">
+                    <span className="text-gradient glow-text">Reels prontos</span>
+                    <motion.span
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
+                      className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-brand origin-left rounded-full"
+                    />
+                  </span>
                 </span>
-                <br />para postar no Instagram.
+                <br className="hidden sm:block" />
+                <span className="block sm:inline">para postar no Instagram.</span>
               </h1>
 
               <motion.p
@@ -378,22 +382,22 @@ export default function Index() {
               initial={{ opacity: 0, y: 32, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="relative"
+              className="relative min-w-0 max-w-full"
             >
               <div className="absolute -inset-4 rounded-[2rem] bg-gradient-brand opacity-20 blur-3xl sm:-inset-8" />
-              <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
+              <div className="relative w-full max-w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
                 <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-5">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-semibold text-foreground">Fila do autopiloto</div>
                     <div className="text-xs text-muted-foreground">1 notícia por vez, com intervalo seguro</div>
                   </div>
-                  <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">Online</span>
+                  <span className="hidden rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">Online</span>
                 </div>
-                <div className="grid gap-4 p-5">
+                <div className="grid gap-4 p-3 sm:p-5">
                   <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                       <span>Conta conectada</span>
-                      <span>@showdeesportes</span>
+                      <span className="truncate">@showdeesportes</span>
                     </div>
                     <div className="mt-3 grid gap-3 text-center sm:grid-cols-3">
                       <div className="rounded-lg bg-muted/50 p-3">
@@ -411,7 +415,7 @@ export default function Index() {
                     </div>
                   </div>
                   {heroQueue.map((item, index) => (
-                    <div key={item.title} className="flex items-center gap-3 rounded-xl border border-border/50 bg-background/55 p-4 sm:gap-4">
+                    <div key={item.title} className="flex min-w-0 items-center gap-3 rounded-xl border border-border/50 bg-background/55 p-3 sm:gap-4 sm:p-4">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-sm font-bold text-primary-foreground">
                         {String(index + 1).padStart(2, "0")}
                       </div>
@@ -423,7 +427,7 @@ export default function Index() {
                           <span>{item.time}</span>
                         </div>
                       </div>
-                      <Check className="h-4 w-4 text-primary" />
+                      <Check className="hidden h-4 w-4 shrink-0 text-primary sm:block" />
                     </div>
                   ))}
                 </div>
