@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { priceId, returnUrl, environment } = await req.json();
+    const { priceId, returnUrl, environment, trialDays } = await req.json();
     if (!priceId || !/^[a-zA-Z0-9_-]+$/.test(priceId)) throw new Error("Invalid priceId");
     if (!returnUrl) throw new Error("returnUrl required");
     const env: StripeEnv = environment === "live" ? "live" : "sandbox";
@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
     if (!prices.data.length) throw new Error("Price not found");
     const stripePrice = prices.data[0];
     const isRecurring = stripePrice.type === "recurring";
+    const safeTrialDays = isRecurring ? Math.max(0, Math.min(14, Number(trialDays) || 7)) : 0;
 
     // Use verified user data only — ignore any client-provided userId/email
     const verifiedUserId = user.id;
@@ -53,9 +54,18 @@ Deno.serve(async (req) => {
       mode: isRecurring ? "subscription" : "payment",
       ui_mode: "embedded_page",
       return_url: returnUrl,
+      ...(isRecurring && { payment_method_collection: "always" }),
       ...(verifiedEmail && { customer_email: verifiedEmail }),
-      metadata: { userId: verifiedUserId, priceId },
-      ...(isRecurring && { subscription_data: { metadata: { userId: verifiedUserId, priceId } } }),
+      metadata: { userId: verifiedUserId, priceId, trialDays: String(safeTrialDays) },
+      ...(isRecurring && {
+        subscription_data: {
+          metadata: { userId: verifiedUserId, priceId, trialDays: String(safeTrialDays) },
+          ...(safeTrialDays > 0 && {
+            trial_period_days: safeTrialDays,
+            trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
+          }),
+        },
+      }),
     });
 
     return new Response(JSON.stringify({ clientSecret: session.client_secret }), {

@@ -27,16 +27,16 @@ const HIGHLIGHT_PLAN = "pro";
 
 const PLAN_POSITIONING: Record<string, { bestFor: string; promise: string }> = {
   free: {
-    bestFor: "Teste sem compromisso",
-    promise: "Veja o fluxo RSS + IA + Instagram antes de assinar.",
+    bestFor: "Teste antigo",
+    promise: "O acesso agora exige cartão para ativar o teste.",
   },
   starter: {
-    bestFor: "Uma conta em crescimento",
-    promise: "Para publicar com consistência sem montar uma operação grande.",
+    bestFor: "Teste com cartão",
+    promise: "7 dias para validar o fluxo antes da primeira cobrança.",
   },
   pro: {
     bestFor: "Criadores e agências",
-    promise: "Mais volume, mais contas e prioridade para escalar com controle.",
+    promise: "7 dias grátis com cartão e mais volume para escalar com controle.",
   },
   business: {
     bestFor: "Operações com várias contas",
@@ -48,7 +48,7 @@ const TRUST_ITEMS = [
   { icon: CreditCard, title: "Pagamento seguro", text: "Checkout processado pela Stripe." },
   { icon: Instagram, title: "API oficial", text: "Publicação via Meta Graph API." },
   { icon: ShieldCheck, title: "Controle anti-excesso", text: "Intervalos, limites e fila por conta." },
-  { icon: Zap, title: "Ativação rápida", text: "Comece pelo trial e faça upgrade quando quiser." },
+  { icon: Zap, title: "7 dias com cartão", text: "O teste começa após confirmar o checkout." },
 ];
 
 function parseWhatsAppNumber(raw: string): string | null {
@@ -142,7 +142,7 @@ export default function Pricing() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Planos e Preços — NewsFlow"
-        description="Escolha o plano ideal para automatizar seu Instagram: Free trial 7 dias, Starter, Pro e Business. Reescrita com IA, agendamento e publicação automática."
+        description="Escolha o plano ideal para automatizar seu Instagram. Ative 7 dias de teste com cartão, reescrita com IA, agendamento e publicação automática."
         path="/pricing"
       />
       <PaymentTestModeBanner />
@@ -154,10 +154,10 @@ export default function Pricing() {
         </div>
         <header className="text-center space-y-3 py-4">
           <Badge variant="secondary" className="mx-auto"><Sparkles className="h-3 w-3 mr-1" /> Planos</Badge>
-          <h1 className="font-display text-4xl md:text-5xl font-bold">Escolha como quer escalar seu Instagram</h1>
+          <h1 className="font-display text-4xl md:text-5xl font-bold">Ative 7 dias de teste com cartão</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Comece testando o NewsFlow e evolua para mais contas, fontes e volume quando sua operação crescer.
-            Sem fidelidade.
+            Para proteger a plataforma contra curiosos, o painel é liberado após cadastrar o cartão na Stripe.
+            Você testa por 7 dias e pode cancelar antes da cobrança.
           </p>
         </header>
 
@@ -175,20 +175,17 @@ export default function Pricing() {
           <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {plans.map((p) => {
+            {plans.filter((p) => p.plan !== "free").map((p) => {
               const isCurrent = usage?.plan === p.plan;
               const highlight = p.plan === HIGHLIGHT_PLAN;
               const priceId = PRICE_ID_MAP[p.plan] ?? null;
-              const isFree = p.plan === "free";
               const isBusinessContact = p.is_negotiable;
               const features = buildFeatures(p);
               const positioning = PLAN_POSITIONING[p.plan] || {
                 bestFor: "Plano flexível",
                 promise: "Escolha o volume ideal para sua rotina.",
               };
-              const subtitle = isFree
-                ? (p.trial_days ? `Trial ${p.trial_days} dias` : "Grátis")
-                : isBusinessContact ? "negociado" : "/mês";
+              const subtitle = isBusinessContact ? "negociado" : "/mês após 7 dias";
 
               return (
                 <Card key={p.plan} className={`p-6 flex flex-col relative overflow-hidden ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20" : ""}`}>
@@ -229,11 +226,11 @@ export default function Pricing() {
                     </Button>
                   ) : priceId ? (
                     <Button onClick={() => openCheckout(priceId)} className="w-full" variant={highlight ? "default" : "outline"}>
-                      {highlight ? "Assinar plano recomendado" : `Assinar ${p.display_name || p.plan}`}
+                      {highlight ? "Iniciar 7 dias com cartão" : `Testar ${p.display_name || p.plan} por 7 dias`}
                     </Button>
                   ) : (
-                    <Button variant="secondary" className="w-full" onClick={() => navigate(user ? "/dashboard" : "/auth")}>
-                      Começar trial grátis
+                    <Button variant="secondary" className="w-full" onClick={() => navigate(user ? "/pricing" : "/auth")}>
+                      Escolher plano com cartão
                     </Button>
                   )}
                 </Card>
@@ -272,9 +269,9 @@ export default function Pricing() {
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Finalizar assinatura</DialogTitle>
+            <DialogTitle>Ativar teste de 7 dias</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Pagamento seguro pela Stripe. Depois da confirmação, seu plano é ativado automaticamente no painel.
+              Cadastre o cartão com segurança pela Stripe. A cobrança começa somente após o período de teste.
             </p>
           </DialogHeader>
           {selectedPriceId && (
@@ -282,6 +279,7 @@ export default function Pricing() {
               priceId={selectedPriceId}
               customerEmail={user?.email || undefined}
               userId={user?.id}
+              trialDays={7}
             />
           )}
         </DialogContent>

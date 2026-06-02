@@ -57,7 +57,7 @@ export default function Auth() {
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
-        emailRedirectTo: window.location.origin + "/dashboard",
+        emailRedirectTo: window.location.origin + "/pricing",
         data: {
           display_name: parsed.data.name,
           whatsapp: parsed.data.whatsapp,
@@ -69,7 +69,7 @@ export default function Auth() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
-    toast.success("Conta criada! Confirme seu email e aguarde aprovação do administrador.");
+    toast.success("Conta criada! Confirme seu email e cadastre o cartão para ativar os 7 dias.");
   };
 
   const handleGoogle = async () => {
@@ -92,7 +92,7 @@ export default function Auth() {
     <div className="min-h-screen grid lg:grid-cols-2">
       <SEO
         title="Entrar ou criar conta — NewsFlow"
-        description="Acesse o NewsFlow ou crie sua conta gratuita para automatizar a publicação de notícias no Instagram com inteligência artificial."
+        description="Acesse o NewsFlow ou crie sua conta para ativar 7 dias de teste com cartão e automatizar publicações no Instagram."
         path="/auth"
       />
       <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-subtle border-r border-border relative overflow-hidden">

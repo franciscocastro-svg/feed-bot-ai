@@ -18,9 +18,9 @@ export default function CheckoutReturn() {
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <Card className="p-8 max-w-md text-center space-y-4">
         <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
-        <h1 className="text-2xl font-bold">Pagamento confirmado!</h1>
+        <h1 className="text-2xl font-bold">Teste ativado!</h1>
         <p className="text-muted-foreground">
-          Seu plano foi ativado. Você será redirecionado em instantes.
+          Seu cartão foi cadastrado e seu plano foi ativado. Você será redirecionado em instantes.
         </p>
         {sessionId && (
           <p className="text-xs text-muted-foreground break-all">Ref: {sessionId}</p>
