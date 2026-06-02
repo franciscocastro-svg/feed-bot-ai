@@ -479,6 +479,7 @@ export type Database = {
           error_message: string | null
           generated_cover_url: string | null
           generated_image_url: string | null
+          generated_reel_cover_url: string | null
           generated_video_url: string | null
           hashtags: string[] | null
           id: string
@@ -513,6 +514,7 @@ export type Database = {
           error_message?: string | null
           generated_cover_url?: string | null
           generated_image_url?: string | null
+          generated_reel_cover_url?: string | null
           generated_video_url?: string | null
           hashtags?: string[] | null
           id?: string
@@ -547,6 +549,7 @@ export type Database = {
           error_message?: string | null
           generated_cover_url?: string | null
           generated_image_url?: string | null
+          generated_reel_cover_url?: string | null
           generated_video_url?: string | null
           hashtags?: string[] | null
           id?: string

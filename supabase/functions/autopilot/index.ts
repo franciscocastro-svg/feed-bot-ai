@@ -59,18 +59,25 @@ function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
   return active[0];
 }
 
-async function waitForProcessedNews(supabase: any, userId: string, newsItemId: string, timeoutMs = 60_000) {
+async function waitForProcessedNews(supabase: any, userId: string, newsItemId: string, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-    const { data } = await supabase
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    const { data, error } = await supabase
       .from("news_items")
-      .select("id, status")
+      .select("id, status, error_message")
       .eq("user_id", userId)
       .eq("id", newsItemId)
       .maybeSingle();
-    if (data && ["processed", "failed", "rejected"].includes(String(data.status))) return data;
+    
+    if (error) {
+      console.warn(`[wait] error fetching news ${newsItemId}:`, error);
+      continue;
+    }
+
+    if (data && ["processed", "failed", "rejected", "scheduled", "posted"].includes(String(data.status))) return data;
   }
+  console.warn(`[wait] timeout waiting for news ${newsItemId} to process after ${timeoutMs}ms`);
   return null;
 }
 
