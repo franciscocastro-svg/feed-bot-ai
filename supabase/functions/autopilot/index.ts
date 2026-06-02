@@ -391,15 +391,40 @@ Deno.serve(async (req) => {
         // ⚠️ ONE-AT-A-TIME: pega apenas a melhor notícia desta rodada.
         // Antes de pegar mais, verifica se há alguma notícia ainda em
         // "processing" (sendo trabalhada nos últimos 15 min) — se houver,
-        // pula esta rodada. Notícias presas há >15 min são auto-liberadas
-        // (marcadas como rejected) para não bloquear o autopilot.
+        // pula esta rodada. Notícias presas há >15 min são reenfileiradas
+        // com limite de tentativas. Assim uma falha transitória do process-news
+        // não descarta conteúdo bom nem trava a conta o dia inteiro.
         const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        await supabase
+        const { data: stuckProcessing } = await supabase
           .from("news_items")
-          .update({ status: "rejected", error_message: "Travado em processing >15min - liberado automaticamente" })
+          .select("id, retry_count")
           .eq("user_id", userId)
           .eq("status", "processing")
           .lt("updated_at", stuckCutoff);
+        for (const stuck of stuckProcessing || []) {
+          const nextRetry = Number((stuck as any).retry_count || 0) + 1;
+          if (nextRetry >= 4) {
+            await supabase
+              .from("news_items")
+              .update({
+                status: "failed",
+                retry_count: nextRetry,
+                error_message: "Processamento travou repetidas vezes. Verifique logs da Edge Function process-news.",
+              })
+              .eq("id", (stuck as any).id)
+              .eq("user_id", userId);
+          } else {
+            await supabase
+              .from("news_items")
+              .update({
+                status: "pending",
+                retry_count: nextRetry,
+                error_message: `Processamento travou >15min. Reenfileirado automaticamente (tentativa ${nextRetry}/3).`,
+              })
+              .eq("id", (stuck as any).id)
+              .eq("user_id", userId);
+          }
+        }
         const { count: inFlight } = await supabase
           .from("news_items")
           .select("id", { count: "exact", head: true })
@@ -424,6 +449,7 @@ Deno.serve(async (req) => {
         userSummary.steps.processed = processed.length;
         userSummary.steps.active_queue = activeQueueCount || 0;
         userSummary.steps.in_flight = inFlight || 0;
+        userSummary.steps.requeued_stuck_processing = (stuckProcessing || []).length;
 
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase
