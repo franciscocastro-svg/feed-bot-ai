@@ -1,0 +1,1 @@
+ALTER TABLE public.news_items ADD COLUMN IF NOT EXISTS generated_reel_cover_url TEXT;
