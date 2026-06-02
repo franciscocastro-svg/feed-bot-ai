@@ -69,13 +69,13 @@ export default function Overview() {
       const [news, pendingNews, scheduled, posted, failed, postedToday, postedYesterday, last7d, nextQueue, accs, settings] = await Promise.all([
         supabase.from("news_items").select("id, status, original_title, rewritten_title, created_at, source_name").order("created_at", { ascending: false }).limit(6),
         supabase.from("news_items").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
+        supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).in("status", ["scheduled", "posting", "awaiting_container"]),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posted"),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "failed"),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).gte("posted_at", startToday.toISOString()),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).gte("posted_at", startYesterday.toISOString()).lt("posted_at", startToday.toISOString()),
         supabase.from("scheduled_posts").select("posted_at, status").gte("posted_at", start7d.toISOString()).not("posted_at", "is", null),
-        supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url)").eq("status", "scheduled").order("scheduled_for", { ascending: true }).limit(4),
+        supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url)").in("status", ["scheduled", "posting", "awaiting_container"]).order("scheduled_for", { ascending: true }).limit(4),
         supabase.from("instagram_accounts").select("*"),
         supabase.from("user_settings").select("auto_approve").maybeSingle(),
       ]);

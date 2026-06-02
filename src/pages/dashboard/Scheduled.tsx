@@ -24,12 +24,18 @@ export default function Scheduled() {
   const load = async () => {
     const sel = "*, news_items(rewritten_title, generated_image_url, generated_video_url, caption), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
-      supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "failed"]).order("scheduled_for", { ascending: true }).limit(500),
+      supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(500),
       supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(50),
       supabase.from("instagram_accounts").select("id, username, active").eq("active", true),
     ]);
     const p = [...(pending || []), ...(postedRows || [])];
-    const rank = (s: string) => (s === "scheduled" ? 0 : s === "failed" ? 1 : 2);
+    const rank = (s: string) => {
+      if (s === "scheduled") return 0;
+      if (s === "posting") return 1;
+      if (s === "awaiting_container") return 2;
+      if (s === "failed") return 3;
+      return 4;
+    };
     const sorted = p.slice().sort((a: any, b: any) => {
       const r = rank(a.status) - rank(b.status);
       if (r !== 0) return r;
@@ -129,6 +135,31 @@ export default function Scheduled() {
     }
   };
 
+  const checkContainerNow = async (id: string) => {
+    setPublishingId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("publish-scheduler", {
+        body: { scheduled_post_id: id },
+      });
+      if (error) throw error;
+      toast.success(`Meta verificada (${data?.processed || 0} publicado(s))`);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao verificar Meta");
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === "scheduled") return "agendado";
+    if (status === "posting") return "enviando";
+    if (status === "awaiting_container") return "aguardando Instagram";
+    if (status === "posted") return "publicado";
+    if (status === "failed") return "falhou";
+    return status;
+  };
+
   const getFriendlyError = (message?: string | null) => {
     if (!message) return null;
     if (/token do instagram expirou|session has expired|validating access token|oauth/i.test(message)) {
@@ -163,6 +194,8 @@ export default function Scheduled() {
           {posts.map(p => {
             const missingAccount = !p.instagram_account_id;
             const failed = p.status === "failed";
+            const awaitingContainer = p.status === "awaiting_container";
+            const posting = p.status === "posting";
             const friendlyError = getFriendlyError(p.error_message);
             const scheduledAt = new Date(p.scheduled_for);
             const minutesUntilPost = Math.round((scheduledAt.getTime() - Date.now()) / 60000);
@@ -176,7 +209,7 @@ export default function Scheduled() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-sm md:text-base line-clamp-2 flex-1 min-w-0">{p.news_items?.rewritten_title}</p>
-                      <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{p.status}</span>
+                      <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{statusLabel(p.status)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       @{p.instagram_accounts?.username || <span className="text-destructive">conta faltando</span>}
@@ -184,6 +217,10 @@ export default function Scheduled() {
                       <span title="Horário de publicação agendado">
                         {p.status === "posted" && p.posted_at
                           ? `publicado em ${fmtBR(p.posted_at)}`
+                          : awaitingContainer
+                          ? `aguardando Instagram desde ${fmtBR(p.container_created_at || p.updated_at || p.scheduled_for)}`
+                          : posting
+                          ? `enviando desde ${fmtBR(p.updated_at || p.scheduled_for)}`
                           : `agendado para ${fmtBR(p.scheduled_for)}`}
                       </span>
                     </p>
@@ -196,7 +233,9 @@ export default function Scheduled() {
                       </p>
                     )}
                     {p.media_type === "reel" && p.status !== "posted" && (
-                      p.news_items?.generated_video_url ? (
+                      awaitingContainer ? (
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · Instagram/Meta processando o vídeo</p>
+                      ) : p.news_items?.generated_video_url ? (
                         <p className="text-xs text-emerald-500 mt-1">🎬 Reel · vídeo pronto</p>
                       ) : (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · vídeo gerando…</p>
@@ -217,7 +256,12 @@ export default function Scheduled() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/50">
-                  {p.status !== "posted" && p.instagram_account_id && (
+                  {awaitingContainer && p.instagram_account_id && (
+                    <Button size="sm" variant="outline" onClick={() => checkContainerNow(p.id)} disabled={publishingId === p.id} title="Verificar processamento na Meta" className="flex-1 md:flex-none">
+                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-4 w-4 mr-1" /> Verificar Meta</>}
+                    </Button>
+                  )}
+                  {p.status !== "posted" && !awaitingContainer && p.instagram_account_id && (
                     <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title="Publicar agora" className="flex-1 md:flex-none">
                       {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-1" /> Publicar agora</>}
                     </Button>

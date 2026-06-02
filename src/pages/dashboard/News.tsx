@@ -206,7 +206,7 @@ export default function News() {
       const [{ data: us }, { data: ch }, { data: existing }] = await Promise.all([
         supabase.from("user_settings").select("min_post_interval_minutes, preferred_post_hours").eq("user_id", user!.id).maybeSingle(),
         supabase.from("channel_settings").select("min_interval_minutes, allowed_hours").eq("user_id", user!.id).eq("channel", mediaType).maybeSingle(),
-        supabase.from("scheduled_posts").select("scheduled_for, media_type").in("status", ["scheduled", "posting"]),
+        supabase.from("scheduled_posts").select("scheduled_for, media_type").in("status", ["scheduled", "posting", "awaiting_container"]),
       ]);
       const slot = nextConfiguredSlot(mediaType, existing || [], us, ch);
 

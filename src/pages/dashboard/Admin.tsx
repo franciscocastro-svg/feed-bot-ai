@@ -70,6 +70,7 @@ type AdminExpense = {
 type QueueSummary = {
   scheduled: number;
   posting: number;
+  awaitingContainer: number;
   failed: number;
   postedToday: number;
   reelQueued: number;
@@ -120,6 +121,7 @@ export default function Admin() {
   const [queueSummary, setQueueSummary] = useState<QueueSummary>({
     scheduled: 0,
     posting: 0,
+    awaitingContainer: 0,
     failed: 0,
     postedToday: 0,
     reelQueued: 0,
@@ -180,7 +182,7 @@ export default function Admin() {
     };
 
     const [
-      a, b, c, d, health, deployHealth, scheduledCount, postingCount,
+      a, b, c, d, health, deployHealth, scheduledCount, postingCount, awaitingContainerCount,
       failedCount, postedTodayCount, reelQueuedCount, reelProcessingCount,
       reelFailedCount, lastPost, stuck,
     ] = await Promise.all([
@@ -209,6 +211,7 @@ export default function Admin() {
       checkEndpoint("/deploy-health", "Deploy"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posting"),
+      supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "awaiting_container"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "failed").gte("updated_at", dayAgo),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posted").gte("posted_at", todayStart.toISOString()),
       supabase.from("reel_render_jobs").select("id", { count: "exact", head: true }).eq("status", "queued"),
@@ -233,6 +236,7 @@ export default function Admin() {
     setQueueSummary({
       scheduled: scheduledCount.count || 0,
       posting: postingCount.count || 0,
+      awaitingContainer: awaitingContainerCount.count || 0,
       failed: failedCount.count || 0,
       postedToday: postedTodayCount.count || 0,
       reelQueued: reelQueuedCount.count || 0,
@@ -617,6 +621,7 @@ export default function Admin() {
             {([
               ["Agendados", queueSummary.scheduled, "text-cyan-400"],
               ["Enviando", queueSummary.posting, "text-fuchsia-400"],
+              ["Aguardando Meta", queueSummary.awaitingContainer, "text-amber-400"],
               ["Publicados hoje", queueSummary.postedToday, "text-green-500"],
               ["Falhas 24h", queueSummary.failed, "text-orange-500"],
               ["Reels na fila", queueSummary.reelQueued, "text-blue-400"],
@@ -847,7 +852,7 @@ export default function Admin() {
                 <div>
                   <p className="text-sm font-medium">Fila de publicação</p>
                   <p className="text-xs text-muted-foreground">
-                    {queueSummary.scheduled} agendados · {queueSummary.posting} enviando · {queueSummary.failed} falhas 24h
+                    {queueSummary.scheduled} agendados · {queueSummary.posting} enviando · {queueSummary.awaitingContainer} aguardando Meta · {queueSummary.failed} falhas 24h
                   </p>
                 </div>
               </CardContent>
