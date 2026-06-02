@@ -10,6 +10,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
+const PUBLISH_ACTIVE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 
 async function callFn(name: string, body: Record<string, unknown>) {
   const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET") || "";
@@ -202,7 +203,7 @@ Deno.serve(async (req) => {
     if (onlyPublish) {
       const nowIso = new Date().toISOString();
       const stalePostingIso = new Date(Date.now() - 15 * 60_000).toISOString();
-      const [{ data: usersWithSched }, { data: usersWithStalePosting }] = await Promise.all([
+      const [{ data: usersWithSched }, { data: usersWithStalePosting }, { data: usersWithAwaitingContainer }] = await Promise.all([
         supabase
           .from("scheduled_posts")
           .select("user_id")
@@ -213,10 +214,15 @@ Deno.serve(async (req) => {
           .select("user_id")
           .eq("status", "posting")
           .lt("updated_at", stalePostingIso),
+        supabase
+          .from("scheduled_posts")
+          .select("user_id")
+          .eq("status", "awaiting_container"),
       ]);
       const dueUserIds = Array.from(new Set([
         ...(usersWithSched || []).map((s: any) => s.user_id),
         ...(usersWithStalePosting || []).map((s: any) => s.user_id),
+        ...(usersWithAwaitingContainer || []).map((s: any) => s.user_id),
       ]));
       const results: any[] = [];
       for (const uid of dueUserIds) {
@@ -256,7 +262,7 @@ Deno.serve(async (req) => {
     // demore ou seja interrompido, posts agendados saem no horário.
     const nowIso = new Date().toISOString();
     const stalePostingIso = new Date(Date.now() - 15 * 60_000).toISOString();
-    const [{ data: usersWithSched }, { data: usersWithStalePosting }] = await Promise.all([
+    const [{ data: usersWithSched }, { data: usersWithStalePosting }, { data: usersWithAwaitingContainer }] = await Promise.all([
       supabase
         .from("scheduled_posts")
         .select("user_id")
@@ -267,10 +273,15 @@ Deno.serve(async (req) => {
         .select("user_id")
         .eq("status", "posting")
         .lt("updated_at", stalePostingIso),
+      supabase
+        .from("scheduled_posts")
+        .select("user_id")
+        .eq("status", "awaiting_container"),
     ]);
     const dueUserIds = Array.from(new Set([
       ...(usersWithSched || []).map((s: any) => s.user_id),
       ...(usersWithStalePosting || []).map((s: any) => s.user_id),
+      ...(usersWithAwaitingContainer || []).map((s: any) => s.user_id),
     ]));
     for (const uid of dueUserIds) {
       try { await callFn("publish-scheduler", { user_id: uid }); }
@@ -307,7 +318,7 @@ Deno.serve(async (req) => {
           .from("scheduled_posts")
           .select("id", { count: "exact", head: true })
           .eq("user_id", userId)
-          .in("status", ["scheduled", "posting"]);
+          .in("status", PUBLISH_ACTIVE_STATUSES);
 
         // 2.1) Conteúdo perene por Pautas: quando ativado, gera no máximo
         // uma pauta por rodada e só se a conta estiver livre. Assim o fluxo
@@ -336,7 +347,7 @@ Deno.serve(async (req) => {
               .from("scheduled_posts")
               .select("id, news_items!inner(content_type)", { count: "exact", head: true })
               .eq("user_id", userId)
-              .in("status", ["scheduled", "posting"])
+              .in("status", PUBLISH_ACTIVE_STATUSES)
               .eq("news_items.content_type", "topic"),
           ]);
           const canGenerateTopic =
@@ -463,7 +474,7 @@ Deno.serve(async (req) => {
           .from("scheduled_posts")
           .select("scheduled_for, news_item_id, media_type, instagram_account_id")
           .eq("user_id", userId)
-          .in("status", ["scheduled", "posting"]);
+          .in("status", PUBLISH_ACTIVE_STATUSES);
 
         const alreadyScheduledNews = new Set((existingScheduled || []).map((s) => s.news_item_id));
         const allTaken = (existingScheduled || []).map((s) => new Date(s.scheduled_for));

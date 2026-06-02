@@ -15,6 +15,8 @@ const APP_RATE_LIMIT_COOLDOWN_MINUTES = 60;
 const STALE_POSTING_MINUTES = 15;
 const DEFAULT_USAGE_PAUSE_THRESHOLD = 80; // %
 const GRAPH_VERSION = "v21.0";
+const AWAITING_CONTAINER_TTL_MINUTES = 120;
+const ACTIVE_QUEUE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 
 // =============================================================
 // Captura headers de quota da Meta Graph API.
@@ -221,6 +223,16 @@ function getInstagramErrorMessage(prefix: string, data: any) {
   return `${prefix}: ${rawMessage}${code ? ` (código ${code}${subcode ? `/${subcode}` : ""})` : ""}`;
 }
 
+class ContainerStillProcessingError extends Error {
+  creationId: string;
+
+  constructor(creationId: string) {
+    super("Instagram está processando o vídeo (contas novas podem levar 5-30 min). Aguardando...");
+    this.name = "ContainerStillProcessingError";
+    this.creationId = creationId;
+  }
+}
+
 async function waitForContainer(creationId: string, accessToken: string, maxTries = 100, usageCtx?: { supabase: any; userId: string; accountId: string; igUserId: string }) {
   // Espera o container terminar de processar (vídeo ou imagem)
   // 100 tentativas × 3s = 5 min — Reels podem demorar bastante em horário de pico
@@ -236,10 +248,19 @@ async function waitForContainer(creationId: string, accessToken: string, maxTrie
       throw new Error(`Erro ao processar mídia: ${reason}${d.status_code === "EXPIRED" ? " (container expirou)" : ""}`);
     }
   }
-  throw new Error("Instagram demorou para processar o vídeo");
+  throw new ContainerStillProcessingError(creationId);
 }
 
 type UsageCtx = { supabase: any; userId: string; accountId: string; igUserId: string };
+
+async function getContainerStatus(creationId: string, accessToken: string, usageCtx?: UsageCtx) {
+  const graph = graphHost(accessToken);
+  const r = await fetch(`${graph}/${GRAPH_VERSION}/${creationId}?fields=status_code,status&access_token=${accessToken}`);
+  if (usageCtx) await persistMetaUsage(usageCtx.supabase, usageCtx.userId, usageCtx.accountId, usageCtx.igUserId, r);
+  const data = await r.json();
+  if (!r.ok) throw new Error(getInstagramErrorMessage("Erro ao consultar container do Instagram", data));
+  return data;
+}
 
 function graphHost(accessToken: string) {
   return /^IG/i.test(accessToken.trim()) ? "https://graph.instagram.com" : "https://graph.facebook.com";
@@ -358,9 +379,7 @@ Deno.serve(async (req) => {
     const dailyCap = settings?.max_posts_per_day ?? 5;
     const isUnlimited = dailyCap < 0;
     const remaining = isUnlimited ? Infinity : Math.max(0, dailyCap - (postedToday || 0));
-    if (!isUnlimited && remaining === 0) {
-      return new Response(JSON.stringify({ processed: 0, reason: "daily limit reached" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const hasDailyCapacity = isUnlimited || remaining > 0;
 
     const minIntervalMin = Math.max(
       SAFE_MIN_MINUTES_BETWEEN_POSTS,
@@ -382,6 +401,8 @@ Deno.serve(async (req) => {
       const mediaType = post?.media_type === "story" ? "story" : post?.media_type === "reel" ? "reel" : "feed";
       return channelConfig.get(mediaType) || { minIntervalMin, allowedHours: globalAllowedHours };
     };
+
+    let processed = 0;
 
     // Busca os candidatos. Ordenamos pelo agendamento e processamos um por vez,
     // mas validamos o intervalo mínimo POR CONTA do Instagram.
@@ -420,6 +441,205 @@ Deno.serve(async (req) => {
         status: "cancelled",
         error_message: "Notícia expirada antes da próxima tentativa. Cancelada para liberar a fila.",
       }).in("id", expiringIds);
+    }
+
+    let awaitingChecked = 0;
+    let awaitingRecovered = 0;
+    let awaitingQuery = supabase.from("scheduled_posts")
+      .select("*, news_items(*), instagram_accounts(*)")
+      .eq("user_id", userId)
+      .eq("status", "awaiting_container")
+      .not("ig_creation_id", "is", null);
+
+    if (targetPostId) {
+      awaitingQuery = awaitingQuery.eq("id", targetPostId).limit(1);
+    } else {
+      awaitingQuery = awaitingQuery
+        .order("container_last_checked_at", { ascending: true, nullsFirst: true })
+        .order("updated_at", { ascending: true })
+        .limit(10);
+    }
+
+    const { data: awaitingContainers } = await awaitingQuery;
+    for (const p of (awaitingContainers || []) as any[]) {
+      if (processed > 0) break;
+      awaitingChecked++;
+
+      const acc = p.instagram_accounts;
+      const news = p.news_items;
+      const nowIso = new Date().toISOString();
+      const createdAt = new Date(p.container_created_at || p.updated_at || p.created_at).getTime();
+      const containerAgeMs = Date.now() - (Number.isFinite(createdAt) ? createdAt : Date.now());
+      const isExpiredWaiting = containerAgeMs >= AWAITING_CONTAINER_TTL_MINUTES * 60_000;
+      const postCfg = getPostConfig(p);
+
+      if (!acc || !acc.ig_user_id || !acc.access_token) {
+        await supabase.from("scheduled_posts").update({
+          status: "failed",
+          error_message: "Conta Instagram sem credenciais para consultar o container.",
+          container_last_checked_at: nowIso,
+        }).eq("id", p.id);
+        continue;
+      }
+
+      if (acc.token_expires_at && new Date(acc.token_expires_at).getTime() <= Date.now()) {
+        await supabase.from("instagram_accounts").update({
+          active: false,
+          verification_status: "invalid",
+          token_expires_at: nowIso,
+          last_verified_at: nowIso,
+        }).eq("id", acc.id);
+        await supabase.from("scheduled_posts").update({
+          status: "scheduled",
+          scheduled_for: new Date(Date.now() + 60 * 60_000).toISOString(),
+          error_message: "Token do Instagram expirou. Atualize o token antes de publicar.",
+          container_last_checked_at: nowIso,
+        }).eq("id", p.id);
+        continue;
+      }
+
+      let containerStatus: any;
+      try {
+        containerStatus = await getContainerStatus(
+          p.ig_creation_id,
+          acc.access_token,
+          { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id },
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Erro ao consultar container do Instagram";
+        await supabase.from("scheduled_posts").update({
+          container_last_checked_at: nowIso,
+          error_message: `${msg}. Nova verificação no próximo ciclo.`,
+        }).eq("id", p.id);
+        continue;
+      }
+
+      const statusCode = String(containerStatus?.status_code || "").toUpperCase();
+      if (statusCode === "FINISHED") {
+        if (!isAllowedHour(new Date(), postCfg.allowedHours)) {
+          await supabase.from("scheduled_posts").update({
+            container_last_checked_at: nowIso,
+            error_message: `Container pronto. Aguardando horário permitido do canal (${postCfg.allowedHours.join(", ")}h).`,
+          }).eq("id", p.id);
+          continue;
+        }
+
+        const { data: latestPosted } = await supabase.from("scheduled_posts")
+          .select("posted_at")
+          .eq("user_id", userId)
+          .eq("status", "posted")
+          .eq("instagram_account_id", acc.id)
+          .neq("id", p.id)
+          .not("posted_at", "is", null)
+          .order("posted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const latestPostedAt = latestPosted?.posted_at ? new Date(latestPosted.posted_at).getTime() : 0;
+        const minGapMs = postCfg.minIntervalMin * 60_000;
+        if (latestPostedAt && Date.now() - latestPostedAt < minGapMs) {
+          const nextAt = new Date(latestPostedAt + minGapMs).toISOString();
+          await supabase.from("scheduled_posts").update({
+            container_last_checked_at: nowIso,
+            error_message: `Container pronto. Aguardando intervalo mínimo de ${postCfg.minIntervalMin} min entre posts (${new Date(nextAt).toLocaleString("pt-BR")}).`,
+          }).eq("id", p.id);
+          continue;
+        }
+
+        try {
+          const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
+          const mediaId = await publishContainer(acc.ig_user_id, p.ig_creation_id, acc.access_token, usageCtx);
+          await supabase.from("scheduled_posts").update({
+            status: "posted",
+            posted_at: nowIso,
+            ig_media_id: mediaId,
+            error_message: null,
+            container_last_checked_at: nowIso,
+          }).eq("id", p.id);
+          if (news?.id) await supabase.from("news_items").update({ status: "posted" }).eq("id", news.id);
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_awaiting_container",
+            entity_type: "scheduled_post",
+            entity_id: p.id,
+            details: { media_id: mediaId, creation_id: p.ig_creation_id },
+          });
+          processed++;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Erro ao publicar container pronto";
+          await supabase.from("scheduled_posts").update({
+            container_last_checked_at: nowIso,
+            error_message: `${msg}. Container pronto será tentado novamente no próximo ciclo.`,
+          }).eq("id", p.id);
+        }
+        continue;
+      }
+
+      if (statusCode === "ERROR" || statusCode === "EXPIRED") {
+        const reason = containerStatus?.status || "Instagram rejeitou ou expirou o container.";
+        await supabase.from("scheduled_posts").update({
+          status: "failed",
+          error_message: `Container do Instagram ${statusCode.toLowerCase()}: ${reason}`,
+          container_last_checked_at: nowIso,
+        }).eq("id", p.id);
+        if (news?.id) await supabase.from("news_items").update({ status: "failed", error_message: `Container do Instagram ${statusCode.toLowerCase()}` }).eq("id", news.id);
+        continue;
+      }
+
+      if (isExpiredWaiting && p.media_type === "reel" && (news?.generated_cover_url || news?.generated_image_url)) {
+        const nextSlot = nextAllowedSpacedSlot(
+          Date.now() + 60_000,
+          [],
+          postCfg.minIntervalMin * 60_000,
+          postCfg.allowedHours,
+        );
+        await supabase.from("scheduled_posts").update({
+          status: "scheduled",
+          media_type: "feed",
+          scheduled_for: new Date(nextSlot).toISOString(),
+          ig_creation_id: null,
+          retry_count: 0,
+          error_message: "Reel ficou preso no processamento do Instagram por mais de 2h. Reenfileirado como Feed com a capa para liberar a fila.",
+          container_last_checked_at: nowIso,
+        }).eq("id", p.id);
+        await supabase.from("activity_logs").insert({
+          user_id: userId,
+          action: "awaiting_container_fallback_to_feed",
+          entity_type: "scheduled_post",
+          entity_id: p.id,
+          details: { creation_id: p.ig_creation_id, status_code: statusCode || null, age_minutes: Math.round(containerAgeMs / 60_000) },
+        });
+        awaitingRecovered++;
+        continue;
+      }
+
+      if (isExpiredWaiting) {
+        await supabase.from("scheduled_posts").update({
+          status: "failed",
+          error_message: "Instagram não finalizou o container em até 2h e não há capa/foto para fallback.",
+          container_last_checked_at: nowIso,
+        }).eq("id", p.id);
+        if (news?.id) await supabase.from("news_items").update({ status: "failed", error_message: "Container do Instagram não finalizou em até 2h." }).eq("id", news.id);
+        awaitingRecovered++;
+        continue;
+      }
+
+      await supabase.from("scheduled_posts").update({
+        container_last_checked_at: nowIso,
+        error_message: "Instagram está processando o vídeo (contas novas podem levar 5-30 min). Aguardando...",
+      }).eq("id", p.id);
+    }
+
+    if (processed > 0) {
+      return new Response(JSON.stringify({ processed, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!hasDailyCapacity) {
+      return new Response(JSON.stringify({ processed: 0, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, reason: "daily limit reached" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let dueQuery = supabase.from("scheduled_posts")
@@ -493,7 +713,7 @@ Deno.serve(async (req) => {
         const { data: takenSameAccount } = await supabase.from("scheduled_posts")
           .select("id, scheduled_for")
           .eq("user_id", userId)
-          .eq("status", "scheduled")
+          .in("status", ACTIVE_QUEUE_STATUSES)
           .eq("instagram_account_id", accId)
           .neq("id", p.id);
         const takenTimes = (takenSameAccount || []).map((row: any) => new Date(row.scheduled_for).getTime()).filter(Number.isFinite).sort((a: number, b: number) => a - b);
@@ -524,7 +744,7 @@ Deno.serve(async (req) => {
       const { data: taken } = await supabase.from("scheduled_posts")
         .select("id, scheduled_for")
         .eq("user_id", userId)
-        .in("status", ["scheduled", "posting"]);
+        .in("status", ACTIVE_QUEUE_STATUSES);
       const skipIds = new Set(skippedNotReady.map((s: any) => s.id));
       const takenTimes = (taken || [])
         .filter((t: any) => !skipIds.has(t.id))
@@ -563,7 +783,7 @@ Deno.serve(async (req) => {
           const { data: takenRows } = await supabase.from("scheduled_posts")
             .select("id, instagram_account_id, scheduled_for")
             .eq("user_id", userId)
-            .eq("status", "scheduled")
+            .in("status", ACTIVE_QUEUE_STATUSES)
             .in("instagram_account_id", cooldownAccountIds);
           for (const row of (takenRows || []) as any[]) {
             if (cooldownIds.has(row.id) || !row.instagram_account_id) continue;
@@ -599,7 +819,6 @@ Deno.serve(async (req) => {
 
     const dueList = [chosen];
 
-    let processed = 0;
     const expiredAccountIds = new Set<string>();
     for (const p of dueList) {
       const { data: lockedPost, error: lockError } = await supabase.from("scheduled_posts")
@@ -756,8 +975,30 @@ Deno.serve(async (req) => {
         const isExpiredToken = rawMsg.startsWith("TOKEN_EXPIRED:");
         const msg = isExpiredToken ? rawMsg.replace("TOKEN_EXPIRED: ", "") : rawMsg;
         const acc = p.instagram_accounts;
+        const news = p.news_items;
         const isRateLimit = /too many actions|application request limit reached|código (4|9)\b|\/(2207042|2207051)/i.test(msg);
         const isAppLimit = isAppRateLimitMessage(msg);
+
+        if (e instanceof ContainerStillProcessingError && acc?.id) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("scheduled_posts").update({
+            status: "awaiting_container",
+            ig_creation_id: e.creationId,
+            container_created_at: nowIso,
+            container_last_checked_at: nowIso,
+            retry_count: 0,
+            error_message: e.message,
+          }).eq("id", p.id);
+          if (news?.id) await supabase.from("news_items").update({ status: "scheduled" }).eq("id", news.id);
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_container_awaiting",
+            entity_type: "scheduled_post",
+            entity_id: p.id,
+            details: { creation_id: e.creationId, account_id: acc.id },
+          });
+          continue;
+        }
 
         if (isExpiredToken && acc?.id) {
           expiredAccountIds.add(acc.id);
@@ -810,7 +1051,7 @@ Deno.serve(async (req) => {
           const { data: takenSameAccount } = await supabase.from("scheduled_posts")
             .select("id, scheduled_for")
             .eq("user_id", userId)
-            .eq("status", "scheduled")
+            .in("status", ACTIVE_QUEUE_STATUSES)
             .eq("instagram_account_id", acc.id)
             .neq("id", p.id);
           const stepMs = minIntervalMin * 60_000;
