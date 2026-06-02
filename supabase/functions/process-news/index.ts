@@ -816,9 +816,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         if (lr.ok) {
           const lbuf = new Uint8Array(await lr.arrayBuffer());
           const lct = lr.headers.get("content-type") || "image/png";
-          let lb = "";
-          for (let i = 0; i < lbuf.length; i++) lb += String.fromCharCode(lbuf[i]);
-          logoDataUrl = `data:${lct};base64,${btoa(lb)}`;
+          const b64 = btoa(Array.from(lbuf).map(b => String.fromCharCode(b)).join(""));
+          logoDataUrl = `data:${lct};base64,${b64}`;
         }
       } catch (e) { console.warn("[logo-fetch]", e); }
     }
@@ -1028,24 +1027,27 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     // e o scheduler ainda aplica o fallback dos 15 min (foto crua).
     // Isso elimina o "gargalo do canvas" descrito na análise de arquitetura:
     // o autopiloto não precisa mais que um navegador esteja aberto.
-    await supabase.from("news_items").update({
+    const { error: updErr } = await supabase.from("news_items").update({
       status: "processed",
       rewritten_title: ai.title,
       rewritten_summary: ai.summary,
       caption: finalCaption,
       reel_caption: reelCaptionFinal,
       hashtags: ai.hashtags,
-      generated_image_url: pub.publicUrl,          // foto crua da notícia
-      generated_cover_url: generatedCoverUrl       // arte editorial Feed (PNG composto)
-        ?? reelCoverUrl                            // fallback: capa do Reel
-        ?? pub.publicUrl,                          // último fallback: foto crua
+      generated_image_url: pub.publicUrl,
+      generated_cover_url: generatedCoverUrl ?? reelCoverUrl ?? pub.publicUrl,
       generated_reel_cover_url: reelCoverUrl ?? null,
-      editorial_ready: editorialReady,             // true quando arte foi gerada com sucesso
+      editorial_ready: editorialReady,
       image_style: usedFallback ? "template" : image_style,
       chosen_audio_track_id: chosenTrackId,
       chosen_audio_url: chosenTrackUrl,
       error_message: usedFallback ? "Sem créditos de IA: processado com fallback gratuito." : null,
     }).eq("id", item.id);
+
+    if (updErr) {
+      console.error(`[process-news] update to processed failed for ${item.id}:`, updErr);
+      throw new Error(`Failed to update news status to processed: ${updErr.message}`);
+    }
 
     await supabase.from("activity_logs").insert({ user_id: userId, action: "process_news", entity_type: "news_item", entity_id: item.id, details: { style: image_style, fallback: usedFallback } });
   } catch (e) {
