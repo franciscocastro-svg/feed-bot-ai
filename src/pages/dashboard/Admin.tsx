@@ -614,7 +614,7 @@ export default function Admin() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3">
-            {[
+            {([
               ["Agendados", queueSummary.scheduled, "text-cyan-400"],
               ["Enviando", queueSummary.posting, "text-fuchsia-400"],
               ["Publicados hoje", queueSummary.postedToday, "text-green-500"],
