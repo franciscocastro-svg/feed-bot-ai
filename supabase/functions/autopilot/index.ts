@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
 
     const { data: users } = await supabase
       .from("user_settings")
-      .select("user_id, auto_approve, auto_approve_enabled_at, max_posts_per_day, preferred_post_hours, default_image_style, default_media_type, min_post_interval_minutes")
+      .select("user_id, auto_approve, auto_approve_enabled_at, max_posts_per_day, preferred_post_hours, default_image_style, default_media_type, min_post_interval_minutes, topics_enabled, topics_posts_per_day")
       .eq("auto_approve", true);
 
     // PRIMEIRO: publica o que já está vencido (rápido e prioritário) — para todos
@@ -308,6 +308,54 @@ Deno.serve(async (req) => {
           .select("id", { count: "exact", head: true })
           .eq("user_id", userId)
           .in("status", ["scheduled", "posting"]);
+
+        // 2.1) Conteúdo perene por Pautas: quando ativado, gera no máximo
+        // uma pauta por rodada e só se a conta estiver livre. Assim o fluxo
+        // continua one-at-a-time: gerar -> processar -> agendar -> publicar.
+        if ((u as any).topics_enabled && !(activeQueueCount && activeQueueCount > 0)) {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const todayEnd = new Date(todayStart);
+          todayEnd.setDate(todayEnd.getDate() + 1);
+          const topicDailyLimit = Math.max(1, Math.min(5, Number((u as any).topics_posts_per_day) || 1));
+          const [{ count: topicsToday }, { count: pendingTopics }, { count: activeTopics }] = await Promise.all([
+            supabase
+              .from("news_items")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .eq("content_type", "topic")
+              .gte("published_at", todayStart.toISOString())
+              .lt("published_at", todayEnd.toISOString()),
+            supabase
+              .from("news_items")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .eq("content_type", "topic")
+              .in("status", ["pending", "processing", "processed"]),
+            supabase
+              .from("scheduled_posts")
+              .select("id, news_items!inner(content_type)", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .in("status", ["scheduled", "posting"])
+              .eq("news_items.content_type", "topic"),
+          ]);
+          const canGenerateTopic =
+            (topicsToday || 0) < topicDailyLimit &&
+            !(pendingTopics && pendingTopics > 0) &&
+            !(activeTopics && activeTopics > 0);
+          if (canGenerateTopic) {
+            const topicResult = await callFn("generate-from-topic", { user_id: userId });
+            userSummary.steps.topic_generation = { ok: topicResult.ok, data: topicResult.data };
+          } else {
+            userSummary.steps.topic_generation = {
+              skipped: true,
+              topics_today: topicsToday || 0,
+              limit: topicDailyLimit,
+              pending_topics: pendingTopics || 0,
+              active_topics: activeTopics || 0,
+            };
+          }
+        }
 
         // Só notícias frescas (<12h) E publicadas DEPOIS que o auto-piloto foi
         // ligado (ignora histórico antigo). Cron roda periodicamente, então a
