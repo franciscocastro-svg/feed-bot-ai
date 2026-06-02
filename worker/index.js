@@ -190,16 +190,38 @@ function drawCoverImage(ctx, img, x, y, w, h) {
 }
 
 async function drawConfiguredTemplate(ctx, item, settings, template, width, height, opts = {}) {
-  const cfg = {
-    titleY: height === 1080 ? 540 : 1160,
-    titleSize: height === 1080 ? 64 : 76,
+  const base = height === 1080 ? {
+    titleY: 180,
+    titleSize: 56,
     titleColor: "#FFFFFF",
-    titleMaxChars: 22,
-    subtitleY: height === 1080 ? 800 : 1480,
-    subtitleSize: height === 1080 ? 26 : 32,
+    titleMaxChars: 26,
+    subtitleY: 440,
+    subtitleSize: 24,
     subtitleColor: "#FFFFFF",
     showHandle: true,
-    handleY: 100,
+    handleY: 90,
+    handleColor: "#FFFFFF",
+    showBadge: true,
+    badgeText: "LEIA A LEGENDA →",
+    badgeBg: "#FFD400",
+    badgeColor: "#000000",
+    badgeY: 990,
+    overlayOpacity: 0.35,
+    showPhoto: true,
+    photoX: 0,
+    photoY: 528,
+    photoW: 1080,
+    photoH: 552,
+  } : {
+    titleY: 1040,
+    titleSize: 74,
+    titleColor: "#FFFFFF",
+    titleMaxChars: 22,
+    subtitleY: 1380,
+    subtitleSize: 32,
+    subtitleColor: "#FFFFFF",
+    showHandle: true,
+    handleY: 130,
     handleColor: "#FFFFFF",
     showBadge: true,
     badgeText: opts.withFollowCta && (settings?.brand_handle || settings?.brand_name)
@@ -207,15 +229,29 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
       : "LEIA A LEGENDA →",
     badgeBg: "#FFD400",
     badgeColor: "#000000",
-    badgeY: height === 1080 ? 980 : 1540,
+    badgeY: 1540,
     overlayOpacity: 0.45,
     showPhoto: true,
-    photoX: 90,
-    photoY: height === 1080 ? 600 : 500,
-    photoW: 420,
-    photoH: 280,
+    photoX: 0,
+    photoY: 0,
+    photoW: 1080,
+    photoH: 1920,
+  };
+  const mergedCfg = {
+    ...base,
     ...(template.config || {}),
   };
+  const legacyLayout =
+    mergedCfg.titleY === 540 &&
+    mergedCfg.subtitleY === 800 &&
+    mergedCfg.badgeY === 980 &&
+    mergedCfg.photoX === 90 &&
+    mergedCfg.photoY === 600 &&
+    mergedCfg.photoW === 420 &&
+    mergedCfg.photoH === 280;
+  const cfg = legacyLayout
+    ? { ...mergedCfg, titleY: base.titleY, titleSize: base.titleSize, titleMaxChars: base.titleMaxChars, subtitleY: base.subtitleY, subtitleSize: base.subtitleSize, handleY: base.handleY, badgeY: base.badgeY, photoX: base.photoX, photoY: base.photoY, photoW: base.photoW, photoH: base.photoH, overlayOpacity: base.overlayOpacity }
+    : mergedCfg;
   const title = (item.rewritten_title || item.original_title || "Notícia").toUpperCase();
   const subtitle = item.rewritten_summary || "";
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");

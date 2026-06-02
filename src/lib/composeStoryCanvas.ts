@@ -67,29 +67,44 @@ function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | un
 
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any, opts: { withFollowCta?: boolean }) {
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
-  const cfg = {
-    titleY: 1160,
-    titleSize: 76,
+  const base = {
+    titleY: 1040,
+    titleSize: 74,
     titleColor: "#FFFFFF",
-    subtitleY: 1480,
+    titleMaxChars: 22,
+    subtitleY: 1380,
     subtitleSize: 32,
     subtitleColor: "#FFFFFF",
     showHandle: true,
-    handleY: 120,
+    handleY: 130,
     handleColor: "#FFFFFF",
     showBadge: true,
-    badgeText: opts.withFollowCta && handle ? `SIGA @${handle.toUpperCase()} PARA MAIS` : "URGENTE",
+    badgeText: opts.withFollowCta && handle ? `SIGA @${handle.toUpperCase()} PARA MAIS` : "LEIA A LEGENDA →",
     badgeBg: "#FFD400",
     badgeColor: "#000000",
     badgeY: 1540,
     overlayOpacity: 0.45,
     showPhoto: true,
-    photoX: 70,
-    photoY: 440,
-    photoW: 940,
-    photoH: 620,
+    photoX: 0,
+    photoY: 0,
+    photoW: 1080,
+    photoH: 1920,
+  };
+  const mergedCfg = {
+    ...base,
     ...(template.config || {}),
   };
+  const legacyLayout =
+    mergedCfg.titleY === 540 &&
+    mergedCfg.subtitleY === 800 &&
+    mergedCfg.badgeY === 980 &&
+    mergedCfg.photoX === 90 &&
+    mergedCfg.photoY === 600 &&
+    mergedCfg.photoW === 420 &&
+    mergedCfg.photoH === 280;
+  const cfg = legacyLayout
+    ? { ...mergedCfg, titleY: base.titleY, titleSize: base.titleSize, titleMaxChars: base.titleMaxChars, subtitleY: base.subtitleY, subtitleSize: base.subtitleSize, handleY: base.handleY, badgeY: base.badgeY, photoX: base.photoX, photoY: base.photoY, photoW: base.photoW, photoH: base.photoH, overlayOpacity: base.overlayOpacity }
+    : mergedCfg;
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia").toUpperCase();
   const subtitle = item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "";
 

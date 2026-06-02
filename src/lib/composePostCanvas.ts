@@ -65,29 +65,44 @@ function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | un
 }
 
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any) {
-  const cfg = {
-    titleY: 540,
-    titleSize: 64,
+  const base = {
+    titleY: 180,
+    titleSize: 56,
     titleColor: "#FFFFFF",
-    subtitleY: 800,
-    subtitleSize: 26,
+    titleMaxChars: 26,
+    subtitleY: 440,
+    subtitleSize: 24,
     subtitleColor: "#FFFFFF",
     showHandle: true,
-    handleY: 100,
+    handleY: 90,
     handleColor: "#FFFFFF",
     showBadge: true,
     badgeText: "LEIA A LEGENDA →",
     badgeBg: "#FFD400",
     badgeColor: "#000000",
-    badgeY: 980,
-    overlayOpacity: 0.45,
+    badgeY: 990,
+    overlayOpacity: 0.35,
     showPhoto: true,
-    photoX: 90,
-    photoY: 600,
-    photoW: 420,
-    photoH: 280,
+    photoX: 0,
+    photoY: 528,
+    photoW: 1080,
+    photoH: 552,
+  };
+  const mergedCfg = {
+    ...base,
     ...(template.config || {}),
   };
+  const legacyLayout =
+    mergedCfg.titleY === 540 &&
+    mergedCfg.subtitleY === 800 &&
+    mergedCfg.badgeY === 980 &&
+    mergedCfg.photoX === 90 &&
+    mergedCfg.photoY === 600 &&
+    mergedCfg.photoW === 420 &&
+    mergedCfg.photoH === 280;
+  const cfg = legacyLayout
+    ? { ...mergedCfg, titleY: base.titleY, titleSize: base.titleSize, titleMaxChars: base.titleMaxChars, subtitleY: base.subtitleY, subtitleSize: base.subtitleSize, handleY: base.handleY, badgeY: base.badgeY, photoX: base.photoX, photoY: base.photoY, photoW: base.photoW, photoH: base.photoH, overlayOpacity: base.overlayOpacity }
+    : mergedCfg;
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
   const subtitle = item.rewritten_summary || "";

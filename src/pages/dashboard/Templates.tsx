@@ -171,28 +171,89 @@ const NICHES: Niche[] = [
 const PRESETS = NICHES.flatMap(n => n.presets);
 
 const DEFAULT_CONFIG = {
-  titleY: 540,
-  titleSize: 64,
+  titleY: 180,
+  titleSize: 56,
   titleColor: "#FFFFFF",
-  titleMaxChars: 22,
-  subtitleY: 800,
-  subtitleSize: 26,
+  titleMaxChars: 26,
+  subtitleY: 440,
+  subtitleSize: 24,
   subtitleColor: "#FFFFFF",
   showHandle: true,
-  handleY: 100,
+  handleY: 90,
   handleColor: "#FFFFFF",
   showBadge: true,
   badgeText: "LEIA A LEGENDA →",
   badgeBg: "#FFD400",
   badgeColor: "#000000",
-  badgeY: 980,
-  overlayOpacity: 0.45,
+  badgeY: 990,
+  overlayOpacity: 0.35,
   showPhoto: true,
+  photoX: 0,
+  photoY: 528,
+  photoW: 1080,
+  photoH: 552,
+};
+
+const LEGACY_DEFAULT_POSITIONS = {
+  titleY: 540,
+  subtitleY: 800,
+  badgeY: 980,
   photoX: 90,
   photoY: 600,
   photoW: 420,
   photoH: 280,
 };
+
+function getDefaultConfig(format: PostFormat = "feed") {
+  if (format === "stories" || format === "reels") {
+    return {
+      ...DEFAULT_CONFIG,
+      titleY: 1040,
+      titleSize: 74,
+      titleMaxChars: 22,
+      subtitleY: 1380,
+      subtitleSize: 32,
+      handleY: 130,
+      badgeY: 1540,
+      photoX: 0,
+      photoY: 0,
+      photoW: 1080,
+      photoH: 1920,
+      overlayOpacity: 0.45,
+    };
+  }
+  return { ...DEFAULT_CONFIG };
+}
+
+function normalizeConfig(config: any, format: PostFormat = "feed") {
+  const base = getDefaultConfig(format);
+  const merged = { ...base, ...(config || {}) };
+  const legacyLayout =
+    merged.titleY === LEGACY_DEFAULT_POSITIONS.titleY &&
+    merged.subtitleY === LEGACY_DEFAULT_POSITIONS.subtitleY &&
+    merged.badgeY === LEGACY_DEFAULT_POSITIONS.badgeY &&
+    merged.photoX === LEGACY_DEFAULT_POSITIONS.photoX &&
+    merged.photoY === LEGACY_DEFAULT_POSITIONS.photoY &&
+    merged.photoW === LEGACY_DEFAULT_POSITIONS.photoW &&
+    merged.photoH === LEGACY_DEFAULT_POSITIONS.photoH;
+
+  if (!legacyLayout) return merged;
+  return {
+    ...merged,
+    titleY: base.titleY,
+    titleSize: base.titleSize,
+    titleMaxChars: base.titleMaxChars,
+    subtitleY: base.subtitleY,
+    subtitleSize: base.subtitleSize,
+    handleY: base.handleY,
+    badgeY: base.badgeY,
+    photoX: base.photoX,
+    photoY: base.photoY,
+    photoW: base.photoW,
+    photoH: base.photoH,
+    overlayOpacity: base.overlayOpacity,
+  };
+}
 
 export default function Templates() {
   const { user } = useAuth();
@@ -290,7 +351,7 @@ export default function Templates() {
     } catch (e: any) {
       return toast.error(e.message);
     }
-    const mergedConfig = { ...DEFAULT_CONFIG, ...p.config };
+    const mergedConfig = { ...getDefaultConfig(format), ...p.config };
     const { data, error } = await supabase.from("post_templates").insert({
       user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig, format,
     }).select().single();
@@ -313,7 +374,7 @@ export default function Templates() {
       const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
       const { data, error } = await supabase.from("post_templates").insert({
         user_id: user.id, name: file.name.replace(/\.[^.]+$/, ""), kind: "custom",
-        background_url: publicUrl, config: DEFAULT_CONFIG, format: uploadFormatRef.current,
+        background_url: publicUrl, config: getDefaultConfig(uploadFormatRef.current), format: uploadFormatRef.current,
       }).select().single();
       if (error) throw error;
       setTemplates(t => [data as Template, ...t]);
@@ -627,7 +688,7 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
   const CANVAS_H = fmt === "feed" ? 1080 : 1920;
 
   const TemplateArt = ({ aspect }: { aspect: string }) => {
-    const cfg = { ...DEFAULT_CONFIG, ...(template.config || {}) };
+    const cfg = normalizeConfig(template.config, fmt);
     const xP = (px: number) => `${(px / CANVAS_W) * 100}%`;
     const yP = (px: number) => `${(px / CANVAS_H) * 100}%`;
     const wP = (px: number) => `${(px / CANVAS_W) * 100}%`;
@@ -875,7 +936,10 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
 function EditorPanel({ template, onClose, onSave, onChange }: {
   template: Template; onClose: () => void; onSave: (t: Template) => void; onChange: (t: Template) => void;
 }) {
-  const cfg = { ...DEFAULT_CONFIG, ...(template.config || {}) };
+  const fmt = template.format || "feed";
+  const canvasH = fmt === "feed" ? 1080 : 1920;
+  const aspectClass = fmt === "feed" ? "aspect-square" : "aspect-[9/16]";
+  const cfg = normalizeConfig(template.config, fmt);
   const update = (patch: any) => onChange({ ...template, config: { ...cfg, ...patch } });
   const sampleTitle = "TÍTULO DA NOTÍCIA EM DESTAQUE AQUI";
   const sampleSub = "Subtítulo curto explicando o contexto da notícia";
@@ -890,8 +954,8 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Preview */}
         <div>
-          <Label className="text-xs uppercase text-muted-foreground">Pré-visualização (1080×1080)</Label>
-          <div className="mt-2 aspect-square w-full max-w-md mx-auto relative overflow-hidden rounded-lg border border-border bg-zinc-900">
+          <Label className="text-xs uppercase text-muted-foreground">Pré-visualização ({fmt === "feed" ? "1080×1080" : "1080×1920"})</Label>
+          <div className={`mt-2 ${aspectClass} w-full max-w-md mx-auto relative overflow-hidden rounded-lg border border-border bg-zinc-900`}>
             {template.background_url ? (
               <img src={template.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
@@ -901,7 +965,7 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
               <div className="absolute bg-black/40 border-2 border-dashed border-yellow-400 flex items-center justify-center text-yellow-300 text-[10px] font-bold uppercase tracking-wider"
                 style={{
                   left: `${(cfg.photoX / 1080) * 100}%`,
-                  top: `${(cfg.photoY / 1080) * 100}%`,
+                  top: `${(cfg.photoY / canvasH) * 100}%`,
                   width: `${(cfg.photoW / 1080) * 100}%`,
                   height: `${(cfg.photoH / 1080) * 100}%`,
                 }}>
@@ -913,21 +977,21 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
             )}
             {cfg.showHandle && (
               <div className="absolute left-[5.5%] font-mono font-bold tracking-wider"
-                style={{ top: `${(cfg.handleY / 1080) * 100}%`, color: cfg.handleColor, fontSize: `clamp(10px, 2vw, 16px)` }}>
+                style={{ top: `${(cfg.handleY / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `clamp(10px, 2vw, 16px)` }}>
                 @SUAMARCA
               </div>
             )}
             <div className="absolute left-[5.5%] right-[5.5%] font-black uppercase leading-tight"
-              style={{ top: `${(cfg.titleY / 1080) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw` }}>
+              style={{ top: `${(cfg.titleY / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw` }}>
               {sampleTitle}
             </div>
             <div className="absolute left-[5.5%] right-[5.5%]"
-              style={{ top: `${(cfg.subtitleY / 1080) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw` }}>
+              style={{ top: `${(cfg.subtitleY / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw` }}>
               {sampleSub}
             </div>
             {cfg.showBadge && (
               <div className="absolute right-[5.5%] px-3 py-2 font-bold text-xs"
-                style={{ top: `${(cfg.badgeY / 1080) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor }}>
+                style={{ top: `${(cfg.badgeY / canvasH) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor }}>
                 {cfg.badgeText}
               </div>
             )}
@@ -942,14 +1006,14 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
           </div>
 
           <Section title="Título">
-            <RangeRow label="Posição vertical" value={cfg.titleY} min={50} max={1000} onChange={v => update({ titleY: v })} />
+            <RangeRow label="Posição vertical" value={cfg.titleY} min={50} max={canvasH - 80} onChange={v => update({ titleY: v })} />
             <RangeRow label="Tamanho" value={cfg.titleSize} min={32} max={120} onChange={v => update({ titleSize: v })} />
             <RangeRow label="Caracteres por linha" value={cfg.titleMaxChars} min={12} max={40} onChange={v => update({ titleMaxChars: v })} />
             <ColorRow label="Cor" value={cfg.titleColor} onChange={v => update({ titleColor: v })} />
           </Section>
 
           <Section title="Subtítulo">
-            <RangeRow label="Posição vertical" value={cfg.subtitleY} min={50} max={1040} onChange={v => update({ subtitleY: v })} />
+            <RangeRow label="Posição vertical" value={cfg.subtitleY} min={50} max={canvasH - 40} onChange={v => update({ subtitleY: v })} />
             <RangeRow label="Tamanho" value={cfg.subtitleSize} min={16} max={48} onChange={v => update({ subtitleSize: v })} />
             <ColorRow label="Cor" value={cfg.subtitleColor} onChange={v => update({ subtitleColor: v })} />
           </Section>
@@ -966,7 +1030,7 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
             <Toggle label="Mostrar selo" value={cfg.showBadge} onChange={v => update({ showBadge: v })} />
             {cfg.showBadge && <>
               <div><Label>Texto</Label><Input value={cfg.badgeText} onChange={e => update({ badgeText: e.target.value })} /></div>
-              <RangeRow label="Posição vertical" value={cfg.badgeY} min={20} max={1040} onChange={v => update({ badgeY: v })} />
+              <RangeRow label="Posição vertical" value={cfg.badgeY} min={20} max={canvasH - 40} onChange={v => update({ badgeY: v })} />
               <ColorRow label="Fundo" value={cfg.badgeBg} onChange={v => update({ badgeBg: v })} />
               <ColorRow label="Cor texto" value={cfg.badgeColor} onChange={v => update({ badgeColor: v })} />
             </>}
@@ -977,7 +1041,7 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
             {cfg.showPhoto && <>
               <p className="text-xs text-muted-foreground">Encaixe a caixa amarela no espaço do template onde a foto deve aparecer (ex: a área da câmera).</p>
               <RangeRow label="Posição X (esquerda)" value={cfg.photoX} min={0} max={1080} onChange={v => update({ photoX: v })} />
-              <RangeRow label="Posição Y (topo)" value={cfg.photoY} min={0} max={1080} onChange={v => update({ photoY: v })} />
+              <RangeRow label="Posição Y (topo)" value={cfg.photoY} min={0} max={canvasH} onChange={v => update({ photoY: v })} />
               <RangeRow label="Largura" value={cfg.photoW} min={100} max={1080} onChange={v => update({ photoW: v })} />
               <RangeRow label="Altura" value={cfg.photoH} min={100} max={1080} onChange={v => update({ photoH: v })} />
             </>}
