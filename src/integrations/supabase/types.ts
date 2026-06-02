@@ -120,6 +120,45 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_expenses: {
+        Row: {
+          amount_brl: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          notes: string | null
+          recurring: boolean
+          spent_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount_brl: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_brl?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_rewrite_cache: {
         Row: {
           cache_key: string
