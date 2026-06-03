@@ -95,6 +95,7 @@ export default function Admin() {
   const navigate = useNavigate();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState("users");
+  const [loadedPermissionVersion, setLoadedPermissionVersion] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -143,6 +144,7 @@ export default function Admin() {
   });
   const [lastPublished, setLastPublished] = useState<any | null>(null);
   const [stuckPosting, setStuckPosting] = useState<any[]>([]);
+  const [systemLoaded, setSystemLoaded] = useState(false);
   const adminPermissionVersion = `${adminFullAccess}:${adminPermissions.join("|")}`;
 
   useEffect(() => {
@@ -157,10 +159,16 @@ export default function Admin() {
 
   const load = async () => {
     setLoading(true);
+    const shouldLoadPlans = hasAdminPermission("plans") || hasAdminPermission("finance");
+    const shouldLoadExpenses = hasAdminPermission("finance");
     const [{ data, error }, { data: plans }, expenseRes] = await Promise.all([
       supabase.rpc("admin_overview"),
-      supabase.from("plan_limits").select("plan, price_brl"),
-      supabase.from("admin_expenses" as any).select("*").order("spent_at", { ascending: false }).limit(100),
+      shouldLoadPlans
+        ? supabase.from("plan_limits").select("plan, price_brl")
+        : Promise.resolve({ data: null }),
+      shouldLoadExpenses
+        ? supabase.from("admin_expenses" as any).select("*").order("spent_at", { ascending: false }).limit(100)
+        : Promise.resolve({ data: [], error: null }),
     ]);
     if (error) { toast.error("Erro ao carregar: " + error.message); setRows([]); }
     else setRows((data || []) as Row[]);
@@ -268,14 +276,20 @@ export default function Admin() {
     setStaleSources(stale);
     setRecentActivity(d.data || []);
     setSysLoading(false);
+    setSystemLoaded(true);
   };
 
   useEffect(() => {
-    if (allowed) {
-      load();
-      if (hasAdminPermission("system")) loadSystem();
-    }
-  }, [allowed, adminPermissionVersion]);
+    if (!allowed || adminPermissionVersion === "false:") return;
+    if (loadedPermissionVersion === adminPermissionVersion) return;
+    setLoadedPermissionVersion(adminPermissionVersion);
+    load();
+  }, [allowed, adminPermissionVersion, loadedPermissionVersion]);
+
+  useEffect(() => {
+    if (!allowed || activeTab !== "system" || !hasAdminPermission("system") || systemLoaded || sysLoading) return;
+    loadSystem();
+  }, [allowed, activeTab, systemLoaded, sysLoading]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -575,7 +589,7 @@ export default function Admin() {
           </h1>
           <p className="text-muted-foreground text-sm">Controle global de usuários, planos e saúde do sistema.</p>
         </div>
-        <Button variant="outline" onClick={() => { load(); if (hasAdminPermission("system")) loadSystem(); }} disabled={loading} className="self-start md:self-auto">
+        <Button variant="outline" onClick={() => { load(); if (activeTab === "system" && hasAdminPermission("system")) loadSystem(); }} disabled={loading} className="self-start md:self-auto">
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Atualizar
         </Button>
       </div>
@@ -687,7 +701,7 @@ export default function Admin() {
           </CardContent>
         </Card>
       ) : (
-      <Tabs value={activeTab} orientation="vertical" onValueChange={(v) => { if (!hasAdminPermission(v)) return; setActiveTab(v); if (v === "system") loadSystem(); }} className="flex flex-col lg:flex-row gap-4">
+      <Tabs value={activeTab} orientation="vertical" onValueChange={(v) => { if (!hasAdminPermission(v)) return; setActiveTab(v); }} className="flex flex-col lg:flex-row gap-4">
         <TabsList className="lg:flex-col lg:h-auto lg:items-stretch lg:justify-start lg:w-56 lg:shrink-0 lg:p-2 lg:bg-card lg:border lg:border-border lg:rounded-xl flex-wrap h-auto">
           {visibleAdminTabs.map(t => (
             <TabsTrigger
