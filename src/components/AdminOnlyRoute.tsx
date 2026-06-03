@@ -7,8 +7,8 @@ import { isPathVisible } from "@/config/featureFlags";
  * Gate para features em rollout gradual.
  * isAdmin agora vem do AuthContext centralizado — sem query duplicada.
  */
-export function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { user, isAdmin, loading } = useAuth();
+export function AdminOnlyRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
+  const { user, isAdmin, loading, hasAdminPermission } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -22,7 +22,7 @@ export function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
   const isAdminArea = location.pathname.startsWith("/dashboard/admin");
   const allowed = !!user && (
     isAdminArea
-      ? isAdmin
+      ? isAdmin && (!permission || hasAdminPermission(permission))
       : isPathVisible(location.pathname, { isAdmin, userId: user.id })
   );
 

@@ -82,9 +82,9 @@ const App = () => (
               <Route path="meta-api-health" element={<MetaApiHealth />} />
               <Route path="channels/:channel" element={<ChannelConfig />} />
               <Route path="admin" element={<AdminOnlyRoute><Admin /></AdminOnlyRoute>} />
-              <Route path="admin/releases" element={<AdminOnlyRoute><AdminReleases /></AdminOnlyRoute>} />
+              <Route path="admin/releases" element={<AdminOnlyRoute permission="releases"><AdminReleases /></AdminOnlyRoute>} />
               <Route path="support" element={<Support />} />
-              <Route path="admin/support" element={<AdminOnlyRoute><AdminSupport /></AdminOnlyRoute>} />
+              <Route path="admin/support" element={<AdminOnlyRoute permission="support"><AdminSupport /></AdminOnlyRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

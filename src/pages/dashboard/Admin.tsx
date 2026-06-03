@@ -52,6 +52,18 @@ type Row = {
 const PLANS = ["free", "starter", "pro", "business"];
 const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 const EXPENSE_CATEGORIES = ["IA", "Servidor", "Tráfego pago", "Ferramentas", "Equipe", "Outros"];
+const ADMIN_TABS = [
+  { value: "users", label: "Usuários", icon: Users },
+  { value: "system", label: "Saúde", icon: Activity },
+  { value: "finance", label: "Financeiro", icon: DollarSign },
+  { value: "plans", label: "Planos", icon: Settings2 },
+  { value: "team", label: "Equipe", icon: UserCog },
+  { value: "tokens", label: "Tokens", icon: ShieldCheck },
+  { value: "meta", label: "Saúde API Meta", icon: Gauge },
+  { value: "releases", label: "Novidades", icon: Megaphone },
+  { value: "support", label: "Suporte", icon: LifeBuoy },
+  { value: "roadmap", label: "Roadmap", icon: Map },
+];
 
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
 type SortKey = "created_at" | "last_activity" | "posts_published" | "posts_failed" | "plan";
@@ -79,9 +91,10 @@ type QueueSummary = {
 };
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, hasAdminPermission, adminFullAccess, adminPermissions } = useAuth();
   const navigate = useNavigate();
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [activeTab, setActiveTab] = useState("users");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -130,6 +143,7 @@ export default function Admin() {
   });
   const [lastPublished, setLastPublished] = useState<any | null>(null);
   const [stuckPosting, setStuckPosting] = useState<any[]>([]);
+  const adminPermissionVersion = `${adminFullAccess}:${adminPermissions.join("|")}`;
 
   useEffect(() => {
     if (!user) return;
@@ -259,9 +273,9 @@ export default function Admin() {
   useEffect(() => {
     if (allowed) {
       load();
-      loadSystem();
+      if (hasAdminPermission("system")) loadSystem();
     }
-  }, [allowed]);
+  }, [allowed, adminPermissionVersion]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -518,33 +532,30 @@ export default function Admin() {
   );
 
   const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const visibleAdminTabs = ADMIN_TABS.filter((tab) => hasAdminPermission(tab.value));
+  const visibleTabKeys = visibleAdminTabs.map((tab) => tab.value).join("|");
+
+  useEffect(() => {
+    if (!allowed) return;
+    if (!visibleAdminTabs.length) return;
+    if (!visibleAdminTabs.some((tab) => tab.value === activeTab)) {
+      setActiveTab(visibleAdminTabs[0].value);
+    }
+  }, [activeTab, allowed, visibleTabKeys]);
 
   if (allowed === null) return <div className="p-6">Verificando...</div>;
   if (!allowed) return null;
 
   const kpis = [
-    { key: "users", icon: Users, label: "Usuários", value: totals.users, tint: "bg-blue-500/10 text-blue-400" },
-    { key: "pending", icon: Clock, label: "Pendentes", value: totals.pending, tint: "bg-amber-500/10 text-amber-400", emphasis: totals.pending > 0 },
-    { key: "paid", icon: DollarSign, label: "Pagantes", value: totals.paid, tint: "bg-emerald-500/10 text-emerald-400" },
-    { key: "mrr", icon: TrendingUp, label: "MRR estimado", value: fmtBRL(mrr.total), tint: "bg-green-500/10 text-green-400" },
-    { key: "blocked", icon: XCircle, label: "Bloqueados", value: totals.blocked, tint: "bg-rose-500/10 text-rose-400" },
-    { key: "queue", icon: ListChecks, label: "Na fila", value: queueSummary.scheduled, tint: "bg-cyan-500/10 text-cyan-400" },
-    { key: "pub", icon: CheckCircle2, label: "Posts publicados", value: totals.published, tint: "bg-fuchsia-500/10 text-fuchsia-400" },
-    { key: "fail", icon: AlertTriangle, label: "Falhas", value: totals.failed, tint: "bg-orange-500/10 text-orange-400" },
-  ];
-
-  const adminTabs = [
-    { value: "users", label: "Usuários", icon: Users },
-    { value: "system", label: "Saúde", icon: Activity },
-    { value: "finance", label: "Financeiro", icon: DollarSign },
-    { value: "plans", label: "Planos", icon: Settings2 },
-    { value: "team", label: "Equipe", icon: UserCog },
-    { value: "tokens", label: "Tokens", icon: ShieldCheck },
-    { value: "meta", label: "Saúde API Meta", icon: Gauge },
-    { value: "releases", label: "Novidades", icon: Megaphone },
-    { value: "support", label: "Suporte", icon: LifeBuoy },
-    { value: "roadmap", label: "Roadmap", icon: Map },
-  ];
+    { key: "users", permission: "users", icon: Users, label: "Usuários", value: totals.users, tint: "bg-blue-500/10 text-blue-400" },
+    { key: "pending", permission: "users", icon: Clock, label: "Pendentes", value: totals.pending, tint: "bg-amber-500/10 text-amber-400", emphasis: totals.pending > 0 },
+    { key: "paid", permission: "finance", icon: DollarSign, label: "Pagantes", value: totals.paid, tint: "bg-emerald-500/10 text-emerald-400" },
+    { key: "mrr", permission: "finance", icon: TrendingUp, label: "MRR estimado", value: fmtBRL(mrr.total), tint: "bg-green-500/10 text-green-400" },
+    { key: "blocked", permission: "users", icon: XCircle, label: "Bloqueados", value: totals.blocked, tint: "bg-rose-500/10 text-rose-400" },
+    { key: "queue", permission: "system", icon: ListChecks, label: "Na fila", value: queueSummary.scheduled, tint: "bg-cyan-500/10 text-cyan-400" },
+    { key: "pub", permission: "system", icon: CheckCircle2, label: "Posts publicados", value: totals.published, tint: "bg-fuchsia-500/10 text-fuchsia-400" },
+    { key: "fail", permission: "system", icon: AlertTriangle, label: "Falhas", value: totals.failed, tint: "bg-orange-500/10 text-orange-400" },
+  ].filter((k) => hasAdminPermission(k.permission));
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto">
@@ -564,13 +575,13 @@ export default function Admin() {
           </h1>
           <p className="text-muted-foreground text-sm">Controle global de usuários, planos e saúde do sistema.</p>
         </div>
-        <Button variant="outline" onClick={() => { load(); loadSystem(); }} disabled={loading} className="self-start md:self-auto">
+        <Button variant="outline" onClick={() => { load(); if (hasAdminPermission("system")) loadSystem(); }} disabled={loading} className="self-start md:self-auto">
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Atualizar
         </Button>
       </div>
 
       {/* KPIs refinados */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+      {kpis.length > 0 && <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
         {kpis.map(k => (
           <Card key={k.key} className={`border-border/60 transition-colors hover:border-primary/30 ${k.emphasis ? "border-amber-500/40" : ""}`}>
             <CardContent className="pt-5 pb-4 space-y-3">
@@ -584,9 +595,10 @@ export default function Admin() {
             </CardContent>
           </Card>
         ))}
-      </div>
+      </div>}
 
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
+      {(hasAdminPermission("system") || hasAdminPermission("finance")) && <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
+        {hasAdminPermission("system") && (
         <Card className={operationalAlerts.some(a => a.tone === "critical") ? "border-destructive/50" : ""}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -610,7 +622,9 @@ export default function Admin() {
             ))}
           </CardContent>
         </Card>
+        )}
 
+        {hasAdminPermission("system") && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -634,7 +648,9 @@ export default function Admin() {
             ))}
           </CardContent>
         </Card>
+        )}
 
+        {hasAdminPermission("finance") && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -658,14 +674,22 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
-      </div>
+        )}
+      </div>}
 
-      <AlertsCard rows={rows} />
+      {hasAdminPermission("system") && <AlertsCard rows={rows} />}
 
       {/* Tabs com sidebar vertical interna */}
-      <Tabs defaultValue="users" orientation="vertical" onValueChange={(v) => { if (v === "system") loadSystem(); }} className="flex flex-col lg:flex-row gap-4">
+      {visibleAdminTabs.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            Seu usuário é admin, mas ainda não possui áreas liberadas. Peça para um admin com acesso à Equipe ajustar suas permissões.
+          </CardContent>
+        </Card>
+      ) : (
+      <Tabs value={activeTab} orientation="vertical" onValueChange={(v) => { if (!hasAdminPermission(v)) return; setActiveTab(v); if (v === "system") loadSystem(); }} className="flex flex-col lg:flex-row gap-4">
         <TabsList className="lg:flex-col lg:h-auto lg:items-stretch lg:justify-start lg:w-56 lg:shrink-0 lg:p-2 lg:bg-card lg:border lg:border-border lg:rounded-xl flex-wrap h-auto">
-          {adminTabs.map(t => (
+          {visibleAdminTabs.map(t => (
             <TabsTrigger
               key={t.value}
               value={t.value}
@@ -1188,6 +1212,7 @@ export default function Admin() {
         </TabsContent>
         </div>
       </Tabs>
+      )}
 
       <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
         <DialogContent>
