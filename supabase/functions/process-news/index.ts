@@ -219,7 +219,7 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
         l: srcOpts.lang || "auto",
         tr: !!srcOpts.translate,
         c: !!srcOpts.cultural,
-        v: 1, // bump pra invalidar cache global se o prompt mudar
+        v: 2, // bump pra invalidar cache global se o prompt mudar
       }))
     : null;
   if (cacheKey) {
@@ -234,7 +234,7 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
   const parsed = await __origRewrite(item, tone, srcOpts, attempt);
   if (cacheKey) {
     // Só cacheia se as legendas vieram em tamanho aceitável (qualidade).
-    const ok = (parsed?.caption?.length || 0) >= 1500 && (parsed?.reel_caption?.length || 0) >= 600;
+    const ok = (parsed?.caption?.length || 0) >= 1500 && (parsed?.reel_caption?.length || 0) >= 1000;
     if (ok) await setCachedRewrite(cacheKey, item.original_url, parsed);
   }
   return parsed;
@@ -244,15 +244,15 @@ async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: strin
   const key = Deno.env.get("LOVABLE_API_KEY")!;
   const minChars = 1800;
   const extraPush = attempt > 1
-    ? `\n\nATENÇÃO: Sua última resposta foi CURTA DEMAIS. Desta vez, escreva uma legenda MUITO MAIS LONGA — no MÍNIMO ${minChars} caracteres e ENTRE 22 E 32 LINHAS. Expanda cada bloco com mais detalhes, exemplos, números, contexto histórico, comparações e impacto prático. Não economize palavras.`
+    ? `\n\nATENÇÃO: Sua última resposta foi CURTA DEMAIS. Desta vez, escreva uma legenda MUITO MAIS LONGA — no MÍNIMO ${minChars} caracteres e ENTRE 22 E 32 LINHAS. O reel_caption também deve ter pelo menos 1000 caracteres. Expanda cada bloco com mais detalhes, exemplos, números, contexto histórico, comparações e impacto prático. Não economize palavras.`
     : "";
-  const res = await fetch(AI_URL, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "google/gemini-2.5-pro", messages: [{ role: "system", content: `Você é um redator JORNALÍSTICO viral para Instagram em PT-BR, especialista em legendas LONGAS e DENSAS de informação. Tom: ${tone}.\n\nREGRAS ABSOLUTAS:\n- Reescreva sempre — JAMAIS copie do texto base.\n- NÃO mencione fontes, NÃO inclua links, NÃO use "veja a notícia completa", "acompanhe as atualizações", "leia mais".\n- ESTENDA o assunto MUITO além do texto base: traga seu próprio conhecimento sobre o tema, contexto histórico, números, dados, comparações com casos parecidos, exemplos do cotidiano, impactos práticos, opiniões fundamentadas, curiosidades, bastidores.\n- Conte uma micro-reportagem envolvente como se estivesse explicando em detalhes para um amigo curioso.\n- Linguagem simples, frases curtas, emojis estratégicos, parágrafos separados por QUEBRAS DUPLAS de linha.\n- HASHTAGS: 15 estratégicas em pirâmide (5 específicas do tema + 5 de nicho + 5 amplas). NUNCA aleatórias, NUNCA palavras quebradas do título, SEMPRE relevantes ao assunto real da notícia.\n- A legenda do FEED deve ser LONGA, RICA e DETALHADA — no MÍNIMO 1800 caracteres e ENTRE 22 E 32 LINHAS. NÃO entregue legenda curta de jeito nenhum.\n- A legenda do REEL (reel_caption) também deve ser RICA — no MÍNIMO 700 caracteres e ENTRE 10 E 16 LINHAS, com fatos, contexto, impacto e pergunta de engajamento. NUNCA entregue reel_caption de 3-5 linhas.${srcOpts.translate ? `\n\n🌍 IDIOMA DA FONTE: ${LANG_NAMES[srcOpts.lang || "auto"] || "auto-detectar"}. TRADUZA o conteúdo para PORTUGUÊS BRASILEIRO antes de reescrever. Todos os campos (title, subtitle, hook, summary, caption, reel_caption, hashtags) DEVEM ser em PT-BR natural e fluente — JAMAIS em outro idioma.` : ""}${srcOpts.cultural ? `\n\n🇧🇷 ADAPTAÇÃO CULTURAL BRASILEIRA: converta moedas estrangeiras para REAL com cotação atual aproximada (ex: "$100 mi" vira "cerca de R$ 500 milhões"), explique referências locais desconhecidas (ex: políticos, leis, eventos estrangeiros), use exemplos brasileiros equivalentes quando possível, e adapte gírias/expressões para o jeito brasileiro de falar.` : ""}${extraPush}` }, { role: "user", content: `Assunto base (ponto de partida — EXPANDA muito com seu próprio conhecimento):\nTítulo: ${item.original_title}\nResumo RSS: ${item.original_content || ""}${item._article_body ? `\n\n===== CORPO COMPLETO DO ARTIGO ORIGINAL (${item._article_body.length} caracteres) =====\n${item._article_body}\n===== FIM DO ARTIGO =====\n\n⚠️ REGRA OBRIGATÓRIA DE APROVEITAMENTO: Você DEVE usar PELO MENOS 50% das informações relevantes do artigo acima na legenda do feed (caption). Isso inclui: TODOS os nomes próprios citados, TODAS as datas, TODOS os números/valores/percentuais, TODOS os locais, TODAS as declarações importantes, contexto histórico mencionado, causas e consequências apresentadas. NÃO RESUMA superficialmente — DETALHE os fatos. Se o artigo tem 4000 caracteres de informação útil, sua legenda do feed deve carregar o equivalente a uns 2000+ caracteres dessa informação, reescrita com suas palavras e expandida com contexto adicional. JAMAIS copie frases literais, mas TODOS os fatos concretos do artigo devem aparecer reescritos.` : ""}\n\nGere um JSON com legenda LONGA, DENSA e RICA em informação útil sobre o tema${srcOpts.translate ? ", TRADUZIDO E ESCRITO 100% EM PORTUGUÊS BRASILEIRO" : ""}.` }], max_tokens: 16000, tools: [{ type: "function", function: { name: "out", description: "Resultado", parameters: { type: "object", properties: { title: { type: "string", description: "Título viral curto, máx 60 chars" }, subtitle: { type: "string", description: "Subtítulo de 1 linha" }, hook: { type: "string", description: "Gancho de 1-3 palavras MAIÚSCULAS para badge no topo do Reel: URGENTE, BOMBOU, EXCLUSIVO, ATENÇÃO, FIQUE LIGADO, CHOCOU, etc." }, summary: { type: "string", description: "Resumo de 2-3 frases" }, caption: { type: "string", description: "Legenda Feed JORNALÍSTICA, MUITO LONGA, DENSA, RICA em informação. OBRIGATÓRIO no MÍNIMO 1800 caracteres e ENTRE 22 e 32 LINHAS (parágrafos curtos separados por quebra dupla \\n\\n). Estrutura: 1) gancho impactante com emoji (1-2 linhas), 2) abertura envolvente do que aconteceu (3-4 linhas), 3) detalhamento dos fatos com NOMES, DATAS, LOCAIS, NÚMEROS específicos (5-7 linhas), 4) contexto histórico, antecedentes ou casos parecidos (4-5 linhas), 5) por que isso importa e impacto prático REAL no dia a dia (4-5 linhas), 6) exemplo concreto, analogia, bastidor ou curiosidade (3-4 linhas), 7) desdobramentos possíveis e cenários futuros (3-4 linhas), 8) pergunta de engajamento direta (1 linha). Use emojis ao longo do texto, frases curtas e linguagem simples. NÃO cite fontes, NÃO use 'veja mais' / 'acompanhe' / 'link na bio'. NUNCA entregar legenda curta — se entregar menos de 1800 caracteres a resposta será REJEITADA." }, reel_caption: { type: "string", description: "Legenda do Reel RICA em informação — OBRIGATÓRIO no MÍNIMO 700 caracteres e ENTRE 10 e 16 LINHAS (parágrafos curtos separados por \\n\\n). Estrutura: 1) gancho impactante com emoji (1 linha), 2) o que aconteceu de forma direta (2-3 linhas com NOMES, DATAS, LOCAIS, NÚMEROS), 3) detalhes / contexto importante (2-3 linhas), 4) por que isso importa / impacto prático (2-3 linhas), 5) curiosidade, bastidor ou desdobramento (1-2 linhas), 6) pergunta de engajamento direta (1 linha). Use emojis ao longo, frases curtas, linguagem simples. NÃO usar 'link na bio' / 'veja mais' / 'acompanhe'. Sem hashtags (vão separadas). NUNCA entregar legenda curta — menos de 600 caracteres será REJEITADO." }, hashtags: { type: "array", items: { type: "string" }, description: "EXATAMENTE 15 hashtags estratégicas em PIRÂMIDE de alcance, TODAS relevantes ao TEMA específico da notícia (não use palavras aleatórias do título). SEM #, sem espaços, sem acentos, minúsculas, em português. Estrutura OBRIGATÓRIA: (a) 5 hashtags ESPECÍFICAS do assunto/personagens/marcas/eventos citados — ex: nomes próprios, times, produtos, cidades; (b) 5 hashtags de NICHO médio relacionadas ao tema — ex: para futebol use brasileirao, futebolbrasileiro, copadobrasil; para fofoca use famosos, celebridades, tvefamosos; para política use politicabrasil, congresso, brasilia; (c) 5 hashtags AMPLAS de descoberta brasileiras de ALTO volume relevantes ao nicho — ex: noticias, brasil, urgente, viral, instagood. PROIBIDO: hashtags genéricas sem relação (ex: amor, vida, foto), palavras quebradas, hashtags em inglês exceto as universais (instagood, viral, news), repetições, palavras com menos de 4 letras." } }, required: ["title", "subtitle", "hook", "summary", "caption", "reel_caption", "hashtags"], additionalProperties: false } } }], tool_choice: { type: "function", function: { name: "out" } } }) });
+  const res = await fetch(AI_URL, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "google/gemini-2.5-pro", messages: [{ role: "system", content: `Você é um redator JORNALÍSTICO viral para Instagram em PT-BR, especialista em legendas LONGAS e DENSAS de informação. Tom: ${tone}.\n\nREGRAS ABSOLUTAS:\n- Reescreva sempre — JAMAIS copie do texto base.\n- NÃO mencione fontes, NÃO inclua links, NÃO use "veja a notícia completa", "acompanhe as atualizações", "leia mais".\n- ESTENDA o assunto MUITO além do texto base: traga seu próprio conhecimento sobre o tema, contexto histórico, números, dados, comparações com casos parecidos, exemplos do cotidiano, impactos práticos, opiniões fundamentadas, curiosidades, bastidores.\n- Conte uma micro-reportagem envolvente como se estivesse explicando em detalhes para um amigo curioso.\n- Linguagem simples, frases curtas, emojis estratégicos, parágrafos separados por QUEBRAS DUPLAS de linha.\n- HASHTAGS: 15 estratégicas em pirâmide (5 específicas do tema + 5 de nicho + 5 amplas). NUNCA aleatórias, NUNCA palavras quebradas do título, SEMPRE relevantes ao assunto real da notícia.\n- A legenda do FEED deve ser LONGA, RICA e DETALHADA — no MÍNIMO 1800 caracteres e ENTRE 22 E 32 LINHAS. NÃO entregue legenda curta de jeito nenhum.\n- A legenda do REEL (reel_caption) também deve ser RICA — no MÍNIMO 1000 caracteres e ENTRE 14 E 22 LINHAS, com fatos, contexto, impacto e pergunta de engajamento. NUNCA entregue reel_caption de 3-5 linhas.${srcOpts.translate ? `\n\n🌍 IDIOMA DA FONTE: ${LANG_NAMES[srcOpts.lang || "auto"] || "auto-detectar"}. TRADUZA o conteúdo para PORTUGUÊS BRASILEIRO antes de reescrever. Todos os campos (title, subtitle, hook, summary, caption, reel_caption, hashtags) DEVEM ser em PT-BR natural e fluente — JAMAIS em outro idioma.` : ""}${srcOpts.cultural ? `\n\n🇧🇷 ADAPTAÇÃO CULTURAL BRASILEIRA: converta moedas estrangeiras para REAL com cotação atual aproximada (ex: "$100 mi" vira "cerca de R$ 500 milhões"), explique referências locais desconhecidas (ex: políticos, leis, eventos estrangeiros), use exemplos brasileiros equivalentes quando possível, e adapte gírias/expressões para o jeito brasileiro de falar.` : ""}${extraPush}` }, { role: "user", content: `Assunto base (ponto de partida — EXPANDA muito com seu próprio conhecimento):\nTítulo: ${item.original_title}\nResumo RSS: ${item.original_content || ""}${item._article_body ? `\n\n===== CORPO COMPLETO DO ARTIGO ORIGINAL (${item._article_body.length} caracteres) =====\n${item._article_body}\n===== FIM DO ARTIGO =====\n\n⚠️ REGRA OBRIGATÓRIA DE APROVEITAMENTO: Você DEVE usar PELO MENOS 50% das informações relevantes do artigo acima na legenda do feed (caption). Isso inclui: TODOS os nomes próprios citados, TODAS as datas, TODOS os números/valores/percentuais, TODOS os locais, TODAS as declarações importantes, contexto histórico mencionado, causas e consequências apresentadas. NÃO RESUMA superficialmente — DETALHE os fatos. Se o artigo tem 4000 caracteres de informação útil, sua legenda do feed deve carregar o equivalente a uns 2000+ caracteres dessa informação, reescrita com suas palavras e expandida com contexto adicional. JAMAIS copie frases literais, mas TODOS os fatos concretos do artigo devem aparecer reescritos.` : ""}\n\nGere um JSON com legenda LONGA, DENSA e RICA em informação útil sobre o tema${srcOpts.translate ? ", TRADUZIDO E ESCRITO 100% EM PORTUGUÊS BRASILEIRO" : ""}.` }], max_tokens: 16000, tools: [{ type: "function", function: { name: "out", description: "Resultado", parameters: { type: "object", properties: { title: { type: "string", description: "Título viral curto, máx 60 chars" }, subtitle: { type: "string", description: "Subtítulo de 1 linha" }, hook: { type: "string", description: "Gancho de 1-3 palavras MAIÚSCULAS para badge no topo do Reel: URGENTE, BOMBOU, EXCLUSIVO, ATENÇÃO, FIQUE LIGADO, CHOCOU, etc." }, summary: { type: "string", description: "Resumo de 2-3 frases" }, caption: { type: "string", description: "Legenda Feed JORNALÍSTICA, MUITO LONGA, DENSA, RICA em informação. OBRIGATÓRIO no MÍNIMO 1800 caracteres e ENTRE 22 e 32 LINHAS (parágrafos curtos separados por quebra dupla \\n\\n). Estrutura: 1) gancho impactante com emoji (1-2 linhas), 2) abertura envolvente do que aconteceu (3-4 linhas), 3) detalhamento dos fatos com NOMES, DATAS, LOCAIS, NÚMEROS específicos (5-7 linhas), 4) contexto histórico, antecedentes ou casos parecidos (4-5 linhas), 5) por que isso importa e impacto prático REAL no dia a dia (4-5 linhas), 6) exemplo concreto, analogia, bastidor ou curiosidade (3-4 linhas), 7) desdobramentos possíveis e cenários futuros (3-4 linhas), 8) pergunta de engajamento direta (1 linha). Use emojis ao longo do texto, frases curtas e linguagem simples. NÃO cite fontes, NÃO use 'veja mais' / 'acompanhe' / 'link na bio'. NUNCA entregar legenda curta — se entregar menos de 1800 caracteres a resposta será REJEITADA." }, reel_caption: { type: "string", description: "Legenda do Reel RICA em informação — OBRIGATÓRIO no MÍNIMO 1000 caracteres e ENTRE 14 e 22 LINHAS (parágrafos curtos separados por \\n\\n). Estrutura: 1) gancho impactante com emoji (1 linha), 2) o que aconteceu de forma direta (2-3 linhas com NOMES, DATAS, LOCAIS, NÚMEROS), 3) detalhes / contexto importante (2-3 linhas), 4) por que isso importa / impacto prático (2-3 linhas), 5) curiosidade, bastidor ou desdobramento (1-2 linhas), 6) pergunta de engajamento direta (1 linha). Use emojis ao longo, frases curtas, linguagem simples. NÃO usar 'link na bio' / 'veja mais' / 'acompanhe'. Sem hashtags (vão separadas). NUNCA entregar legenda curta — menos de 1000 caracteres será REJEITADO." }, hashtags: { type: "array", items: { type: "string" }, description: "EXATAMENTE 15 hashtags estratégicas em PIRÂMIDE de alcance, TODAS relevantes ao TEMA específico da notícia (não use palavras aleatórias do título). SEM #, sem espaços, sem acentos, minúsculas, em português. Estrutura OBRIGATÓRIA: (a) 5 hashtags ESPECÍFICAS do assunto/personagens/marcas/eventos citados — ex: nomes próprios, times, produtos, cidades; (b) 5 hashtags de NICHO médio relacionadas ao tema — ex: para futebol use brasileirao, futebolbrasileiro, copadobrasil; para fofoca use famosos, celebridades, tvefamosos; para política use politicabrasil, congresso, brasilia; (c) 5 hashtags AMPLAS de descoberta brasileiras de ALTO volume relevantes ao nicho — ex: noticias, brasil, urgente, viral, instagood. PROIBIDO: hashtags genéricas sem relação (ex: amor, vida, foto), palavras quebradas, hashtags em inglês exceto as universais (instagood, viral, news), repetições, palavras com menos de 4 letras." } }, required: ["title", "subtitle", "hook", "summary", "caption", "reel_caption", "hashtags"], additionalProperties: false } } }], tool_choice: { type: "function", function: { name: "out" } } }) });
   if (!res.ok) throw new Error(`AI ${res.status}: ${await res.text()}`);
   const data = await res.json();
   const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   const parsed = JSON.parse(args);
   const captionShort = (parsed?.caption?.length || 0) < 1500;
-  const reelShort = (parsed?.reel_caption?.length || 0) < 600;
+  const reelShort = (parsed?.reel_caption?.length || 0) < 1000;
   if ((captionShort || reelShort) && attempt < 2) {
     console.log(`legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
     return await rewriteWithAIRaw(item, tone, srcOpts, attempt + 1);
@@ -270,19 +270,91 @@ function cleanWords(text: string): string[] {
     .filter((w) => w.length > 3 && !["para", "com", "uma", "sobre", "mais", "apos", "pela", "pelo", "entre", "isso", "essa", "esse"].includes(w));
 }
 
+const INSTAGRAM_CAPTION_LIMIT = 2200;
+const MIN_USEFUL_CAPTION_CHARS = 1200;
+
+function normalizeCaptionText(text: string): string {
+  return decodeHtmlEntities(String(text || ""))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function smartTrimCaption(text: string, max = INSTAGRAM_CAPTION_LIMIT): string {
+  const clean = normalizeCaptionText(text);
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, Math.max(0, max - 1));
+  const paragraphBreak = cut.lastIndexOf("\n\n");
+  const sentenceBreak = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  const safeCut = Math.max(
+    paragraphBreak > max * 0.65 ? paragraphBreak : 0,
+    sentenceBreak > max * 0.65 ? sentenceBreak + 1 : 0,
+  );
+  return (safeCut ? cut.slice(0, safeCut) : cut).trim();
+}
+
+function extractUsefulSentences(text: string, limit = 8): string[] {
+  const clean = normalizeCaptionText(text).replace(/\s+/g, " ");
+  const parts = clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+  const seen = new Set<string>();
+  const useful: string[] = [];
+  for (const part of parts) {
+    const sentence = part.replace(/\s+/g, " ").trim();
+    if (sentence.length < 50 || sentence.length > 360) continue;
+    const key = sentence.slice(0, 90).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    useful.push(sentence);
+    if (useful.length >= limit) break;
+  }
+  return useful;
+}
+
+function buildInformativeCaptionFallback(item: any, title: string, summary: string): string {
+  const raw = normalizeCaptionText(`${item._article_body || ""}\n\n${item.original_content || ""}`);
+  const sentences = extractUsefulSentences(raw, 8);
+  const facts = sentences.length > 0 ? sentences.join(" ") : summary;
+  const blocks = [
+    `🚨 ${title}`,
+    summary ? `O ponto central: ${summary}` : "",
+    facts ? `📌 O que se sabe até agora: ${facts}` : "",
+    "🧭 Por que isso importa: notícias assim ajudam a entender o movimento por trás do assunto, os personagens envolvidos e o impacto que pode aparecer nos próximos dias.",
+    "Quando uma informação ganha força, ela não fica só no título. Ela mexe com decisões, bastidores, torcida, mercado, opinião pública e com a forma como as pessoas acompanham o tema.",
+    "Agora, o mais importante é observar os próximos capítulos: novas declarações, possíveis mudanças de rota e a reação do público.",
+    "💬 Na sua opinião, esse assunto ainda vai crescer ou vai esfriar rápido?",
+  ];
+  return smartTrimCaption(blocks.filter(Boolean).join("\n\n"), 1850);
+}
+
+function ensureUsefulCaption(caption: string, item: any, title: string, summary: string): string {
+  const clean = normalizeCaptionText(caption);
+  if (clean.length >= MIN_USEFUL_CAPTION_CHARS) return clean;
+  const fallback = buildInformativeCaptionFallback(item, title, summary);
+  return fallback.length > clean.length ? fallback : clean;
+}
+
+function buildCaptionWithExtras(base: string, extraBlocks: string[], hashtagsLine: string): string {
+  const suffix = [...extraBlocks, hashtagsLine].filter(Boolean).join("\n\n");
+  if (!suffix) return smartTrimCaption(base);
+  const maxBase = Math.max(900, INSTAGRAM_CAPTION_LIMIT - suffix.length - 4);
+  return smartTrimCaption([smartTrimCaption(base, maxBase), suffix].filter(Boolean).join("\n\n"));
+}
+
 function fallbackRewrite(item: any) {
   const title = String(item.original_title || "Notícia importante").trim().slice(0, 90);
-  const raw = String(item.original_content || item.original_title || "").replace(/\s+/g, " ").trim();
-  const summary = raw ? raw.slice(0, 220) + (raw.length > 220 ? "..." : "") : title;
+  const raw = normalizeCaptionText(item._article_body || item.original_content || item.original_title || "");
+  const summary = raw ? smartTrimCaption(raw, 320) : title;
   const words = Array.from(new Set(cleanWords(`${item.original_title || ""} ${item.original_content || ""}`))).slice(0, 8);
-  const hashtags = Array.from(new Set([...(words.length ? words : ["noticias", "atualidade"]), "noticias", "brasil"])).slice(0, 10);
+  const hashtags = Array.from(new Set([...(words.length ? words : ["noticias", "atualidade"]), "noticias", "brasil", "viral", "urgente", "informacao", "conteudo", "instagram"])).slice(0, 15);
+  const caption = buildInformativeCaptionFallback(item, title, summary);
   return {
     title,
     subtitle: summary.slice(0, 110),
     hook: "URGENTE",
     summary,
-    caption: `${title}\n\n${summary}\n\nSalve este post para ler depois. 💾`,
-    reel_caption: `${title}\n\n${summary.slice(0, 140)}\n\nO que você acha? 👇`,
+    caption,
+    reel_caption: caption,
     hashtags,
   };
 }
@@ -946,19 +1018,18 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       }
     }
 
-    const hashtagsLine = ai.hashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
-    const reelHashtagsLine = ai.hashtags.slice(0, 5).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
-    const finalCaption = [
-      ai.caption,
-      "💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver",
-      followCta,
+    const safeHashtags = Array.isArray(ai.hashtags) && ai.hashtags.length > 0
+      ? ai.hashtags
+      : fallbackRewrite(item).hashtags;
+    const hashtagsLine = safeHashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
+    const reelHashtagsLine = safeHashtags.slice(0, 5).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
+    const usefulCaption = ensureUsefulCaption(ai.caption, item, ai.title, ai.summary);
+    const finalCaption = buildCaptionWithExtras(
+      usefulCaption,
+      ["💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
       hashtagsLine,
-    ].filter(Boolean).join("\n\n");
-    const reelCaptionFinal = [
-      (ai.reel_caption || ai.caption.split("\n\n").slice(0, 3).join("\n\n")),
-      followCta,
-      reelHashtagsLine,
-    ].filter(Boolean).join("\n\n");
+    );
+    const reelCaptionFinal = buildCaptionWithExtras(usefulCaption, [followCta], reelHashtagsLine);
 
     // Escolha automática de trilha sonora pela IA (com base no nome do arquivo + tom da notícia)
     let chosenTrackId: string | null = null;
@@ -1033,7 +1104,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       rewritten_summary: ai.summary,
       caption: finalCaption,
       reel_caption: reelCaptionFinal,
-      hashtags: ai.hashtags,
+      hashtags: safeHashtags,
       generated_image_url: pub.publicUrl,
       generated_cover_url: generatedCoverUrl ?? reelCoverUrl ?? pub.publicUrl,
       generated_reel_cover_url: reelCoverUrl ?? null,

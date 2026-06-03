@@ -955,9 +955,7 @@ Deno.serve(async (req) => {
           });
           continue;
         }
-        const captionToUse = mediaType === "reel"
-          ? (news.reel_caption || news.caption || news.rewritten_title || "")
-          : (news.caption || news.rewritten_title || "");
+        const captionToUse = news.caption || news.reel_caption || news.rewritten_title || "";
         const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
         const mediaId = await publishToInstagram(acc.ig_user_id, acc.access_token, mediaUrl, captionToUse, mediaType, isVideo, usageCtx);
         if (fellBackToFeed) {
