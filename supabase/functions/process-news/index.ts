@@ -998,8 +998,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       console.warn("[editorial] Reel cover falhou (não fatal):", e instanceof Error ? e.message : e);
     }
 
-    // pub.publicUrl agora aponta para a foto crua (compatibilidade)
-    const pub = rawPub;
+    const feedImageUrl = generatedCoverUrl || rawPub.publicUrl;
 
     const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
     const followCta = handle ? `👉 SIGA @${handle} para mais notícias do dia` : "";
@@ -1105,8 +1104,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       caption: finalCaption,
       reel_caption: reelCaptionFinal,
       hashtags: safeHashtags,
-      generated_image_url: pub.publicUrl,
-      generated_cover_url: generatedCoverUrl ?? reelCoverUrl ?? pub.publicUrl,
+      generated_image_url: feedImageUrl,
+      generated_cover_url: generatedCoverUrl ?? reelCoverUrl ?? null,
       generated_reel_cover_url: reelCoverUrl ?? null,
       editorial_ready: editorialReady,
       image_style: usedFallback ? "template" : image_style,

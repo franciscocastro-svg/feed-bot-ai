@@ -701,9 +701,10 @@ Deno.serve(async (req) => {
           ? !!(news?.generated_video_url || news?.generated_cover_url || news?.generated_image_url)
           : !!(news?.generated_image_url || news?.generated_cover_url);
 
-      // Antes do prazo: exige editorial_ready (arte caprichada pronta).
-      // Depois do prazo: aceita qualquer mídia disponível.
-      const ready = useFallback ? hasMedia : (news?.editorial_ready && hasMedia);
+      // Feed nunca publica foto crua: precisa da arte editorial/template pronta.
+      // Stories/Reels ainda podem usar fallback depois da janela para não travar.
+      const allowRawFallback = mt !== "feed";
+      const ready = (allowRawFallback && useFallback) ? hasMedia : (news?.editorial_ready && hasMedia);
       if (!ready) {
         skippedNotReady.push(p);
         continue;
@@ -761,7 +762,7 @@ Deno.serve(async (req) => {
         );
         await supabase.from("scheduled_posts").update({
           scheduled_for: new Date(slot).toISOString(),
-          error_message: "Aguardando geração da arte/vídeo (abra o painel para acelerar; fallback automático em até 15 min)",
+          error_message: "Aguardando geração da arte/vídeo com template",
         }).eq("id", skippedNotReady[i].id);
         takenTimes.push(slot);
         takenTimes.sort((a, b) => a - b);
@@ -935,18 +936,19 @@ Deno.serve(async (req) => {
           if (news?.generated_video_url) { mediaUrl = news.generated_video_url; isVideo = true; }
           else { mediaUrl = news?.generated_cover_url || news?.generated_image_url; isVideo = false; }
         } else {
-          mediaUrl = news?.generated_image_url || news?.generated_cover_url;
+          mediaUrl = news?.generated_cover_url || news?.generated_image_url;
         }
-        // Se ainda estamos DENTRO da janela e a arte editorial não está pronta,
-        // adia 3 min. Fora da janela, prosseguimos com o que houver (foto crua).
+        // Feed nunca publica foto crua: precisa da arte/template pronta.
+        // Reels/Stories podem usar fallback depois da janela para não travar.
         const editorialReady = !!news?.editorial_ready;
-        if (!mediaUrl || (!editorialReady && !pastFallbackWindow)) {
+        const allowRawFallback = mediaType !== "feed" || fellBackToFeed;
+        if (!mediaUrl || (!editorialReady && !(allowRawFallback && pastFallbackWindow))) {
           const next = new Date(Date.now() + minIntervalMin * 60_000).toISOString();
           await supabase.from("scheduled_posts").update({
             status: "scheduled",
             scheduled_for: next,
             error_message: !editorialReady
-              ? "Aguardando geração da arte editorial (fallback automático em até 15 min)"
+              ? "Aguardando geração da arte editorial/template"
               : "Aguardando mídia",
           }).eq("id", p.id);
           await supabase.from("activity_logs").insert({

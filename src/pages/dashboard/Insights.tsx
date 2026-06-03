@@ -20,7 +20,7 @@ type Post = {
   impressions: number | null;
   insights_updated_at: string | null;
   instagram_account_id: string | null;
-  news_items?: { rewritten_title: string | null; original_title: string; generated_image_url: string | null } | null;
+  news_items?: { rewritten_title: string | null; original_title: string; generated_image_url: string | null; generated_cover_url: string | null } | null;
 };
 
 const fmt = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR"));
@@ -46,7 +46,7 @@ export default function Insights() {
     setLoading(true);
     const { data } = await supabase
       .from("scheduled_posts")
-      .select("id, posted_at, ig_media_id, permalink, media_type, reach, likes, comments, saves, impressions, insights_updated_at, instagram_account_id, news_items(rewritten_title, original_title, generated_image_url)")
+      .select("id, posted_at, ig_media_id, permalink, media_type, reach, likes, comments, saves, impressions, insights_updated_at, instagram_account_id, news_items(rewritten_title, original_title, generated_image_url, generated_cover_url)")
       .eq("status", "posted")
       .not("ig_media_id", "is", null)
       .order("posted_at", { ascending: false })
@@ -246,8 +246,8 @@ export default function Insights() {
             {topPosts.map((p, i) => (
               <div key={p.id} className="flex gap-4 items-center">
                 <div className="w-6 text-center font-bold text-muted-foreground tabular-nums">{i + 1}</div>
-                {p.news_items?.generated_image_url && (
-                  <img src={p.news_items.generated_image_url} alt="" className="w-16 h-16 rounded object-cover" />
+                {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) && (
+                  <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" className="w-16 h-16 rounded object-cover" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.news_items?.rewritten_title || p.news_items?.original_title}</p>
@@ -276,8 +276,8 @@ export default function Insights() {
                 const eng = p.reach && p.reach > 0 ? +(((((p.likes||0)+(p.comments||0)+(p.saves||0))/p.reach)*100).toFixed(1)) : null;
                 return (
                 <div key={p.id} className="p-4 flex items-center gap-4">
-                  {p.news_items?.generated_image_url ? (
-                    <img src={p.news_items.generated_image_url} alt="" className="w-14 h-14 rounded object-cover shrink-0" />
+                  {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) ? (
+                    <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" className="w-14 h-14 rounded object-cover shrink-0" />
                   ) : (
                     <div className="w-14 h-14 rounded bg-secondary shrink-0" />
                   )}

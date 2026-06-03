@@ -278,6 +278,7 @@ export default function News() {
     if (selected.size === filtered.length) setSelected(new Set());
     else setSelected(new Set(filtered.map(i => i.id)));
   };
+  const previewImageUrl = previewing?.generated_cover_url || previewing?.generated_image_url;
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-6xl">
@@ -411,9 +412,9 @@ export default function News() {
       <Dialog open={!!previewing} onOpenChange={v => !v && setPreviewing(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Pré-visualização</DialogTitle><DialogDescription>Como o post vai aparecer no Instagram (1080×1080).</DialogDescription></DialogHeader>
-          {previewing?.generated_image_url && (
+          {previewImageUrl && (
             <div className="space-y-4">
-              <img src={previewing.generated_image_url} alt="" className="w-full rounded-lg border" />
+              <img src={previewImageUrl} alt="" className="w-full rounded-lg border" />
               {previewing.caption && (
                 <div className="text-sm whitespace-pre-wrap p-4 rounded-lg bg-muted/30 border">
                   <p className="font-medium text-xs text-muted-foreground mb-2">Legenda:</p>

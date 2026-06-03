@@ -75,7 +75,7 @@ export default function Overview() {
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).gte("posted_at", startToday.toISOString()),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).gte("posted_at", startYesterday.toISOString()).lt("posted_at", startToday.toISOString()),
         supabase.from("scheduled_posts").select("posted_at, status").gte("posted_at", start7d.toISOString()).not("posted_at", "is", null),
-        supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url)").in("status", ["scheduled", "posting", "awaiting_container"]).order("scheduled_for", { ascending: true }).limit(4),
+        supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url, generated_cover_url)").in("status", ["scheduled", "posting", "awaiting_container"]).order("scheduled_for", { ascending: true }).limit(4),
         supabase.from("instagram_accounts").select("*"),
         supabase.from("user_settings").select("auto_approve").maybeSingle(),
       ]);
@@ -259,7 +259,7 @@ export default function Overview() {
               <div className="divide-y divide-border/60">
                 {queue.map((q) => {
                   const title = q.news_items?.rewritten_title || q.news_items?.original_title || "Sem título";
-                  const img = q.news_items?.generated_image_url;
+                  const img = q.news_items?.generated_cover_url || q.news_items?.generated_image_url;
                   const when = new Date(q.scheduled_for);
                   const timeStr = when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
                   return (
