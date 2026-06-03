@@ -159,6 +159,30 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_permissions: {
+        Row: {
+          created_at: string
+          full_access: boolean
+          sections: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_access?: boolean
+          sections?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_access?: boolean
+          sections?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_rewrite_cache: {
         Row: {
           cache_key: string
@@ -1337,6 +1361,7 @@ export type Database = {
     }
     Functions: {
       admin_get_user_details: { Args: { _uid: string }; Returns: Json }
+      admin_has_permission: { Args: { _section: string }; Returns: boolean }
       admin_overview: {
         Args: never
         Returns: {
@@ -1363,6 +1388,7 @@ export type Database = {
         Args: { _resource: string; _user_id: string }
         Returns: Json
       }
+      can_manage_admin_permissions: { Args: never; Returns: boolean }
       check_and_increment_usage: {
         Args: { _resource: string; _user_id: string }
         Returns: Json
@@ -1496,6 +1522,15 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_approved: { Args: { _uid: string }; Returns: boolean }
+      set_admin_permissions: {
+        Args: {
+          _full_access?: boolean
+          _is_admin: boolean
+          _sections?: string[]
+          _target_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"

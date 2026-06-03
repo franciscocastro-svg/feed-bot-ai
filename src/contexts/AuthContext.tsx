@@ -76,8 +76,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      setAdminFullAccess(permissions?.full_access ?? true);
-      setAdminPermissions((permissions?.sections as string[] | null) || [...ALL_ADMIN_PERMISSION_KEYS]);
+      const perm = permissions as { full_access?: boolean; sections?: string[] | null } | null;
+      setAdminFullAccess(perm?.full_access ?? true);
+      setAdminPermissions(perm?.sections || [...ALL_ADMIN_PERMISSION_KEYS]);
     })();
   }, [session?.user?.id]);
 
