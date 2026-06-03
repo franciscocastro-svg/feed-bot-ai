@@ -6,6 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function isPrivateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^169\.254\./.test(host) || /^192\.168\./.test(host)) return true;
+  const match172 = host.match(/^172\.(\d+)\./);
+  if (match172) {
+    const n = Number(match172[1]);
+    if (n >= 16 && n <= 31) return true;
+  }
+  return false;
+}
+
+function assertSafeHttpUrl(raw: string): string {
+  const url = new URL(raw);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("URL precisa usar http ou https");
+  if (isPrivateHostname(url.hostname)) throw new Error("URL privada/local não permitida");
+  url.username = "";
+  url.password = "";
+  return url.toString();
+}
+
 function decodeEntities(s: string): string {
   if (!s) return s;
   return s
@@ -20,7 +42,8 @@ function decodeEntities(s: string): string {
 }
 
 async function fetchXmlSmart(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": "NewsFlow/1.0" } });
+  const safeUrl = assertSafeHttpUrl(url);
+  const res = await fetch(safeUrl, { headers: { "User-Agent": "NewsFlow/1.0" }, signal: AbortSignal.timeout(15000) });
   const buf = new Uint8Array(await res.arrayBuffer());
   // tenta detectar charset via header HTTP
   const ct = res.headers.get("content-type") || "";
@@ -138,13 +161,17 @@ function extractAllCandidates(html: string): string[] {
 
 async function findArticleImage(pageUrl: string): Promise<string | null> {
   try {
-    const r = await fetch(pageUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsFlow/1.0)" } });
+    const safePageUrl = assertSafeHttpUrl(pageUrl);
+    const r = await fetch(safePageUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsFlow/1.0)" }, signal: AbortSignal.timeout(15000) });
     if (!r.ok) return null;
     const html = await r.text();
-    const origin = new URL(pageUrl).origin;
+    const origin = new URL(safePageUrl).origin;
     const candidates = extractAllCandidates(html)
       .map(u => u.startsWith("//") ? "https:" + u : u.startsWith("/") ? origin + u : u)
       .filter(u => /^https?:\/\//i.test(u))
+      .filter(u => {
+        try { assertSafeHttpUrl(u); return true; } catch { return false; }
+      })
       .filter(u => !isLikelyLogo(u));
     return candidates[0] || null;
   } catch { return null; }

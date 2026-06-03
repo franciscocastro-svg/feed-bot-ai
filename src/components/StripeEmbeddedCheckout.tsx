@@ -7,17 +7,15 @@ interface Props {
   customerEmail?: string;
   userId?: string;
   returnUrl?: string;
-  trialDays?: number;
 }
 
-export function StripeEmbeddedCheckout({ priceId, customerEmail, userId, returnUrl, trialDays = 7 }: Props) {
+export function StripeEmbeddedCheckout({ priceId, customerEmail, userId, returnUrl }: Props) {
   const fetchClientSecret = async (): Promise<string> => {
     const { data, error } = await supabase.functions.invoke("create-checkout", {
       body: {
         priceId,
         customerEmail,
         userId,
-        trialDays,
         returnUrl: returnUrl || `${window.location.origin}/checkout/return?session_id={CHECKOUT_SESSION_ID}`,
         environment: getStripeEnvironment(),
       },

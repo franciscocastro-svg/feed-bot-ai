@@ -58,6 +58,28 @@ const corsHeaders = {
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
+function isPrivateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^169\.254\./.test(host) || /^192\.168\./.test(host)) return true;
+  const match172 = host.match(/^172\.(\d+)\./);
+  if (match172) {
+    const n = Number(match172[1]);
+    if (n >= 16 && n <= 31) return true;
+  }
+  return false;
+}
+
+function assertSafeHttpUrl(raw: string): string {
+  const url = new URL(raw);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("URL precisa usar http ou https");
+  if (isPrivateHostname(url.hostname)) throw new Error("URL privada/local não permitida");
+  url.username = "";
+  url.password = "";
+  return url.toString();
+}
+
 // Client de service-role pro cache de reescrita (acesso restrito).
 // Reaproveitar reescritas entre usuários economiza 40-70% de chamadas IA caras.
 let _cacheClient: any = null;
@@ -123,7 +145,8 @@ const LANG_NAMES: Record<string, string> = {
 
 async function fetchArticleBody(url: string): Promise<string> {
   try {
-    const r = await fetch(url, {
+    const safeUrl = assertSafeHttpUrl(url);
+    const r = await fetch(safeUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml",
@@ -407,11 +430,12 @@ function wrapText(text: string, maxChars: number): string[] {
 
 async function tryFetchImage(url: string): Promise<{ buf: Uint8Array; ct: string } | null> {
   try {
-    const r = await fetch(url, {
+    const safeUrl = assertSafeHttpUrl(url);
+    const r = await fetch(safeUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "Referer": new URL(url).origin + "/",
+        "Referer": new URL(safeUrl).origin + "/",
       },
     });
     if (!r.ok) return null;
@@ -429,6 +453,11 @@ async function fetchAsDataUrl(url: string): Promise<string | null> {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .trim();
+  try {
+    assertSafeHttpUrl(cleanUrl);
+  } catch {
+    return null;
+  }
   // 1) tenta direto
   let res = await tryFetchImage(cleanUrl);
   // 2) fallback via proxy weserv.nl (resolve 403/hotlink-block)
@@ -453,10 +482,11 @@ function isLikelyLogo(url: string): boolean {
 
 async function findOgImage(pageUrl: string): Promise<string | null> {
   try {
-    const r = await fetch(pageUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const safePageUrl = assertSafeHttpUrl(pageUrl);
+    const r = await fetch(safePageUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15000) });
     if (!r.ok) return null;
     const html = await r.text();
-    const origin = new URL(pageUrl).origin;
+    const origin = new URL(safePageUrl).origin;
     const candidates: string[] = [];
     const push = (u?: string | null) => { if (u && typeof u === "string" && !candidates.includes(u)) candidates.push(u); };
 
@@ -502,6 +532,9 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
     const filtered = candidates
       .map(u => u.startsWith("//") ? "https:" + u : u.startsWith("/") ? origin + u : u)
       .filter(u => /^https?:\/\//i.test(u))
+      .filter(u => {
+        try { assertSafeHttpUrl(u); return true; } catch { return false; }
+      })
       .filter(u => !isLikelyLogo(u));
     return filtered[0] || null;
   } catch { return null; }
@@ -853,9 +886,14 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
 
     if (!rawPhotoBytes && photoUrl) {
       const cleanUrl = photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim();
-      const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1080&h=1080&fit=cover&output=jpg&q=85`;
-      const r = await fetch(proxied);
-      if (r.ok) rawPhotoBytes = new Uint8Array(await r.arrayBuffer());
+      try {
+        assertSafeHttpUrl(cleanUrl);
+        const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1080&h=1080&fit=cover&output=jpg&q=85`;
+        const r = await fetch(proxied);
+        if (r.ok) rawPhotoBytes = new Uint8Array(await r.arrayBuffer());
+      } catch {
+        console.warn("[image-fetch] URL de imagem bloqueada por segurança");
+      }
     }
 
     if (!rawPhotoBytes) {
@@ -884,7 +922,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     let logoDataUrl: string | null = null;
     if (settings?.brand_logo_url) {
       try {
-        const lr = await fetch(settings.brand_logo_url);
+        const safeLogoUrl = assertSafeHttpUrl(settings.brand_logo_url);
+        const lr = await fetch(safeLogoUrl);
         if (lr.ok) {
           const lbuf = new Uint8Array(await lr.arrayBuffer());
           const lct = lr.headers.get("content-type") || "image/png";

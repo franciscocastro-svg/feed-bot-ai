@@ -279,7 +279,6 @@ export default function Pricing() {
               priceId={selectedPriceId}
               customerEmail={user?.email || undefined}
               userId={user?.id}
-              trialDays={7}
             />
           )}
         </DialogContent>

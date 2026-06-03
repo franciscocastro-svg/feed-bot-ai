@@ -6,6 +6,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function allowedOrigins(): string[] {
+  return [
+    "https://feed-bot-ai.lovable.app",
+    Deno.env.get("APP_ORIGIN") || "",
+    Deno.env.get("PUBLIC_APP_URL") || "",
+  ].filter(Boolean);
+}
+
+function safeReturnUrl(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (allowedOrigins().some((origin) => url.origin === origin)) return url.toString();
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url.origin)) return url.toString();
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -21,6 +41,7 @@ Deno.serve(async (req) => {
 
     const { returnUrl, environment } = await req.json();
     const env: StripeEnv = environment === "live" ? "live" : "sandbox";
+    const portalReturnUrl = safeReturnUrl(returnUrl);
 
     const { data: sub } = await supabase
       .from("user_subscriptions")
@@ -35,7 +56,7 @@ Deno.serve(async (req) => {
     const stripe = createStripeClient(env);
     const portal = await stripe.billingPortal.sessions.create({
       customer: sub.stripe_customer_id,
-      ...(returnUrl && { return_url: returnUrl }),
+      ...(portalReturnUrl && { return_url: portalReturnUrl }),
     });
     return new Response(JSON.stringify({ url: portal.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

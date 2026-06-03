@@ -8,6 +8,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function allowedRedirect(raw: string | undefined | null, fallback: string): string {
+  if (!raw) return fallback;
+  try {
+    const url = new URL(raw);
+    const allowed = [
+      "https://feed-bot-ai.lovable.app",
+      Deno.env.get("APP_ORIGIN") || "",
+      Deno.env.get("PUBLIC_APP_URL") || "",
+    ].filter(Boolean);
+    if (allowed.some((origin) => url.origin === origin)) return url.toString();
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url.origin)) return url.toString();
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -26,6 +43,12 @@ Deno.serve(async (req) => {
     const { data: roleRow } = await userClient
       .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
     if (!roleRow) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
+
+    const { data: canImpersonate } = await userClient.rpc("admin_has_permission", { _section: "support" });
+    const { data: canManageTeam } = await userClient.rpc("can_manage_admin_permissions");
+    if (!canImpersonate && !canManageTeam) {
+      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
+    }
 
     const { target_user_id, redirect_to } = await req.json();
     if (!target_user_id) throw new Error("target_user_id obrigatório");
@@ -46,7 +69,7 @@ Deno.serve(async (req) => {
     const { data: link, error: lErr } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: target.user.email,
-      options: { redirectTo: redirect_to || `${new URL(req.url).origin}/dashboard` },
+      options: { redirectTo: allowedRedirect(redirect_to, `${Deno.env.get("APP_ORIGIN") || "https://feed-bot-ai.lovable.app"}/dashboard`) },
     });
     if (lErr) throw lErr;
 
