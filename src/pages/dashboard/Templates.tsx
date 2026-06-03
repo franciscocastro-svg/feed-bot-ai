@@ -405,6 +405,7 @@ export default function Templates() {
     }).eq("id", t.id);
     if (error) return toast.error(error.message);
     setTemplates(list => list.map(x => x.id === t.id ? t : x));
+    setEditing(null);
     toast.success("Salvo");
   }
 
@@ -655,7 +656,14 @@ export default function Templates() {
         );
       })}
 
-      {editing && <EditorPanel template={editing} onClose={() => setEditing(null)} onSave={saveConfig} onChange={setEditing} />}
+      {editing && (
+        <EditorPanel
+          template={editing}
+          brand={brand}
+          onClose={() => setEditing(null)}
+          onSave={saveConfig}
+        />
+      )}
 
       <InstagramPreviewDialog
         template={previewing}
@@ -933,33 +941,66 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
   );
 }
 
-function EditorPanel({ template, onClose, onSave, onChange }: {
-  template: Template; onClose: () => void; onSave: (t: Template) => void; onChange: (t: Template) => void;
+function EditorPanel({ template, brand, onClose, onSave }: {
+  template: Template;
+  brand: { handle?: string; name?: string; logo?: string };
+  onClose: () => void;
+  onSave: (t: Template) => void;
 }) {
-  const fmt = template.format || "feed";
+  const [draft, setDraft] = useState<Template>(() => ({
+    ...template,
+    config: { ...normalizeConfig(template.config, template.format || "feed") },
+  }));
+  const [finalPreviewOpen, setFinalPreviewOpen] = useState(false);
+  const fmt = draft.format || "feed";
   const canvasH = fmt === "feed" ? 1080 : 1920;
   const aspectClass = fmt === "feed" ? "aspect-square" : "aspect-[9/16]";
-  const cfg = normalizeConfig(template.config, fmt);
-  const update = (patch: any) => onChange({ ...template, config: { ...cfg, ...patch } });
+  const cfg = normalizeConfig(draft.config, fmt);
+  const update = (patch: any) => setDraft(current => {
+    const currentFmt = current.format || "feed";
+    const currentCfg = normalizeConfig(current.config, currentFmt);
+    return { ...current, config: { ...currentCfg, ...patch } };
+  });
   const sampleTitle = "TÍTULO DA NOTÍCIA EM DESTAQUE AQUI";
   const sampleSub = "Subtítulo curto explicando o contexto da notícia";
+  const hasChanges = JSON.stringify({ name: template.name, config: normalizeConfig(template.config, fmt) }) !== JSON.stringify({ name: draft.name, config: cfg });
+  const canSave = draft.name.trim().length > 0 && hasChanges;
 
   return (
+    <>
     <Dialog open={!!template} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-5">
+      <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
-          <DialogTitle>Ajustar template — {template.name}</DialogTitle>
-          <DialogDescription>Posicione título, subtítulo, badge e área da foto da notícia.</DialogDescription>
+          <div className="border-b border-border px-5 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <DialogTitle>Ajustar template — {draft.name || template.name}</DialogTitle>
+                <DialogDescription>Edite como rascunho, confira a prévia final e salve apenas quando estiver pronto.</DialogDescription>
+              </div>
+              <Badge variant={hasChanges ? "default" : "outline"} className={hasChanges ? "bg-primary text-primary-foreground" : ""}>
+                {hasChanges ? "Rascunho não salvo" : "Sem alterações"}
+              </Badge>
+            </div>
+          </div>
         </DialogHeader>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid max-h-[calc(92vh-73px)] grid-cols-1 overflow-hidden lg:grid-cols-[minmax(360px,0.95fr)_minmax(420px,1fr)]">
         {/* Preview */}
-        <div>
-          <Label className="text-xs uppercase text-muted-foreground">Pré-visualização ({fmt === "feed" ? "1080×1080" : "1080×1920"})</Label>
-          <div className={`mt-2 ${aspectClass} w-full max-w-md mx-auto relative overflow-hidden rounded-lg border border-border bg-zinc-900`}>
-            {template.background_url ? (
-              <img src={template.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
+        <div className="border-b border-border bg-muted/20 p-4 lg:border-b-0 lg:border-r lg:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <Label className="text-xs uppercase text-muted-foreground">Prévia técnica ({fmt === "feed" ? "1080×1080" : "1080×1920"})</Label>
+              <p className="mt-1 text-xs text-muted-foreground">Ajuste os blocos. Use “Prévia final” para ver como aparece no Instagram.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setFinalPreviewOpen(true)}>
+              <Eye className="mr-2 h-4 w-4" /> Prévia final
+            </Button>
+          </div>
+          <div className="flex max-h-[calc(92vh-160px)] min-h-[420px] items-start justify-center overflow-auto rounded-xl border border-border bg-background/60 p-3">
+          <div className={`${aspectClass} w-full max-w-[360px] relative overflow-hidden rounded-lg border border-border bg-zinc-900 shadow-card`} style={{ containerType: "inline-size" }}>
+            {draft.background_url ? (
+              <img src={draft.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
-              <div className="absolute inset-0" style={{ background: PRESETS.find(p => p.key === template.preset_key)?.preview }} />
+              <div className="absolute inset-0" style={{ background: PRESETS.find(p => p.key === draft.preset_key)?.preview }} />
             )}
             {cfg.showPhoto && (
               <div className="absolute bg-black/40 border-2 border-dashed border-yellow-400 flex items-center justify-center text-yellow-300 text-[10px] font-bold uppercase tracking-wider"
@@ -972,7 +1013,7 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
                 FOTO DA NOTÍCIA
               </div>
             )}
-            {!template.background_url && (
+            {!draft.background_url && (
               <div className="absolute inset-0" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
             )}
             {cfg.showHandle && (
@@ -996,13 +1037,15 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
               </div>
             )}
           </div>
+          </div>
         </div>
 
         {/* Controles */}
-        <div className="space-y-4 max-h-[70vh] overflow-auto pr-2">
+        <div className="flex min-h-0 flex-col">
+        <div className="space-y-4 overflow-auto px-5 py-4">
           <div>
             <Label>Nome</Label>
-            <Input value={template.name} onChange={e => onChange({ ...template, name: e.target.value })} />
+            <Input value={draft.name} onChange={e => setDraft(current => ({ ...current, name: e.target.value }))} />
           </div>
 
           <Section title="Título">
@@ -1050,15 +1093,26 @@ function EditorPanel({ template, onClose, onSave, onChange }: {
           <Section title="Escurecimento de fundo">
             <RangeRow label="Opacidade" value={Math.round(cfg.overlayOpacity * 100)} min={0} max={90} onChange={v => update({ overlayOpacity: v / 100 })} />
           </Section>
-
-          <div className="flex gap-2 pt-2 sticky bottom-0 bg-card pb-1">
-            <Button onClick={() => onSave(template)} className="flex-1">Salvar</Button>
-            <Button variant="outline" onClick={onClose}>Fechar</Button>
+        </div>
+          <div className="grid gap-2 border-t border-border bg-card p-4 sm:grid-cols-[1fr_auto_auto]">
+            <Button onClick={() => setFinalPreviewOpen(true)} variant="outline" className="sm:order-2">
+              <Eye className="mr-2 h-4 w-4" /> Prévia final
+            </Button>
+            <Button variant="outline" onClick={onClose} className="sm:order-3">Cancelar</Button>
+            <Button onClick={() => onSave({ ...draft, name: draft.name.trim(), config: cfg })} disabled={!canSave} className="sm:order-1">
+              Salvar alterações
+            </Button>
           </div>
         </div>
       </div>
       </DialogContent>
     </Dialog>
+    <InstagramPreviewDialog
+      template={finalPreviewOpen ? { ...draft, config: cfg } : null}
+      brand={brand}
+      onClose={() => setFinalPreviewOpen(false)}
+    />
+    </>
   );
 }
 
