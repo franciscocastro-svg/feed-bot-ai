@@ -9,6 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const ACTIVE_POST_LIMIT = 150;
+const POSTED_POST_LIMIT = 30;
+const SCHEDULE_REFRESH_MS = 30000;
+
 export default function Scheduled() {
   const fmtBR = (d: string | Date) =>
     new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) + " (Brasília)";
@@ -24,8 +28,8 @@ export default function Scheduled() {
   const load = async () => {
     const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, caption), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
-      supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(500),
-      supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(50),
+      supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
+      supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(POSTED_POST_LIMIT),
       supabase.from("instagram_accounts").select("id, username, active").eq("active", true),
     ]);
     const p = [...(pending || []), ...(postedRows || [])];
@@ -49,7 +53,7 @@ export default function Scheduled() {
   };
   useEffect(() => {
     load();
-    const i = setInterval(load, 15000);
+    const i = setInterval(load, SCHEDULE_REFRESH_MS);
     return () => clearInterval(i);
   }, []);
 
@@ -205,7 +209,7 @@ export default function Scheduled() {
               <Card key={p.id} className="p-3 md:p-5">
                 <div className="flex gap-3 md:gap-4 items-start">
                   {thumbnailUrl && (
-                    <img src={thumbnailUrl} className="w-16 h-16 md:w-20 md:h-20 rounded-lg object-cover shrink-0" alt="" />
+                    <img src={thumbnailUrl} loading="lazy" decoding="async" className="w-16 h-16 md:w-20 md:h-20 rounded-lg object-cover shrink-0" alt="" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">

@@ -35,6 +35,9 @@ type AccountFollowers = {
   history: { captured_at: string; followers_count: number }[];
 };
 
+const INSIGHTS_POST_LIMIT = 300;
+const FOLLOWER_HISTORY_PER_ACCOUNT = 60;
+
 export default function Insights() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [followers, setFollowers] = useState<AccountFollowers[]>([]);
@@ -50,7 +53,7 @@ export default function Insights() {
       .eq("status", "posted")
       .not("ig_media_id", "is", null)
       .order("posted_at", { ascending: false })
-      .limit(500);
+      .limit(INSIGHTS_POST_LIMIT);
     setPosts((data as any) || []);
 
     // Followers per IG account
@@ -58,15 +61,28 @@ export default function Insights() {
       .from("instagram_accounts")
       .select("id, username")
       .eq("active", true);
+    const accountIds = (accs || []).map((a) => a.id);
+    const { data: allSnaps } = accountIds.length
+      ? await supabase
+        .from("follower_snapshots")
+        .select("instagram_account_id, captured_at, followers_count")
+        .in("instagram_account_id", accountIds)
+        .order("captured_at", { ascending: false })
+        .limit(Math.max(FOLLOWER_HISTORY_PER_ACCOUNT, accountIds.length * FOLLOWER_HISTORY_PER_ACCOUNT))
+      : { data: [] };
+
+    const snapsByAccount = new Map<string, { captured_at: string; followers_count: number }[]>();
+    for (const snap of (allSnaps || []) as { instagram_account_id: string; captured_at: string; followers_count: number }[]) {
+      const list = snapsByAccount.get(snap.instagram_account_id) || [];
+      if (list.length < FOLLOWER_HISTORY_PER_ACCOUNT) {
+        list.push({ captured_at: snap.captured_at, followers_count: snap.followers_count });
+        snapsByAccount.set(snap.instagram_account_id, list);
+      }
+    }
+
     const accList: AccountFollowers[] = [];
     for (const a of accs || []) {
-      const { data: snaps } = await supabase
-        .from("follower_snapshots")
-        .select("captured_at, followers_count")
-        .eq("instagram_account_id", a.id)
-        .order("captured_at", { ascending: false })
-        .limit(60);
-      const arr = (snaps || []) as { captured_at: string; followers_count: number }[];
+      const arr = snapsByAccount.get(a.id) || [];
       const current = arr[0]?.followers_count ?? 0;
       const dayAgo = Date.now() - 24 * 3600 * 1000;
       const prev = arr.find((s) => new Date(s.captured_at).getTime() <= dayAgo)?.followers_count ?? null;
@@ -247,7 +263,7 @@ export default function Insights() {
               <div key={p.id} className="flex gap-4 items-center">
                 <div className="w-6 text-center font-bold text-muted-foreground tabular-nums">{i + 1}</div>
                 {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) && (
-                  <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" className="w-16 h-16 rounded object-cover" />
+                  <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" loading="lazy" decoding="async" className="w-16 h-16 rounded object-cover" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.news_items?.rewritten_title || p.news_items?.original_title}</p>
@@ -277,7 +293,7 @@ export default function Insights() {
                 return (
                 <div key={p.id} className="p-4 flex items-center gap-4">
                   {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) ? (
-                    <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" className="w-14 h-14 rounded object-cover shrink-0" />
+                    <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" loading="lazy" decoding="async" className="w-14 h-14 rounded object-cover shrink-0" />
                   ) : (
                     <div className="w-14 h-14 rounded bg-secondary shrink-0" />
                   )}

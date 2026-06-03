@@ -27,6 +27,27 @@ const STATUS_OPTIONS = ["all", "pending", "processed", "approved", "scheduled", 
 type MediaType = "feed" | "reel" | "story";
 
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+const NEWS_PAGE_SIZE = 150;
+const NEWS_LIST_COLUMNS = [
+  "id",
+  "status",
+  "source_name",
+  "created_at",
+  "original_title",
+  "original_url",
+  "original_image_url",
+  "original_content",
+  "rewritten_title",
+  "rewritten_summary",
+  "caption",
+  "hashtags",
+  "generated_image_url",
+  "generated_cover_url",
+  "generated_video_url",
+  "instagram_account_id",
+  "error_message",
+  "editorial_ready",
+].join(",");
 
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
   const globalMin = Math.max(10, Number(userSettings?.min_post_interval_minutes) || 10);
@@ -83,16 +104,21 @@ export default function News() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [newsLimit, setNewsLimit] = useState(NEWS_PAGE_SIZE);
 
   const load = async () => {
-    const { data } = await supabase.from("news_items").select("*").order("created_at", { ascending: false }).limit(300);
+    const { data } = await supabase
+      .from("news_items")
+      .select(NEWS_LIST_COLUMNS)
+      .order("created_at", { ascending: false })
+      .limit(newsLimit);
     setItems(data || []);
     setSelected(new Set());
   };
   useEffect(() => {
     load();
     supabase.from("instagram_accounts").select("*").eq("active", true).then(({ data }) => setIgAccounts(data || []));
-  }, []);
+  }, [newsLimit]);
 
   const sources = useMemo(() => Array.from(new Set(items.map(i => i.source_name).filter(Boolean))), [items]);
 
@@ -335,13 +361,13 @@ export default function News() {
             <Card key={n.id} className="p-4 md:p-5">
               <div className="flex gap-3 md:gap-4">
                 <Checkbox checked={selected.has(n.id)} onCheckedChange={() => toggleSel(n.id)} className="mt-1 shrink-0" />
-                {n.generated_image_url ? (
+                {(n.generated_cover_url || n.generated_image_url) ? (
                   <button onClick={() => setPreviewing(n)} className="shrink-0 group relative">
-                    <img src={n.generated_image_url} alt="" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover" />
+                    <img src={n.generated_cover_url || n.generated_image_url} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center transition"><Eye className="h-5 w-5 text-white" /></div>
                   </button>
                 ) : n.original_image_url ? (
-                  <img src={n.original_image_url} alt="" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover shrink-0 opacity-70" />
+                  <img src={n.original_image_url} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover shrink-0 opacity-70" />
                 ) : (
                   <div className="w-20 h-20 md:w-24 md:h-24 rounded-lg bg-secondary shrink-0 flex items-center justify-center"><ImageIcon className="h-6 w-6 text-muted-foreground" /></div>
                 )}
@@ -367,7 +393,7 @@ export default function News() {
                     {n.error_message && <p className="basis-full text-xs text-muted-foreground">{n.error_message}</p>}
                     {n.status === "processed" && (
                       <>
-                        {n.generated_image_url && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
+                        {(n.generated_cover_url || n.generated_image_url) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
                         <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> Editar visual</Button>
                         <Button size="sm" variant="outline" onClick={() => setEditing(n)}>Editar legenda</Button>
                         <Button size="sm" onClick={() => approve(n, "feed")} disabled={loading[n.id]}>
@@ -391,6 +417,12 @@ export default function News() {
             </Card>
           ))}
         </div>
+      )}
+
+      {items.length >= newsLimit && (
+        <Button variant="outline" onClick={() => setNewsLimit((limit) => limit + NEWS_PAGE_SIZE)} className="w-full">
+          Carregar mais notícias
+        </Button>
       )}
 
       {/* Editor */}
