@@ -82,11 +82,13 @@ export function AdminManager({ allUsers }: { allUsers: any[] }) {
   const remove = async (uid: string) => {
     if (uid === user?.id) return toast.error("Você não pode remover seu próprio acesso por aqui.");
     if (!confirm("Remover privilégio de admin deste usuário?")) return;
-    const [{ error: roleError }, { error: permissionError }] = await Promise.all([
-      supabase.from("user_roles").delete().eq("user_id", uid).eq("role", "admin"),
-      supabase.from("admin_permissions" as any).delete().eq("user_id", uid),
-    ]);
-    if (roleError || permissionError) toast.error(roleError?.message || permissionError?.message || "Erro ao remover");
+    const { error } = await supabase.rpc("set_admin_permissions" as any, {
+      _target_user_id: uid,
+      _is_admin: false,
+      _full_access: false,
+      _sections: [],
+    } as any);
+    if (error) toast.error(error.message || "Erro ao remover");
     else { toast.success("Removido"); load(); }
   };
 
@@ -96,11 +98,12 @@ export function AdminManager({ allUsers }: { allUsers: any[] }) {
       toast.error("Escolha pelo menos uma área para este admin.");
       return false;
     }
-    const { error } = await supabase.from("admin_permissions" as any).upsert({
-      user_id: uid,
-      full_access: fullAccess,
-      sections: normalizedSections,
-    }, { onConflict: "user_id" });
+    const { error } = await supabase.rpc("set_admin_permissions" as any, {
+      _target_user_id: uid,
+      _is_admin: true,
+      _full_access: fullAccess,
+      _sections: normalizedSections,
+    } as any);
     if (error) {
       toast.error(error.message);
       return false;
@@ -110,8 +113,6 @@ export function AdminManager({ allUsers }: { allUsers: any[] }) {
 
   const promote = async () => {
     if (!selectedUserId) return toast.error("Escolha um usuário.");
-    const { error: roleError } = await supabase.from("user_roles").insert({ user_id: selectedUserId, role: "admin" });
-    if (roleError) return toast.error(roleError.message);
     const ok = await savePermissions(selectedUserId, draftFullAccess, draftSections);
     if (!ok) return;
     toast.success("Admin promovido com permissões");
