@@ -301,10 +301,16 @@ export default function Templates() {
     const column = DEFAULT_COLUMN_BY_FORMAT[format];
     const update: Record<string, string> = { [column]: id };
     if (format === "feed") update.default_template_id = id;
-    const { error } = await supabase.from("user_settings").update(update as any).eq("user_id", user!.id);
-    if (error) return toast.error(error.message);
+    const [userSettingsResult, accountSettingsResult] = await Promise.all([
+      supabase.from("user_settings").update(update as any).eq("user_id", user!.id),
+      supabase.from("account_settings").update(update as any).eq("user_id", user!.id),
+    ]);
+    if (userSettingsResult.error) return toast.error(userSettingsResult.error.message);
+    if (accountSettingsResult.error) {
+      toast.warning("Padrão salvo, mas não consegui sincronizar as contas conectadas.");
+    }
     setDefaultIds(prev => ({ ...prev, [format]: id }));
-    toast.success(`Template padrão de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido`);
+    toast.success(`Template padrão de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido e aplicado às contas`);
   }
 
   function getImageSize(file: File): Promise<{ width: number; height: number }> {

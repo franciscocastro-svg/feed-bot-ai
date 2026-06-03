@@ -155,6 +155,20 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   }
 }
 
+async function loadEffectiveSettings(item: any) {
+  if (item?.instagram_account_id) {
+    const { data, error } = await supabase.rpc("get_effective_account_settings", { _account_id: item.instagram_account_id });
+    if (!error && data) return data as any;
+  }
+
+  const { data } = await supabase
+    .from("user_settings")
+    .select("brand_handle, brand_name, default_template_id, default_story_template_id, default_reel_template_id")
+    .maybeSingle();
+
+  return data as any;
+}
+
 export async function composeAndUploadStory(item: any, opts: { withFollowCta?: boolean } = {}): Promise<string> {
   // Fallbacks: se o AI rewrite ainda não populou os campos, usa os originais
   // para nunca renderizar um Story em branco.
@@ -171,10 +185,7 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   const sourceName = (item.source_name || "").trim();
 
   // handle da marca para CTA discreto de "siga"
-  const { data: settings } = await supabase
-    .from("user_settings")
-    .select("brand_handle, brand_name, default_template_id, default_story_template_id, default_reel_template_id")
-    .maybeSingle();
+  const settings = await loadEffectiveSettings(item);
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const templateId = opts.withFollowCta
     ? (settings?.default_reel_template_id || settings?.default_template_id)

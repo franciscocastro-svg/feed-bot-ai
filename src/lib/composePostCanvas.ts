@@ -154,11 +154,22 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   }
 }
 
-export async function composeAndUploadPost(item: any): Promise<string> {
-  const { data: settings } = await supabase
+async function loadEffectiveSettings(item: any) {
+  if (item?.instagram_account_id) {
+    const { data, error } = await supabase.rpc("get_effective_account_settings", { _account_id: item.instagram_account_id });
+    if (!error && data) return data as any;
+  }
+
+  const { data } = await supabase
     .from("user_settings")
     .select("brand_handle, brand_name, brand_logo_url, default_template_id, default_feed_template_id")
     .maybeSingle();
+
+  return data as any;
+}
+
+export async function composeAndUploadPost(item: any): Promise<string> {
+  const settings = await loadEffectiveSettings(item);
   const templateId = settings?.default_feed_template_id || settings?.default_template_id;
   const { data: template } = templateId
     ? await supabase.from("post_templates").select("*").eq("id", templateId).eq("format", "feed").maybeSingle()

@@ -841,24 +841,30 @@ async function processQueuedReelJobs() {
   return jobs.length;
 }
 
-// Processa uma publicação agendada
-async function processPost(post) {
-  const news = post.news_items;
-  console.log(`--- [PROCESSANDO] Post ${post.id} (Tipo: ${post.media_type}) | Usuário: ${post.user_id} | News: ${news.id} ---`);
+async function loadEffectivePostSettings(post) {
+  if (post.instagram_account_id) {
+    const { data, error } = await supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id });
+    if (!error && data) return data;
+    if (error) console.warn(`Aviso: não consegui buscar configurações efetivas da conta ${post.instagram_account_id}:`, error.message || error);
+  }
 
-  // Busca configurações da marca do usuário
-  const { data: settings, error: settingsError } = await supabase
+  const { data, error } = await supabase
     .from("user_settings")
     .select("brand_handle, brand_name, brand_logo_url, reel_audio_url, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id")
     .eq("user_id", post.user_id)
     .maybeSingle();
 
-  if (settingsError) {
-    console.error(`Erro ao buscar configurações do usuário ${post.user_id}:`, settingsError);
-    return;
-  }
+  if (error) throw error;
+  return data;
+}
+
+// Processa uma publicação agendada
+async function processPost(post) {
+  const news = post.news_items;
+  console.log(`--- [PROCESSANDO] Post ${post.id} (Tipo: ${post.media_type}) | Usuário: ${post.user_id} | News: ${news.id} ---`);
 
   try {
+    const settings = await loadEffectivePostSettings(post);
     if (post.media_type === "feed") {
       const url = await composeAndUploadPostNode(news, settings);
       await supabase.from("news_items").update({ editorial_ready: true }).eq("id", news.id);
@@ -900,7 +906,7 @@ async function main() {
       // Busca posts agendados
       const { data: pending, error } = await supabase
         .from("scheduled_posts")
-        .select("id, user_id, media_type, news_item_id, news_items(*)")
+        .select("id, user_id, media_type, instagram_account_id, news_item_id, news_items(*)")
         .eq("status", "scheduled")
         .limit(5);
 
