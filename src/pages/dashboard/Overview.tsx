@@ -259,7 +259,9 @@ export default function Overview() {
               <div className="divide-y divide-border/60">
                 {queue.map((q) => {
                   const title = q.news_items?.rewritten_title || q.news_items?.original_title || "Sem título";
-                  const img = q.news_items?.generated_cover_url || q.news_items?.generated_image_url;
+                  const img = q.media_type === "feed"
+                    ? q.news_items?.generated_image_url || q.news_items?.generated_cover_url
+                    : q.news_items?.generated_cover_url || q.news_items?.generated_image_url;
                   const when = new Date(q.scheduled_for);
                   const timeStr = when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
                   return (

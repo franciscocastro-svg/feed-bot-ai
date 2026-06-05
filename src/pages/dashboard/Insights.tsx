@@ -259,11 +259,15 @@ export default function Insights() {
         <Card>
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Top 5 posts de maior alcance</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {topPosts.map((p, i) => (
+            {topPosts.map((p, i) => {
+              const img = (p.media_type || "").toLowerCase() === "feed"
+                ? p.news_items?.generated_image_url || p.news_items?.generated_cover_url
+                : p.news_items?.generated_cover_url || p.news_items?.generated_image_url;
+              return (
               <div key={p.id} className="flex gap-4 items-center">
                 <div className="w-6 text-center font-bold text-muted-foreground tabular-nums">{i + 1}</div>
-                {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) && (
-                  <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" loading="lazy" decoding="async" className="w-16 h-16 rounded object-cover" />
+                {img && (
+                  <img src={img} alt="" loading="lazy" decoding="async" className="w-16 h-16 rounded object-cover" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.news_items?.rewritten_title || p.news_items?.original_title}</p>
@@ -273,7 +277,8 @@ export default function Insights() {
                   <a href={p.permalink} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">Ver</a>
                 )}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -289,11 +294,14 @@ export default function Insights() {
             <div className="divide-y divide-border">
               {filteredPosts.map((p) => {
                 const isReel = (p.media_type || "").toLowerCase() === "reel";
+                const img = (p.media_type || "").toLowerCase() === "feed"
+                  ? p.news_items?.generated_image_url || p.news_items?.generated_cover_url
+                  : p.news_items?.generated_cover_url || p.news_items?.generated_image_url;
                 const eng = p.reach && p.reach > 0 ? +(((((p.likes||0)+(p.comments||0)+(p.saves||0))/p.reach)*100).toFixed(1)) : null;
                 return (
                 <div key={p.id} className="p-4 flex items-center gap-4">
-                  {(p.news_items?.generated_cover_url || p.news_items?.generated_image_url) ? (
-                    <img src={p.news_items.generated_cover_url || p.news_items.generated_image_url || ""} alt="" loading="lazy" decoding="async" className="w-14 h-14 rounded object-cover shrink-0" />
+                  {img ? (
+                    <img src={img} alt="" loading="lazy" decoding="async" className="w-14 h-14 rounded object-cover shrink-0" />
                   ) : (
                     <div className="w-14 h-14 rounded bg-secondary shrink-0" />
                   )}

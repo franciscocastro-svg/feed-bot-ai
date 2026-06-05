@@ -49,6 +49,10 @@ const NEWS_LIST_COLUMNS = [
   "editorial_ready",
 ].join(",");
 
+function feedPreviewUrl(item: any) {
+  return item?.generated_image_url || item?.generated_cover_url || "";
+}
+
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
   const globalMin = Math.max(10, Number(userSettings?.min_post_interval_minutes) || 10);
   const channelMin = Math.max(globalMin, Number(channelSettings?.min_interval_minutes) || globalMin);
@@ -304,7 +308,7 @@ export default function News() {
     if (selected.size === filtered.length) setSelected(new Set());
     else setSelected(new Set(filtered.map(i => i.id)));
   };
-  const previewImageUrl = previewing?.generated_cover_url || previewing?.generated_image_url;
+  const previewImageUrl = feedPreviewUrl(previewing);
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-6xl">
@@ -361,9 +365,9 @@ export default function News() {
             <Card key={n.id} className="p-4 md:p-5">
               <div className="flex gap-3 md:gap-4">
                 <Checkbox checked={selected.has(n.id)} onCheckedChange={() => toggleSel(n.id)} className="mt-1 shrink-0" />
-                {(n.generated_cover_url || n.generated_image_url) ? (
+                {feedPreviewUrl(n) ? (
                   <button onClick={() => setPreviewing(n)} className="shrink-0 group relative">
-                    <img src={n.generated_cover_url || n.generated_image_url} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover" />
+                    <img src={feedPreviewUrl(n)} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center transition"><Eye className="h-5 w-5 text-white" /></div>
                   </button>
                 ) : n.original_image_url ? (
@@ -393,7 +397,7 @@ export default function News() {
                     {n.error_message && <p className="basis-full text-xs text-muted-foreground">{n.error_message}</p>}
                     {n.status === "processed" && (
                       <>
-                        {(n.generated_cover_url || n.generated_image_url) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
+                        {feedPreviewUrl(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
                         <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> Editar visual</Button>
                         <Button size="sm" variant="outline" onClick={() => setEditing(n)}>Editar legenda</Button>
                         <Button size="sm" onClick={() => approve(n, "feed")} disabled={loading[n.id]}>

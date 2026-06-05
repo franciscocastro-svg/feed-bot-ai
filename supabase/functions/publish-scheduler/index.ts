@@ -929,14 +929,14 @@ Deno.serve(async (req) => {
             // Fallback: publica como Feed com a foto/capa que existir
             mediaType = "feed";
             isVideo = false;
-            mediaUrl = news.generated_cover_url || news.generated_image_url;
+            mediaUrl = news.generated_image_url || news.generated_cover_url;
             fellBackToFeed = true;
           }
         } else if (mediaType === "story") {
           if (news?.generated_video_url) { mediaUrl = news.generated_video_url; isVideo = true; }
           else { mediaUrl = news?.generated_cover_url || news?.generated_image_url; isVideo = false; }
         } else {
-          mediaUrl = news?.generated_cover_url || news?.generated_image_url;
+          mediaUrl = news?.generated_image_url || news?.generated_cover_url;
         }
         // Feed nunca publica foto crua: precisa da arte/template pronta.
         // Reels/Stories podem usar fallback depois da janela para não travar.

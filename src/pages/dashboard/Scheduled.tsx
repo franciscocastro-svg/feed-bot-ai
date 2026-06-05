@@ -204,7 +204,9 @@ export default function Scheduled() {
             const scheduledAt = new Date(p.scheduled_for);
             const minutesUntilPost = Math.round((scheduledAt.getTime() - Date.now()) / 60000);
             const isDelayed = p.status === "scheduled" && minutesUntilPost >= 60;
-            const thumbnailUrl = p.news_items?.generated_cover_url || p.news_items?.generated_image_url;
+            const thumbnailUrl = p.media_type === "feed"
+              ? p.news_items?.generated_image_url || p.news_items?.generated_cover_url
+              : p.news_items?.generated_cover_url || p.news_items?.generated_image_url;
             return (
               <Card key={p.id} className="p-3 md:p-5">
                 <div className="flex gap-3 md:gap-4 items-start">
