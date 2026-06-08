@@ -115,10 +115,20 @@ function parseRss(xml: string) {
 function isLikelyLogo(url: string): boolean {
   const u = url.toLowerCase();
   if (/(logo|brand|sprite|icon|favicon|placeholder|default|avatar|share|social|watermark|selo|header|nav|footer)/i.test(u)) return true;
+  if (/news\.google\.com|ssl\.gstatic\.com\/news|gstatic\.com\/images\/branding/i.test(u)) return true;
   if (/\.svg(\?|$)/i.test(u)) return true;
   const m = u.match(/[?&](?:w|width|h|height)=(\d+)/);
   if (m && parseInt(m[1]) < 300) return true;
   return false;
+}
+
+function isGoogleNewsUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "news.google.com";
+  } catch {
+    return false;
+  }
 }
 
 function extractAllCandidates(html: string): string[] {
@@ -346,8 +356,13 @@ Deno.serve(async (req) => {
         for (const it of items) {
           // dedupe por URL — verifica para CADA IG separadamente
           let img = it.image as string | null;
-          if (img && isLikelyLogo(img)) img = null;
-          if (!img) img = await findArticleImage(it.link);
+          const articleImg = isGoogleNewsUrl(it.link) ? await findArticleImage(it.link) : null;
+          if (articleImg && !isLikelyLogo(articleImg)) {
+            img = articleImg;
+          } else {
+            if (img && isLikelyLogo(img)) img = null;
+            if (!img) img = await findArticleImage(it.link);
+          }
 
           for (const igId of targetIgs) {
             // dedupe: mesma URL + mesmo IG
