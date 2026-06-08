@@ -69,16 +69,20 @@ function parseRss(xml: string) {
   const re = /<item[\s\S]*?<\/item>/g;
   const matches = xml.match(re) || [];
   for (const block of matches) {
-    const get = (tag: string) => {
+    const getRaw = (tag: string) => {
       const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
       if (!m) return "";
-      const raw = m[1].replace(/<!\[CDATA\[|\]\]>/g, "");
+      return decodeEntities(decodeEntities(m[1].replace(/<!\[CDATA\[|\]\]>/g, "")));
+    };
+    const get = (tag: string) => {
+      const raw = getRaw(tag);
       // decodifica entidades 2x (alguns feeds fazem double-encoding)
-      return decodeEntities(decodeEntities(raw)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      return raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     };
     const title = get("title");
     const link = get("link");
     const description = get("description");
+    const rawDescription = getRaw("description");
     const pubDate = get("pubDate") || get("dc:date");
     let image = "";
     const enc = block.match(/<enclosure[^>]*url=["']([^"']+)["']/i);
@@ -87,8 +91,12 @@ function parseRss(xml: string) {
       const mt = block.match(/<media:content[^>]*url=["']([^"']+)["']/i);
       if (mt) image = mt[1];
       else {
-        const img = description.match(/<img[^>]*src=["']([^"']+)["']/i);
-        if (img) image = img[1];
+        const thumb = block.match(/<media:thumbnail[^>]*url=["']([^"']+)["']/i);
+        if (thumb) image = thumb[1];
+        else {
+          const img = rawDescription.match(/<img[^>]*src=["']([^"']+)["']/i);
+          if (img) image = img[1];
+        }
       }
     }
     // tenta também content:encoded
@@ -159,14 +167,50 @@ function extractAllCandidates(html: string): string[] {
   return out;
 }
 
+function extractGoogleNewsPublisherUrl(html: string): string | null {
+  const decoded = decodeEntities(html);
+  const patterns = [
+    /<a[^>]+href=["'](https?:\/\/(?!news\.google\.com)[^"']+)["'][^>]*>/i,
+    /"(https?:\/\/(?!news\.google\.com)[^"]+)"/i,
+    /'(https?:\/\/(?!news\.google\.com)[^']+)'/i,
+  ];
+  for (const pattern of patterns) {
+    const m = decoded.match(pattern);
+    if (!m?.[1]) continue;
+    try {
+      const safe = assertSafeHttpUrl(m[1]);
+      if (!/google\./i.test(new URL(safe).hostname)) return safe;
+    } catch { /* ignore unsafe candidate */ }
+  }
+  return null;
+}
+
+async function fetchArticleHtml(pageUrl: string): Promise<{ html: string; finalUrl: string } | null> {
+  const safePageUrl = assertSafeHttpUrl(pageUrl);
+  const r = await fetch(safePageUrl, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsFlow/1.0)" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) return null;
+  return { html: await r.text(), finalUrl: r.url || safePageUrl };
+}
+
 async function findArticleImage(pageUrl: string): Promise<string | null> {
   try {
-    const safePageUrl = assertSafeHttpUrl(pageUrl);
-    const r = await fetch(safePageUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsFlow/1.0)" }, signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return null;
-    const html = await r.text();
-    const origin = new URL(safePageUrl).origin;
-    const candidates = extractAllCandidates(html)
+    let page = await fetchArticleHtml(pageUrl);
+    if (!page) return null;
+
+    if (/^https?:\/\/news\.google\.com\//i.test(page.finalUrl)) {
+      const publisherUrl = extractGoogleNewsPublisherUrl(page.html);
+      if (publisherUrl) {
+        const publisherPage = await fetchArticleHtml(publisherUrl);
+        if (publisherPage) page = publisherPage;
+      }
+    }
+
+    const origin = new URL(page.finalUrl).origin;
+    const candidates = extractAllCandidates(page.html)
       .map(u => u.startsWith("//") ? "https:" + u : u.startsWith("/") ? origin + u : u)
       .filter(u => /^https?:\/\//i.test(u))
       .filter(u => {
@@ -307,11 +351,16 @@ Deno.serve(async (req) => {
 
           for (const igId of targetIgs) {
             // dedupe: mesma URL + mesmo IG
-            const dupQuery = supabase.from("news_items").select("id").eq("user_id", userId).eq("original_url", it.link);
+            const dupQuery = supabase.from("news_items").select("id, original_image_url").eq("user_id", userId).eq("original_url", it.link);
             const { data: dupUrl } = igId
               ? await dupQuery.eq("instagram_account_id", igId).maybeSingle()
               : await dupQuery.is("instagram_account_id", null).maybeSingle();
-            if (dupUrl) continue;
+            if (dupUrl) {
+              if (!dupUrl.original_image_url && img) {
+                await supabase.from("news_items").update({ original_image_url: img }).eq("id", dupUrl.id);
+              }
+              continue;
+            }
 
             const { error } = await supabase.from("news_items").insert({
               user_id: userId, source_id: s.id, source_name: s.name,
