@@ -80,6 +80,59 @@ function assertSafeHttpUrl(raw: string): string {
   return url.toString();
 }
 
+function decodeEntities(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/gi, "&");
+}
+
+function cleanExtractedUrl(raw: string): string | null {
+  try {
+    const cleaned = decodeEntities(raw)
+      .replace(/\\u0026/g, "&")
+      .replace(/[^\x20-\x7E]+/g, "")
+      .split(/["'<>\\\s]/)[0]
+      .replace(/[),.;]+$/g, "");
+    const safe = assertSafeHttpUrl(cleaned);
+    const host = new URL(safe).hostname.toLowerCase();
+    if (host === "news.google.com" || host.endsWith(".google.com")) return null;
+    return safe;
+  } catch {
+    return null;
+  }
+}
+
+function decodeGoogleNewsArticleUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname.toLowerCase() !== "news.google.com") return null;
+    const token = url.pathname.match(/\/(?:rss\/)?articles\/([^/?#]+)/)?.[1];
+    if (!token) return null;
+    const normalized = token.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const decoded = atob(padded);
+    const matches = decoded.match(/https?:\/\/[^\s"'<>\\]+/g) || [];
+    for (const match of matches) {
+      const cleaned = cleanExtractedUrl(match);
+      if (cleaned) return cleaned;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function resolveReadableUrl(rawUrl: string): string {
+  return decodeGoogleNewsArticleUrl(rawUrl) || rawUrl;
+}
+
 // Client de service-role pro cache de reescrita (acesso restrito).
 // Reaproveitar reescritas entre usuários economiza 40-70% de chamadas IA caras.
 let _cacheClient: any = null;
@@ -145,7 +198,7 @@ const LANG_NAMES: Record<string, string> = {
 
 async function fetchArticleBody(url: string): Promise<string> {
   try {
-    const safeUrl = assertSafeHttpUrl(url);
+    const safeUrl = assertSafeHttpUrl(resolveReadableUrl(url));
     const r = await fetch(safeUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -482,7 +535,7 @@ function isLikelyLogo(url: string): boolean {
 
 async function findOgImage(pageUrl: string): Promise<string | null> {
   try {
-    const safePageUrl = assertSafeHttpUrl(pageUrl);
+    const safePageUrl = assertSafeHttpUrl(resolveReadableUrl(pageUrl));
     const r = await fetch(safePageUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15000) });
     if (!r.ok) return null;
     const html = await r.text();
@@ -809,6 +862,14 @@ async function loadTemplate(supabase: any, userId: string, templateId: string | 
 
 async function doProcessing(supabase: any, item: any, userId: string, image_style: string, requestedMediaType = "") {
   try {
+    if (item.original_url) {
+      const readableUrl = resolveReadableUrl(item.original_url);
+      if (readableUrl !== item.original_url) {
+        await supabase.from("news_items").update({ original_url: readableUrl }).eq("id", item.id);
+        item.original_url = readableUrl;
+      }
+    }
+
     // Prefer per-account overrides if this news_item is bound to an IG account
     let settings: any = null;
     if (item.instagram_account_id) {

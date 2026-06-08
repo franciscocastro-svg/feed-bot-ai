@@ -131,6 +131,42 @@ function isGoogleNewsUrl(url: string): boolean {
   }
 }
 
+function cleanExtractedUrl(raw: string): string | null {
+  try {
+    const cleaned = decodeEntities(raw)
+      .replace(/\\u0026/g, "&")
+      .replace(/[^\x20-\x7E]+/g, "")
+      .split(/["'<>\\\s]/)[0]
+      .replace(/[),.;]+$/g, "");
+    const safe = assertSafeHttpUrl(cleaned);
+    const host = new URL(safe).hostname.toLowerCase();
+    if (host === "news.google.com" || host.endsWith(".google.com")) return null;
+    return safe;
+  } catch {
+    return null;
+  }
+}
+
+function decodeGoogleNewsArticleUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname.toLowerCase() !== "news.google.com") return null;
+    const token = url.pathname.match(/\/(?:rss\/)?articles\/([^/?#]+)/)?.[1];
+    if (!token) return null;
+    const normalized = token.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const decoded = atob(padded);
+    const matches = decoded.match(/https?:\/\/[^\s"'<>\\]+/g) || [];
+    for (const match of matches) {
+      const cleaned = cleanExtractedUrl(match);
+      if (cleaned) return cleaned;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function extractAllCandidates(html: string): string[] {
   const out: string[] = [];
   const push = (u?: string | null) => { if (u && typeof u === "string" && !out.includes(u)) out.push(u); };
@@ -208,7 +244,8 @@ async function fetchArticleHtml(pageUrl: string): Promise<{ html: string; finalU
 
 async function findArticleImage(pageUrl: string): Promise<string | null> {
   try {
-    let page = await fetchArticleHtml(pageUrl);
+    const decodedArticleUrl = decodeGoogleNewsArticleUrl(pageUrl);
+    let page = await fetchArticleHtml(decodedArticleUrl || pageUrl);
     if (!page) return null;
 
     if (/^https?:\/\/news\.google\.com\//i.test(page.finalUrl)) {
@@ -234,6 +271,8 @@ async function findArticleImage(pageUrl: string): Promise<string | null> {
 async function resolveArticleUrl(pageUrl: string): Promise<string> {
   try {
     if (!isGoogleNewsUrl(pageUrl)) return assertSafeHttpUrl(pageUrl);
+    const decodedArticleUrl = decodeGoogleNewsArticleUrl(pageUrl);
+    if (decodedArticleUrl) return decodedArticleUrl;
     const page = await fetchArticleHtml(pageUrl);
     if (!page) return assertSafeHttpUrl(pageUrl);
     const publisherUrl = extractGoogleNewsPublisherUrl(page.html);
