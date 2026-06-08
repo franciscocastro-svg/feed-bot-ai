@@ -10,7 +10,27 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, Sparkles, Edit, Loader2, BookOpen, Lightbulb, FileUp, FileText, Youtube, Zap } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Sparkles,
+  Edit,
+  Loader2,
+  BookOpen,
+  Lightbulb,
+  FileUp,
+  FileText,
+  Youtube,
+  Zap,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Layers3,
+  MessageCircle,
+  PlayCircle,
+  Target,
+  Wand2,
+} from "lucide-react";
 
 const FORMATS = [
   { key: "dica", label: "Dica rápida", desc: "Lista de 3-5 dicas práticas" },
@@ -18,6 +38,40 @@ const FORMATS = [
   { key: "pergunta", label: "Pergunta de engajamento", desc: "Gera comentários" },
   { key: "carrossel", label: "Carrossel", desc: "5-7 slides estruturados" },
   { key: "frase", label: "Frase / Citação", desc: "Frase impactante + explicação" },
+];
+
+const QUICK_STARTS = [
+  {
+    title: "Ideias rápidas",
+    desc: "Crie um post único para testar um tema agora.",
+    icon: Zap,
+    action: "quick",
+  },
+  {
+    title: "Vídeo vira pauta",
+    desc: "Transforme um YouTube em vários conteúdos.",
+    icon: Youtube,
+    action: "youtube",
+  },
+  {
+    title: "Material vira calendário",
+    desc: "Importe PDF, aula, ebook ou apostila.",
+    icon: FileText,
+    action: "pdf",
+  },
+  {
+    title: "Pauta recorrente",
+    desc: "Cadastre um tema para o piloto reutilizar.",
+    icon: CalendarDays,
+    action: "topic",
+  },
+] as const;
+
+const CONTENT_LANES = [
+  { label: "Dicas", value: "dica", icon: Lightbulb },
+  { label: "Mini-aulas", value: "mini_aula", icon: BookOpen },
+  { label: "Perguntas", value: "pergunta", icon: MessageCircle },
+  { label: "Carrosséis", value: "carrossel", icon: Layers3 },
 ];
 
 type Topic = {
@@ -245,91 +299,251 @@ export default function Topics() {
     } finally { setQuickLoading(false); }
   };
 
+  const activeTopics = topics.filter(t => t.active);
+  const usedTopics = topics.filter(t => (t.use_count || 0) > 0);
+  const nextTopic = activeTopics
+    .slice()
+    .sort((a, b) => new Date(a.last_used_at || 0).getTime() - new Date(b.last_used_at || 0).getTime())[0];
+  const formatCounts = CONTENT_LANES.map(lane => ({
+    ...lane,
+    count: topics.filter(t => (t.formats || []).includes(lane.value)).length,
+  }));
+  const runQuickStart = (action: typeof QUICK_STARTS[number]["action"]) => {
+    if (action === "quick") {
+      setQuickOpen(true);
+      setQuickTheme("");
+    } else if (action === "youtube") {
+      setYtOpen(true);
+      setYtSuggestions([]);
+      setYtUrl("");
+    } else if (action === "pdf") {
+      setPdfOpen(true);
+      setPdfSuggestions([]);
+      setPdfFile(null);
+    } else {
+      openNew();
+    }
+  };
+
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-display font-bold flex items-center gap-2"><BookOpen className="h-7 w-7" /> Pautas</h1>
-          <p className="text-muted-foreground mt-1">Conteúdo perene (dicas, aulas, perguntas) gerado a partir de temas que você cadastra. Funciona em paralelo com as notícias.</p>
+        <div className="max-w-3xl">
+          <Badge variant="outline" className="mb-3 border-primary/40 bg-primary/10 text-primary">
+            <Sparkles className="h-3.5 w-3.5 mr-1" /> Central de conteúdo perene
+          </Badge>
+          <h1 className="text-3xl md:text-4xl font-display font-bold flex items-center gap-2">
+            <BookOpen className="h-8 w-8 text-primary" /> Pautas
+          </h1>
+          <p className="text-muted-foreground mt-2 text-base">
+            Planeje ideias que não dependem de notícia do dia: dicas, aulas, perguntas, bastidores e conteúdos de autoridade para alimentar o piloto automático.
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => { setQuickOpen(true); setQuickTheme(""); }}>
+          <Button variant="outline" onClick={() => runQuickStart("quick")}>
             <Zap className="h-4 w-4 mr-2" /> Gerar avulso
-          </Button>
-          <Button variant="outline" onClick={() => { setYtOpen(true); setYtSuggestions([]); setYtUrl(""); }}>
-            <Youtube className="h-4 w-4 mr-2" /> Importar de YouTube
-          </Button>
-          <Button variant="outline" onClick={() => { setPdfOpen(true); setPdfSuggestions([]); setPdfFile(null); }}>
-            <FileUp className="h-4 w-4 mr-2" /> Importar de PDF
           </Button>
           <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Nova pauta</Button>
         </div>
       </div>
 
-      <Card className="border-primary/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><Lightbulb className="h-4 w-4 text-primary" /> Geração automática</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">Ativar geração diária a partir das pautas</p>
-              <p className="text-sm text-muted-foreground">Desligado por padrão. Quando ligado, o sistema cria conteúdos automaticamente todos os dias.</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {QUICK_STARTS.map(item => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.title}
+              type="button"
+              onClick={() => runQuickStart(item.action)}
+              className="group rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary/50 hover:bg-primary/5"
+            >
+              <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="block font-semibold">{item.title}</span>
+              <span className="mt-1 block text-sm text-muted-foreground">{item.desc}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <Card className="border-primary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between gap-3 text-base">
+              <span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /> Geração automática</span>
+              <Badge variant={enabled ? "default" : "secondary"}>{enabled ? "Ativa" : "Manual"}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-medium">Gerar conteúdos todos os dias</p>
+                <p className="text-sm text-muted-foreground">Quando ligado, o autopiloto usa as pautas ativas sem misturar com a fila de notícias.</p>
+              </div>
+              <Switch checked={enabled} disabled={savingSettings} onCheckedChange={(v) => { setEnabled(v); saveSettings(v, postsPerDay); }} />
             </div>
-            <Switch checked={enabled} disabled={savingSettings} onCheckedChange={(v) => { setEnabled(v); saveSettings(v, postsPerDay); }} />
-          </div>
-          {enabled && (
-            <div className="flex items-center gap-3">
-              <Label className="text-sm">Posts por dia (pautas):</Label>
-              <Input type="number" min={1} max={5} value={postsPerDay} className="w-24"
-                onChange={(e) => setPostsPerDay(Math.max(1, Math.min(5, parseInt(e.target.value) || 1)))}
-                onBlur={() => saveSettings(enabled, postsPerDay)} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-md border border-border bg-background/60 p-3">
+                <p className="text-xs text-muted-foreground">Pautas ativas</p>
+                <p className="mt-1 text-2xl font-bold">{activeTopics.length}</p>
+              </div>
+              <div className="rounded-md border border-border bg-background/60 p-3">
+                <p className="text-xs text-muted-foreground">Posts por dia</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <Input type="number" min={1} max={5} value={postsPerDay} className="h-9 w-20"
+                    onChange={(e) => setPostsPerDay(Math.max(1, Math.min(5, parseInt(e.target.value) || 1)))}
+                    onBlur={() => saveSettings(enabled, postsPerDay)} />
+                </div>
+              </div>
+              <div className="rounded-md border border-border bg-background/60 p-3">
+                <p className="text-xs text-muted-foreground">Próxima ideia</p>
+                <p className="mt-1 truncate text-sm font-semibold">{nextTopic?.title || "Cadastre uma pauta"}</p>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base"><Target className="h-4 w-4 text-primary" /> Cobertura de formatos</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3">
+            {formatCounts.map(item => {
+              const Icon = item.icon;
+              return (
+                <div key={item.value} className="rounded-md border border-border bg-background/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <Icon className="h-4 w-4 text-primary" />
+                    <span className="text-lg font-bold">{item.count}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{item.label}</p>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
       ) : topics.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">
-          <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p>Nenhuma pauta cadastrada ainda.</p>
-          <p className="text-sm mt-1">Adicione temas do seu nicho (ex: "Função do 2º grau", "Como economizar no mercado") e o sistema gera posts a partir deles.</p>
-        </CardContent></Card>
-      ) : (
-        <div className="grid gap-3">
-          {topics.map(t => (
-            <Card key={t.id} className={t.active ? "" : "opacity-60"}>
-              <CardContent className="py-4 flex items-start justify-between gap-3 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{t.title}</h3>
-                    {!t.active && <Badge variant="secondary">Inativa</Badge>}
-                    {t.instagram_account_id && (
-                      <Badge variant="outline" className="text-xs">
-                        @{igAccounts.find(a => a.id === t.instagram_account_id)?.username || "—"}
-                      </Badge>
-                    )}
-                  </div>
-                  {t.notes && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{t.notes}</p>}
-                  <div className="flex gap-1 mt-2 flex-wrap">
-                    {t.formats.map(f => (
-                      <Badge key={f} variant="secondary" className="text-xs">{FORMATS.find(x => x.key === f)?.label || f}</Badge>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">Usada {t.use_count}× {t.last_used_at && `· última: ${new Date(t.last_used_at).toLocaleDateString("pt-BR")}`}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => generateNow(t)} disabled={generatingId === t.id}>
-                    {generatingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="h-4 w-4 mr-1" /> Gerar agora</>}
+        <Card className="overflow-hidden">
+          <CardContent className="grid gap-6 p-0 md:grid-cols-[0.9fr_1.1fr]">
+            <div className="bg-primary/10 p-6 md:p-8">
+              <div className="flex h-14 w-14 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wand2 className="h-7 w-7" />
+              </div>
+              <h2 className="mt-5 text-2xl font-bold">Monte sua primeira esteira de conteúdo</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Comece com um tema, um vídeo ou um PDF. Depois o NewsFlow transforma isso em posts para aprovação.
+              </p>
+            </div>
+            <div className="grid gap-3 p-6 md:grid-cols-2">
+              {QUICK_STARTS.map(item => {
+                const Icon = item.icon;
+                return (
+                  <Button key={item.title} variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => runQuickStart(item.action)}>
+                    <Icon className="h-5 w-5 shrink-0 text-primary" />
+                    <span>
+                      <span className="block font-semibold">{item.title}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">{item.desc}</span>
+                    </span>
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Edit className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => remove(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">Biblioteca de pautas</h2>
+                <p className="text-sm text-muted-foreground">{topics.length} tema(s) cadastrados para reaproveitar.</p>
+              </div>
+              <Button variant="outline" onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Adicionar</Button>
+            </div>
+            {topics.map(t => (
+              <Card key={t.id} className={t.active ? "overflow-hidden" : "overflow-hidden opacity-60"}>
+                <CardContent className="p-0">
+                  <div className="flex items-stretch">
+                    <div className="hidden w-1.5 bg-primary/70 sm:block" />
+                    <div className="flex flex-1 flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold">{t.title}</h3>
+                          <Badge variant={t.active ? "default" : "secondary"}>{t.active ? "Ativa" : "Inativa"}</Badge>
+                          {t.instagram_account_id && (
+                            <Badge variant="outline" className="text-xs">
+                              @{igAccounts.find(a => a.id === t.instagram_account_id)?.username || "—"}
+                            </Badge>
+                          )}
+                        </div>
+                        {t.notes && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{t.notes}</p>}
+                        <div className="flex gap-1 mt-3 flex-wrap">
+                          {t.formats.map(f => (
+                            <Badge key={f} variant="secondary" className="text-xs">{FORMATS.find(x => x.key === f)?.label || f}</Badge>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Usada {t.use_count || 0}x</span>
+                          <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> {t.last_used_at ? new Date(t.last_used_at).toLocaleDateString("pt-BR") : "Ainda não usada"}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 md:justify-end">
+                        <Button size="sm" onClick={() => generateNow(t)} disabled={generatingId === t.id}>
+                          {generatingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><PlayCircle className="h-4 w-4 mr-1" /> Gerar</>}
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={() => openEdit(t)}><Edit className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="outline" onClick={() => remove(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4 text-primary" /> Esteira da semana</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Modo atual</p>
+                  <p className="font-semibold">{enabled ? `${postsPerDay} pauta(s) por dia` : "Geração manual"}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Pautas já testadas</p>
+                  <p className="font-semibold">{usedTopics.length} de {topics.length}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Próximo tema sugerido</p>
+                  <p className="line-clamp-2 font-semibold">{nextTopic?.title || "Cadastre uma pauta ativa"}</p>
                 </div>
               </CardContent>
             </Card>
-          ))}
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" /> Ações rápidas</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                <Button variant="outline" className="justify-start" onClick={() => runQuickStart("youtube")}>
+                  <Youtube className="h-4 w-4 mr-2" /> Importar vídeo
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => runQuickStart("pdf")}>
+                  <FileUp className="h-4 w-4 mr-2" /> Importar PDF
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => runQuickStart("quick")}>
+                  <Zap className="h-4 w-4 mr-2" /> Gerar tema avulso
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
