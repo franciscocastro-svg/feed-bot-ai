@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Sparkles, CheckCheck } from "lucide-react";
+import { Bell, Sparkles, CheckCheck, ExternalLink } from "lucide-react";
 import { formatBR } from "@/lib/utils";
 
 type Release = {
@@ -23,6 +23,7 @@ export function ReleaseNotesBell() {
   const [popupOpen, setPopupOpen] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [current, setCurrent] = useState(0);
+  const [selected, setSelected] = useState<Release | null>(null);
 
   const loadHistory = async () => {
     const { data } = await supabase
@@ -73,6 +74,15 @@ export function ReleaseNotesBell() {
     }
   };
 
+  const openRelease = async (r: Release) => {
+    setSelected(r);
+    setPopoverOpen(false);
+    if (unseen.some((u) => u.id === r.id)) {
+      await markSeen([r.id]);
+      setUnseen((items) => items.filter((item) => item.id !== r.id));
+    }
+  };
+
   const release = unseen[current];
 
   return (
@@ -105,7 +115,12 @@ export function ReleaseNotesBell() {
               history.map((r) => {
                 const isUnseen = unseen.some((u) => u.id === r.id);
                 return (
-                  <div key={r.id} className={`p-3 border-b border-border/50 last:border-0 ${isUnseen ? "bg-secondary/40" : ""}`}>
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => openRelease(r)}
+                    className={`block w-full p-3 text-left border-b border-border/50 last:border-0 transition hover:bg-secondary/50 ${isUnseen ? "bg-secondary/40" : ""}`}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-sm">{r.title}</p>
                       {isUnseen && <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />}
@@ -117,7 +132,10 @@ export function ReleaseNotesBell() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">{r.content}</p>
-                  </div>
+                    <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                      Ler tudo <ExternalLink className="h-3 w-3" />
+                    </span>
+                  </button>
                 );
               })
             )}
@@ -159,6 +177,36 @@ export function ReleaseNotesBell() {
                 ) : (
                   <Button onClick={next}>Entendi 🎉</Button>
                 )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent>
+          {selected && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                  </div>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {selected.highlight ? "Destaque" : "Novidade"}
+                    {selected.version && ` · v${selected.version}`}
+                  </Badge>
+                </div>
+                <DialogTitle>{selected.title}</DialogTitle>
+                <DialogDescription className="text-xs">
+                  {formatBR(selected.published_at || selected.created_at)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="text-sm whitespace-pre-wrap max-h-[55vh] overflow-y-auto">
+                {selected.content}
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setSelected(null)}>Fechar</Button>
               </DialogFooter>
             </>
           )}
