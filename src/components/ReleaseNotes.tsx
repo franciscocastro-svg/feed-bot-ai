@@ -32,12 +32,12 @@ export function ReleaseNotesBell() {
       .eq("published", true)
       .order("published_at", { ascending: false, nullsFirst: false })
       .limit(30);
-    setHistory((data as any) || []);
+    setHistory((data as Release[] | null) || []);
   };
 
   const loadUnseen = async () => {
     const { data } = await supabase.rpc("get_unseen_releases");
-    const list = (data as any) || [];
+    const list = (data as Release[] | null) || [];
     setUnseen(list);
     if (list.length > 0) {
       setCurrent(0);
