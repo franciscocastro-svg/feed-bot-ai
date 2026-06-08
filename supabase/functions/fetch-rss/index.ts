@@ -231,6 +231,18 @@ async function findArticleImage(pageUrl: string): Promise<string | null> {
   } catch { return null; }
 }
 
+async function resolveArticleUrl(pageUrl: string): Promise<string> {
+  try {
+    if (!isGoogleNewsUrl(pageUrl)) return assertSafeHttpUrl(pageUrl);
+    const page = await fetchArticleHtml(pageUrl);
+    if (!page) return assertSafeHttpUrl(pageUrl);
+    const publisherUrl = extractGoogleNewsPublisherUrl(page.html);
+    return publisherUrl || assertSafeHttpUrl(page.finalUrl || pageUrl);
+  } catch {
+    return pageUrl;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -356,6 +368,7 @@ Deno.serve(async (req) => {
         for (const it of items) {
           // dedupe por URL — verifica para CADA IG separadamente
           let img = it.image as string | null;
+          const articleUrl = await resolveArticleUrl(it.link);
           const articleImg = isGoogleNewsUrl(it.link) ? await findArticleImage(it.link) : null;
           if (articleImg && !isLikelyLogo(articleImg)) {
             img = articleImg;
@@ -366,13 +379,24 @@ Deno.serve(async (req) => {
 
           for (const igId of targetIgs) {
             // dedupe: mesma URL + mesmo IG
-            const dupQuery = supabase.from("news_items").select("id, original_image_url").eq("user_id", userId).eq("original_url", it.link);
-            const { data: dupUrl } = igId
-              ? await dupQuery.eq("instagram_account_id", igId).maybeSingle()
-              : await dupQuery.is("instagram_account_id", null).maybeSingle();
+            const findDuplicate = async (url: string) => {
+              const dupQuery = supabase.from("news_items").select("id, original_image_url, original_url").eq("user_id", userId).eq("original_url", url);
+              return igId
+                ? await dupQuery.eq("instagram_account_id", igId).maybeSingle()
+                : await dupQuery.is("instagram_account_id", null).maybeSingle();
+            };
+
+            let { data: dupUrl } = await findDuplicate(articleUrl);
+            if (!dupUrl && articleUrl !== it.link) {
+              const fallbackDup = await findDuplicate(it.link);
+              dupUrl = fallbackDup.data;
+            }
             if (dupUrl) {
-              if (!dupUrl.original_image_url && img) {
-                await supabase.from("news_items").update({ original_image_url: img }).eq("id", dupUrl.id);
+              const updates: Record<string, string> = {};
+              if (!dupUrl.original_image_url && img) updates.original_image_url = img;
+              if (articleUrl !== it.link && dupUrl.original_url === it.link) updates.original_url = articleUrl;
+              if (Object.keys(updates).length > 0) {
+                await supabase.from("news_items").update(updates).eq("id", dupUrl.id);
               }
               continue;
             }
@@ -381,7 +405,7 @@ Deno.serve(async (req) => {
               user_id: userId, source_id: s.id, source_name: s.name,
               instagram_account_id: igId,
               original_title: it.title, original_content: it.description,
-              original_url: it.link, original_image_url: img || null,
+              original_url: articleUrl, original_image_url: img || null,
               published_at: it.pubDate ? new Date(it.pubDate).toISOString() : null,
               niche: s.niche, status: "pending",
             });
