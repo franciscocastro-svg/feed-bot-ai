@@ -4,7 +4,21 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { ArrowRight, AlertTriangle, Zap, Calendar, Sparkles, TrendingUp, ArrowUpRight } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  AlertTriangle,
+  ArrowUpRight,
+  Calendar,
+  CheckCircle2,
+  Clock3,
+  Instagram,
+  Rss,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
 
@@ -58,7 +72,8 @@ export default function Overview() {
   const [recent, setRecent] = useState<any[]>([]);
   const [queue, setQueue] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
-  const [autopilot, setAutopilot] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+  const [sourceStats, setSourceStats] = useState({ active: 0, total: 0 });
 
   useEffect(() => {
     (async () => {
@@ -66,7 +81,7 @@ export default function Overview() {
       const startYesterday = new Date(startToday); startYesterday.setDate(startYesterday.getDate() - 1);
       const start7d = new Date(startToday); start7d.setDate(start7d.getDate() - 6);
 
-      const [news, pendingNews, scheduled, posted, failed, postedToday, postedYesterday, last7d, nextQueue, accs, settings] = await Promise.all([
+      const [news, pendingNews, scheduled, posted, failed, postedToday, postedYesterday, last7d, nextQueue, accs, settingsRes, activeSources, allSources] = await Promise.all([
         supabase.from("news_items").select("id, status, original_title, rewritten_title, created_at, source_name").order("created_at", { ascending: false }).limit(6),
         supabase.from("news_items").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).in("status", ["scheduled", "posting", "awaiting_container"]),
@@ -77,7 +92,9 @@ export default function Overview() {
         supabase.from("scheduled_posts").select("posted_at, status").gte("posted_at", start7d.toISOString()).not("posted_at", "is", null),
         supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url, generated_cover_url)").in("status", ["scheduled", "posting", "awaiting_container"]).order("scheduled_for", { ascending: true }).limit(4),
         supabase.from("instagram_accounts").select("*"),
-        supabase.from("user_settings").select("auto_approve").maybeSingle(),
+        supabase.from("user_settings").select("auto_approve, min_post_interval_minutes, max_posts_per_day, default_media_type, default_feed_template_id, default_reel_template_id, default_story_template_id").maybeSingle(),
+        supabase.from("news_sources").select("id", { count: "exact", head: true }).eq("active", true),
+        supabase.from("news_sources").select("id", { count: "exact", head: true }),
       ]);
 
       // Build 7-day buckets
@@ -107,7 +124,8 @@ export default function Overview() {
       setRecent(news.data || []);
       setQueue(nextQueue.data || []);
       setAccounts(accs.data || []);
-      setAutopilot(!!settings.data?.auto_approve);
+      setSettings(settingsRes.data || null);
+      setSourceStats({ active: activeSources.count || 0, total: allSources.count || 0 });
     })();
   }, []);
 
@@ -119,6 +137,45 @@ export default function Overview() {
 
   const statusTotal = stats.posted + stats.scheduled + stats.failed || 1;
   const deltaPositive = stats.deltaPct >= 0;
+  const autopilot = !!settings?.auto_approve;
+  const activeAccounts = accounts.filter(a => a.active !== false);
+  const nextPost = queue[0];
+  const nextPostDate = nextPost?.scheduled_for ? new Date(nextPost.scheduled_for) : null;
+  const minutesToNext = nextPostDate ? Math.max(0, Math.round((nextPostDate.getTime() - Date.now()) / 60000)) : null;
+  const postsRemaining = usage && !isUnlimited(usage.posts_per_day_limit)
+    ? Math.max(0, usage.posts_per_day_limit - usage.posts_today)
+    : null;
+  const estimatedHoursSaved = Math.round(stats.postedToday * 8 / 60 * 10) / 10;
+  const healthItems = [
+    {
+      label: "Instagram",
+      value: activeAccounts.length > 0 ? `${activeAccounts.length} conectado(s)` : "Conectar conta",
+      ok: activeAccounts.length > 0 && tokenAlerts.length === 0,
+      to: "/dashboard/accounts",
+      icon: Instagram,
+    },
+    {
+      label: "Fontes",
+      value: sourceStats.active > 0 ? `${sourceStats.active} ativa(s)` : "Adicionar fonte",
+      ok: sourceStats.active > 0,
+      to: "/dashboard/sources",
+      icon: Rss,
+    },
+    {
+      label: "Autopiloto",
+      value: autopilot ? `A cada ${settings?.min_post_interval_minutes || "?"} min` : "Manual",
+      ok: autopilot,
+      to: "/dashboard/settings",
+      icon: Activity,
+    },
+    {
+      label: "Publicação",
+      value: stats.failed > 0 ? `${stats.failed} falha(s)` : "Fila saudável",
+      ok: stats.failed === 0,
+      to: "/dashboard/scheduled",
+      icon: ShieldCheck,
+    },
+  ];
 
   // Recommended action
   const recommendation = stats.failed > 0
@@ -238,6 +295,60 @@ export default function Overview() {
         </Button>
       </div>
 
+      {/* Command center */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+        <Card className="border-border/60 p-5">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Clock3 className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Próxima postagem</p>
+              <p className="text-lg font-bold mt-1">
+                {nextPostDate
+                  ? nextPostDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })
+                  : "Sem fila"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                {minutesToNext !== null
+                  ? minutesToNext <= 0 ? "Pronta para publicar" : `em ${minutesToNext} min`
+                  : "Aprove notícias para manter o ritmo"}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="border-border/60 p-5">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-success" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Ritmo do dia</p>
+              <p className="text-lg font-bold mt-1">
+                {postsRemaining === null ? "Sem limite" : `${postsRemaining} restantes`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {settings?.max_posts_per_day ? `meta configurada: ${settings.max_posts_per_day}/dia` : "controlado pelo plano"}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="border-border/60 p-5">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary-glow/10 flex items-center justify-center shrink-0">
+              <Sparkles className="h-5 w-5 text-primary-glow" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Tempo economizado</p>
+              <p className="text-lg font-bold mt-1">~{estimatedHoursSaved}h hoje</p>
+              <p className="text-xs text-muted-foreground mt-1">estimativa com base nos posts criados</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Queue */}
@@ -292,6 +403,35 @@ export default function Overview() {
 
         {/* Right: Status breakdown + recent */}
         <div className="lg:col-span-4 space-y-6">
+          <Card className="border-border/60 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Saúde da operação
+              </h3>
+              <Badge variant={healthItems.every(item => item.ok) ? "default" : "outline"} className="text-[10px]">
+                {healthItems.every(item => item.ok) ? "Tudo certo" : "Atenção"}
+              </Badge>
+            </div>
+            <div className="divide-y divide-border/60">
+              {healthItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link key={item.label} to={item.to} className="px-5 py-3 flex items-center gap-3 hover:bg-secondary/40 transition-colors">
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${item.ok ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold">{item.label}</p>
+                      <p className="text-xs text-muted-foreground truncate">{item.value}</p>
+                    </div>
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+
           <Card className="border-border/60 p-6">
             <h3 className="text-sm font-semibold mb-5 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
