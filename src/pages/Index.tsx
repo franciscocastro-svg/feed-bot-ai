@@ -296,7 +296,7 @@ export default function Index() {
     <div className="min-h-screen overflow-x-hidden">
       <SEO
         title="NewsFlow — Automação de Instagram com IA"
-        description="Automação de Instagram com IA para transformar notícias, pautas e conteúdos em posts, stories e reels. Capte por RSS, reescreva e publique pela API oficial da Meta."
+        description="Automação de Instagram com IA para transformar notícias, pautas e conteúdos em posts, stories e reels."
         path="/"
       />
       <FAQStructuredData items={faqItems} />

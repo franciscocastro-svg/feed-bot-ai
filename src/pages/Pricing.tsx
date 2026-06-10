@@ -143,8 +143,8 @@ export default function Pricing() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Planos e Preços — NewsFlow"
-        description="Escolha o plano ideal para automatizar seu Instagram. Ative 7 dias de teste com cartão, reescrita com IA, agendamento e publicação automática."
+        title="Planos do NewsFlow — preços e recursos"
+        description="Planos do NewsFlow para automatizar Instagram com IA: reescrita por IA, geração de Reels, agendamento e publicação pela API oficial da Meta."
         path="/pricing"
       />
       <PaymentTestModeBanner />
@@ -156,10 +156,9 @@ export default function Pricing() {
         </div>
         <header className="text-center space-y-3 py-4">
           <Badge variant="secondary" className="mx-auto"><Sparkles className="h-3 w-3 mr-1" /> Planos</Badge>
-          <h1 className="font-display text-4xl md:text-5xl font-bold">Ative 7 dias de teste com cartão</h1>
+          <h1 className="font-display text-4xl md:text-5xl font-bold">Planos do NewsFlow</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Para proteger a plataforma contra curiosos, o painel é liberado após cadastrar o cartão na Stripe.
-            Você testa por 7 dias e pode cancelar antes da cobrança.
+            Escolha o plano ideal e ative 7 dias de teste com cartão. Para proteger a plataforma contra curiosos, o painel é liberado após cadastrar o cartão na Stripe. Cancele antes da cobrança se não quiser continuar.
           </p>
         </header>
 
