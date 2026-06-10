@@ -355,13 +355,13 @@ export default function Topics() {
               key={item.title}
               type="button"
               onClick={() => runQuickStart(item.action)}
-              className="group rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary/50 hover:bg-primary/5"
+              className="group min-w-0 rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary/50 hover:bg-primary/5"
             >
               <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
                 <Icon className="h-5 w-5" />
               </span>
-              <span className="block font-semibold">{item.title}</span>
-              <span className="mt-1 block text-sm text-muted-foreground">{item.desc}</span>
+              <span className="block break-words font-semibold leading-snug">{item.title}</span>
+              <span className="mt-1 block break-words text-sm leading-snug text-muted-foreground">{item.desc}</span>
             </button>
           );
         })}
@@ -443,11 +443,11 @@ export default function Topics() {
               {QUICK_STARTS.map(item => {
                 const Icon = item.icon;
                 return (
-                  <Button key={item.title} variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => runQuickStart(item.action)}>
+                  <Button key={item.title} variant="outline" className="h-auto min-w-0 justify-start gap-3 whitespace-normal p-4 text-left" onClick={() => runQuickStart(item.action)}>
                     <Icon className="h-5 w-5 shrink-0 text-primary" />
-                    <span>
-                      <span className="block font-semibold">{item.title}</span>
-                      <span className="block text-xs font-normal text-muted-foreground">{item.desc}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words font-semibold leading-snug">{item.title}</span>
+                      <span className="block break-words text-xs font-normal leading-snug text-muted-foreground">{item.desc}</span>
                     </span>
                   </Button>
                 );
