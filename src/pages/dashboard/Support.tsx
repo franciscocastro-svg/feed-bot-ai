@@ -106,7 +106,8 @@ export default function Support() {
     const { error } = await supabase.from("support_messages").insert({
       ticket_id: selected.id, sender_id: user.id, sender_role: "user", image_url: path,
     });
-    if (error) toast.error("Erro ao registrar imagem");
+    if (error) { toast.error("Erro ao registrar imagem"); return; }
+    await loadMessages(selected.id);
   };
 
   const sendAudio = async (blob: Blob, duration: number) => {
@@ -119,7 +120,8 @@ export default function Support() {
       ticket_id: selected.id, sender_id: user.id, sender_role: "user",
       audio_url: path, audio_duration_seconds: duration,
     });
-    if (error) toast.error("Erro ao registrar áudio");
+    if (error) { toast.error("Erro ao registrar áudio"); return; }
+    await loadMessages(selected.id);
   };
 
   const sendReply = async () => {
@@ -132,8 +134,10 @@ export default function Support() {
     });
     setSending(false);
     if (error) { toast.error("Erro ao enviar"); setReply(body); return; }
-    // Realtime will patch ticket list automatically
+    await loadMessages(selected.id);
+    loadTickets();
   };
+
 
   const createTicket = async () => {
     if (!user || !newSubject.trim() || !newBody.trim()) return;
