@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { SEO } from "@/components/SEO";
 import { useEffect, useRef, useState } from "react";
 import { motion, useTransform, useMotionValue, useSpring } from "framer-motion";
@@ -90,6 +91,37 @@ const proofItems = [
   { label: "292,6 mil visualizações", text: "Alcance exibido no painel profissional do Instagram." },
   { label: "3,3 mil interações", text: "Conteúdo recorrente gerando atividade na conta." },
 ];
+
+const faqItems = [
+  { q: "Como funciona o trial gratuito?", a: "Você tem 7 dias para testar todos os recursos do plano Free sem precisar de cartão. Pode cancelar a qualquer momento." },
+  { q: "Vocês usam a API oficial do Instagram?", a: "Sim, usamos integração oficial e segura com o Instagram." },
+  { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o NewsFlow usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
+  { q: "Preciso deixar meu computador ligado?", a: "Não. A geração de mídia e a fila rodam na infraestrutura do sistema, então o painel pode ficar fechado." },
+  { q: "Funciona com Reels?", a: "Sim. O sistema gera Reels com capa/template, áudio configurado e vídeo pronto para publicação." },
+  { q: "Posso conectar mais de uma conta?", a: "Sim. O plano Pro permite até 3 contas e o Business 10+. Cada conta tem agenda e regras independentes." },
+  { q: "A IA pode publicar sem revisão?", a: "Você escolhe. Tem o modo de aprovação manual (você revisa cada post) e o modo piloto automático (publica direto seguindo seus filtros e horários)." },
+  { q: "Posso cancelar quando quiser?", a: "Sim. Cobrança mensal recorrente sem fidelidade. Cancele em um clique pelo painel — o acesso fica até o fim do período pago." },
+  { q: "Quais fontes de notícias posso usar?", a: "Qualquer feed RSS público: G1, UOL, ESPN, blogs de nicho, NewsAPI etc. Você cadastra quantos quiser dentro do limite do seu plano." },
+  { q: "Como é cobrado?", a: "Cobrança mensal via cartão de crédito processada pela Stripe. Emissão de nota fiscal sob demanda." },
+  { q: "Tem suporte humano?", a: "Sim. Suporte por email em todos os planos e por WhatsApp nos planos Pro e Business." },
+];
+
+function FAQStructuredData({ items }: { items: { q: string; a: string }[] }) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((it) => ({
+      "@type": "Question",
+      name: it.q,
+      acceptedAnswer: { "@type": "Answer", text: it.a },
+    })),
+  };
+  return (
+    <Helmet>
+      <script type="application/ld+json">{JSON.stringify(data)}</script>
+    </Helmet>
+  );
+}
 
 const proofSlides = [
   {
