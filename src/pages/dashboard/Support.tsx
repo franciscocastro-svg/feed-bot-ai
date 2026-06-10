@@ -82,43 +82,20 @@ export default function Support() {
 
   useEffect(() => { loadTickets(); }, [user?.id]);
 
-  // Live updates on ticket list — optimistic patch instead of full reload
+  // Polling for ticket list (Realtime removed for security)
   useEffect(() => {
     if (!user) return;
-    const ch = supabase
-      .channel(`support-tickets-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets", filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          const row = (payload.new ?? payload.old) as Ticket | undefined;
-          if (!row) return;
-          setTickets((prev) => {
-            if (payload.eventType === "DELETE") return prev.filter(t => t.id !== row.id);
-            const exists = prev.some(t => t.id === row.id);
-            const next = exists ? prev.map(t => t.id === row.id ? { ...t, ...row } : t) : [row as Ticket, ...prev];
-            return next.sort((a, b) => +new Date(b.last_message_at) - +new Date(a.last_message_at));
-          });
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(() => { loadTickets(); }, 15000);
+    return () => clearInterval(id);
   }, [user?.id]);
 
   useEffect(() => {
     if (!selected) return;
     loadMessages(selected.id);
-    const ch = supabase
-      .channel(`support-${selected.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_messages", filter: `ticket_id=eq.${selected.id}` },
-        (payload) => {
-          const m = payload.new as Message;
-          setMessages((prev) => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
-          if (m.sender_role !== "user") {
-            supabase.from("support_tickets").update({ unread_for_user: false }).eq("id", selected.id);
-          }
-          setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(() => { loadMessages(selected.id); }, 10000);
+    return () => clearInterval(id);
   }, [selected?.id]);
+
 
   const sendImage = async (file: File) => {
     if (!user || !selected) return;
