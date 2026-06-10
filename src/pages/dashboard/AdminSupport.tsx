@@ -120,6 +120,8 @@ export default function AdminSupport() {
     });
     setSending(false);
     if (error) { toast.error("Erro ao enviar"); setReply(body); return; }
+    await loadMessages(selected.id);
+    loadTickets();
   };
 
   const sendAudio = async (blob: Blob, duration: number) => {
@@ -132,7 +134,8 @@ export default function AdminSupport() {
       ticket_id: selected.id, sender_id: user.id, sender_role: "admin",
       audio_url: path, audio_duration_seconds: duration,
     });
-    if (error) toast.error("Erro ao registrar áudio");
+    if (error) { toast.error("Erro ao registrar áudio"); return; }
+    await loadMessages(selected.id);
   };
 
   const sendImage = async (file: File) => {
@@ -144,8 +147,10 @@ export default function AdminSupport() {
     const { error } = await supabase.from("support_messages").insert({
       ticket_id: selected.id, sender_id: user.id, sender_role: "admin", image_url: path,
     });
-    if (error) toast.error("Erro ao registrar imagem");
+    if (error) { toast.error("Erro ao registrar imagem"); return; }
+    await loadMessages(selected.id);
   };
+
 
   const changeStatus = async (status: string) => {
     if (!selected) return;
