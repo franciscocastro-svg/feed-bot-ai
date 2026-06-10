@@ -6,8 +6,8 @@ export default function Terms() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Termos de Uso — NewsFlow"
-        description="Leia os Termos de Uso do NewsFlow: regras de uso da plataforma SaaS de automação de conteúdo para Instagram com IA, planos, pagamentos e responsabilidades."
+        title="Termos de Uso do NewsFlow"
+        description="Termos de Uso do NewsFlow: regras da plataforma SaaS de automação de Instagram com IA — planos, pagamentos, responsabilidades e cancelamento."
         path="/terms"
       />
       <header className="border-b border-border/40">

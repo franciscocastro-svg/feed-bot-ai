@@ -6,8 +6,8 @@ export default function Privacy() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Política de Privacidade — NewsFlow"
-        description="Como o NewsFlow coleta, usa e protege seus dados conforme a LGPD: cadastro, autenticação Instagram, conteúdo, pagamentos e seus direitos."
+        title="Política de Privacidade do NewsFlow"
+        description="Política de Privacidade do NewsFlow (LGPD): quais dados coletamos, como usamos, com quem compartilhamos e seus direitos sobre suas informações."
         path="/privacy"
       />
       <header className="border-b border-border/40">
