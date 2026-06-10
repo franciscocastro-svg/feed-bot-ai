@@ -12,8 +12,10 @@ import { StripeEmbeddedCheckout } from "@/components/StripeEmbeddedCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { usePlanUsage } from "@/hooks/usePlanUsage";
 import { toast } from "sonner";
+import type { Database } from "@/integrations/supabase/types";
 
 const WHATSAPP_BUSINESS = "5547996080134";
+type PlanLimit = Database["public"]["Tables"]["plan_limits"]["Row"];
 
 // Maps internal plan key -> Stripe price lookup_key
 const PRICE_ID_MAP: Record<string, string | null> = {
@@ -76,7 +78,7 @@ function fmtLimit(n: number | null | undefined, suffix: string): string {
   return `${n} ${suffix}`;
 }
 
-function buildFeatures(p: any): string[] {
+function buildFeatures(p: PlanLimit): string[] {
   const features: string[] = [];
   features.push(fmtLimit(p.max_ig_accounts, p.max_ig_accounts === 1 ? "conta Instagram" : "contas Instagram"));
   features.push(fmtLimit(p.max_posts_per_day, "posts/dia"));
@@ -97,7 +99,7 @@ export default function Pricing() {
   const navigate = useNavigate();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
-  const [plans, setPlans] = useState<any[]>([]);
+  const [plans, setPlans] = useState<PlanLimit[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -174,7 +176,7 @@ export default function Pricing() {
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
             {plans.filter((p) => p.plan !== "free").map((p) => {
               const isCurrent = usage?.plan === p.plan;
               const highlight = p.plan === HIGHLIGHT_PLAN;
@@ -188,17 +190,21 @@ export default function Pricing() {
               const subtitle = isBusinessContact ? "negociado" : "/mês após 7 dias";
 
               return (
-                <Card key={p.plan} className={`p-6 flex flex-col relative overflow-hidden ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20" : ""}`}>
-                  {highlight && <div className="absolute inset-x-0 top-0 h-1 bg-gradient-brand" />}
+                <Card key={p.plan} className={`p-6 flex flex-col relative min-h-[460px] ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20 pt-8" : ""}`}>
+                  {highlight && <div className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-brand" />}
                   {highlight && (
-                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Mais popular</Badge>
+                    <Badge className="absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap px-3">
+                      Mais popular
+                    </Badge>
                   )}
                   <div className="space-y-1 mb-4">
-                    <h3 className="text-xl font-bold">{p.display_name || p.plan}</h3>
-                    <p className="text-xs font-medium text-primary">{positioning.bestFor}</p>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold">{formatPrice(p.price_brl, p.is_negotiable)}</span>
-                      <span className="text-sm text-muted-foreground">{subtitle}</span>
+                    <h3 className="text-xl font-bold leading-tight">{p.display_name || p.plan}</h3>
+                    <p className="text-xs font-medium text-primary leading-tight">{positioning.bestFor}</p>
+                    <div className="flex flex-wrap items-end gap-x-2 gap-y-1 pt-1">
+                      <span className={`font-bold leading-none ${isBusinessContact ? "text-3xl" : "text-4xl"}`}>
+                        {formatPrice(p.price_brl, p.is_negotiable)}
+                      </span>
+                      <span className="text-sm text-muted-foreground pb-1">{subtitle}</span>
                     </div>
                     <p className="pt-2 text-xs text-muted-foreground min-h-10">{positioning.promise}</p>
                   </div>
