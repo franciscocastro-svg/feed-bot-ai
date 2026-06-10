@@ -11,7 +11,7 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import whatsappBot from "@/assets/whatsapp-bot.png";
+import whatsappBot from "@/assets/whatsapp-bot.jpg";
 import logoImg from "@/assets/logo.png";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
@@ -263,10 +263,12 @@ export default function Index() {
   return (
     <div className="min-h-screen overflow-x-hidden">
       <SEO
-        title="NewsFlow — Automação Instagram com IA"
-        description="Capture notícias por RSS, reescreva com IA e publique no Instagram automaticamente. Ative 7 dias de teste com cartão."
+        title="NewsFlow — Automação de Instagram com IA"
+        description="Automação de Instagram com IA para transformar notícias, pautas e conteúdos em posts, stories e reels. Capte por RSS, reescreva e publique pela API oficial da Meta."
         path="/"
       />
+      <FAQStructuredData items={faqItems} />
+
       <CursorGlow />
       {/* Header */}
       <motion.header
@@ -788,19 +790,7 @@ export default function Index() {
         </motion.div>
         <div className="max-w-3xl mx-auto">
           <Accordion type="single" collapsible className="space-y-3">
-            {[
-              { q: "Como funciona o trial gratuito?", a: "Você tem 7 dias para testar todos os recursos do plano Free sem precisar de cartão. Pode cancelar a qualquer momento." },
-              { q: "Vocês usam a API oficial do Instagram?", a: "Sim, usamos integração oficial e segura com o Instagram." },
-              { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o NewsFlow usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
-              { q: "Preciso deixar meu computador ligado?", a: "Não. A geração de mídia e a fila rodam na infraestrutura do sistema, então o painel pode ficar fechado." },
-              { q: "Funciona com Reels?", a: "Sim. O sistema gera Reels com capa/template, áudio configurado e vídeo pronto para publicação." },
-              { q: "Posso conectar mais de uma conta?", a: "Sim. O plano Pro permite até 3 contas e o Business 10+. Cada conta tem agenda e regras independentes." },
-              { q: "A IA pode publicar sem revisão?", a: "Você escolhe. Tem o modo de aprovação manual (você revisa cada post) e o modo piloto automático (publica direto seguindo seus filtros e horários)." },
-              { q: "Posso cancelar quando quiser?", a: "Sim. Cobrança mensal recorrente sem fidelidade. Cancele em um clique pelo painel — o acesso fica até o fim do período pago." },
-              { q: "Quais fontes de notícias posso usar?", a: "Qualquer feed RSS público: G1, UOL, ESPN, blogs de nicho, NewsAPI etc. Você cadastra quantos quiser dentro do limite do seu plano." },
-              { q: "Como é cobrado?", a: "Cobrança mensal via cartão de crédito processada pela Stripe. Emissão de nota fiscal sob demanda." },
-              { q: "Tem suporte humano?", a: "Sim. Suporte por email em todos os planos e por WhatsApp nos planos Pro e Business." },
-            ].map((item, i) => (
+            {faqItems.map((item, i) => (
               <AccordionItem key={i} value={`item-${i}`} className="glass rounded-xl border-border/40 px-5">
                 <AccordionTrigger className="text-left font-medium hover:no-underline">{item.q}</AccordionTrigger>
                 <AccordionContent className="text-muted-foreground">{item.a}</AccordionContent>
