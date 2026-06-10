@@ -883,7 +883,7 @@ export default function Index() {
         aria-label="Falar no WhatsApp"
         className="fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full overflow-hidden shadow-glow transition-transform hover:scale-110 sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
       >
-        <img src={whatsappBot} alt="Falar no WhatsApp" className="h-full w-full object-cover" />
+        <img src={whatsappBot} alt="Falar no WhatsApp" width={64} height={64} loading="lazy" decoding="async" className="h-full w-full object-cover" />
       </a>
     </div>
   );
