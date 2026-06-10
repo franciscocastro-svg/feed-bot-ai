@@ -105,27 +105,27 @@ export default function DashboardLayout() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
   useReelVideoGenerator();
 
-  // Live unread support tickets counter + beep for admins
+  // Polling-based unread support tickets counter for admins (Realtime removed for security)
   useEffect(() => {
     if (!isAdmin) { setAdminUnread(0); return; }
     let prev = 0;
+    let stopped = false;
     const refresh = async (notify = false) => {
       const { count } = await supabase
         .from("support_tickets")
         .select("id", { count: "exact", head: true })
         .eq("unread_for_admin", true);
+      if (stopped) return;
       const next = count ?? 0;
       if (notify && next > prev) playSupportBeep();
       prev = next;
       setAdminUnread(next);
     };
     refresh(false);
-    const ch = supabase.channel("admin-support-unread")
-      .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => refresh(true))
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_messages" }, () => refresh(true))
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(() => refresh(true), 15000);
+    return () => { stopped = true; clearInterval(id); };
   }, [isAdmin]);
+
 
   useEffect(() => {
     if (!user) return;
