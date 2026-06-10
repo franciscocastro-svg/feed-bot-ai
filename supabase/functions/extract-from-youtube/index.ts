@@ -38,7 +38,10 @@ async function fetchTranscript(videoId: string): Promise<string> {
       }
     } catch (e) { lastErr = e; }
   }
-  throw new Error(`Sem legendas disponíveis para esse vídeo. Detalhe: ${lastErr?.message || "?"}`);
+  const err: any = new Error(`Sem legendas disponíveis para esse vídeo. Esse vídeo não tem legendas habilitadas — tente outro.`);
+  err.code = "transcript_disabled";
+  err.detail = lastErr?.message || null;
+  throw err;
 }
 
 async function suggestTopicsFromText(text: string, count: number, niche?: string | null) {
