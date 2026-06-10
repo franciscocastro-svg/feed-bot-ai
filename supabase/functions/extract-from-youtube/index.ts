@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     console.error(e);
     const msg = e instanceof Error ? e.message : "unknown";
     const code = e?.code || null;
-    const status = code === "no_credits" || code === "rate_limited" ? 200 : 500;
+    const status = code === "no_credits" || code === "rate_limited" || code === "transcript_disabled" ? 200 : 500;
     return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
