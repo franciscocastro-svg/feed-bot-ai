@@ -293,19 +293,7 @@ Deno.serve(async (req) => {
     const validateUrl: string | null = body?.validate_url || null;
     let userId: string | null = body?.user_id || null;
 
-    // Modo validação de URL: testa se a URL retorna feed RSS válido (sem persistir nada)
-    if (validateUrl) {
-      try {
-        const xml = await fetchXmlSmart(validateUrl);
-        const items = parseRss(xml);
-        if (items.length === 0) {
-          return new Response(JSON.stringify({ valid: false, error: "Nenhum item encontrado no feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        return new Response(JSON.stringify({ valid: true, items_count: items.length, sample_title: items[0]?.title || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      } catch (e) {
-        return new Response(JSON.stringify({ valid: false, error: e instanceof Error ? e.message : "Falha ao buscar feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
+    // Autenticação obrigatória ANTES de qualquer fetch externo (evita SSRF anônimo).
     let supabase;
     if (userId) {
       const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
@@ -320,6 +308,21 @@ Deno.serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       userId = user.id;
+    }
+
+    // Modo validação de URL: testa se a URL retorna feed RSS válido (sem persistir nada).
+    // Só roda APÓS autenticação para evitar uso como proxy HTTP anônimo.
+    if (validateUrl) {
+      try {
+        const xml = await fetchXmlSmart(validateUrl);
+        const items = parseRss(xml);
+        if (items.length === 0) {
+          return new Response(JSON.stringify({ valid: false, error: "Nenhum item encontrado no feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ valid: true, items_count: items.length, sample_title: items[0]?.title || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ valid: false, error: e instanceof Error ? e.message : "Falha ao buscar feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     let sourcesQuery = supabase.from("news_sources").select("*").eq("active", true).eq("user_id", userId);
