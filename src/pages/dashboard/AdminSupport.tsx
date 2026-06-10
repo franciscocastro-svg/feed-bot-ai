@@ -88,29 +88,11 @@ export default function AdminSupport() {
 
   useEffect(() => { if (allowed) loadTickets(); }, [allowed, filter]);
 
+  // Polling for ticket list (Realtime removed for security)
   useEffect(() => {
     if (!allowed) return;
-    const ch = supabase.channel("admin-support-tickets")
-      .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, (payload) => {
-        const row = (payload.new ?? payload.old) as Ticket | undefined;
-        if (!row) return;
-        // For new tickets we need the profile — fetch lazily if missing
-        setTickets((prev) => {
-          if (payload.eventType === "DELETE") return prev.filter(t => t.id !== row.id);
-          if (filter !== "all" && (row as Ticket).status !== filter) {
-            return prev.filter(t => t.id !== row.id);
-          }
-          const exists = prev.some(t => t.id === row.id);
-          const next = exists ? prev.map(t => t.id === row.id ? { ...t, ...row } : t) : [row as Ticket, ...prev];
-          return next.sort((a, b) => +new Date(b.last_message_at) - +new Date(a.last_message_at));
-        });
-        if (payload.eventType === "INSERT" && row.user_id && !profiles[row.user_id]) {
-          supabase.from("profiles").select("id, display_name").eq("id", row.user_id).maybeSingle()
-            .then(({ data }) => { if (data) setProfiles(p => ({ ...p, [data.id]: data as Profile })); });
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(() => { loadTickets(); }, 15000);
+    return () => clearInterval(id);
   }, [allowed, filter]);
 
   const loadMessages = async (ticketId: string) => {
@@ -123,19 +105,10 @@ export default function AdminSupport() {
   useEffect(() => {
     if (!selected) return;
     loadMessages(selected.id);
-    const ch = supabase.channel(`admin-support-${selected.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_messages", filter: `ticket_id=eq.${selected.id}` },
-        (payload) => {
-          const m = payload.new as Message;
-          setMessages((prev) => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
-          if (m.sender_role !== "admin") {
-            supabase.from("support_tickets").update({ unread_for_admin: false }).eq("id", selected.id);
-          }
-          setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(() => { loadMessages(selected.id); }, 10000);
+    return () => clearInterval(id);
   }, [selected?.id]);
+
 
   const sendReply = async () => {
     if (!user || !selected || !reply.trim()) return;
