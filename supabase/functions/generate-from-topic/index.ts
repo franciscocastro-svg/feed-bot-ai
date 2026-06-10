@@ -112,6 +112,9 @@ Deno.serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       userId = user.id;
+      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+      const { data: approved } = await adminClient.rpc("is_approved", { _uid: userId });
+      if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Settings + Perfil de criador
