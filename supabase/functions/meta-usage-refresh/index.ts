@@ -67,6 +67,11 @@ Deno.serve(async (req) => {
   }
   const userId = userRes.user.id;
   const admin = createClient(url, service);
+  const { data: approved } = await admin.rpc("is_approved", { _uid: userId });
+  if (approved === false) {
+    return new Response(JSON.stringify({ error: "account_not_approved" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   const { data: accounts, error: aErr } = await admin
     .from("instagram_accounts")
