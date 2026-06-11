@@ -37,6 +37,7 @@ export default function ForgotPassword() {
         title="Recuperar senha — NewsFlow"
         description="Esqueceu sua senha do NewsFlow? Informe seu email e receba um link seguro para criar uma nova senha de acesso."
         path="/forgot-password"
+        noindex
       />
       <Card className="w-full max-w-md p-8 glass">
         <div className="flex items-center justify-center gap-2 mb-6">

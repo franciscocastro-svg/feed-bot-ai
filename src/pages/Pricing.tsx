@@ -197,7 +197,7 @@ export default function Pricing() {
                     </Badge>
                   )}
                   <div className="space-y-1 mb-4">
-                    <h3 className="text-xl font-bold leading-tight">{p.display_name || p.plan}</h3>
+                    <h2 className="text-xl font-bold leading-tight">{p.display_name || p.plan}</h2>
                     <p className="text-xs font-medium text-primary leading-tight">{positioning.bestFor}</p>
                     <div className="flex flex-wrap items-end gap-x-2 gap-y-1 pt-1">
                       <span className={`font-bold leading-none ${isBusinessContact ? "text-3xl" : "text-4xl"}`}>

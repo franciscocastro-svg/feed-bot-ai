@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +17,10 @@ export default function CheckoutReturn() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+      <Helmet>
+        <title>Pagamento concluído — NewsFlow</title>
+        <meta name="robots" content="noindex,nofollow" />
+      </Helmet>
       <Card className="p-8 max-w-md text-center space-y-4">
         <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
         <h1 className="text-2xl font-bold">Teste ativado!</h1>

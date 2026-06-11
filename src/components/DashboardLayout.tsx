@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -142,6 +143,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen flex w-full">
+      <Helmet><meta name="robots" content="noindex,nofollow" /></Helmet>
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-64 shrink-0 border-r border-border flex-col">
         <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} />
