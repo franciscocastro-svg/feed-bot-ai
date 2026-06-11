@@ -2,16 +2,31 @@
 
 > NewsFlow é uma plataforma SaaS brasileira de automação de conteúdo para Instagram com IA. Capta notícias por RSS, reescreve com IA, monta posts, stories e Reels com template e publica via API oficial da Meta, respeitando horários, limite diário e intervalo de cada conta.
 
+## Links principais
+
+- [Home](https://feed-bot-ai.lovable.app/)
+- [Planos e preços](https://feed-bot-ai.lovable.app/pricing)
+- [Termos de uso](https://feed-bot-ai.lovable.app/terms)
+- [Política de privacidade](https://feed-bot-ai.lovable.app/privacy)
+
+https://feed-bot-ai.lovable.app/
+https://feed-bot-ai.lovable.app/pricing
+https://feed-bot-ai.lovable.app/terms
+https://feed-bot-ai.lovable.app/privacy
+
 ## O que é
+
 NewsFlow transforma notícias, pautas e conteúdos em posts, stories e Reels prontos para o Instagram, de ponta a ponta — captura, reescrita por IA, geração de mídia e publicação automática.
 
 ## Público-alvo
+
 - Criadores de conteúdo e influenciadores de nicho
 - Agências de social media e portais de notícia
 - Pequenas e médias empresas que precisam de presença constante no Instagram
 - Operações com múltiplas contas que buscam escala segura
 
 ## Principais funcionalidades
+
 - Captação automática de notícias via feeds RSS por nicho
 - Reescrita com IA (título, resumo, legenda) adaptada ao Instagram
 - Geração de Reels, capas, posts e stories com templates personalizáveis
@@ -22,6 +37,7 @@ NewsFlow transforma notícias, pautas e conteúdos em posts, stories e Reels pro
 - Painel com status, métricas e logs em tempo real
 
 ## Planos
+
 - Starter — para uma conta em crescimento
 - Pro — para criadores e agências, com suporte prioritário
 - Business — para operação com várias contas, suporte por WhatsApp
@@ -29,14 +45,12 @@ NewsFlow transforma notícias, pautas e conteúdos em posts, stories e Reels pro
 
 Cobrança mensal recorrente via Stripe, sem fidelidade, cancelamento em um clique.
 
-## Links principais
-- Site: https://feed-bot-ai.lovable.app/
-- Planos e preços: https://feed-bot-ai.lovable.app/pricing
-- Termos de uso: https://feed-bot-ai.lovable.app/terms
-- Política de privacidade: https://feed-bot-ai.lovable.app/privacy
-- Suporte WhatsApp: https://wa.me/5547996080134
+## Suporte
+
+- WhatsApp: https://wa.me/5547996080134
 
 ## Tecnologia
+
 - Integração oficial com Meta Graph API (Instagram)
 - Pagamentos processados pela Stripe
 - Conformidade com LGPD; tokens armazenados de forma criptografada
