@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { MessageSquare, Plus, Send, Loader2, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { AudioRecorder } from "@/components/support/AudioRecorder";
 import { AudioBubble } from "@/components/support/AudioBubble";
 import { ImageBubble } from "@/components/support/ImageBubble";
@@ -36,7 +37,7 @@ type Message = {
   created_at: string;
 };
 
-const STATUS_LABEL: Record<string, { label: string; tone: string; icon: any }> = {
+const STATUS_LABEL: Record<string, { label: string; tone: string; icon: LucideIcon }> = {
   open: { label: "Aberto", tone: "bg-blue-500/15 text-blue-400 border-blue-500/30", icon: Clock },
   pending_user: { label: "Aguardando você", tone: "bg-amber-500/15 text-amber-400 border-amber-500/30", icon: MessageSquare },
   closed: { label: "Resolvido", tone: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", icon: CheckCircle2 },

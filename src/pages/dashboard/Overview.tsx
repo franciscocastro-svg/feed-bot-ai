@@ -19,8 +19,55 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
+
+type NewsSummary = {
+  id: string;
+  status?: string | null;
+  original_title?: string | null;
+  rewritten_title?: string | null;
+  created_at?: string | null;
+  source_name?: string | null;
+};
+
+type QueueItem = {
+  id: string;
+  scheduled_for: string;
+  media_type?: string | null;
+  news_items?: {
+    rewritten_title?: string | null;
+    original_title?: string | null;
+    generated_image_url?: string | null;
+    generated_cover_url?: string | null;
+  } | null;
+};
+
+type InstagramAccountSummary = {
+  id: string;
+  active?: boolean | null;
+  token_expires_at?: string | null;
+};
+
+type DashboardSettings = {
+  auto_approve?: boolean | null;
+  min_post_interval_minutes?: number | null;
+  max_posts_per_day?: number | null;
+};
+
+type PostedBucketRow = {
+  posted_at: string | null;
+  status?: string | null;
+};
+
+type HealthItem = {
+  label: string;
+  value: string;
+  ok: boolean;
+  to: string;
+  icon: LucideIcon;
+};
 
 
 
@@ -69,10 +116,10 @@ export default function Overview() {
   const { usage } = usePlanUsage();
   const [stats, setStats] = useState({ postedToday: 0, scheduled: 0, pending: 0, posted: 0, failed: 0, successRate: 100, deltaPct: 0 });
   const [sparkData, setSparkData] = useState<number[]>([]);
-  const [recent, setRecent] = useState<any[]>([]);
-  const [queue, setQueue] = useState<any[]>([]);
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>(null);
+  const [recent, setRecent] = useState<NewsSummary[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [accounts, setAccounts] = useState<InstagramAccountSummary[]>([]);
+  const [settings, setSettings] = useState<DashboardSettings | null>(null);
   const [sourceStats, setSourceStats] = useState({ active: 0, total: 0 });
 
   useEffect(() => {
@@ -99,7 +146,8 @@ export default function Overview() {
 
       // Build 7-day buckets
       const buckets: number[] = Array(7).fill(0);
-      (last7d.data || []).forEach((r: any) => {
+      ((last7d.data || []) as PostedBucketRow[]).forEach((r) => {
+        if (!r.posted_at) return;
         const d = new Date(r.posted_at); d.setHours(0, 0, 0, 0);
         const idx = Math.floor((d.getTime() - start7d.getTime()) / 86400000);
         if (idx >= 0 && idx < 7) buckets[idx]++;
@@ -121,10 +169,10 @@ export default function Overview() {
         successRate: totalPub > 0 ? Math.round(((posted.count || 0) / totalPub) * 100) : 100,
         deltaPct: delta,
       });
-      setRecent(news.data || []);
-      setQueue(nextQueue.data || []);
-      setAccounts(accs.data || []);
-      setSettings(settingsRes.data || null);
+      setRecent((news.data || []) as NewsSummary[]);
+      setQueue((nextQueue.data || []) as QueueItem[]);
+      setAccounts((accs.data || []) as InstagramAccountSummary[]);
+      setSettings((settingsRes.data || null) as DashboardSettings | null);
       setSourceStats({ active: activeSources.count || 0, total: allSources.count || 0 });
     })();
   }, []);
@@ -146,7 +194,7 @@ export default function Overview() {
     ? Math.max(0, usage.posts_per_day_limit - usage.posts_today)
     : null;
   const estimatedHoursSaved = Math.round(stats.postedToday * 8 / 60 * 10) / 10;
-  const healthItems = [
+  const healthItems: HealthItem[] = [
     {
       label: "Instagram",
       value: activeAccounts.length > 0 ? `${activeAccounts.length} conectado(s)` : "Conectar conta",

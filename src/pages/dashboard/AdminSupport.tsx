@@ -80,7 +80,7 @@ export default function AdminSupport() {
     if (ids.length) {
       const { data: ps } = await supabase.from("profiles").select("id, display_name").in("id", ids);
       const map: Record<string, Profile> = {};
-      (ps || []).forEach((p: any) => { map[p.id] = p; });
+      ((ps || []) as Profile[]).forEach((p) => { map[p.id] = p; });
       setProfiles(map);
     }
     setLoading(false);
