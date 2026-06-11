@@ -7,9 +7,10 @@ interface SEOProps {
   description: string;
   path: string;
   ogType?: "website" | "article";
+  noindex?: boolean;
 }
 
-export function SEO({ title, description, path, ogType = "website" }: SEOProps) {
+export function SEO({ title, description, path, ogType = "website", noindex = false }: SEOProps) {
   const url = `${BASE_URL}${path}`;
   return (
     <Helmet>
@@ -22,6 +23,7 @@ export function SEO({ title, description, path, ogType = "website" }: SEOProps) 
       <meta property="og:type" content={ogType} />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
+      {noindex && <meta name="robots" content="noindex,nofollow" />}
     </Helmet>
   );
 }

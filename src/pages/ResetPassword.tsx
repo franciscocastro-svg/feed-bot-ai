@@ -50,6 +50,7 @@ export default function ResetPassword() {
         title="Definir nova senha — NewsFlow"
         description="Crie uma nova senha segura para sua conta NewsFlow e volte a automatizar suas publicações no Instagram."
         path="/reset-password"
+        noindex
       />
       <Card className="w-full max-w-md p-8 glass">
         <div className="flex items-center justify-center gap-2 mb-6">

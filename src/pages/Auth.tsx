@@ -94,6 +94,7 @@ export default function Auth() {
         title="Entrar ou criar conta — NewsFlow"
         description="Acesse o NewsFlow ou crie sua conta para ativar 7 dias de teste com cartão e automatizar publicações no Instagram."
         path="/auth"
+        noindex
       />
       <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-subtle border-r border-border relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-radial opacity-50" />
@@ -130,12 +131,16 @@ export default function Auth() {
 
       <div className="flex items-center justify-center p-6">
         <Card className="w-full max-w-md p-8 glass border-border shadow-card">
-          <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-            <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+          <div className="lg:hidden flex flex-col items-center gap-3 mb-6">
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
+                <Sparkles className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <span className="font-display text-xl font-bold">NewsFlow</span>
             </div>
-            <span className="font-display text-xl font-bold">NewsFlow</span>
+            <h1 className="font-display text-xl font-bold text-center">Entrar no NewsFlow</h1>
           </div>
+          <h1 className="hidden lg:sr-only">Entrar ou criar conta no NewsFlow</h1>
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid grid-cols-2 w-full mb-6">
               <TabsTrigger value="signin">Entrar</TabsTrigger>
