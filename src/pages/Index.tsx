@@ -29,6 +29,19 @@ const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean 
   business: { label: "Falar com vendas", whatsapp: true },
 };
 
+type LandingPlan = {
+  plan: string;
+  display_name: string | null;
+  price_brl: number | null;
+  is_negotiable: boolean;
+  max_ig_accounts: number | null;
+  max_posts_per_day: number | null;
+  max_rss_sources: number | null;
+  max_reels_per_month: number | null;
+  max_images_per_month: number | null;
+  auto_publish_enabled: boolean | null;
+};
+
 function fmtBRL(n: number | null | undefined, isNegotiable: boolean): string {
   if (isNegotiable || n === null || n === undefined) return "Sob consulta";
   if (Number(n) === 0) return "R$ 0";
@@ -38,7 +51,7 @@ function fmtLimit(n: number | null | undefined, label: string): string {
   if (n === null || n === undefined || n === -1) return `${label} ilimitado`;
   return `${n} ${label}`;
 }
-function buildFeatures(p: any): string[] {
+function buildFeatures(p: LandingPlan): string[] {
   const f: string[] = [];
   f.push(fmtLimit(p.max_ig_accounts, p.max_ig_accounts === 1 ? "conta Instagram" : "contas Instagram"));
   f.push(fmtLimit(p.max_posts_per_day, "posts/dia"));
@@ -146,6 +159,51 @@ const proofSlides = [
     crop: "object-[center_top]",
   },
 ];
+
+const roadmapItems = [
+  {
+    month: "Mês 7",
+    status: "Em desenvolvimento",
+    title: "Mais estabilidade e segurança",
+    text: "Fila inteligente, melhor prevenção contra falhas, melhorias no monitoramento e mais proteção contra ações repetitivas.",
+  },
+  {
+    month: "Mês 8",
+    status: "Planejado",
+    title: "Reels, Stories e Feed com ritmos separados",
+    text: "Cada formato poderá ter sua própria frequência, evitando que Reels, Stories e Feed disputem o mesmo intervalo de postagem.",
+  },
+  {
+    month: "Mês 9",
+    status: "Planejado",
+    title: "Templates mais profissionais",
+    text: "Mais modelos por nicho, prévias melhores, ajustes visuais mais simples e biblioteca de templates para acelerar a criação.",
+  },
+  {
+    month: "Mês 10",
+    status: "Em estudo",
+    title: "Inteligência por conta",
+    text: "O sistema começará a aprender o melhor ritmo, formato e tipo de conteúdo para cada perfil conectado.",
+  },
+  {
+    month: "Mês 11",
+    status: "Em estudo",
+    title: "Vídeos com template",
+    text: "Planejamento para permitir usar vídeos autorizados, aplicar templates do cliente e transformar em conteúdo com aparência de notícia.",
+  },
+  {
+    month: "Mês 12",
+    status: "Planejado",
+    title: "Painel para agências",
+    text: "Recursos para quem gerencia várias contas e clientes, com visão operacional, permissões e controle mais profissional.",
+  },
+];
+
+const roadmapStatusStyles: Record<string, string> = {
+  "Em desenvolvimento": "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+  Planejado: "border-primary/30 bg-primary/10 text-primary",
+  "Em estudo": "border-amber-300/30 bg-amber-300/10 text-amber-200",
+};
 
 function FloatingBlobs() {
   return (
@@ -261,7 +319,7 @@ export default function Index() {
   const { user } = useAuth();
   const heroRef = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
-  const [livePlans, setLivePlans] = useState<any[] | null>(null);
+  const [livePlans, setLivePlans] = useState<LandingPlan[] | null>(null);
   const [proofSlide, setProofSlide] = useState(0);
 
   useEffect(() => {
@@ -705,6 +763,63 @@ export default function Index() {
             </motion.div>
           ))}
         </div>
+      </section>
+
+      {/* ROADMAP */}
+      <section className="container relative py-20 md:py-28">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="mx-auto mb-10 max-w-3xl text-center md:mb-14"
+        >
+          <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
+            <Sparkles className="h-3 w-3 text-primary" /> Roadmap de evolução
+          </div>
+          <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
+            Roadmap de evolução: <span className="text-gradient">próximos 6 meses</span>
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            O NewsFlow está em evolução constante. Nosso foco é transformar sua operação de conteúdo em um sistema cada vez mais inteligente, seguro e lucrativo.
+          </p>
+        </motion.div>
+
+        <div className="relative">
+          <div className="pointer-events-none absolute left-4 top-8 bottom-8 hidden w-px bg-gradient-to-b from-primary/0 via-primary/50 to-primary/0 lg:block" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {roadmapItems.map((item, index) => (
+              <motion.article
+                key={item.month}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.5, delay: index * 0.06 }}
+                className="group relative min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-5 shadow-xl backdrop-blur-xl transition hover:-translate-y-1 hover:border-primary/50 sm:p-6"
+              >
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 transition group-hover:opacity-100" />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-sm font-bold text-primary">
+                    {item.month}
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roadmapStatusStyles[item.status]}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <h3 className="mt-5 break-words font-display text-xl font-semibold leading-snug text-foreground">
+                  {item.title}
+                </h3>
+                <p className="mt-3 break-words text-sm leading-relaxed text-muted-foreground">
+                  {item.text}
+                </p>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+
+        <p className="mx-auto mt-6 max-w-3xl text-center text-xs leading-relaxed text-muted-foreground sm:text-sm">
+          O roadmap pode evoluir conforme feedback dos usuários, prioridades técnicas e melhorias de segurança.
+        </p>
       </section>
 
       {/* PLANOS */}
