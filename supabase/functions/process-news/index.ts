@@ -57,6 +57,7 @@ const corsHeaders = {
 };
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const GROQ_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -196,6 +197,109 @@ const LANG_NAMES: Record<string, string> = {
   pt: "português", auto: "detectar automaticamente",
 };
 
+function getTextAiProvider(): "lovable" | "groq" {
+  const provider = (Deno.env.get("AI_TEXT_PROVIDER") || "").trim().toLowerCase();
+  return provider === "groq" && !!Deno.env.get("GROQ_API_KEY") ? "groq" : "lovable";
+}
+
+function getTextAiModel(): string {
+  return getTextAiProvider() === "groq"
+    ? (Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant")
+    : "google/gemini-2.5-pro";
+}
+
+function extractJsonObject(text: string): any {
+  const cleaned = String(text || "")
+    .replace(/```json/gi, "```")
+    .replace(/```/g, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
+    throw new Error("Resposta da IA sem JSON válido");
+  }
+}
+
+function normalizeRewritePayload(parsed: any, item: any): any {
+  const fallback = fallbackRewrite(item);
+  const hashtags = Array.isArray(parsed?.hashtags)
+    ? parsed.hashtags
+        .map((h: any) => String(h || "").replace(/^#/, "").trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 15)
+    : fallback.hashtags;
+
+  return {
+    title: sanitizeNewsTitle(String(parsed?.title || fallback.title)).slice(0, 90),
+    subtitle: normalizeCaptionText(String(parsed?.subtitle || fallback.subtitle)).slice(0, 180),
+    hook: String(parsed?.hook || fallback.hook || "URGENTE").slice(0, 30).toUpperCase(),
+    summary: normalizeCaptionText(String(parsed?.summary || fallback.summary)).slice(0, 420),
+    caption: normalizeCaptionText(String(parsed?.caption || fallback.caption)),
+    reel_caption: normalizeCaptionText(String(parsed?.reel_caption || parsed?.caption || fallback.reel_caption)),
+    hashtags,
+  };
+}
+
+function buildGroqRewriteMessages(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1) {
+  const articleBody = item._article_body ? String(item._article_body).slice(0, 9000) : "";
+  const sourceText = [
+    `Titulo: ${sanitizeNewsTitle(item.original_title || "")}`,
+    item.original_content ? `Resumo RSS: ${normalizeCaptionText(item.original_content)}` : "",
+    articleBody ? `Corpo da materia:\n${articleBody}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const retryNote = attempt > 1
+    ? "\nA resposta anterior ficou curta. Desta vez deixe a caption com 1500-2100 caracteres e a reel_caption com 900-1400 caracteres."
+    : "";
+
+  const system = `Voce e um redator jornalistico viral para Instagram em PT-BR. Tom: ${tone}.
+Gere texto informativo, natural, sem copiar frases literais da noticia.
+Nao cite fonte, nao use link na bio, nao use leia mais, nao invente fatos.
+Use os nomes, datas, locais, numeros e detalhes concretos do texto fornecido.
+Caption do feed: longa, util, com paragrafos curtos, entre 1500 e 2100 caracteres.
+Caption do reel: rica e direta, entre 900 e 1400 caracteres.
+Hashtags: exatamente 15, sem #, minusculas, relevantes ao tema.${srcOpts.translate ? `\nA fonte pode estar em ${LANG_NAMES[srcOpts.lang || "auto"] || "outro idioma"}; traduza tudo para PT-BR natural.` : ""}${srcOpts.cultural ? "\nAdapte referencias culturais, moedas e contexto para o publico brasileiro quando fizer sentido." : ""}${retryNote}
+Responda APENAS um JSON valido com estas chaves:
+{"title":"...","subtitle":"...","hook":"...","summary":"...","caption":"...","reel_caption":"...","hashtags":["..."]}`;
+
+  return [
+    { role: "system", content: system },
+    { role: "user", content: `Base da noticia:\n\n${sourceText}` },
+  ];
+}
+
+async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+  const key = Deno.env.get("GROQ_API_KEY");
+  if (!key) throw new Error("GROQ_API_KEY ausente");
+
+  const res = await fetch(GROQ_AI_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant",
+      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+      temperature: 0.45,
+      max_tokens: 3600,
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content || "{}";
+  const parsed = normalizeRewritePayload(extractJsonObject(content), item);
+  const captionShort = (parsed?.caption?.length || 0) < 1200;
+  const reelShort = (parsed?.reel_caption?.length || 0) < 800;
+  if ((captionShort || reelShort) && attempt < 2) {
+    console.log(`[groq] legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
+    return await rewriteWithGroq(item, tone, srcOpts, attempt + 1);
+  }
+  return parsed;
+}
+
 async function fetchArticleBody(url: string): Promise<string> {
   try {
     const safeUrl = assertSafeHttpUrl(resolveReadableUrl(url));
@@ -295,7 +399,9 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
         l: srcOpts.lang || "auto",
         tr: !!srcOpts.translate,
         c: !!srcOpts.cultural,
-        v: 2, // bump pra invalidar cache global se o prompt mudar
+        provider: getTextAiProvider(),
+        model: getTextAiModel(),
+        v: 3, // separa cache por provedor/modelo de IA
       }))
     : null;
   if (cacheKey) {
@@ -317,6 +423,15 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
 }
 
 async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+  if (getTextAiProvider() === "groq") {
+    try {
+      return await rewriteWithGroq(item, tone, srcOpts, attempt);
+    } catch (e) {
+      console.warn("[groq] falhou; voltando para provedor Lovable/Gemini", e);
+      if (!Deno.env.get("LOVABLE_API_KEY")) throw e;
+    }
+  }
+
   const key = Deno.env.get("LOVABLE_API_KEY")!;
   const minChars = 1800;
   const extraPush = attempt > 1
