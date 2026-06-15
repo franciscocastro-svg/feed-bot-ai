@@ -177,21 +177,6 @@ function looksLikeArticleUrl(url: string, baseUrl: string): boolean {
   }
 }
 
-function imageFromHtmlBlock(block: string, baseUrl: string): string {
-  const patterns = [
-    /<img[^>]+(?:src|data-src|data-original|data-lazy-src)=["']([^"']+)["']/i,
-    /(?:srcset|data-srcset)=["']([^"']+)["']/i,
-  ];
-  for (const pattern of patterns) {
-    const m = block.match(pattern);
-    if (!m?.[1]) continue;
-    const raw = m[1].split(",")[0].trim().split(/\s+/)[0];
-    const absolute = toAbsoluteUrl(raw, baseUrl);
-    if (absolute && !isLikelyLogo(absolute)) return absolute;
-  }
-  return "";
-}
-
 function parseHtmlListing(html: string, pageUrl: string) {
   const items: any[] = [];
   const seen = new Set<string>();
@@ -210,14 +195,15 @@ function parseHtmlListing(html: string, pageUrl: string) {
     if (/(assine|login|menu|newsletter|publicidade|compartilhe|veja também|mais lidas)/i.test(title)) continue;
 
     const pubDate = parseBrazilianDate(nearby);
-    const image = imageFromHtmlBlock(nearby, pageUrl);
     seen.add(link);
     items.push({
       title,
       link,
       description: title,
       pubDate,
-      image,
+      // Category/listing pages can place ads or another story's image near the link.
+      // Resolve the photo from the article page itself before saving.
+      image: null,
       _htmlListing: true,
     });
   }
@@ -534,14 +520,15 @@ Deno.serve(async (req) => {
           .slice(0, PER_SOURCE_LIMIT);
         for (const it of items) {
           // dedupe por URL — verifica para CADA IG separadamente
-          let img = it.image as string | null;
+          const isListingItem = !!it._htmlListing;
+          let img = isListingItem ? null : it.image as string | null;
           const articleUrl = await resolveArticleUrl(it.link);
-          const articleImg = isGoogleNewsUrl(it.link) ? await findArticleImage(it.link) : null;
+          const articleImg = (isListingItem || isGoogleNewsUrl(it.link)) ? await findArticleImage(articleUrl) : null;
           if (articleImg && !isLikelyLogo(articleImg)) {
             img = articleImg;
           } else {
             if (img && isLikelyLogo(img)) img = null;
-            if (!img) img = await findArticleImage(it.link);
+            if (!img) img = await findArticleImage(articleUrl);
           }
 
           for (const igId of targetIgs) {
@@ -560,7 +547,7 @@ Deno.serve(async (req) => {
             }
             if (dupUrl) {
               const updates: Record<string, string> = {};
-              if (!dupUrl.original_image_url && img) updates.original_image_url = img;
+              if (img && (!dupUrl.original_image_url || (isListingItem && dupUrl.original_image_url !== img))) updates.original_image_url = img;
               if (articleUrl !== it.link && dupUrl.original_url === it.link) updates.original_url = articleUrl;
               if (Object.keys(updates).length > 0) {
                 await supabase.from("news_items").update(updates).eq("id", dupUrl.id);
