@@ -34,8 +34,8 @@ export default function ForgotPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <SEO
-        title="Recuperar senha — NewsFlow"
-        description="Esqueceu sua senha do NewsFlow? Informe seu email e receba um link seguro para criar uma nova senha de acesso."
+        title="Recuperar senha — Flux & Feed"
+        description="Esqueceu sua senha do Flux & Feed? Informe seu email e receba um link seguro para criar uma nova senha de acesso."
         path="/forgot-password"
         noindex
       />
@@ -44,7 +44,7 @@ export default function ForgotPassword() {
           <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="font-display text-xl font-bold">NewsFlow</span>
+          <span className="font-display text-xl font-bold">Flux & Feed</span>
         </div>
         <h1 className="font-display text-2xl font-bold mb-2">Esqueceu a senha?</h1>
         <p className="text-sm text-muted-foreground mb-6">

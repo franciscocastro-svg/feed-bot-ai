@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "NewsFlow — Automação para Instagram",
-  "short_name": "NewsFlow",
+  "name": "Flux & Feed — Automação para Instagram",
+  "short_name": "Flux & Feed",
   "description": "Capture notícias, reescreva com IA e publique no Instagram automaticamente.",
   "start_url": "/dashboard",
   "scope": "/",

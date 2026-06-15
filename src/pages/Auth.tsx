@@ -91,8 +91,8 @@ export default function Auth() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       <SEO
-        title="Entrar ou criar conta — NewsFlow"
-        description="Acesse o NewsFlow ou crie sua conta para ativar 7 dias de teste com cartão e automatizar publicações no Instagram."
+        title="Entrar ou criar conta — Flux & Feed"
+        description="Acesse o Flux & Feed ou crie sua conta para ativar 7 dias de teste com cartão e automatizar publicações no Instagram."
         path="/auth"
         noindex
       />
@@ -103,7 +103,7 @@ export default function Auth() {
             <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
               <Sparkles className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="font-display text-xl font-bold">NewsFlow</span>
+            <span className="font-display text-xl font-bold">Flux & Feed</span>
           </div>
         </div>
         <div className="relative space-y-8">
@@ -126,7 +126,7 @@ export default function Auth() {
             ))}
           </div>
         </div>
-        <div className="relative text-xs text-muted-foreground">© NewsFlow</div>
+        <div className="relative text-xs text-muted-foreground">© Flux & Feed</div>
       </div>
 
       <div className="flex items-center justify-center p-6">
@@ -136,11 +136,11 @@ export default function Auth() {
               <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
                 <Sparkles className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="font-display text-xl font-bold">NewsFlow</span>
+              <span className="font-display text-xl font-bold">Flux & Feed</span>
             </div>
-            <h1 className="font-display text-xl font-bold text-center">Entrar no NewsFlow</h1>
+            <h1 className="font-display text-xl font-bold text-center">Entrar no Flux & Feed</h1>
           </div>
-          <h1 className="hidden lg:sr-only">Entrar ou criar conta no NewsFlow</h1>
+          <h1 className="hidden lg:sr-only">Entrar ou criar conta no Flux & Feed</h1>
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid grid-cols-2 w-full mb-6">
               <TabsTrigger value="signin">Entrar</TabsTrigger>

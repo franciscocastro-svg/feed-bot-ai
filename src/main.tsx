@@ -9,7 +9,7 @@ function renderStartupError(error: unknown) {
   const stack = error instanceof Error ? error.stack : "";
 
   if (!root) {
-    console.error("NewsFlow startup error before #root was available:", error);
+    console.error("Flux & Feed startup error before #root was available:", error);
     return;
   }
 
@@ -36,7 +36,7 @@ function renderStartupError(error: unknown) {
 
   const h1 = document.createElement("h1");
   h1.setAttribute("style", "margin:0 0 12px;font-size:24px;line-height:1.2");
-  h1.textContent = "O NewsFlow carregou, mas encontrou um erro antes de abrir a tela.";
+  h1.textContent = "O Flux & Feed carregou, mas encontrou um erro antes de abrir a tela.";
 
   const help = document.createElement("p");
   help.setAttribute("style", "margin:0 0 16px;color:#d1d5db");

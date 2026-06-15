@@ -9,7 +9,7 @@ const corsHeaders = {
 async function isValidRss(url: string): Promise<boolean> {
   try {
     const r = await fetch(url, {
-      headers: { "User-Agent": "NewsFlow/1.0" },
+      headers: { "User-Agent": "FluxFeed/1.0" },
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return false;

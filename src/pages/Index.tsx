@@ -82,7 +82,7 @@ const stats = [
 
 const steps = [
   { n: "01", title: "Conecte fontes RSS", text: "Escolha os sites, nichos e contas do Instagram que receberão as notícias." },
-  { n: "02", title: "A IA prepara o conteúdo", text: "O NewsFlow reescreve, cria legenda e monta o Reel ou post com template." },
+  { n: "02", title: "A IA prepara o conteúdo", text: "O Flux & Feed reescreve, cria legenda e monta o Reel ou post com template." },
   { n: "03", title: "A fila organiza tudo", text: "Cada conta segue horários, limite diário e intervalo mínimo configurado." },
   { n: "04", title: "Você acompanha em tempo real", text: "Veja status, erros, próximos horários e posts publicados dentro do painel." },
 ];
@@ -108,7 +108,7 @@ const proofItems = [
 const faqItems = [
   { q: "Como funciona o trial gratuito?", a: "Você tem 7 dias para testar todos os recursos do plano Free sem precisar de cartão. Pode cancelar a qualquer momento." },
   { q: "Vocês usam a API oficial do Instagram?", a: "Sim, usamos integração oficial e segura com o Instagram." },
-  { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o NewsFlow usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
+  { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o Flux & Feed usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
   { q: "Preciso deixar meu computador ligado?", a: "Não. A geração de mídia e a fila rodam na infraestrutura do sistema, então o painel pode ficar fechado." },
   { q: "Funciona com Reels?", a: "Sim. O sistema gera Reels com capa/template, áudio configurado e vídeo pronto para publicação." },
   { q: "Posso conectar mais de uma conta?", a: "Sim. O plano Pro permite até 3 contas e o Business 10+. Cada conta tem agenda e regras independentes." },
@@ -141,7 +141,7 @@ const proofSlides = [
     image: proofInstagramProfile,
     title: "Perfil com volume real",
     description: "964 posts publicados com identidade visual consistente.",
-    alt: "Perfil do Instagram com posts gerados pelo NewsFlow",
+    alt: "Perfil do Instagram com posts gerados pelo Flux & Feed",
     crop: "object-top",
   },
   {
@@ -353,7 +353,7 @@ export default function Index() {
   return (
     <div className="min-h-screen overflow-x-hidden">
       <SEO
-        title="NewsFlow — Automação de Instagram com IA"
+        title="Flux & Feed — Automação de Instagram com IA"
         description="Automação de Instagram com IA para transformar notícias, pautas e conteúdos em posts, stories e reels."
         path="/"
       />
@@ -371,12 +371,12 @@ export default function Index() {
           <Link to="/" className="flex min-w-0 items-center gap-2 group">
             <motion.img
               src={logoImg}
-              alt="NewsFlow logo"
+              alt="Flux & Feed logo"
               whileHover={{ scale: 1.1 }}
               transition={{ duration: 0.3 }}
               className="h-10 w-10 rounded-xl object-contain shadow-glow sm:h-12 sm:w-12 md:h-16 md:w-16"
             />
-            <span className="truncate font-display text-xl font-bold sm:text-2xl">NewsFlow</span>
+            <span className="truncate font-display text-xl font-bold sm:text-2xl">Flux & Feed</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Recursos</a>
@@ -448,7 +448,7 @@ export default function Index() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg md:mt-8 md:text-xl lg:mx-0"
               >
-                O NewsFlow busca notícias por RSS, reescreve com IA, monta artes e Reels com template
+                O Flux & Feed busca notícias por RSS, reescreve com IA, monta artes e Reels com template
                 e publica respeitando horários, limite diário e intervalo de cada conta.
               </motion.p>
 
@@ -633,7 +633,7 @@ export default function Index() {
               Feito para quem publica <span className="text-gradient">todo dia</span>
             </h2>
             <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
-              O NewsFlow foi pensado para portais, criadores e páginas de nicho que precisam transformar
+              O Flux & Feed foi pensado para portais, criadores e páginas de nicho que precisam transformar
               notícias em conteúdo visual com velocidade, controle e consistência.
             </p>
             <div className="mt-8 grid gap-3">
@@ -781,7 +781,7 @@ export default function Index() {
             Roadmap de evolução: <span className="text-gradient">próximos 6 meses</span>
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            O NewsFlow está em evolução constante. Nosso foco é transformar sua operação de conteúdo em um sistema cada vez mais inteligente, seguro e lucrativo.
+            O Flux & Feed está em evolução constante. Nosso foco é transformar sua operação de conteúdo em um sistema cada vez mais inteligente, seguro e lucrativo.
           </p>
         </motion.div>
 
@@ -978,21 +978,21 @@ export default function Index() {
       <footer className="border-t border-border/40 py-10">
         <div className="container flex flex-col items-center justify-between gap-4 text-center text-sm text-muted-foreground md:flex-row md:text-left">
           <div className="flex items-center gap-2">
-            <img src={logoImg} alt="NewsFlow logo" width={40} height={40} loading="lazy" decoding="async" className="h-10 w-10 rounded-lg object-contain" />
-            <span className="font-display font-bold text-foreground">NewsFlow</span>
+            <img src={logoImg} alt="Flux & Feed logo" width={40} height={40} loading="lazy" decoding="async" className="h-10 w-10 rounded-lg object-contain" />
+            <span className="font-display font-bold text-foreground">Flux & Feed</span>
           </div>
           <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
             <a href="https://wa.me/5547996080134" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
           </nav>
-          <div>© {new Date().getFullYear()} NewsFlow. Todos os direitos reservados.</div>
+          <div>© {new Date().getFullYear()} Flux & Feed. Todos os direitos reservados.</div>
         </div>
       </footer>
 
       {/* WhatsApp flutuante */}
       <a
-        href="https://wa.me/5547996080134?text=Ol%C3%A1%21%20Tenho%20interesse%20no%20NewsFlow"
+        href="https://wa.me/5547996080134?text=Ol%C3%A1%21%20Tenho%20interesse%20no%20Flux%20%26%20Feed"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Falar no WhatsApp"

@@ -6,8 +6,8 @@ export default function Privacy() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Política de Privacidade do NewsFlow"
-        description="Política de Privacidade do NewsFlow (LGPD): quais dados coletamos, como usamos, com quem compartilhamos e seus direitos sobre suas informações."
+        title="Política de Privacidade do Flux & Feed"
+        description="Política de Privacidade do Flux & Feed (LGPD): quais dados coletamos, como usamos, com quem compartilhamos e seus direitos sobre suas informações."
         path="/privacy"
       />
       <header className="border-b border-border/40">
@@ -16,7 +16,7 @@ export default function Privacy() {
             <div className="h-9 w-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
               <Sparkles className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg">NewsFlow</span>
+            <span className="font-display font-bold text-lg">Flux & Feed</span>
           </Link>
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
             <ArrowLeft className="h-4 w-4" /> Voltar
@@ -31,7 +31,7 @@ export default function Privacy() {
         <section className="space-y-6 text-foreground/90 leading-relaxed">
           <div>
             <h2 className="text-2xl font-semibold mb-2">1. Quem somos</h2>
-            <p>NewsFlow é uma plataforma de automação de conteúdo para Instagram. Esta política descreve como tratamos seus dados conforme a LGPD (Lei 13.709/18).</p>
+            <p>Flux & Feed é uma plataforma de automação de conteúdo para Instagram. Esta política descreve como tratamos seus dados conforme a LGPD (Lei 13.709/18).</p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">2. Dados que coletamos</h2>

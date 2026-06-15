@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* NewsFlow design system — editorial dark with electric gradient */
+/* Flux & Feed design system — editorial dark with electric gradient */
 @layer base {
   :root {
     --background: 240 14% 6%;

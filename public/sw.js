@@ -1,4 +1,4 @@
-const CACHE_VERSION = "newsflow-pwa-v1";
+const CACHE_VERSION = "flux-feed-pwa-v1";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
   "/manifest.json",
@@ -21,7 +21,7 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       .then((keys) => Promise.all(
         keys
-          .filter((key) => key.startsWith("newsflow-pwa-") && key !== STATIC_CACHE)
+          .filter((key) => key.startsWith("flux-feed-pwa-") && key !== STATIC_CACHE)
           .map((key) => caches.delete(key))
       ))
       .then(() => self.clients.claim())

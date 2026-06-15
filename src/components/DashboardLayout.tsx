@@ -44,8 +44,8 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: {
     <div className="flex flex-col h-full bg-sidebar">
       <div className="p-6 border-b border-border flex items-center justify-between gap-2">
         <NavLink to="/dashboard" onClick={onNavigate} className="flex items-center gap-2 min-w-0">
-          <img src="/favicon.png" alt="NewsFlow logo" className="h-9 w-9 rounded-xl object-contain shadow-glow" />
-          <span className="font-display font-bold text-lg truncate">NewsFlow</span>
+          <img src="/favicon.png" alt="Flux & Feed logo" className="h-9 w-9 rounded-xl object-contain shadow-glow" />
+          <span className="font-display font-bold text-lg truncate">Flux & Feed</span>
         </NavLink>
         <ReleaseNotesBell />
       </div>
@@ -167,8 +167,8 @@ export default function DashboardLayout() {
             </SheetContent>
           </Sheet>
           <NavLink to="/dashboard" className="flex items-center gap-2">
-            <img src="/favicon.png" alt="NewsFlow logo" className="h-7 w-7 rounded-lg object-contain shadow-glow" />
-            <span className="font-display font-bold">NewsFlow</span>
+            <img src="/favicon.png" alt="Flux & Feed logo" className="h-7 w-7 rounded-lg object-contain shadow-glow" />
+            <span className="font-display font-bold">Flux & Feed</span>
           </NavLink>
           <ReleaseNotesBell />
         </header>

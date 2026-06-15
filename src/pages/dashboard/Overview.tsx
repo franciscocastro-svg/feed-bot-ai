@@ -240,7 +240,7 @@ export default function Overview() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight">Visão geral</h1>
-          <p className="text-sm text-muted-foreground mt-1">Resumo em tempo real da sua operação NewsFlow.</p>
+          <p className="text-sm text-muted-foreground mt-1">Resumo em tempo real da sua operação Flux & Feed.</p>
         </div>
         <Badge variant={autopilot ? "default" : "outline"} className="self-start md:self-auto">
           {autopilot ? "🤖 Piloto automático ativo" : "⏸️ Modo manual"}

@@ -6,8 +6,8 @@ export default function Terms() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Termos de Uso do NewsFlow"
-        description="Termos de Uso do NewsFlow: regras da plataforma SaaS de automação de Instagram com IA — planos, pagamentos, responsabilidades e cancelamento."
+        title="Termos de Uso do Flux & Feed"
+        description="Termos de Uso do Flux & Feed: regras da plataforma SaaS de automação de Instagram com IA — planos, pagamentos, responsabilidades e cancelamento."
         path="/terms"
       />
       <header className="border-b border-border/40">
@@ -16,7 +16,7 @@ export default function Terms() {
             <div className="h-9 w-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
               <Sparkles className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg">NewsFlow</span>
+            <span className="font-display font-bold text-lg">Flux & Feed</span>
           </Link>
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
             <ArrowLeft className="h-4 w-4" /> Voltar
@@ -31,11 +31,11 @@ export default function Terms() {
         <section className="space-y-6 text-foreground/90 leading-relaxed">
           <div>
             <h2 className="text-2xl font-semibold mb-2">1. Aceitação</h2>
-            <p>Ao criar uma conta no NewsFlow, você concorda com estes Termos. Se não concordar, não utilize o serviço.</p>
+            <p>Ao criar uma conta no Flux & Feed, você concorda com estes Termos. Se não concordar, não utilize o serviço.</p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">2. Descrição do serviço</h2>
-            <p>NewsFlow é uma plataforma SaaS que captura notícias de fontes públicas (RSS), reescreve com IA e publica conteúdo em contas do Instagram conectadas pelo usuário via API oficial da Meta.</p>
+            <p>Flux & Feed é uma plataforma SaaS que captura notícias de fontes públicas (RSS), reescreve com IA e publica conteúdo em contas do Instagram conectadas pelo usuário via API oficial da Meta.</p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">3. Cadastro e conta</h2>
@@ -47,7 +47,7 @@ export default function Terms() {
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">5. Conteúdo de terceiros</h2>
-            <p>O usuário é o único responsável pelas fontes que cadastra e pelo conteúdo publicado em seu nome. O NewsFlow não revisa editorialmente cada publicação. Conteúdo que viole direitos autorais, leis ou as políticas da Meta pode resultar em suspensão.</p>
+            <p>O usuário é o único responsável pelas fontes que cadastra e pelo conteúdo publicado em seu nome. O Flux & Feed não revisa editorialmente cada publicação. Conteúdo que viole direitos autorais, leis ou as políticas da Meta pode resultar em suspensão.</p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">6. Uso aceitável</h2>
@@ -67,7 +67,7 @@ export default function Terms() {
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">10. Lei aplicável e foro</h2>
-            <p>Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro da comarca do usuário, ou da sede do NewsFlow no Brasil.</p>
+            <p>Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro da comarca do usuário, ou da sede do Flux & Feed no Brasil.</p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">11. Contato</h2>

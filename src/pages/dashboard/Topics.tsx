@@ -436,7 +436,7 @@ export default function Topics() {
               </div>
               <h2 className="mt-5 text-2xl font-bold">Monte sua primeira esteira de conteúdo</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Comece com um tema, um vídeo ou um PDF. Depois o NewsFlow transforma isso em posts para aprovação.
+                Comece com um tema, um vídeo ou um PDF. Depois o Flux & Feed transforma isso em posts para aprovação.
               </p>
             </div>
             <div className="grid gap-3 p-6 md:grid-cols-2">

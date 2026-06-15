@@ -1,6 +1,6 @@
-# NewsFlow
+# Flux & Feed
 
-> NewsFlow é uma plataforma SaaS brasileira de automação de conteúdo para Instagram com IA. Capta notícias por RSS, reescreve com IA, monta posts, stories e Reels com template e publica via API oficial da Meta, respeitando horários, limite diário e intervalo de cada conta.
+> Flux & Feed é uma plataforma SaaS brasileira de automação de conteúdo para Instagram com IA. Capta notícias por RSS, reescreve com IA, monta posts, stories e Reels com template e publica via API oficial da Meta, respeitando horários, limite diário e intervalo de cada conta.
 
 ## Links principais
 
@@ -16,7 +16,7 @@ https://feed-bot-ai.lovable.app/privacy
 
 ## O que é
 
-NewsFlow transforma notícias, pautas e conteúdos em posts, stories e Reels prontos para o Instagram, de ponta a ponta — captura, reescrita por IA, geração de mídia e publicação automática.
+Flux & Feed transforma notícias, pautas e conteúdos em posts, stories e Reels prontos para o Instagram, de ponta a ponta — captura, reescrita por IA, geração de mídia e publicação automática.
 
 ## Público-alvo
 

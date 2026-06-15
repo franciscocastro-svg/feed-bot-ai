@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Rss, Newspaper, Calendar, Instagram, Palette, Settings as SettingsIcon, Sparkles, BarChart3, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const STORAGE_KEY = "newsflow_tutorial_views";
+const STORAGE_KEY = "flux-feed_tutorial_views";
 
 export function getTutorialViewCount(): number {
   return Number(localStorage.getItem(STORAGE_KEY) || "0");
@@ -19,7 +19,7 @@ export function shouldAutoShowTutorial(): boolean {
 const steps = [
   {
     icon: Sparkles,
-    title: "Bem-vindo ao NewsFlow!",
+    title: "Bem-vindo ao Flux & Feed!",
     desc: "Sua plataforma de automação de conteúdo para Instagram. Vamos te mostrar como funciona em poucos passos.",
     tip: "Em ~5 minutos você terá o autopilot rodando.",
   },

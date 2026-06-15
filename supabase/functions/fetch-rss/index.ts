@@ -43,7 +43,7 @@ function decodeEntities(s: string): string {
 
 async function fetchXmlSmart(url: string): Promise<string> {
   const safeUrl = assertSafeHttpUrl(url);
-  const res = await fetch(safeUrl, { headers: { "User-Agent": "NewsFlow/1.0" }, signal: AbortSignal.timeout(15000) });
+  const res = await fetch(safeUrl, { headers: { "User-Agent": "FluxFeed/1.0" }, signal: AbortSignal.timeout(15000) });
   const buf = new Uint8Array(await res.arrayBuffer());
   // tenta detectar charset via header HTTP
   const ct = res.headers.get("content-type") || "";
@@ -375,7 +375,7 @@ function extractGoogleNewsPublisherUrl(html: string): string | null {
 async function fetchArticleHtml(pageUrl: string): Promise<{ html: string; finalUrl: string } | null> {
   const safePageUrl = assertSafeHttpUrl(pageUrl);
   const r = await fetch(safePageUrl, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsFlow/1.0)" },
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; FluxFeed/1.0)" },
     redirect: "follow",
     signal: AbortSignal.timeout(15000),
   });

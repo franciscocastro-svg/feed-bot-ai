@@ -189,7 +189,7 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-display text-lg font-semibold">Tutorial da plataforma</h2>
-            <p className="text-xs text-muted-foreground">Reveja o passo a passo de como usar o NewsFlow.</p>
+            <p className="text-xs text-muted-foreground">Reveja o passo a passo de como usar o Flux & Feed.</p>
           </div>
         </div>
         <Button variant="outline" onClick={() => setTutorialOpen(true)}>Ver tutorial</Button>

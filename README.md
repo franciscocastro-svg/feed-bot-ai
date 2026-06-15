@@ -1,6 +1,6 @@
-# NewsFlow — Automação de Conteúdo para Instagram com IA
+# Flux & Feed — Automação de Conteúdo para Instagram com IA
 
-O **NewsFlow** (Feed Bot AI) é uma plataforma SaaS que automatiza a captação de notícias via feeds RSS, realiza a reescrita inteligente do conteúdo com Inteligência Artificial (**Gemini 2.5 Pro**) em legendas ricas e hashtags e publica de forma totalmente automatizada no Instagram através da API oficial do Facebook (Meta Graph API).
+O **Flux & Feed** (Feed Bot AI) é uma plataforma SaaS que automatiza a captação de notícias via feeds RSS, realiza a reescrita inteligente do conteúdo com Inteligência Artificial (**Gemini 2.5 Pro**) em legendas ricas e hashtags e publica de forma totalmente automatizada no Instagram através da API oficial do Facebook (Meta Graph API).
 
 ---
 
