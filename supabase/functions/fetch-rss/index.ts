@@ -160,6 +160,15 @@ function parseBrazilianDate(text: string): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+function sanitizeListingTitle(text: string): string {
+  return decodeEntities(String(text || ""))
+    .replace(/\s+-\s+UOL$/i, "")
+    .replace(/\s+\d{1,2}\/\d{1,2}\/\d{4}(?:\s*(?:às|as|-|,)?\s*\d{1,2}[:h]\d{2})?\s*$/i, "")
+    .replace(/\s+\d{1,2}[:h]\d{2}\s*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function looksLikeArticleUrl(url: string, baseUrl: string): boolean {
   try {
     const u = new URL(url);
@@ -190,7 +199,7 @@ function parseHtmlListing(html: string, pageUrl: string) {
     if (!looksLikeArticleUrl(link, pageUrl)) continue;
 
     const nearby = html.slice(Math.max(0, match.index - 900), Math.min(html.length, anchorRe.lastIndex + 1200));
-    const title = stripHtml(match[2]).replace(/\s+-\s+UOL$/i, "").trim();
+    const title = sanitizeListingTitle(stripHtml(match[2]));
     if (title.length < 18 || title.length > 180) continue;
     if (/(assine|login|menu|newsletter|publicidade|compartilhe|veja também|mais lidas)/i.test(title)) continue;
 
@@ -275,6 +284,30 @@ function decodeGoogleNewsArticleUrl(rawUrl: string): string | null {
 function extractAllCandidates(html: string): string[] {
   const out: string[] = [];
   const push = (u?: string | null) => { if (u && typeof u === "string" && !out.includes(u)) out.push(u); };
+  const pushImageValue = (value: any) => {
+    if (!value) return;
+    if (typeof value === "string") {
+      push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(pushImageValue);
+      return;
+    }
+    if (typeof value === "object") {
+      push(value.url);
+      push(value.contentUrl);
+      push(value.thumbnailUrl);
+      push(value["@id"]);
+    }
+  };
+  const pushSrcset = (srcset?: string | null) => {
+    if (!srcset) return;
+    for (const part of srcset.split(",")) {
+      const candidate = part.trim().split(/\s+/)[0];
+      push(candidate);
+    }
+  };
 
   // 1) JSON-LD (NewsArticle/Article) — geralmente tem a imagem real
   const jsonldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -284,10 +317,9 @@ function extractAllCandidates(html: string): string[] {
       const data = JSON.parse(jm[1].trim());
       const nodes = Array.isArray(data) ? data : (data["@graph"] || [data]);
       for (const n of nodes) {
-        const img = n?.image;
-        if (typeof img === "string") push(img);
-        else if (Array.isArray(img)) img.forEach((x: any) => push(typeof x === "string" ? x : x?.url));
-        else if (img?.url) push(img.url);
+        pushImageValue(n?.image);
+        pushImageValue(n?.thumbnailUrl);
+        pushImageValue(n?.primaryImageOfPage);
       }
     } catch { /* malformed */ }
   }
@@ -295,7 +327,7 @@ function extractAllCandidates(html: string): string[] {
   // 2) <figure> dentro de <article>
   const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
   const articleHtml = articleMatch ? articleMatch[0] : html;
-  const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original)=["']([^"']+)["']/gi;
+  const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+)["']/gi;
   let fm: RegExpExecArray | null;
   while ((fm = figRe.exec(articleHtml)) !== null) push(fm[1]);
 
@@ -311,7 +343,11 @@ function extractAllCandidates(html: string): string[] {
   }
 
   // 4) qualquer <img> grande no artigo
-  const imgRe = /<img[^>]+(?:src|data-src|data-original)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi;
+  const srcsetRe = /<(?:img|source)[^>]+(?:srcset|data-srcset)=["']([^"']+)["']/gi;
+  let sm: RegExpExecArray | null;
+  while ((sm = srcsetRe.exec(articleHtml)) !== null) pushSrcset(sm[1]);
+
+  const imgRe = /<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi;
   let im: RegExpExecArray | null;
   while ((im = imgRe.exec(articleHtml)) !== null) push(im[1]);
 

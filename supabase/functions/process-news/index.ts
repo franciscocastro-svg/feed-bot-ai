@@ -260,7 +260,7 @@ async function fetchArticleBody(url: string): Promise<string> {
     let m: RegExpExecArray | null;
     const seen = new Set<string>();
     while ((m = pRe.exec(chunk)) !== null) {
-      const text = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+      const text = normalizeCaptionText(m[2].replace(/<[^>]+>/g, " "));
       if (text.length < 40) continue;
       // Filtra linhas de UI comuns
       if (/^(compartilhar|leia (também|mais)|veja também|assine|inscreva-se|siga-nos|publicidade|continua após|relacionadas?|tags?:|por\s+\w+\s*\|)/i.test(text)) continue;
@@ -273,11 +273,11 @@ async function fetchArticleBody(url: string): Promise<string> {
 
     // Se JSON-LD trouxe mais texto, usa esse (geralmente mais limpo e completo)
     if (jsonLdBody && jsonLdBody.length > body.length) {
-      body = jsonLdBody.replace(/\s+/g, " ").trim();
+      body = normalizeCaptionText(jsonLdBody);
     }
 
     // Limite generoso pra IA absorver bastante material (~15k chars)
-    return body.slice(0, 15000);
+    return normalizeCaptionText(body).slice(0, 15000);
   } catch (e) {
     console.warn("fetchArticleBody failed", url, e instanceof Error ? e.message : e);
     return "";
@@ -349,8 +349,24 @@ function cleanWords(text: string): string[] {
 const INSTAGRAM_CAPTION_LIMIT = 2200;
 const MIN_USEFUL_CAPTION_CHARS = 1200;
 
-function normalizeCaptionText(text: string): string {
+function sanitizeNewsTitle(text: string): string {
   return decodeHtmlEntities(String(text || ""))
+    .replace(/\s+-\s+UOL$/i, "")
+    .replace(/\s+\d{1,2}\/\d{1,2}\/\d{4}(?:\s*(?:às|as|-|,)?\s*\d{1,2}[:h]\d{2})?\s*$/i, "")
+    .replace(/\s+\d{1,2}[:h]\d{2}\s*$/i, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function stripArticleUiNoise(text: string): string {
+  return String(text || "")
+    .replace(/\bOuvir\s+(?:\d+(?:[.,]\d+)?\s*[x×]\s*){2,}/gi, " ")
+    .replace(/\b(?:continua após a publicidade|publicidade|publicidade eleitoral|adchoices)\b/gi, " ")
+    .replace(/\b(?:compartilhar|salvar|comentar|ouça|leia também|veja também)\b\s*[:\-]?/gi, " ");
+}
+
+function normalizeCaptionText(text: string): string {
+  return stripArticleUiNoise(decodeHtmlEntities(String(text || "")))
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
@@ -418,7 +434,7 @@ function buildCaptionWithExtras(base: string, extraBlocks: string[], hashtagsLin
 }
 
 function fallbackRewrite(item: any) {
-  const title = String(item.original_title || "Notícia importante").trim().slice(0, 90);
+  const title = sanitizeNewsTitle(item.original_title || "Notícia importante").slice(0, 90);
   const raw = normalizeCaptionText(item._article_body || item.original_content || item.original_title || "");
   const summary = raw ? smartTrimCaption(raw, 320) : title;
   const words = Array.from(new Set(cleanWords(`${item.original_title || ""} ${item.original_content || ""}`))).slice(0, 8);
@@ -542,6 +558,30 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
     const origin = new URL(safePageUrl).origin;
     const candidates: string[] = [];
     const push = (u?: string | null) => { if (u && typeof u === "string" && !candidates.includes(u)) candidates.push(u); };
+    const pushImageValue = (value: any) => {
+      if (!value) return;
+      if (typeof value === "string") {
+        push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach(pushImageValue);
+        return;
+      }
+      if (typeof value === "object") {
+        push(value.url);
+        push(value.contentUrl);
+        push(value.thumbnailUrl);
+        push(value["@id"]);
+      }
+    };
+    const pushSrcset = (srcset?: string | null) => {
+      if (!srcset) return;
+      for (const part of srcset.split(",")) {
+        const candidate = part.trim().split(/\s+/)[0];
+        push(candidate);
+      }
+    };
 
     // JSON-LD primeiro
     const jsonldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -551,10 +591,9 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
         const data = JSON.parse(jm[1].trim());
         const nodes = Array.isArray(data) ? data : (data["@graph"] || [data]);
         for (const n of nodes) {
-          const img = n?.image;
-          if (typeof img === "string") push(img);
-          else if (Array.isArray(img)) img.forEach((x: any) => push(typeof x === "string" ? x : x?.url));
-          else if (img?.url) push(img.url);
+          pushImageValue(n?.image);
+          pushImageValue(n?.thumbnailUrl);
+          pushImageValue(n?.primaryImageOfPage);
         }
       } catch {}
     }
@@ -562,7 +601,7 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
     // figure dentro do article
     const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
     const articleHtml = articleMatch ? articleMatch[0] : html;
-    const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original)=["']([^"']+)["']/gi;
+    const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+)["']/gi;
     let fm: RegExpExecArray | null;
     while ((fm = figRe.exec(articleHtml)) !== null) push(fm[1]);
 
@@ -578,7 +617,11 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
     }
 
     // imgs grandes no article
-    const imgRe = /<img[^>]+(?:src|data-src|data-original)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi;
+    const srcsetRe = /<(?:img|source)[^>]+(?:srcset|data-srcset)=["']([^"']+)["']/gi;
+    let sm: RegExpExecArray | null;
+    while ((sm = srcsetRe.exec(articleHtml)) !== null) pushSrcset(sm[1]);
+
+    const imgRe = /<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi;
     let im: RegExpExecArray | null;
     while ((im = imgRe.exec(articleHtml)) !== null) push(im[1]);
 
@@ -862,6 +905,12 @@ async function loadTemplate(supabase: any, userId: string, templateId: string | 
 
 async function doProcessing(supabase: any, item: any, userId: string, image_style: string, requestedMediaType = "") {
   try {
+    const cleanTitle = sanitizeNewsTitle(item.original_title);
+    if (cleanTitle && cleanTitle !== item.original_title) {
+      item.original_title = cleanTitle;
+      await supabase.from("news_items").update({ original_title: cleanTitle }).eq("id", item.id);
+    }
+
     if (item.original_url) {
       const readableUrl = resolveReadableUrl(item.original_url);
       if (readableUrl !== item.original_url) {
