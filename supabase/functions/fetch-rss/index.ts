@@ -112,6 +112,125 @@ function parseRss(xml: string) {
   return items;
 }
 
+function stripHtml(html: string): string {
+  return decodeEntities(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toAbsoluteUrl(raw: string, baseUrl: string): string | null {
+  try {
+    const decoded = decodeEntities(raw).replace(/\\u0026/g, "&").trim();
+    const url = new URL(decoded, baseUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    url.hash = "";
+    return assertSafeHttpUrl(url.toString());
+  } catch {
+    return null;
+  }
+}
+
+function rootishHost(hostname: string): string {
+  const parts = hostname.toLowerCase().replace(/^www\./, "").split(".");
+  if (parts.length <= 2) return parts.join(".");
+  const last3 = parts.slice(-3).join(".");
+  if (/\.(com|net|org|gov|edu)\.br$/.test(last3)) return last3;
+  return parts.slice(-2).join(".");
+}
+
+function samePublisher(candidate: string, baseUrl: string): boolean {
+  try {
+    const a = new URL(candidate);
+    const b = new URL(baseUrl);
+    return rootishHost(a.hostname) === rootishHost(b.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function parseBrazilianDate(text: string): string | undefined {
+  const m = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s*(?:às|as|-|,)?\s*(\d{1,2})[:h](\d{2}))?/i);
+  if (!m) return undefined;
+  const [, d, mo, y, h = "0", min = "0"] = m;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${min.padStart(2, "0")}:00-03:00`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function looksLikeArticleUrl(url: string, baseUrl: string): boolean {
+  try {
+    const u = new URL(url);
+    const base = new URL(baseUrl);
+    const path = u.pathname.toLowerCase();
+    if (u.toString() === base.toString()) return false;
+    if (path === "/" || path === base.pathname.toLowerCase()) return false;
+    if (/(login|assine|checkout|newsletter|politica-de-privacidade|termos|publicidade|minha-conta|rss|feed|xml)/i.test(path)) return false;
+    if (/\.(css|js|json|xml|png|jpe?g|webp|gif|svg|pdf|mp4|mp3|zip)$/i.test(path)) return false;
+    if (/\d{4}\/\d{2}\/\d{2}|\/noticias?\/|\.html?$|\.shtml$|\/\d+\//i.test(path)) return true;
+    const baseFirstSegment = base.pathname.split("/").filter(Boolean)[0];
+    return !!baseFirstSegment && path.includes(`/${baseFirstSegment}/`) && path.split("/").filter(Boolean).length >= 3;
+  } catch {
+    return false;
+  }
+}
+
+function imageFromHtmlBlock(block: string, baseUrl: string): string {
+  const patterns = [
+    /<img[^>]+(?:src|data-src|data-original|data-lazy-src)=["']([^"']+)["']/i,
+    /(?:srcset|data-srcset)=["']([^"']+)["']/i,
+  ];
+  for (const pattern of patterns) {
+    const m = block.match(pattern);
+    if (!m?.[1]) continue;
+    const raw = m[1].split(",")[0].trim().split(/\s+/)[0];
+    const absolute = toAbsoluteUrl(raw, baseUrl);
+    if (absolute && !isLikelyLogo(absolute)) return absolute;
+  }
+  return "";
+}
+
+function parseHtmlListing(html: string, pageUrl: string) {
+  const items: any[] = [];
+  const seen = new Set<string>();
+  const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = anchorRe.exec(html)) !== null) {
+    const link = toAbsoluteUrl(match[1], pageUrl);
+    if (!link || seen.has(link)) continue;
+    if (!samePublisher(link, pageUrl)) continue;
+    if (!looksLikeArticleUrl(link, pageUrl)) continue;
+
+    const nearby = html.slice(Math.max(0, match.index - 900), Math.min(html.length, anchorRe.lastIndex + 1200));
+    const title = stripHtml(match[2]).replace(/\s+-\s+UOL$/i, "").trim();
+    if (title.length < 18 || title.length > 180) continue;
+    if (/(assine|login|menu|newsletter|publicidade|compartilhe|veja também|mais lidas)/i.test(title)) continue;
+
+    const pubDate = parseBrazilianDate(nearby);
+    const image = imageFromHtmlBlock(nearby, pageUrl);
+    seen.add(link);
+    items.push({
+      title,
+      link,
+      description: title,
+      pubDate,
+      image,
+      _htmlListing: true,
+    });
+  }
+
+  return items;
+}
+
+function parseSourceItems(raw: string, sourceUrl: string) {
+  const rssItems = parseRss(raw);
+  if (rssItems.length > 0) return rssItems;
+  return parseHtmlListing(raw, sourceUrl);
+}
+
 function isLikelyLogo(url: string): boolean {
   const u = url.toLowerCase();
   if (/(logo|brand|sprite|icon|favicon|placeholder|default|avatar|share|social|watermark|selo|header|nav|footer)/i.test(u)) return true;
@@ -316,18 +435,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Modo validação de URL: testa se a URL retorna feed RSS válido (sem persistir nada).
+    // Modo validação de URL: testa se a URL retorna RSS ou página pública com links de notícias.
     // Só roda APÓS autenticação para evitar uso como proxy HTTP anônimo.
     if (validateUrl) {
       try {
-        const xml = await fetchXmlSmart(validateUrl);
-        const items = parseRss(xml);
+        const raw = await fetchXmlSmart(validateUrl);
+        const items = parseSourceItems(raw, validateUrl);
         if (items.length === 0) {
-          return new Response(JSON.stringify({ valid: false, error: "Nenhum item encontrado no feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ valid: false, error: "Nenhum item encontrado no feed ou na página" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         return new Response(JSON.stringify({ valid: true, items_count: items.length, sample_title: items[0]?.title || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (e) {
-        return new Response(JSON.stringify({ valid: false, error: e instanceof Error ? e.message : "Falha ao buscar feed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ valid: false, error: e instanceof Error ? e.message : "Falha ao buscar fonte" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -402,8 +521,8 @@ Deno.serve(async (req) => {
         const targetIgs: (string | null)[] = linkedIgIds.length > 0 ? linkedIgIds : [null];
 
         const profile = getProfile(s.niche);
-        const xml = await fetchXmlSmart(s.url);
-        let items: any[] = parseRss(xml)
+        const raw = await fetchXmlSmart(s.url);
+        const items: any[] = parseSourceItems(raw, s.url)
           .filter((it: any) => {
             if (!it.pubDate) return true; // aceita sem pubDate
             const ageH = (Date.now() - new Date(it.pubDate).getTime()) / 3600000;

@@ -18,10 +18,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 type SourceMode = "rss" | "person" | "topic" | "url";
 
 const sourceModeOptions: Array<{ value: SourceMode; label: string; description: string; icon: any }> = [
-  { value: "rss", label: "RSS/Site", description: "Feed direto de notícia ou blog", icon: Rss },
+  { value: "rss", label: "RSS/Site", description: "Feed RSS ou página de notícias", icon: Rss },
   { value: "person", label: "Pessoa", description: "Famoso, atleta, político, artista", icon: UserRound },
   { value: "topic", label: "Tema", description: "Assunto, nicho ou palavra-chave", icon: Hash },
-  { value: "url", label: "URL", description: "Monitorar um site ou página", icon: LinkIcon },
+  { value: "url", label: "URL", description: "Monitorar uma página específica", icon: LinkIcon },
 ];
 
 const googleNewsSearchUrl = (query: string) =>
@@ -32,15 +32,6 @@ const getHostname = (value: string) => {
     return new URL(value).hostname.replace(/^www\./, "");
   } catch {
     return "";
-  }
-};
-
-const isLikelyFeedUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    return /rss|feed|xml/i.test(`${url.pathname}${url.search}`);
-  } catch {
-    return false;
   }
 };
 
@@ -136,12 +127,12 @@ export default function Sources() {
     if (sourceMode === "url") {
       const url = form.url.trim();
       const host = getHostname(url);
-      const generatedUrl = isLikelyFeedUrl(url) ? url : googleNewsSearchUrl(`site:${host || url}`);
+      const nicheHint = form.niche.trim();
       return {
         ...base,
         name: form.name.trim() || host || "Fonte por URL",
-        url: generatedUrl,
-        niche: `URL: ${host || url}`,
+        url,
+        niche: `URL: ${host || url}${nicheHint ? ` | ${nicheHint}` : ""}`,
       };
     }
 
@@ -434,8 +425,9 @@ export default function Sources() {
                 {sourceMode === "rss" && (
                   <>
                     <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="G1 Tecnologia" /></div>
-                    <div><Label>URL do feed RSS</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://g1.globo.com/rss/g1/tecnologia/" /></div>
+                    <div><Label>URL do feed ou página</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://site.com/feed ou https://site.com/noticias" /></div>
                     <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="tecnologia" /></div>
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se a URL não for RSS, o sistema tenta ler a página, encontrar links de notícias e abrir cada matéria para captar título, texto e imagem.</p>
                   </>
                 )}
 
@@ -459,7 +451,8 @@ export default function Sources() {
                   <>
                     <div><Label>URL do site ou feed</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://site.com/noticias ou https://site.com/feed" /></div>
                     <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Site de famosos" /></div>
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se for um feed RSS, ele será usado direto. Se for um site comum, o sistema monitora conteúdos públicos desse domínio.</p>
+                    <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="fofoca, esportes, tecnologia..." /></div>
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se for uma página comum, o sistema procura matérias públicas dentro dela e usa cada link encontrado como notícia.</p>
                   </>
                 )}
 
