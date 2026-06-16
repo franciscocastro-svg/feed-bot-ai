@@ -1,6 +1,6 @@
 import { Helmet } from "react-helmet-async";
 
-const BASE_URL = "https://feed-bot-ai.lovable.app";
+const BASE_URL = "https://fluxifeed.com";
 
 interface SEOProps {
   title: string;

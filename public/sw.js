@@ -1,11 +1,13 @@
-const CACHE_VERSION = "flux-feed-pwa-v1";
+const CACHE_VERSION = "flux-feed-pwa-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
   "/manifest.json",
   "/offline.html",
   "/favicon.png",
+  "/favicon.ico",
   "/icon-192.png",
   "/icon-512.png",
+  "/og-image.png",
 ];
 
 self.addEventListener("install", (event) => {

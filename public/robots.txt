@@ -6,4 +6,4 @@ Disallow: /auth
 Disallow: /forgot-password
 Disallow: /reset-password
 
-Sitemap: https://feed-bot-ai.lovable.app/sitemap.xml
+Sitemap: https://fluxifeed.com/sitemap.xml
