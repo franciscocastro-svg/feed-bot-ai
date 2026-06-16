@@ -28,6 +28,7 @@ const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean 
   pro: { label: "Assinar Pro", to: "/pricing?plan=pro_monthly" },
   business: { label: "Falar com vendas", whatsapp: true },
 };
+const INSTAGRAM_URL = "https://www.instagram.com/fluxifeed?utm_source=qr&igsh=MXVkbHIxa3FwMWJ3YQ==";
 
 type LandingPlan = {
   plan: string;
@@ -985,6 +986,15 @@ export default function Index() {
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
             <a href="https://wa.me/5547996080134" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
+            <a
+              href={INSTAGRAM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Abrir Instagram do Flux & Feed"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/60 text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"
+            >
+              <Instagram className="h-5 w-5" />
+            </a>
           </nav>
           <div>© {new Date().getFullYear()} Flux & Feed. Todos os direitos reservados.</div>
         </div>
