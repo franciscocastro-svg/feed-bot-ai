@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://feed-bot-ai.lovable.app';
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://fluxifeed.com';
 
 function b64urlDecode(input: string): Uint8Array {
   const pad = '='.repeat((4 - (input.length % 4)) % 4);
@@ -42,7 +42,11 @@ Deno.serve(async (req) => {
     const confirmationCode = `del_${igUserId}_${Date.now()}`;
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
-    await admin.from('instagram_accounts').delete().eq('ig_user_id', igUserId);
+    const { error: deleteError } = await admin
+      .from('instagram_accounts')
+      .delete()
+      .eq('ig_user_id', igUserId);
+    if (deleteError) throw deleteError;
 
     return new Response(JSON.stringify({
       url: `${APP_ORIGIN}/data-deletion?code=${confirmationCode}`,

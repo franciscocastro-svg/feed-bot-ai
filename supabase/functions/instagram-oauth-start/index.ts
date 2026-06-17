@@ -6,7 +6,7 @@ const APP_ID = Deno.env.get('INSTAGRAM_APP_ID')!;
 const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://feed-bot-ai.lovable.app';
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://fluxifeed.com';
 
 const SCOPES = [
   'instagram_business_basic',

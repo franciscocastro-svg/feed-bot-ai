@@ -13,6 +13,8 @@ function allowedRedirect(raw: string | undefined | null, fallback: string): stri
   try {
     const url = new URL(raw);
     const allowed = [
+      "https://fluxifeed.com",
+      "https://www.fluxifeed.com",
       "https://feed-bot-ai.lovable.app",
       Deno.env.get("APP_ORIGIN") || "",
       Deno.env.get("PUBLIC_APP_URL") || "",
@@ -69,7 +71,7 @@ Deno.serve(async (req) => {
     const { data: link, error: lErr } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: target.user.email,
-      options: { redirectTo: allowedRedirect(redirect_to, `${Deno.env.get("APP_ORIGIN") || "https://feed-bot-ai.lovable.app"}/dashboard`) },
+      options: { redirectTo: allowedRedirect(redirect_to, `${Deno.env.get("APP_ORIGIN") || "https://fluxifeed.com"}/dashboard`) },
     });
     if (lErr) throw lErr;
 

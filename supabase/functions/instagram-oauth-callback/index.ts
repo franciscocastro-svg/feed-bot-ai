@@ -6,7 +6,7 @@ const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
-const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://feed-bot-ai.lovable.app';
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://fluxifeed.com';
 
 const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 

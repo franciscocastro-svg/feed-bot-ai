@@ -8,6 +8,8 @@ const corsHeaders = {
 
 function allowedOrigins(): string[] {
   return [
+    "https://fluxifeed.com",
+    "https://www.fluxifeed.com",
     "https://feed-bot-ai.lovable.app",
     Deno.env.get("APP_ORIGIN") || "",
     Deno.env.get("PUBLIC_APP_URL") || "",
