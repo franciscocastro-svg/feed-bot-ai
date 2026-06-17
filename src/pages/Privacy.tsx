@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { Sparkles, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { SEO } from "@/components/SEO";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function Privacy() {
   return (
@@ -12,11 +13,8 @@ export default function Privacy() {
       />
       <header className="border-b border-border/40">
         <div className="container flex items-center justify-between py-4">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
-              <Sparkles className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-display font-bold text-lg">Flux & Feed</span>
+          <Link to="/">
+            <BrandLogo priority className="h-8 max-w-[200px]" />
           </Link>
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
             <ArrowLeft className="h-4 w-4" /> Voltar

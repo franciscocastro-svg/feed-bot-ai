@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const schema = z.object({ email: z.string().trim().email("Email inválido").max(255) });
 
@@ -40,11 +41,8 @@ export default function ForgotPassword() {
         noindex
       />
       <Card className="w-full max-w-md p-8 glass">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
-            <Sparkles className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="font-display text-xl font-bold">Flux & Feed</span>
+        <div className="mb-6 flex justify-center">
+          <BrandLogo priority className="h-9 max-w-[230px]" />
         </div>
         <h1 className="font-display text-2xl font-bold mb-2">Esqueceu a senha?</h1>
         <p className="text-sm text-muted-foreground mb-6">

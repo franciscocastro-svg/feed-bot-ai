@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Sparkles, Newspaper, Instagram } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const schema = z.object({
   email: z.string().trim().email("Email inválido").max(255),
@@ -99,12 +100,7 @@ export default function Auth() {
       <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-subtle border-r border-border relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-radial opacity-50" />
         <div className="relative">
-          <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-display text-xl font-bold">Flux & Feed</span>
-          </div>
+          <BrandLogo priority className="h-9 max-w-[230px]" />
         </div>
         <div className="relative space-y-8">
           <h1 className="font-display text-5xl font-bold leading-tight">
@@ -132,12 +128,7 @@ export default function Auth() {
       <div className="flex items-center justify-center p-6">
         <Card className="w-full max-w-md p-8 glass border-border shadow-card">
           <div className="lg:hidden flex flex-col items-center gap-3 mb-6">
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
-                <Sparkles className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="font-display text-xl font-bold">Flux & Feed</span>
-            </div>
+            <BrandLogo priority className="h-9 max-w-[230px]" />
             <h1 className="font-display text-xl font-bold text-center">Entrar no Flux & Feed</h1>
           </div>
           <h1 className="hidden lg:sr-only">Entrar ou criar conta no Flux & Feed</h1>

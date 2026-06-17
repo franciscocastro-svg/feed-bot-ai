@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2 } from "lucide-react";
 import { ReleaseNotesBell } from "@/components/ReleaseNotes";
+import { BrandLogo } from "@/components/BrandLogo";
 import { PlanUsageCard } from "@/components/PlanUsageCard";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { cn } from "@/lib/utils";
@@ -43,9 +44,8 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: {
   return (
     <div className="flex flex-col h-full bg-sidebar">
       <div className="p-6 border-b border-border flex items-center justify-between gap-2">
-        <NavLink to="/dashboard" onClick={onNavigate} className="flex items-center gap-2 min-w-0">
-          <img src="/favicon.png" alt="Flux & Feed logo" className="h-9 w-9 rounded-xl object-contain shadow-glow" />
-          <span className="font-display font-bold text-lg truncate">Flux & Feed</span>
+        <NavLink to="/dashboard" onClick={onNavigate} className="min-w-0">
+          <BrandLogo priority className="h-7 max-w-[150px]" />
         </NavLink>
         <ReleaseNotesBell />
       </div>
@@ -166,9 +166,8 @@ export default function DashboardLayout() {
               <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
-          <NavLink to="/dashboard" className="flex items-center gap-2">
-            <img src="/favicon.png" alt="Flux & Feed logo" className="h-7 w-7 rounded-lg object-contain shadow-glow" />
-            <span className="font-display font-bold">Flux & Feed</span>
+          <NavLink to="/dashboard">
+            <BrandLogo priority className="h-6 max-w-[145px]" />
           </NavLink>
           <ReleaseNotesBell />
         </header>

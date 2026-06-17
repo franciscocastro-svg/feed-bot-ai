@@ -12,8 +12,8 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { BrandLogo } from "@/components/BrandLogo";
 import whatsappBot from "@/assets/whatsapp-bot.jpg";
-import logoImg from "@/assets/logo.png";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
@@ -369,15 +369,8 @@ export default function Index() {
         className={`fixed top-0 inset-x-0 z-50 transition-all duration-500 ${scrolled ? "glass border-b border-border/40" : ""}`}
       >
         <div className="container flex items-center justify-between gap-3 py-3 md:py-4">
-          <Link to="/" className="flex min-w-0 items-center gap-2 group">
-            <motion.img
-              src={logoImg}
-              alt="Flux & Feed logo"
-              whileHover={{ scale: 1.1 }}
-              transition={{ duration: 0.3 }}
-              className="h-10 w-10 rounded-xl object-contain shadow-glow sm:h-12 sm:w-12 md:h-16 md:w-16"
-            />
-            <span className="truncate font-display text-xl font-bold sm:text-2xl">Flux & Feed</span>
+          <Link to="/" className="min-w-0">
+            <BrandLogo priority className="h-8 max-w-[190px] sm:h-10 sm:max-w-[240px]" />
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Recursos</a>
@@ -978,10 +971,7 @@ export default function Index() {
       {/* Footer */}
       <footer className="border-t border-border/40 py-10">
         <div className="container flex flex-col items-center justify-between gap-4 text-center text-sm text-muted-foreground md:flex-row md:text-left">
-          <div className="flex items-center gap-2">
-            <img src={logoImg} alt="Flux & Feed logo" width={40} height={40} loading="lazy" decoding="async" className="h-10 w-10 rounded-lg object-contain" />
-            <span className="font-display font-bold text-foreground">Flux & Feed</span>
-          </div>
+          <BrandLogo className="h-8 max-w-[210px]" />
           <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
