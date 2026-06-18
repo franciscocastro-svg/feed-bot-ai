@@ -88,7 +88,36 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "account_settings_default_feed_template_id_post_templates_fkey"
+            columns: ["default_feed_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_settings_default_reel_template_id_post_templates_fkey"
+            columns: ["default_reel_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_settings_default_story_template_id_post_templates_fkey"
+            columns: ["default_story_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_settings_default_template_id_post_templates_fkey"
+            columns: ["default_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       activity_logs: {
         Row: {
@@ -1275,7 +1304,36 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_default_feed_template_id_post_templates_fkey"
+            columns: ["default_feed_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_settings_default_reel_template_id_post_templates_fkey"
+            columns: ["default_reel_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_settings_default_story_template_id_post_templates_fkey"
+            columns: ["default_story_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_settings_default_template_id_post_templates_fkey"
+            columns: ["default_template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_subscriptions: {
         Row: {
