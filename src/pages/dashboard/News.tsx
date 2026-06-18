@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2, Image as ImageIcon, Calendar, ExternalLink, Check, X, Search, Trash2, Eye, Wand2 } from "lucide-react";
+import { Sparkles, Loader2, Image as ImageIcon, Calendar, ExternalLink, Check, X, Search, Trash2, Eye, Wand2, Plus, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,6 +47,8 @@ const NEWS_LIST_COLUMNS = [
   "instagram_account_id",
   "error_message",
   "editorial_ready",
+  "content_type",
+  "content_format",
 ].join(",");
 
 function feedPreviewUrl(item: any) {
@@ -103,6 +105,7 @@ export default function News() {
   const [scheduleFor, setScheduleFor] = useState<any | null>(null);
   const [previewing, setPreviewing] = useState<any | null>(null);
   const [canvasEditing, setCanvasEditing] = useState<any | null>(null);
+  const [creating, setCreating] = useState(false);
   const [igAccounts, setIgAccounts] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -144,7 +147,7 @@ export default function News() {
 
   const process = async (item: any, style: "template" | "ai" = "template") => {
     setLoad(item.id, true);
-    const { error } = await supabase.functions.invoke("process-news", { body: { news_item_id: item.id, image_style: style } });
+    const { error } = await supabase.functions.invoke("process-news", { body: { news_item_id: item.id, image_style: style, media_type: item.content_format || "" } });
     if (error) {
       setLoad(item.id, false);
       const msg = error.message.includes("402") || error.message.includes("credits")
@@ -312,9 +315,14 @@ export default function News() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-6xl">
-      <div>
-        <h1 className="font-display text-2xl md:text-3xl font-bold">Notícias</h1>
-        <p className="text-sm md:text-base text-muted-foreground mt-1">Aprove, edite e publique cada peça.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl md:text-3xl font-bold">Notícias</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">Aprove, edite e publique cada peça.</p>
+        </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Criar notícia
+        </Button>
       </div>
 
       {/* Filtros */}
@@ -380,7 +388,12 @@ export default function News() {
                     <p className="font-medium leading-tight text-sm md:text-base line-clamp-3">{n.rewritten_title || n.original_title}</p>
                     <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{n.status}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-2 break-words">{n.source_name} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} <a href={n.original_url} target="_blank" className="inline-flex items-center gap-1 ml-1 hover:text-primary"><ExternalLink className="h-3 w-3" />original</a></p>
+                  <p className="text-xs text-muted-foreground mb-2 break-words">
+                    {n.source_name} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    {!String(n.original_url || "").startsWith("manual://") && (
+                      <a href={n.original_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 ml-1 hover:text-primary"><ExternalLink className="h-3 w-3" />original</a>
+                    )}
+                  </p>
                   {n.caption && <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{n.caption}</p>}
                   <div className="flex flex-wrap gap-2 mt-3">
                     {["pending", "processing", "failed"].includes(n.status) && (
@@ -464,8 +477,179 @@ export default function News() {
 
       <ScheduleDialog item={scheduleFor} onClose={() => { setScheduleFor(null); load(); }} igAccounts={igAccounts} />
 
+      <ManualNewsDialog
+        open={creating}
+        igAccounts={igAccounts}
+        onClose={() => setCreating(false)}
+        onCreated={async (item, processNow) => {
+          setCreating(false);
+          await load();
+          if (processNow) await process(item, "template");
+        }}
+      />
+
       <PostCanvasEditor item={canvasEditing} onClose={() => setCanvasEditing(null)} onSaved={load} />
     </div>
+  );
+}
+
+function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
+  open: boolean;
+  igAccounts: any[];
+  onClose: () => void;
+  onCreated: (item: any, processNow: boolean) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [sourceName, setSourceName] = useState("Conteúdo manual");
+  const [mediaType, setMediaType] = useState<MediaType>("feed");
+  const [accountId, setAccountId] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) return;
+    setTitle("");
+    setContent("");
+    setSourceName("Conteúdo manual");
+    setMediaType("feed");
+    setAccountId("");
+    setImageFile(null);
+    setImageUrl("");
+  }, [open]);
+
+  const chooseImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Escolha uma imagem PNG, JPG ou WEBP.");
+    if (file.size > 10 * 1024 * 1024) return toast.error("A imagem deve ter no máximo 10 MB.");
+    setImageFile(file);
+    setImageUrl("");
+  };
+
+  const submit = async (processNow: boolean) => {
+    const cleanTitle = title.trim();
+    const cleanContent = content.trim();
+    if (cleanTitle.length < 8) return toast.error("Digite um título com pelo menos 8 caracteres.");
+    if (cleanContent.length < 80) return toast.error("A matéria precisa ter pelo menos 80 caracteres.");
+    if (imageUrl.trim() && !/^https?:\/\//i.test(imageUrl.trim())) return toast.error("O endereço da imagem precisa começar com http:// ou https://.");
+    setBusy(true);
+    let uploadedPath: string | null = null;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sessão expirada. Entre novamente.");
+      const id = crypto.randomUUID();
+      let originalImageUrl = imageUrl.trim() || null;
+      if (imageFile) {
+        const extension = (imageFile.name.split(".").pop() || "jpg").toLowerCase();
+        uploadedPath = `${user.id}/manual/${id}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("post-images").upload(uploadedPath, imageFile, {
+          contentType: imageFile.type,
+          upsert: false,
+        });
+        if (uploadError) throw uploadError;
+        const { data: publicData } = supabase.storage.from("post-images").getPublicUrl(uploadedPath);
+        originalImageUrl = publicData.publicUrl;
+      }
+      const row = {
+        id,
+        user_id: user.id,
+        source_id: null,
+        source_name: sourceName.trim() || "Conteúdo manual",
+        instagram_account_id: accountId || null,
+        original_title: cleanTitle,
+        original_content: cleanContent,
+        original_url: `manual://${user.id}/${id}`,
+        original_image_url: originalImageUrl,
+        published_at: new Date().toISOString(),
+        status: "pending" as const,
+        content_type: "manual",
+        content_format: mediaType,
+        editorial_ready: false,
+      };
+      const { data, error } = await supabase.from("news_items").insert(row).select(NEWS_LIST_COLUMNS).single();
+      if (error) throw error;
+      uploadedPath = null;
+      toast.success(processNow ? "Matéria criada. Iniciando processamento..." : "Matéria salva como pendente.");
+      await onCreated(data, processNow);
+    } catch (error: any) {
+      if (uploadedPath) await supabase.storage.from("post-images").remove([uploadedPath]);
+      toast.error(error?.message || "Não foi possível criar a matéria.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={value => !value && !busy && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> Criar notícia manual</DialogTitle>
+          <DialogDescription>Escreva uma matéria própria e use o mesmo fluxo de templates, processamento e agendamento.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5">
+          <div className="space-y-1.5">
+            <Label>Título da matéria</Label>
+            <Input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Ex.: Empresa anuncia novo projeto para a comunidade" />
+            <p className="text-right text-xs text-muted-foreground">{title.length}/200</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Conteúdo completo</Label>
+            <Textarea value={content} onChange={event => setContent(event.target.value)} rows={10} placeholder="Escreva os fatos, contexto, nomes, datas e informações que devem aparecer na publicação..." />
+            <p className="text-right text-xs text-muted-foreground">{content.length} caracteres</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Identificação da fonte</Label>
+              <Input value={sourceName} onChange={event => setSourceName(event.target.value)} maxLength={80} placeholder="Conteúdo manual" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Conta Instagram</Label>
+              <Select value={accountId || "none"} onValueChange={value => setAccountId(value === "none" ? "" : value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Escolher ao publicar</SelectItem>
+                  {igAccounts.map(account => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Formato principal</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["feed", "story", "reel"] as MediaType[]).map(format => (
+                <button key={format} type="button" onClick={() => setMediaType(format)} className={`rounded-lg border p-3 text-sm font-medium transition ${mediaType === format ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
+                  {format === "feed" ? "Feed 1:1" : format === "story" ? "Story 9:16" : "Reel 9:16"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Imagem principal <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+            <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+              <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 p-3 text-center hover:border-primary">
+                {imageFile ? (
+                  <><ImageIcon className="mb-2 h-6 w-6 text-primary" /><span className="line-clamp-2 text-xs">{imageFile.name}</span></>
+                ) : (
+                  <><Upload className="mb-2 h-6 w-6 text-muted-foreground" /><span className="text-xs">Enviar imagem</span><span className="text-[10px] text-muted-foreground">até 10 MB</span></>
+                )}
+                <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => chooseImage(event.target.files?.[0])} />
+              </label>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Ou cole o endereço de uma imagem</Label>
+                <Input type="url" value={imageUrl} disabled={!!imageFile} onChange={event => setImageUrl(event.target.value)} placeholder="https://..." />
+                {(imageFile || imageUrl) && <Button type="button" size="sm" variant="ghost" onClick={() => { setImageFile(null); setImageUrl(""); }}>Remover imagem</Button>}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => submit(false)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Salvar como pendente</Button>
+            <Button onClick={() => submit(true)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Criar e processar</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
