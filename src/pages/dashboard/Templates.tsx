@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } f
 import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
 import {
   getDefaultTemplateConfig,
+  getPresetTemplateConfig,
   getPresetTemplateLayout,
   getTemplateLayoutOptions,
   normalizeTemplateConfig,
@@ -299,9 +300,7 @@ export default function Templates() {
       return toast.error(e.message);
     }
     const mergedConfig = {
-      ...getDefaultTemplateConfig(format),
-      ...getPresetTemplateLayout(p.key, format),
-      ...p.config,
+      ...getPresetTemplateConfig(p.key, format, p.config),
       backgroundGradient: resolveTemplateGradient(p.key, p.config),
     };
     const { data, error } = await supabase.from("post_templates").insert({
@@ -562,7 +561,7 @@ export default function Templates() {
               {/* Modelos do nicho selecionado */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {(NICHES.find(n => n.key === selectedNiche)?.presets || []).map(p => {
-                  const preview = normalizeTemplateConfig({ ...getPresetTemplateLayout(p.key, fmt.key), ...p.config }, fmt.key);
+                  const preview = getPresetTemplateConfig(p.key, fmt.key, p.config);
                   const previewH = fmt.key === "feed" ? 1080 : 1920;
                   return (
                   <button

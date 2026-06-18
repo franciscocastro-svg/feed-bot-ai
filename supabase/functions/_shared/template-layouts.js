@@ -36,16 +36,40 @@ const FEED_DEFAULTS = {
   photoH: 552,
 };
 
-const VERTICAL_DEFAULTS = {
+const STORY_DEFAULTS = {
+  ...FEED_DEFAULTS,
+  titleY: 760,
+  titleSize: 76,
+  titleMaxChars: 21,
+  titleMaxLines: 4,
+  subtitleY: 1120,
+  subtitleSize: 38,
+  subtitleMaxLines: 5,
+  handleY: 130,
+  handleSize: 28,
+  badgeText: "RESUMO",
+  badgeX: 70,
+  badgeY: 1550,
+  badgeW: 320,
+  badgeH: 64,
+  badgeSize: 24,
+  overlayOpacity: 0.52,
+  photoY: 0,
+  photoH: 1920,
+};
+
+const REEL_DEFAULTS = {
   ...FEED_DEFAULTS,
   titleY: 1040,
+  titleW: 800,
   titleSize: 74,
-  titleMaxChars: 22,
+  titleMaxChars: 19,
   subtitleY: 1380,
+  subtitleW: 760,
   subtitleSize: 32,
   handleY: 130,
   handleSize: 28,
-  badgeX: 608,
+  badgeX: 70,
   badgeY: 1540,
   badgeW: 412,
   badgeH: 64,
@@ -78,7 +102,30 @@ const FEED_LAYOUTS = [
   },
 ];
 
-const VERTICAL_LAYOUTS = [
+const STORY_LAYOUTS = [
+  {
+    name: "Story completo",
+    values: { titleX: 70, titleY: 720, titleW: 940, titleSize: 76, titleMaxChars: 21, titleMaxLines: 4, subtitleX: 70, subtitleY: 1080, subtitleW: 920, subtitleSize: 38, subtitleMaxLines: 5, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, badgeX: 70, badgeY: 1570, badgeW: 320, overlayOpacity: 0.54 },
+  },
+  {
+    name: "Manchete",
+    values: { titleX: 70, titleY: 390, titleW: 940, titleSize: 84, titleMaxChars: 19, titleMaxLines: 4, subtitleX: 70, subtitleY: 820, subtitleW: 920, subtitleSize: 38, subtitleMaxLines: 6, handleX: 70, handleY: 140, badgeX: 70, badgeY: 1510, badgeW: 360, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, overlayOpacity: 0.62 },
+  },
+  {
+    name: "Noticia em cartão",
+    values: { titleX: 70, titleY: 1020, titleW: 940, titleSize: 70, titleMaxLines: 4, subtitleX: 70, subtitleY: 1320, subtitleW: 920, subtitleSize: 36, subtitleMaxLines: 5, handleX: 70, handleY: 110, badgeX: 650, badgeY: 880, badgeW: 360, photoX: 70, photoY: 180, photoW: 940, photoH: 620, overlayOpacity: 0.14 },
+  },
+  {
+    name: "Resumo visual",
+    values: { titleX: 80, titleY: 600, titleW: 920, titleSize: 88, titleMaxChars: 17, titleMaxLines: 4, subtitleX: 80, subtitleY: 1080, subtitleW: 900, subtitleSize: 40, subtitleMaxLines: 6, handleX: 80, handleY: 150, badgeX: 80, badgeY: 1590, badgeW: 360, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, overlayOpacity: 0.66 },
+  },
+  {
+    name: "Tipografico",
+    values: { titleX: 100, titleY: 520, titleW: 880, titleSize: 98, titleMaxChars: 15, titleMaxLines: 4, titleAlign: "center", subtitleX: 140, subtitleY: 1080, subtitleW: 800, subtitleSize: 40, subtitleMaxLines: 6, subtitleAlign: "center", handleX: 390, handleY: 180, badgeX: 350, badgeY: 1580, badgeW: 380, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, overlayOpacity: 0.72 },
+  },
+];
+
+const REEL_LAYOUTS = [
   {
     name: "Editorial",
     values: { titleX: 60, titleY: 1040, titleW: 960, titleSize: 74, subtitleX: 60, subtitleY: 1380, subtitleW: 900, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, badgeX: 608, badgeY: 1540, badgeW: 412, overlayOpacity: 0.48 },
@@ -119,11 +166,13 @@ function normalizedFormat(format) {
 }
 
 export function getDefaultTemplateConfig(format = "feed") {
-  return { ...(normalizedFormat(format) === "feed" ? FEED_DEFAULTS : VERTICAL_DEFAULTS) };
+  const normalized = normalizedFormat(format);
+  return { ...(normalized === "feed" ? FEED_DEFAULTS : normalized === "stories" ? STORY_DEFAULTS : REEL_DEFAULTS) };
 }
 
 export function getTemplateLayoutOptions(format = "feed") {
-  const layouts = normalizedFormat(format) === "feed" ? FEED_LAYOUTS : VERTICAL_LAYOUTS;
+  const normalized = normalizedFormat(format);
+  const layouts = normalized === "feed" ? FEED_LAYOUTS : normalized === "stories" ? STORY_LAYOUTS : REEL_LAYOUTS;
   return layouts.map((layout, index) => ({ index, name: layout.name, values: { ...layout.values } }));
 }
 
@@ -132,6 +181,19 @@ export function getPresetTemplateLayout(presetKey, format = "feed") {
   if (presetKey === "breaking_news") return { ...layouts[4].values };
   const index = Math.max(0, PRESET_ORDER.indexOf(presetKey)) % 4;
   return { ...layouts[index].values };
+}
+
+export function getPresetTemplateConfig(presetKey, format = "feed", presetConfig = {}) {
+  const normalized = normalizedFormat(format);
+  const merged = normalizeTemplateConfig({
+    ...getDefaultTemplateConfig(normalized),
+    ...getPresetTemplateLayout(presetKey, normalized),
+    ...(presetConfig || {}),
+  }, normalized);
+  if (normalized === "stories" && /leia a legenda/i.test(merged.badgeText || "")) {
+    merged.badgeText = "RESUMO";
+  }
+  return merged;
 }
 
 export function normalizeTemplateConfig(config, format = "feed") {

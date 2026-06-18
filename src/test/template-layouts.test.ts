@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getDefaultTemplateConfig,
+  getPresetTemplateConfig,
   getPresetTemplateLayout,
   getTemplateLayoutOptions,
   normalizeTemplateConfig,
@@ -24,6 +25,16 @@ describe("professional template layouts", () => {
     expect(getTemplateLayoutOptions("stories")).toHaveLength(5);
     expect(getTemplateLayoutOptions("reels")[0].values.photoH).toBe(1920);
     expect(getPresetTemplateLayout("breaking_news", "stories").titleAlign).toBe("center");
+  });
+
+  it("treats Stories as complete reading cards and Reels as covers", () => {
+    const story = getDefaultTemplateConfig("stories");
+    const reel = getDefaultTemplateConfig("reels");
+    const preset = getPresetTemplateConfig("news_minimal", "stories", { badgeText: "LEIA A LEGENDA ->" });
+
+    expect(story.subtitleMaxLines).toBeGreaterThan(reel.subtitleMaxLines);
+    expect(story.titleY).not.toBe(reel.titleY);
+    expect(preset.badgeText).toBe("RESUMO");
   });
 
   it("keeps old saved templates compatible while adding professional fields", () => {

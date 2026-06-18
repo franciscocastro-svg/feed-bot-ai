@@ -825,11 +825,12 @@ function customTemplateSvg(opts: {
   config: any;
   photoDataUrl?: string | null;
   height?: number;
+  format?: string;
 }) {
   const { title, subtitle, brandHandle, brandName, bgDataUrl, presetKey, config: c, photoDataUrl } = opts;
   const height = opts.height || 1080;
   const handle = (brandHandle || brandName || "").replace(/^@/, "");
-  const cfg = normalizeTemplateConfig(c, height === 1080 ? "feed" : "stories");
+  const cfg = normalizeTemplateConfig(c, opts.format || (height === 1080 ? "feed" : "stories"));
 
   const titleLines = wrapText((title || "").toUpperCase(), cfg.titleMaxChars).slice(0, cfg.titleMaxLines);
   const titleLH = Math.round(cfg.titleSize * 1.05);
@@ -1149,6 +1150,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           config: activeFeedTemplate.config ?? {},
           photoDataUrl: rawPhotoDataUrl,
           height: 1080,
+          format: "feed",
         });
       } else {
         // Template padrão (Minimal Editorial)
@@ -1204,6 +1206,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           config: activeVerticalTemplate.config ?? {},
           photoDataUrl: rawPhotoDataUrl,
           height: 1920,
+          format: intendedMediaType,
         });
       } else {
         rcSvg = reelCoverSvg({
