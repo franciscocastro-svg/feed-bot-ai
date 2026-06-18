@@ -48,6 +48,7 @@ type InstagramAccountSummary = {
   id: string;
   active?: boolean | null;
   token_expires_at?: string | null;
+  username?: string | null;
 };
 
 type DashboardSettings = {
