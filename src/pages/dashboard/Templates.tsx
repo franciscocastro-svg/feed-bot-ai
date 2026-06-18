@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,12 @@ import { toast } from "sonner";
 import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog";
 import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
+import {
+  getDefaultTemplateConfig,
+  getPresetTemplateLayout,
+  getTemplateLayoutOptions,
+  normalizeTemplateConfig,
+} from "../../../supabase/functions/_shared/template-layouts.js";
 
 type PostFormat = "feed" | "stories" | "reels";
 
@@ -167,91 +173,6 @@ const NICHES: Niche[] = [
   },
 ];
 
-const DEFAULT_CONFIG = {
-  titleY: 180,
-  titleSize: 56,
-  titleColor: "#FFFFFF",
-  titleMaxChars: 26,
-  subtitleY: 440,
-  subtitleSize: 24,
-  subtitleColor: "#FFFFFF",
-  showHandle: true,
-  handleY: 90,
-  handleColor: "#FFFFFF",
-  showBadge: true,
-  badgeText: "LEIA A LEGENDA →",
-  badgeBg: "#FFD400",
-  badgeColor: "#000000",
-  badgeY: 990,
-  overlayOpacity: 0.35,
-  showPhoto: true,
-  photoX: 0,
-  photoY: 528,
-  photoW: 1080,
-  photoH: 552,
-};
-
-const LEGACY_DEFAULT_POSITIONS = {
-  titleY: 540,
-  subtitleY: 800,
-  badgeY: 980,
-  photoX: 90,
-  photoY: 600,
-  photoW: 420,
-  photoH: 280,
-};
-
-function getDefaultConfig(format: PostFormat = "feed") {
-  if (format === "stories" || format === "reels") {
-    return {
-      ...DEFAULT_CONFIG,
-      titleY: 1040,
-      titleSize: 74,
-      titleMaxChars: 22,
-      subtitleY: 1380,
-      subtitleSize: 32,
-      handleY: 130,
-      badgeY: 1540,
-      photoX: 0,
-      photoY: 0,
-      photoW: 1080,
-      photoH: 1920,
-      overlayOpacity: 0.45,
-    };
-  }
-  return { ...DEFAULT_CONFIG };
-}
-
-function normalizeConfig(config: any, format: PostFormat = "feed") {
-  const base = getDefaultConfig(format);
-  const merged = { ...base, ...(config || {}) };
-  const legacyLayout =
-    merged.titleY === LEGACY_DEFAULT_POSITIONS.titleY &&
-    merged.subtitleY === LEGACY_DEFAULT_POSITIONS.subtitleY &&
-    merged.badgeY === LEGACY_DEFAULT_POSITIONS.badgeY &&
-    merged.photoX === LEGACY_DEFAULT_POSITIONS.photoX &&
-    merged.photoY === LEGACY_DEFAULT_POSITIONS.photoY &&
-    merged.photoW === LEGACY_DEFAULT_POSITIONS.photoW &&
-    merged.photoH === LEGACY_DEFAULT_POSITIONS.photoH;
-
-  if (!legacyLayout) return merged;
-  return {
-    ...merged,
-    titleY: base.titleY,
-    titleSize: base.titleSize,
-    titleMaxChars: base.titleMaxChars,
-    subtitleY: base.subtitleY,
-    subtitleSize: base.subtitleSize,
-    handleY: base.handleY,
-    badgeY: base.badgeY,
-    photoX: base.photoX,
-    photoY: base.photoY,
-    photoW: base.photoW,
-    photoH: base.photoH,
-    overlayOpacity: base.overlayOpacity,
-  };
-}
-
 function wrapPreviewText(text: string, maxChars: number, maxLines: number) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -378,7 +299,8 @@ export default function Templates() {
       return toast.error(e.message);
     }
     const mergedConfig = {
-      ...getDefaultConfig(format),
+      ...getDefaultTemplateConfig(format),
+      ...getPresetTemplateLayout(p.key, format),
       ...p.config,
       backgroundGradient: resolveTemplateGradient(p.key, p.config),
     };
@@ -405,7 +327,7 @@ export default function Templates() {
       uploadedPath = path;
       const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
       const config = {
-        ...getDefaultConfig(uploadFormatRef.current),
+        ...getDefaultTemplateConfig(uploadFormatRef.current),
         overlayOpacity: 0,
         ...(uploadFormatRef.current === "feed" ? {} : { showPhoto: false }),
       };
@@ -639,19 +561,22 @@ export default function Templates() {
 
               {/* Modelos do nicho selecionado */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {(NICHES.find(n => n.key === selectedNiche)?.presets || []).map(p => (
+                {(NICHES.find(n => n.key === selectedNiche)?.presets || []).map(p => {
+                  const preview = normalizeTemplateConfig({ ...getPresetTemplateLayout(p.key, fmt.key), ...p.config }, fmt.key);
+                  const previewH = fmt.key === "feed" ? 1080 : 1920;
+                  return (
                   <button
                     key={p.key}
                     onClick={() => addPreset(p, fmt.key)}
                     className="group text-left rounded-lg border border-border bg-card p-2 hover:border-primary hover:shadow-md transition-all"
                   >
                     <div className={`${fmt.aspect} rounded-md mb-2 relative overflow-hidden`} style={{ background: templateGradientCss(p.key, p.config) }}>
-                      {/* mock title + badge para parecer com uma arte real */}
-                      <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase leading-tight" style={{ color: p.config.titleColor || "#fff" }}>
+                      <div className="absolute border border-white/20 bg-black/10" style={{ left: `${preview.photoX / 10.8}%`, top: `${preview.photoY / previewH * 100}%`, width: `${preview.photoW / 10.8}%`, height: `${preview.photoH / previewH * 100}%` }} />
+                      <div className="absolute text-[8px] font-black uppercase leading-tight" style={{ left: `${preview.titleX / 10.8}%`, top: `${(preview.titleY - preview.titleSize) / previewH * 100}%`, width: `${preview.titleW / 10.8}%`, color: preview.titleColor, textAlign: preview.titleAlign }}>
                         Título da<br />notícia
                       </div>
-                      <div className="absolute right-1.5 bottom-1.5 px-1.5 py-0.5 text-[6px] font-bold rounded-sm" style={{ background: p.config.badgeBg, color: p.config.badgeColor }}>
-                        {p.config.badgeText}
+                      <div className="absolute px-1.5 py-0.5 text-[6px] font-bold rounded-sm truncate" style={{ left: `${preview.badgeX / 10.8}%`, top: `${preview.badgeY / previewH * 100}%`, width: `${preview.badgeW / 10.8}%`, background: preview.badgeBg, color: preview.badgeColor }}>
+                        {preview.badgeText}
                       </div>
                     </div>
                     <div className="font-semibold text-xs truncate">{p.name}</div>
@@ -660,7 +585,8 @@ export default function Templates() {
                       <Plus className="h-3 w-3" /> Adicionar
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -751,7 +677,7 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
   const CANVAS_H = fmt === "feed" ? 1080 : 1920;
 
   const TemplateArt = ({ aspect }: { aspect: string }) => {
-    const cfg = normalizeConfig(template.config, fmt);
+    const cfg = normalizeTemplateConfig(template.config, fmt);
     const xP = (px: number) => `${(px / CANVAS_W) * 100}%`;
     const yP = (px: number) => `${(px / CANVAS_H) * 100}%`;
     const wP = (px: number) => `${(px / CANVAS_W) * 100}%`;
@@ -786,28 +712,27 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
 
         {cfg.showHandle && (
           <div className="absolute font-mono font-bold tracking-wider"
-            style={{ left: "5.5%", top: yP(cfg.handleY - 24), color: cfg.handleColor, fontSize: fontPct(28) }}>
+            style={{ left: xP(cfg.handleX), top: yP(cfg.handleY - cfg.handleSize), color: cfg.handleColor, fontSize: fontPct(cfg.handleSize) }}>
             @{handle.toUpperCase()}
           </div>
         )}
 
         <div className="absolute whitespace-pre-line font-black uppercase leading-[1.05]"
-          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize) }}>
-          {wrapPreviewText(sampleTitle, cfg.titleMaxChars, 5)}
+          style={{ left: xP(cfg.titleX), width: wP(cfg.titleW), top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize), textAlign: cfg.titleAlign }}>
+          {wrapPreviewText(sampleTitle, cfg.titleMaxChars, cfg.titleMaxLines)}
         </div>
 
         <div className="absolute whitespace-pre-line leading-snug"
-          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize) }}>
-          {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), 3)}
+          style={{ left: xP(cfg.subtitleX), width: wP(cfg.subtitleW), top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize), textAlign: cfg.subtitleAlign }}>
+          {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), cfg.subtitleMaxLines)}
         </div>
 
         {cfg.showBadge && (
           <div className="absolute font-bold"
             style={{
-              right: "5.5%", top: yP(cfg.badgeY),
+              left: xP(cfg.badgeX), top: yP(cfg.badgeY), width: wP(cfg.badgeW), height: hP(cfg.badgeH),
               background: cfg.badgeBg, color: cfg.badgeColor,
-              padding: `${fontPct(10)} ${fontPct(18)}`,
-              fontSize: fontPct(22),
+              fontSize: fontPct(cfg.badgeSize), display: "flex", alignItems: "center", justifyContent: "center",
               borderRadius: 4,
             }}>
             {cfg.badgeText}
@@ -1003,21 +928,56 @@ function EditorPanel({ template, brand, onClose, onSave }: {
 }) {
   const [draft, setDraft] = useState<Template>(() => ({
     ...template,
-    config: { ...normalizeConfig(template.config, template.format || "feed") },
+    config: { ...normalizeTemplateConfig(template.config, template.format || "feed") },
   }));
   const [finalPreviewOpen, setFinalPreviewOpen] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const fmt = draft.format || "feed";
   const canvasH = fmt === "feed" ? 1080 : 1920;
   const aspectClass = fmt === "feed" ? "aspect-square" : "aspect-[9/16]";
-  const cfg = normalizeConfig(draft.config, fmt);
+  const cfg = normalizeTemplateConfig(draft.config, fmt);
   const update = (patch: any) => setDraft(current => {
     const currentFmt = current.format || "feed";
-    const currentCfg = normalizeConfig(current.config, currentFmt);
+    const currentCfg = normalizeTemplateConfig(current.config, currentFmt);
     return { ...current, config: { ...currentCfg, ...patch } };
   });
+  const layouts = getTemplateLayoutOptions(fmt);
+  const gradient = resolveTemplateGradient(draft.preset_key, cfg);
+  const updateGradient = (patch: { angle?: number; first?: string; last?: string }) => {
+    const stops = gradient.stops.map((stop: any) => ({ ...stop }));
+    if (patch.first) stops[0].color = patch.first;
+    if (patch.last) stops[stops.length - 1].color = patch.last;
+    update({ backgroundGradient: { angle: patch.angle ?? gradient.angle, stops } });
+  };
+  const beginDrag = (
+    event: ReactPointerEvent,
+    xKey: string,
+    yKey: string,
+    startX: number,
+    startY: number,
+    width: number,
+    height: number,
+  ) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    const pointerX = event.clientX;
+    const pointerY = event.clientY;
+    const move = (moveEvent: PointerEvent) => {
+      const nextX = Math.max(0, Math.min(1080 - width, Math.round(startX + (moveEvent.clientX - pointerX) * 1080 / rect.width)));
+      const nextY = Math.max(0, Math.min(canvasH - height, Math.round(startY + (moveEvent.clientY - pointerY) * canvasH / rect.height)));
+      update({ [xKey]: nextX, [yKey]: nextY });
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
   const sampleTitle = "TÍTULO DA NOTÍCIA EM DESTAQUE AQUI";
   const sampleSub = "Subtítulo curto explicando o contexto da notícia";
-  const hasChanges = JSON.stringify({ name: template.name, config: normalizeConfig(template.config, fmt) }) !== JSON.stringify({ name: draft.name, config: cfg });
+  const hasChanges = JSON.stringify({ name: template.name, config: normalizeTemplateConfig(template.config, fmt) }) !== JSON.stringify({ name: draft.name, config: cfg });
   const canSave = draft.name.trim().length > 0 && hasChanges;
 
   return (
@@ -1050,14 +1010,14 @@ function EditorPanel({ template, brand, onClose, onSave }: {
             </Button>
           </div>
           <div className="flex max-h-[calc(92vh-160px)] min-h-[420px] items-start justify-center overflow-auto rounded-xl border border-border bg-background/60 p-3">
-          <div className={`${aspectClass} w-full max-w-[360px] relative overflow-hidden rounded-lg border border-border bg-zinc-900 shadow-card`} style={{ containerType: "inline-size" }}>
+          <div ref={canvasRef} className={`${aspectClass} w-full max-w-[360px] relative overflow-hidden rounded-lg border border-border bg-zinc-900 shadow-card select-none`} style={{ containerType: "inline-size", touchAction: "none" }}>
             {draft.background_url ? (
               <img src={draft.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
               <div className="absolute inset-0" style={{ background: templateGradientCss(draft.preset_key, draft.config) }} />
             )}
             {cfg.showPhoto && (
-              <div className="absolute bg-black/40 border-2 border-dashed border-yellow-400 flex items-center justify-center text-yellow-300 text-[10px] font-bold uppercase tracking-wider"
+              <div onPointerDown={e => beginDrag(e, "photoX", "photoY", cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH)} className="absolute z-[1] bg-black/40 border-2 border-dashed border-yellow-400 flex cursor-move items-center justify-center text-yellow-300 text-[10px] font-bold uppercase tracking-wider"
                 style={{
                   left: `${(cfg.photoX / 1080) * 100}%`,
                   top: `${(cfg.photoY / canvasH) * 100}%`,
@@ -1068,28 +1028,29 @@ function EditorPanel({ template, brand, onClose, onSave }: {
               </div>
             )}
             {cfg.overlayOpacity > 0 && (
-              <div className="absolute inset-0" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
+              <div className="pointer-events-none absolute inset-0 z-[2]" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
             )}
             {cfg.showHandle && (
-              <div className="absolute left-[5.5%] font-mono font-bold tracking-wider"
-                style={{ top: `${((cfg.handleY - 24) / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `clamp(10px, 2vw, 16px)` }}>
+              <div onPointerDown={e => beginDrag(e, "handleX", "handleY", cfg.handleX, cfg.handleY, 260, 0)} className="absolute z-10 cursor-move font-mono font-bold tracking-wider outline outline-1 outline-transparent hover:outline-primary"
+                style={{ left: `${(cfg.handleX / 1080) * 100}%`, top: `${((cfg.handleY - cfg.handleSize) / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `${(cfg.handleSize / 1080) * 100}cqw` }}>
                 @SUAMARCA
               </div>
             )}
-            <div className="absolute left-[5.5%] right-[5.5%] whitespace-pre-line font-black uppercase leading-[1.05]"
-              style={{ top: `${((cfg.titleY - cfg.titleSize * 0.8) / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw` }}>
-              {wrapPreviewText(sampleTitle, cfg.titleMaxChars, 5)}
+            <div onPointerDown={e => beginDrag(e, "titleX", "titleY", cfg.titleX, cfg.titleY, cfg.titleW, 0)} className="absolute z-10 cursor-move whitespace-pre-line font-black uppercase leading-[1.05] outline outline-1 outline-transparent hover:outline-primary"
+              style={{ left: `${(cfg.titleX / 1080) * 100}%`, width: `${(cfg.titleW / 1080) * 100}%`, top: `${((cfg.titleY - cfg.titleSize * 0.8) / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw`, textAlign: cfg.titleAlign }}>
+              {wrapPreviewText(sampleTitle, cfg.titleMaxChars, cfg.titleMaxLines)}
             </div>
-            <div className="absolute left-[5.5%] right-[5.5%] whitespace-pre-line leading-[1.3]"
-              style={{ top: `${((cfg.subtitleY - cfg.subtitleSize * 0.8) / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw` }}>
-              {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), 3)}
+            <div onPointerDown={e => beginDrag(e, "subtitleX", "subtitleY", cfg.subtitleX, cfg.subtitleY, cfg.subtitleW, 0)} className="absolute z-10 cursor-move whitespace-pre-line leading-[1.3] outline outline-1 outline-transparent hover:outline-primary"
+              style={{ left: `${(cfg.subtitleX / 1080) * 100}%`, width: `${(cfg.subtitleW / 1080) * 100}%`, top: `${((cfg.subtitleY - cfg.subtitleSize * 0.8) / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw`, textAlign: cfg.subtitleAlign }}>
+              {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), cfg.subtitleMaxLines)}
             </div>
             {cfg.showBadge && (
-              <div className="absolute right-[5.5%] px-3 py-2 font-bold text-xs"
-                style={{ top: `${(cfg.badgeY / canvasH) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor }}>
+              <div onPointerDown={e => beginDrag(e, "badgeX", "badgeY", cfg.badgeX, cfg.badgeY, cfg.badgeW, cfg.badgeH)} className="absolute z-10 flex cursor-move items-center justify-center overflow-hidden px-2 font-bold outline outline-1 outline-transparent hover:outline-primary"
+                style={{ left: `${(cfg.badgeX / 1080) * 100}%`, top: `${(cfg.badgeY / canvasH) * 100}%`, width: `${(cfg.badgeW / 1080) * 100}%`, height: `${(cfg.badgeH / canvasH) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor, fontSize: `${(cfg.badgeSize / 1080) * 100}cqw` }}>
                 {cfg.badgeText}
               </div>
             )}
+            <div className="pointer-events-none absolute inset-[5.5%] z-20 border border-white/20" />
           </div>
           </div>
         </div>
@@ -1102,23 +1063,47 @@ function EditorPanel({ template, brand, onClose, onSave }: {
             <Input value={draft.name} onChange={e => setDraft(current => ({ ...current, name: e.target.value }))} />
           </div>
 
+          <Section title="Composicao profissional">
+            <p className="text-xs text-muted-foreground">Escolha uma estrutura inicial e depois arraste os blocos diretamente na arte.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {layouts.map(layout => (
+                <Button key={layout.index} type="button" size="sm" variant="outline" onClick={() => update(layout.values)}>
+                  {layout.name}
+                </Button>
+              ))}
+            </div>
+            <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => update({ ...getDefaultTemplateConfig(fmt), ...getPresetTemplateLayout(draft.preset_key, fmt) })}>
+              Restaurar composicao do modelo
+            </Button>
+          </Section>
+
           <Section title="Título">
+            <RangeRow label="Posição horizontal" value={cfg.titleX} min={0} max={1000} onChange={v => update({ titleX: v })} />
             <RangeRow label="Posição vertical" value={cfg.titleY} min={50} max={canvasH - 80} onChange={v => update({ titleY: v })} />
+            <RangeRow label="Largura da caixa" value={cfg.titleW} min={180} max={1080} onChange={v => update({ titleW: v })} />
             <RangeRow label="Tamanho" value={cfg.titleSize} min={32} max={120} onChange={v => update({ titleSize: v })} />
             <RangeRow label="Caracteres por linha" value={cfg.titleMaxChars} min={12} max={40} onChange={v => update({ titleMaxChars: v })} />
+            <RangeRow label="Máximo de linhas" value={cfg.titleMaxLines} min={1} max={7} onChange={v => update({ titleMaxLines: v })} />
+            <AlignRow label="Alinhamento" value={cfg.titleAlign} onChange={v => update({ titleAlign: v })} />
             <ColorRow label="Cor" value={cfg.titleColor} onChange={v => update({ titleColor: v })} />
           </Section>
 
           <Section title="Subtítulo">
+            <RangeRow label="Posição horizontal" value={cfg.subtitleX} min={0} max={1000} onChange={v => update({ subtitleX: v })} />
             <RangeRow label="Posição vertical" value={cfg.subtitleY} min={50} max={canvasH - 40} onChange={v => update({ subtitleY: v })} />
+            <RangeRow label="Largura da caixa" value={cfg.subtitleW} min={180} max={1080} onChange={v => update({ subtitleW: v })} />
             <RangeRow label="Tamanho" value={cfg.subtitleSize} min={16} max={48} onChange={v => update({ subtitleSize: v })} />
+            <RangeRow label="Máximo de linhas" value={cfg.subtitleMaxLines} min={1} max={5} onChange={v => update({ subtitleMaxLines: v })} />
+            <AlignRow label="Alinhamento" value={cfg.subtitleAlign} onChange={v => update({ subtitleAlign: v })} />
             <ColorRow label="Cor" value={cfg.subtitleColor} onChange={v => update({ subtitleColor: v })} />
           </Section>
 
           <Section title="Handle (@marca)">
             <Toggle label="Mostrar handle" value={cfg.showHandle} onChange={v => update({ showHandle: v })} />
             {cfg.showHandle && <>
-              <RangeRow label="Posição vertical" value={cfg.handleY} min={20} max={1000} onChange={v => update({ handleY: v })} />
+              <RangeRow label="Posição horizontal" value={cfg.handleX} min={0} max={900} onChange={v => update({ handleX: v })} />
+              <RangeRow label="Posição vertical" value={cfg.handleY} min={20} max={canvasH - 20} onChange={v => update({ handleY: v })} />
+              <RangeRow label="Tamanho" value={cfg.handleSize} min={14} max={54} onChange={v => update({ handleSize: v })} />
               <ColorRow label="Cor" value={cfg.handleColor} onChange={v => update({ handleColor: v })} />
             </>}
           </Section>
@@ -1127,7 +1112,11 @@ function EditorPanel({ template, brand, onClose, onSave }: {
             <Toggle label="Mostrar selo" value={cfg.showBadge} onChange={v => update({ showBadge: v })} />
             {cfg.showBadge && <>
               <div><Label>Texto</Label><Input value={cfg.badgeText} onChange={e => update({ badgeText: e.target.value })} /></div>
+              <RangeRow label="Posição horizontal" value={cfg.badgeX} min={0} max={1000} onChange={v => update({ badgeX: v })} />
               <RangeRow label="Posição vertical" value={cfg.badgeY} min={20} max={canvasH - 40} onChange={v => update({ badgeY: v })} />
+              <RangeRow label="Largura" value={cfg.badgeW} min={160} max={1080} onChange={v => update({ badgeW: v })} />
+              <RangeRow label="Altura" value={cfg.badgeH} min={36} max={160} onChange={v => update({ badgeH: v })} />
+              <RangeRow label="Tamanho do texto" value={cfg.badgeSize} min={12} max={48} onChange={v => update({ badgeSize: v })} />
               <ColorRow label="Fundo" value={cfg.badgeBg} onChange={v => update({ badgeBg: v })} />
               <ColorRow label="Cor texto" value={cfg.badgeColor} onChange={v => update({ badgeColor: v })} />
             </>}
@@ -1140,13 +1129,21 @@ function EditorPanel({ template, brand, onClose, onSave }: {
               <RangeRow label="Posição X (esquerda)" value={cfg.photoX} min={0} max={1080} onChange={v => update({ photoX: v })} />
               <RangeRow label="Posição Y (topo)" value={cfg.photoY} min={0} max={canvasH} onChange={v => update({ photoY: v })} />
               <RangeRow label="Largura" value={cfg.photoW} min={100} max={1080} onChange={v => update({ photoW: v })} />
-              <RangeRow label="Altura" value={cfg.photoH} min={100} max={1080} onChange={v => update({ photoH: v })} />
+              <RangeRow label="Altura" value={cfg.photoH} min={100} max={canvasH} onChange={v => update({ photoH: v })} />
             </>}
           </Section>
 
           <Section title="Escurecimento de fundo">
             <RangeRow label="Opacidade" value={Math.round(cfg.overlayOpacity * 100)} min={0} max={90} onChange={v => update({ overlayOpacity: v / 100 })} />
           </Section>
+
+          {!draft.background_url && (
+            <Section title="Fundo em gradiente">
+              <RangeRow label="Direção" value={Math.round(gradient.angle)} min={0} max={360} onChange={v => updateGradient({ angle: v })} />
+              <ColorRow label="Cor inicial" value={gradient.stops[0].color} onChange={v => updateGradient({ first: v })} />
+              <ColorRow label="Cor final" value={gradient.stops[gradient.stops.length - 1].color} onChange={v => updateGradient({ last: v })} />
+            </Section>
+          )}
         </div>
           <div className="grid gap-2 border-t border-border bg-card p-4 sm:grid-cols-[1fr_auto_auto]">
             <Button onClick={() => setFinalPreviewOpen(true)} variant="outline" className="sm:order-2">
@@ -1191,6 +1188,20 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
     <div className="flex items-center justify-between gap-2">
       <Label className="text-xs">{label}</Label>
       <input type="color" value={value} onChange={e => onChange(e.target.value)} className="h-8 w-14 rounded border border-border bg-transparent" />
+    </div>
+  );
+}
+function AlignRow({ label, value, onChange }: { label: string; value: string; onChange: (v: "left" | "center" | "right") => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex overflow-hidden rounded-md border border-border">
+        {(["left", "center", "right"] as const).map(option => (
+          <button key={option} type="button" onClick={() => onChange(option)} className={`px-3 py-1 text-xs ${value === option ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+            {option === "left" ? "Esq." : option === "center" ? "Centro" : "Dir."}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

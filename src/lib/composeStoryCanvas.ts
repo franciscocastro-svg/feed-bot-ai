@@ -2,6 +2,7 @@
 // Sem CTA e sem @handle. Foco em título + resumo.
 import { supabase } from "@/integrations/supabase/client";
 import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
+import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
 
 const W = 1080;
 const H = 1920;
@@ -47,44 +48,7 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numb
 
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any, opts: { withFollowCta?: boolean }) {
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
-  const base = {
-    titleY: 1040,
-    titleSize: 74,
-    titleColor: "#FFFFFF",
-    titleMaxChars: 22,
-    subtitleY: 1380,
-    subtitleSize: 32,
-    subtitleColor: "#FFFFFF",
-    showHandle: true,
-    handleY: 130,
-    handleColor: "#FFFFFF",
-    showBadge: true,
-    badgeText: opts.withFollowCta && handle ? `SIGA @${handle.toUpperCase()} PARA MAIS` : "LEIA A LEGENDA →",
-    badgeBg: "#FFD400",
-    badgeColor: "#000000",
-    badgeY: 1540,
-    overlayOpacity: 0.45,
-    showPhoto: true,
-    photoX: 0,
-    photoY: 0,
-    photoW: 1080,
-    photoH: 1920,
-  };
-  const mergedCfg = {
-    ...base,
-    ...(template.config || {}),
-  };
-  const legacyLayout =
-    mergedCfg.titleY === 540 &&
-    mergedCfg.subtitleY === 800 &&
-    mergedCfg.badgeY === 980 &&
-    mergedCfg.photoX === 90 &&
-    mergedCfg.photoY === 600 &&
-    mergedCfg.photoW === 420 &&
-    mergedCfg.photoH === 280;
-  const cfg = legacyLayout
-    ? { ...mergedCfg, titleY: base.titleY, titleSize: base.titleSize, titleMaxChars: base.titleMaxChars, subtitleY: base.subtitleY, subtitleSize: base.subtitleSize, handleY: base.handleY, badgeY: base.badgeY, photoX: base.photoX, photoY: base.photoY, photoW: base.photoW, photoH: base.photoH, overlayOpacity: base.overlayOpacity }
-    : mergedCfg;
+  const cfg = normalizeTemplateConfig(template.config, opts.withFollowCta ? "reels" : "stories");
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia").toUpperCase();
   const subtitle = item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "";
 
@@ -111,26 +75,28 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   }
   if (cfg.showHandle && handle) {
     ctx.fillStyle = cfg.handleColor;
-    ctx.font = "800 28px Inter, system-ui, sans-serif";
-    ctx.fillText(`@${handle.toUpperCase()}`, 60, cfg.handleY);
+    ctx.font = `800 ${cfg.handleSize}px Inter, system-ui, sans-serif`;
+    ctx.fillText(`@${handle.toUpperCase()}`, cfg.handleX, cfg.handleY);
   }
   ctx.fillStyle = cfg.titleColor;
   ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
-  wrap(ctx, title, W - 120, cfg.titleMaxChars).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
+  ctx.textAlign = cfg.titleAlign;
+  const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
+  wrap(ctx, title, cfg.titleW, cfg.titleMaxChars).slice(0, cfg.titleMaxLines).forEach((l, i) => ctx.fillText(l, titleX, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
     ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
-    wrap(ctx, subtitle, W - 120, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
+    ctx.textAlign = cfg.subtitleAlign;
+    const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
+    wrap(ctx, subtitle, cfg.subtitleW, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines).forEach((l, i) => ctx.fillText(l, subtitleX, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
   }
   if (cfg.showBadge && cfg.badgeText) {
-    const bw = Math.min(W - 120, Math.max(300, cfg.badgeText.length * 18 + 52));
-    const bx = W - bw - 60;
     ctx.fillStyle = cfg.badgeBg;
-    ctx.fillRect(bx, cfg.badgeY, bw, 64);
+    ctx.fillRect(cfg.badgeX, cfg.badgeY, cfg.badgeW, cfg.badgeH);
     ctx.fillStyle = cfg.badgeColor;
-    ctx.font = "900 24px Inter, system-ui, sans-serif";
+    ctx.font = `900 ${cfg.badgeSize}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText(cfg.badgeText, bx + bw / 2, cfg.badgeY + 42);
+    ctx.fillText(cfg.badgeText, cfg.badgeX + cfg.badgeW / 2, cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35);
     ctx.textAlign = "left";
   }
 }

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { templateGradientSvg } from "../_shared/template-gradients.js";
+import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
 
 let wasmReady: Promise<void> | null = null;
 async function ensureWasm() {
@@ -828,47 +829,16 @@ function customTemplateSvg(opts: {
   const { title, subtitle, brandHandle, brandName, bgDataUrl, presetKey, config: c, photoDataUrl } = opts;
   const height = opts.height || 1080;
   const handle = (brandHandle || brandName || "").replace(/^@/, "");
-  const base = height === 1080 ? {
-    titleY: 180, titleSize: 56, titleColor: "#FFFFFF", titleMaxChars: 26,
-    subtitleY: 440, subtitleSize: 24, subtitleColor: "#FFFFFF",
-    showHandle: true, handleY: 90, handleColor: "#FFFFFF",
-    showBadge: true, badgeText: "LEIA A LEGENDA →", badgeBg: "#FFD400", badgeColor: "#000000", badgeY: 990,
-    overlayOpacity: 0.35,
-    showPhoto: true, photoX: 0, photoY: 528, photoW: 1080, photoH: 552,
-  } : {
-    titleY: 1040, titleSize: 74, titleColor: "#FFFFFF", titleMaxChars: 22,
-    subtitleY: 1380, subtitleSize: 32, subtitleColor: "#FFFFFF",
-    showHandle: true, handleY: 130, handleColor: "#FFFFFF",
-    showBadge: true, badgeText: "LEIA A LEGENDA →", badgeBg: "#FFD400", badgeColor: "#000000", badgeY: 1540,
-    overlayOpacity: 0.45,
-    showPhoto: true, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920,
-  };
-  const mergedCfg = {
-    ...base,
-    ...(c || {}),
-  };
-  const legacyLayout =
-    mergedCfg.titleY === 540 &&
-    mergedCfg.subtitleY === 800 &&
-    mergedCfg.badgeY === 980 &&
-    mergedCfg.photoX === 90 &&
-    mergedCfg.photoY === 600 &&
-    mergedCfg.photoW === 420 &&
-    mergedCfg.photoH === 280;
-  const cfg = legacyLayout
-    ? { ...mergedCfg, titleY: base.titleY, titleSize: base.titleSize, titleMaxChars: base.titleMaxChars, subtitleY: base.subtitleY, subtitleSize: base.subtitleSize, handleY: base.handleY, badgeY: base.badgeY, photoX: base.photoX, photoY: base.photoY, photoW: base.photoW, photoH: base.photoH, overlayOpacity: base.overlayOpacity }
-    : mergedCfg;
+  const cfg = normalizeTemplateConfig(c, height === 1080 ? "feed" : "stories");
 
-  const titleLines = wrapText((title || "").toUpperCase(), cfg.titleMaxChars).slice(0, 5);
+  const titleLines = wrapText((title || "").toUpperCase(), cfg.titleMaxChars).slice(0, cfg.titleMaxLines);
   const titleLH = Math.round(cfg.titleSize * 1.05);
-  const titleTspans = titleLines.map((l, i) => `<tspan x="60" y="${cfg.titleY + i * titleLH}">${escapeXml(l)}</tspan>`).join("");
-  const subLines = wrapText(subtitle || "", Math.floor(cfg.titleMaxChars * 2.2)).slice(0, 2);
+  const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
+  const titleTspans = titleLines.map((l, i) => `<tspan x="${titleX}" y="${cfg.titleY + i * titleLH}">${escapeXml(l)}</tspan>`).join("");
+  const subLines = wrapText(subtitle || "", Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines);
   const subLH = Math.round(cfg.subtitleSize * 1.3);
-  const subTspans = subLines.map((l, i) => `<tspan x="60" y="${cfg.subtitleY + i * subLH}">${escapeXml(l)}</tspan>`).join("");
-
-  const badgeW = Math.min(960, Math.max(280, cfg.badgeText.length * 18 + 40));
-  const badgeH = 60;
-  const badgeX = 1080 - badgeW - 60;
+  const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
+  const subTspans = subLines.map((l, i) => `<tspan x="${subtitleX}" y="${cfg.subtitleY + i * subLH}">${escapeXml(l)}</tspan>`).join("");
 
   const presetBg = bgDataUrl ? "" : templateGradientSvg(presetKey, cfg, 1080, height);
   const overlay = cfg.overlayOpacity > 0
@@ -887,11 +857,11 @@ function customTemplateSvg(opts: {
     : presetBg}
   ${photoBlock}
   ${overlay}
-  ${cfg.showHandle ? `<text x="60" y="${cfg.handleY}" font-family="Inter, monospace" font-size="22" font-weight="800" fill="${cfg.handleColor}" letter-spacing="2">@${escapeXml(handle.toUpperCase())}</text>` : ""}
-  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.titleSize}" font-weight="900" fill="${cfg.titleColor}" letter-spacing="-2">${titleTspans}</text>
-  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.subtitleSize}" font-weight="500" fill="${cfg.subtitleColor}">${subTspans}</text>
-  ${cfg.showBadge ? `<rect x="${badgeX}" y="${cfg.badgeY}" width="${badgeW}" height="${badgeH}" fill="${cfg.badgeBg}"/>
-  <text x="${badgeX + badgeW / 2}" y="${cfg.badgeY + 40}" font-family="Inter, monospace" font-size="22" font-weight="900" fill="${cfg.badgeColor}" text-anchor="middle" letter-spacing="3">${escapeXml(cfg.badgeText)}</text>` : ""}
+  ${cfg.showHandle ? `<text x="${cfg.handleX}" y="${cfg.handleY}" font-family="Inter, monospace" font-size="${cfg.handleSize}" font-weight="800" fill="${cfg.handleColor}" letter-spacing="2">@${escapeXml(handle.toUpperCase())}</text>` : ""}
+  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.titleSize}" font-weight="900" fill="${cfg.titleColor}" text-anchor="${textAnchorForAlign(cfg.titleAlign)}" letter-spacing="-2">${titleTspans}</text>
+  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.subtitleSize}" font-weight="500" fill="${cfg.subtitleColor}" text-anchor="${textAnchorForAlign(cfg.subtitleAlign)}">${subTspans}</text>
+  ${cfg.showBadge ? `<rect x="${cfg.badgeX}" y="${cfg.badgeY}" width="${cfg.badgeW}" height="${cfg.badgeH}" fill="${cfg.badgeBg}"/>
+  <text x="${cfg.badgeX + cfg.badgeW / 2}" y="${cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35}" font-family="Inter, monospace" font-size="${cfg.badgeSize}" font-weight="900" fill="${cfg.badgeColor}" text-anchor="middle" letter-spacing="3">${escapeXml(cfg.badgeText)}</text>` : ""}
 </svg>`;
 }
 
