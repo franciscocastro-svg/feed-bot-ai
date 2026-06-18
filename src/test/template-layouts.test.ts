@@ -19,10 +19,11 @@ describe("professional template layouts", () => {
     expect(layouts[2].photoX).not.toBe(layouts[3].photoX);
   });
 
-  it("offers four editable compositions for square and vertical art", () => {
-    expect(getTemplateLayoutOptions("feed")).toHaveLength(4);
-    expect(getTemplateLayoutOptions("stories")).toHaveLength(4);
+  it("offers five editable compositions for square and vertical art", () => {
+    expect(getTemplateLayoutOptions("feed")).toHaveLength(5);
+    expect(getTemplateLayoutOptions("stories")).toHaveLength(5);
     expect(getTemplateLayoutOptions("reels")[0].values.photoH).toBe(1920);
+    expect(getPresetTemplateLayout("breaking_news", "stories").titleAlign).toBe("center");
   });
 
   it("keeps old saved templates compatible while adding professional fields", () => {

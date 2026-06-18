@@ -72,6 +72,10 @@ const FEED_LAYOUTS = [
     name: "Magazine",
     values: { titleX: 80, titleY: 720, titleW: 920, titleSize: 60, titleMaxChars: 25, subtitleX: 80, subtitleY: 930, subtitleW: 700, subtitleSize: 23, handleX: 80, handleY: 60, badgeX: 700, badgeY: 60, badgeW: 300, photoX: 80, photoY: 120, photoW: 920, photoH: 500, overlayOpacity: 0.18 },
   },
+  {
+    name: "Tipografico",
+    values: { titleX: 120, titleY: 430, titleW: 840, titleSize: 88, titleMaxChars: 17, titleAlign: "center", subtitleX: 180, subtitleY: 770, subtitleW: 720, subtitleSize: 28, subtitleAlign: "center", handleX: 390, handleY: 120, badgeX: 340, badgeY: 950, badgeW: 400, photoX: 0, photoY: 0, photoW: 1080, photoH: 1080, overlayOpacity: 0.68 },
+  },
 ];
 
 const VERTICAL_LAYOUTS = [
@@ -90,6 +94,10 @@ const VERTICAL_LAYOUTS = [
   {
     name: "Cinematico",
     values: { titleX: 80, titleY: 780, titleW: 820, titleSize: 92, titleMaxChars: 16, subtitleX: 80, subtitleY: 1260, subtitleW: 760, subtitleSize: 34, handleX: 80, handleY: 150, badgeX: 80, badgeY: 1510, badgeW: 430, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, overlayOpacity: 0.62 },
+  },
+  {
+    name: "Tipografico",
+    values: { titleX: 100, titleY: 650, titleW: 880, titleSize: 98, titleMaxChars: 15, titleAlign: "center", subtitleX: 160, subtitleY: 1160, subtitleW: 760, subtitleSize: 36, subtitleAlign: "center", handleX: 390, handleY: 180, badgeX: 290, badgeY: 1540, badgeW: 500, photoX: 0, photoY: 0, photoW: 1080, photoH: 1920, overlayOpacity: 0.7 },
   },
 ];
 
@@ -120,8 +128,10 @@ export function getTemplateLayoutOptions(format = "feed") {
 }
 
 export function getPresetTemplateLayout(presetKey, format = "feed") {
+  const layouts = getTemplateLayoutOptions(format);
+  if (presetKey === "breaking_news") return { ...layouts[4].values };
   const index = Math.max(0, PRESET_ORDER.indexOf(presetKey)) % 4;
-  return { ...getTemplateLayoutOptions(format)[index].values };
+  return { ...layouts[index].values };
 }
 
 export function normalizeTemplateConfig(config, format = "feed") {
