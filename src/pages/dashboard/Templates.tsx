@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog";
+import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
 
 type PostFormat = "feed" | "stories" | "reels";
 
@@ -46,7 +47,6 @@ type NichePreset = {
   key: string;
   name: string;
   description: string;
-  preview: string;
   config: Record<string, any>;
 };
 
@@ -64,111 +64,108 @@ const NICHES: Niche[] = [
   {
     key: "noticias", label: "Notícias", icon: Newspaper, accent: "#DC2626",
     presets: [
-      { key: "news_minimal", name: "Minimal Editorial", description: "Header branco, foto embaixo, selo amarelo", preview: "linear-gradient(180deg,#fff 60%,#18181B 60%)",
+      { key: "news_minimal", name: "Minimal Editorial", description: "Header branco, foto embaixo, selo amarelo",
         config: { titleColor: "#0A0A0A", subtitleColor: "#52525B", badgeBg: "#FFD400", badgeColor: "#000000", badgeText: "LEIA A LEGENDA →", overlayOpacity: 0 } },
-      { key: "news_breaking", name: "Breaking News", description: "Vermelho urgente, fundo escuro", preview: "linear-gradient(180deg,#DC2626 0 18%,#0A0A0A 18%)",
+      { key: "news_breaking", name: "Breaking News", description: "Vermelho urgente, fundo escuro",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "URGENTE", overlayOpacity: 0.55 } },
-      { key: "news_classic", name: "Jornal Clássico", description: "Bege papel, ar de autoridade", preview: "linear-gradient(180deg,#F5F1E8 0 30%,#1F2937 30%)",
+      { key: "news_classic", name: "Jornal Clássico", description: "Bege papel, ar de autoridade",
         config: { titleColor: "#1F2937", subtitleColor: "#6B7280", badgeBg: "#1F2937", badgeColor: "#F5F1E8", badgeText: "EDIÇÃO DE HOJE", overlayOpacity: 0.3 } },
-      { key: "news_yellow", name: "Bold Stripe", description: "Faixa amarela no topo, título grande", preview: "linear-gradient(180deg,#FFD400 0 22%,#fff 22%)",
+      { key: "news_yellow", name: "Bold Stripe", description: "Faixa amarela no topo, título grande",
         config: { titleColor: "#000000", subtitleColor: "#27272A", badgeBg: "#000000", badgeColor: "#FFD400", badgeText: "DESTAQUE", overlayOpacity: 0 } },
     ],
   },
   {
     key: "economia", label: "Economia", icon: TrendingUp, accent: "#047857",
     presets: [
-      { key: "econ_bull", name: "Mercado em Alta", description: "Verde dinheiro, otimismo", preview: "linear-gradient(180deg,#064E3B 0 35%,#047857 35%)",
+      { key: "econ_bull", name: "Mercado em Alta", description: "Verde dinheiro, otimismo",
         config: { titleColor: "#FFFFFF", subtitleColor: "#A7F3D0", badgeBg: "#10B981", badgeColor: "#022C22", badgeText: "↑ ALTA", overlayOpacity: 0.4 } },
-      { key: "econ_bear", name: "Mercado em Baixa", description: "Vermelho/preto, queda da bolsa", preview: "linear-gradient(180deg,#0A0A0A 0 35%,#7F1D1D 35%)",
+      { key: "econ_bear", name: "Mercado em Baixa", description: "Vermelho/preto, queda da bolsa",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "↓ QUEDA", overlayOpacity: 0.5 } },
-      { key: "econ_corp", name: "Corporativo Premium", description: "Azul marinho + dourado", preview: "linear-gradient(180deg,#0F172A 0 40%,#1E3A8A 40%)",
+      { key: "econ_corp", name: "Corporativo Premium", description: "Azul marinho + dourado",
         config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FBBF24", badgeColor: "#0F172A", badgeText: "MERCADO", overlayOpacity: 0.35 } },
-      { key: "econ_fintech", name: "Fintech Minimal", description: "Branco + verde menta", preview: "linear-gradient(180deg,#FAFAFA 0 50%,#10B981 50%)",
+      { key: "econ_fintech", name: "Fintech Minimal", description: "Branco + verde menta",
         config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#0F172A", badgeColor: "#10B981", badgeText: "ECONOMIA", overlayOpacity: 0 } },
     ],
   },
   {
     key: "futebol", label: "Futebol & Esportes", icon: Trophy, accent: "#16A34A",
     presets: [
-      { key: "soc_stadium", name: "Estádio Noturno", description: "Preto + verde grama", preview: "linear-gradient(180deg,#000 0 30%,#16A34A 30%)",
+      { key: "soc_stadium", name: "Estádio Noturno", description: "Preto + verde grama",
         config: { titleColor: "#FFFFFF", subtitleColor: "#86EFAC", badgeBg: "#16A34A", badgeColor: "#000000", badgeText: "GOL!", overlayOpacity: 0.5 } },
-      { key: "soc_brasil", name: "Verde-Amarelo BR", description: "Cores da seleção", preview: "linear-gradient(180deg,#FACC15 0 40%,#15803D 40%)",
+      { key: "soc_brasil", name: "Verde-Amarelo BR", description: "Cores da seleção",
         config: { titleColor: "#0F172A", subtitleColor: "#1F2937", badgeBg: "#15803D", badgeColor: "#FACC15", badgeText: "SELEÇÃO", overlayOpacity: 0.2 } },
-      { key: "soc_derby", name: "Clássico", description: "Vermelho × preto, rivalidade", preview: "linear-gradient(90deg,#DC2626 0 50%,#0A0A0A 50%)",
+      { key: "soc_derby", name: "Clássico", description: "Vermelho × preto, rivalidade",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#FFFFFF", badgeColor: "#DC2626", badgeText: "CLÁSSICO", overlayOpacity: 0.45 } },
-      { key: "soc_champ", name: "Champions Premium", description: "Azul + estrela dourada", preview: "linear-gradient(180deg,#1E1B4B 0 100%)",
+      { key: "soc_champ", name: "Champions Premium", description: "Azul + estrela dourada",
         config: { titleColor: "#FFFFFF", subtitleColor: "#C7D2FE", badgeBg: "#FBBF24", badgeColor: "#1E1B4B", badgeText: "★ FINAL", overlayOpacity: 0.4 } },
     ],
   },
   {
     key: "fofoca", label: "Fofoca & Celebridades", icon: Sparkles, accent: "#EC4899",
     presets: [
-      { key: "gos_pink", name: "Rosa Glamour", description: "Rosa choque, chamativo", preview: "linear-gradient(180deg,#FBCFE8 0 40%,#EC4899 40%)",
+      { key: "gos_pink", name: "Rosa Glamour", description: "Rosa choque, chamativo",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FCE7F3", badgeBg: "#FBBF24", badgeColor: "#831843", badgeText: "🔥 EXCLUSIVO", overlayOpacity: 0.35 } },
-      { key: "gos_tab", name: "Tabloide Sensação", description: "Amarelo neon + manchete grande", preview: "linear-gradient(180deg,#FDE047 0 25%,#0A0A0A 25%)",
+      { key: "gos_tab", name: "Tabloide Sensação", description: "Amarelo neon + manchete grande",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FDE68A", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "BOMBA!", overlayOpacity: 0.5 } },
-      { key: "gos_carpet", name: "Tapete Vermelho", description: "Vermelho + dourado, luxo", preview: "linear-gradient(180deg,#7F1D1D 0 40%,#FBBF24 40%)",
+      { key: "gos_carpet", name: "Tapete Vermelho", description: "Vermelho + dourado, luxo",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FEF3C7", badgeBg: "#FBBF24", badgeColor: "#7F1D1D", badgeText: "★ CELEB", overlayOpacity: 0.4 } },
-      { key: "gos_pastel", name: "Pastel Casual", description: "Lilás + rosa, leve e atual", preview: "linear-gradient(180deg,#DDD6FE 0 50%,#FBCFE8 50%)",
+      { key: "gos_pastel", name: "Pastel Casual", description: "Lilás + rosa, leve e atual",
         config: { titleColor: "#5B21B6", subtitleColor: "#9333EA", badgeBg: "#5B21B6", badgeColor: "#FBCFE8", badgeText: "DEU O QUE FALAR", overlayOpacity: 0 } },
     ],
   },
   {
     key: "advogados", label: "Direito & Advocacia", icon: Scale, accent: "#1E3A8A",
     presets: [
-      { key: "law_classic", name: "Sóbrio Institucional", description: "Azul marinho + dourado", preview: "linear-gradient(180deg,#0F172A 0 45%,#1E3A8A 45%)",
+      { key: "law_classic", name: "Sóbrio Institucional", description: "Azul marinho + dourado",
         config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FBBF24", badgeColor: "#0F172A", badgeText: "DIREITO", overlayOpacity: 0.4 } },
-      { key: "law_serif", name: "Serifa Editorial", description: "Bege + preto, manual jurídico", preview: "linear-gradient(180deg,#F5F1E8 0 55%,#1F2937 55%)",
+      { key: "law_serif", name: "Serifa Editorial", description: "Bege + preto, manual jurídico",
         config: { titleColor: "#1F2937", subtitleColor: "#4B5563", badgeBg: "#1F2937", badgeColor: "#F5F1E8", badgeText: "§ ENTENDA", overlayOpacity: 0.3 } },
-      { key: "law_premium", name: "Vinho & Marfim", description: "Vinho profundo, premium", preview: "linear-gradient(180deg,#FEF3C7 0 35%,#7F1D1D 35%)",
+      { key: "law_premium", name: "Vinho & Marfim", description: "Vinho profundo, premium",
         config: { titleColor: "#FEF3C7", subtitleColor: "#FCA5A5", badgeBg: "#FEF3C7", badgeColor: "#7F1D1D", badgeText: "JURISPRUDÊNCIA", overlayOpacity: 0.4 } },
-      { key: "law_modern", name: "Moderno Minimal", description: "Cinza grafite + branco", preview: "linear-gradient(180deg,#FFFFFF 0 50%,#374151 50%)",
+      { key: "law_modern", name: "Moderno Minimal", description: "Cinza grafite + branco",
         config: { titleColor: "#FFFFFF", subtitleColor: "#D1D5DB", badgeBg: "#1E3A8A", badgeColor: "#FFFFFF", badgeText: "ART. LEI", overlayOpacity: 0.3 } },
     ],
   },
   {
     key: "medicos", label: "Saúde & Medicina", icon: Stethoscope, accent: "#0891B2",
     presets: [
-      { key: "med_clean", name: "Clínico Limpo", description: "Branco + azul ciano, confiança", preview: "linear-gradient(180deg,#FFFFFF 0 55%,#0891B2 55%)",
+      { key: "med_clean", name: "Clínico Limpo", description: "Branco + azul ciano, confiança",
         config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#0891B2", badgeColor: "#FFFFFF", badgeText: "+ SAÚDE", overlayOpacity: 0 } },
-      { key: "med_alert", name: "Alerta Saúde", description: "Laranja + branco, atenção", preview: "linear-gradient(180deg,#F97316 0 25%,#FFFFFF 25%)",
+      { key: "med_alert", name: "Alerta Saúde", description: "Laranja + branco, atenção",
         config: { titleColor: "#9A3412", subtitleColor: "#C2410C", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "ALERTA", overlayOpacity: 0 } },
-      { key: "med_research", name: "Pesquisa Científica", description: "Azul escuro + grafismo", preview: "linear-gradient(180deg,#082F49 0 40%,#0EA5E9 40%)",
+      { key: "med_research", name: "Pesquisa Científica", description: "Azul escuro + grafismo",
         config: { titleColor: "#FFFFFF", subtitleColor: "#BAE6FD", badgeBg: "#FFFFFF", badgeColor: "#082F49", badgeText: "ESTUDO", overlayOpacity: 0.4 } },
-      { key: "med_wellness", name: "Bem-estar Verde", description: "Verde sálvia + creme", preview: "linear-gradient(180deg,#F0FDF4 0 50%,#15803D 50%)",
+      { key: "med_wellness", name: "Bem-estar Verde", description: "Verde sálvia + creme",
         config: { titleColor: "#14532D", subtitleColor: "#166534", badgeBg: "#14532D", badgeColor: "#F0FDF4", badgeText: "BEM-ESTAR", overlayOpacity: 0.2 } },
     ],
   },
   {
     key: "tecnologia", label: "Tecnologia", icon: Cpu, accent: "#8B5CF6",
     presets: [
-      { key: "tec_dark", name: "Dark Mode", description: "Preto + roxo neon", preview: "linear-gradient(135deg,#0A0A0A 0%,#7C3AED 100%)",
+      { key: "tec_dark", name: "Dark Mode", description: "Preto + roxo neon",
         config: { titleColor: "#FFFFFF", subtitleColor: "#C4B5FD", badgeBg: "#A78BFA", badgeColor: "#0A0A0A", badgeText: "TECH", overlayOpacity: 0.4 } },
-      { key: "tec_ai", name: "AI Gradient", description: "Roxo → azul, vibe IA", preview: "linear-gradient(135deg,#6366F1 0%,#06B6D4 100%)",
+      { key: "tec_ai", name: "AI Gradient", description: "Roxo → azul, vibe IA",
         config: { titleColor: "#FFFFFF", subtitleColor: "#E0E7FF", badgeBg: "#FFFFFF", badgeColor: "#6366F1", badgeText: "★ IA", overlayOpacity: 0.3 } },
-      { key: "tec_startup", name: "Startup Branco", description: "Branco + acento ciano", preview: "linear-gradient(180deg,#FFFFFF 0 60%,#06B6D4 60%)",
+      { key: "tec_startup", name: "Startup Branco", description: "Branco + acento ciano",
         config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#06B6D4", badgeColor: "#FFFFFF", badgeText: "LANÇAMENTO", overlayOpacity: 0 } },
-      { key: "tec_cyber", name: "Cyberpunk", description: "Magenta + ciano, neon", preview: "linear-gradient(135deg,#831843 0%,#06B6D4 100%)",
+      { key: "tec_cyber", name: "Cyberpunk", description: "Magenta + ciano, neon",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FBCFE8", badgeBg: "#FACC15", badgeColor: "#831843", badgeText: "FUTURO", overlayOpacity: 0.45 } },
     ],
   },
   {
     key: "religiao", label: "Religião & Fé", icon: Church, accent: "#7C2D12",
     presets: [
-      { key: "rel_golden", name: "Dourado Sagrado", description: "Marrom + dourado, solene", preview: "linear-gradient(180deg,#451A03 0 45%,#FBBF24 45%)",
+      { key: "rel_golden", name: "Dourado Sagrado", description: "Marrom + dourado, solene",
         config: { titleColor: "#FFFFFF", subtitleColor: "#FEF3C7", badgeBg: "#FBBF24", badgeColor: "#451A03", badgeText: "✝ PALAVRA", overlayOpacity: 0.45 } },
-      { key: "rel_peace", name: "Azul Celeste", description: "Azul céu + branco, paz", preview: "linear-gradient(180deg,#DBEAFE 0 50%,#1E40AF 50%)",
+      { key: "rel_peace", name: "Azul Celeste", description: "Azul céu + branco, paz",
         config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FFFFFF", badgeColor: "#1E40AF", badgeText: "FÉ", overlayOpacity: 0.3 } },
-      { key: "rel_minimal", name: "Salmo Minimal", description: "Creme + serifa, versículo", preview: "linear-gradient(180deg,#FAF7F0 0 100%)",
+      { key: "rel_minimal", name: "Salmo Minimal", description: "Creme + serifa, versículo",
         config: { titleColor: "#1F2937", subtitleColor: "#6B7280", badgeBg: "#7C2D12", badgeColor: "#FAF7F0", badgeText: "VERSÍCULO", overlayOpacity: 0.1 } },
-      { key: "rel_revival", name: "Avivamento", description: "Roxo + amarelo glória", preview: "linear-gradient(180deg,#4C1D95 0 50%,#FBBF24 50%)",
+      { key: "rel_revival", name: "Avivamento", description: "Roxo + amarelo glória",
         config: { titleColor: "#FFFFFF", subtitleColor: "#DDD6FE", badgeBg: "#FBBF24", badgeColor: "#4C1D95", badgeText: "🔥 AVIVA", overlayOpacity: 0.35 } },
     ],
   },
 ];
-
-// Lookup plano usado pelos componentes de preview e editor
-const PRESETS = NICHES.flatMap(n => n.presets);
 
 const DEFAULT_CONFIG = {
   titleY: 180,
@@ -255,6 +252,24 @@ function normalizeConfig(config: any, format: PostFormat = "feed") {
   };
 }
 
+function wrapPreviewText(text: string, maxChars: number, maxLines: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines) break;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines.join("\n");
+}
+
 export default function Templates() {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -287,11 +302,15 @@ export default function Templates() {
       settings = created;
     }
     setTemplates((tpls || []) as Template[]);
+    const templateList = (tpls || []) as Template[];
+    const hasFormat = (id: string | null | undefined, format: PostFormat) =>
+      !!id && templateList.some(template => template.id === id && (template.format || "feed") === format);
     const legacyDefault = settings?.default_template_id || null;
+    const feedDefault = settings?.default_feed_template_id || legacyDefault;
     setDefaultIds({
-      feed: settings?.default_feed_template_id || legacyDefault,
-      stories: settings?.default_story_template_id || legacyDefault,
-      reels: settings?.default_reel_template_id || legacyDefault,
+      feed: hasFormat(feedDefault, "feed") ? feedDefault : null,
+      stories: hasFormat(settings?.default_story_template_id, "stories") ? settings?.default_story_template_id ?? null : null,
+      reels: hasFormat(settings?.default_reel_template_id, "reels") ? settings?.default_reel_template_id ?? null : null,
     });
     setBrand({ handle: settings?.brand_handle ?? undefined, name: settings?.brand_name ?? undefined, logo: settings?.brand_logo_url ?? undefined });
   }
@@ -344,7 +363,8 @@ export default function Templates() {
   }
 
   async function ensureTemplateLimit() {
-    const { data } = await supabase.rpc("can_create_resource", { _user_id: user!.id, _resource: "template" });
+    const { data, error } = await supabase.rpc("can_create_resource", { _user_id: user!.id, _resource: "template" });
+    if (error) throw error;
     const result = data as any;
     if (result && result.allowed === false) {
       throw new Error(`Seu plano permite ${result.limit} template(s). Remova um template antigo ou ajuste o plano.`);
@@ -357,7 +377,11 @@ export default function Templates() {
     } catch (e: any) {
       return toast.error(e.message);
     }
-    const mergedConfig = { ...getDefaultConfig(format), ...p.config };
+    const mergedConfig = {
+      ...getDefaultConfig(format),
+      ...p.config,
+      backgroundGradient: resolveTemplateGradient(p.key, p.config),
+    };
     const { data, error } = await supabase.from("post_templates").insert({
       user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig, format,
     }).select().single();
@@ -370,6 +394,7 @@ export default function Templates() {
   async function uploadBackground(file: File) {
     if (!user) return;
     setUploading(true);
+    let uploadedPath: string | null = null;
     try {
       await ensureTemplateLimit();
       await validateTemplateFile(file, uploadFormatRef.current);
@@ -377,16 +402,24 @@ export default function Templates() {
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("template-backgrounds").upload(path, file, { upsert: false });
       if (upErr) throw upErr;
+      uploadedPath = path;
       const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
+      const config = {
+        ...getDefaultConfig(uploadFormatRef.current),
+        overlayOpacity: 0,
+        ...(uploadFormatRef.current === "feed" ? {} : { showPhoto: false }),
+      };
       const { data, error } = await supabase.from("post_templates").insert({
         user_id: user.id, name: file.name.replace(/\.[^.]+$/, ""), kind: "custom",
-        background_url: publicUrl, config: getDefaultConfig(uploadFormatRef.current), format: uploadFormatRef.current,
+        background_url: publicUrl, config, format: uploadFormatRef.current,
       }).select().single();
       if (error) throw error;
+      uploadedPath = null;
       setTemplates(t => [data as Template, ...t]);
       toast.success("Template enviado e validado");
       setEditing(data as Template);
     } catch (e: any) {
+      if (uploadedPath) await supabase.storage.from("template-backgrounds").remove([uploadedPath]);
       toast.error(e.message);
     } finally {
       setUploading(false);
@@ -398,11 +431,27 @@ export default function Templates() {
     fileRef.current?.click();
   }
 
-  async function remove(id: string) {
+  async function remove(template: Template) {
     if (!confirm("Remover este template?")) return;
-    await supabase.from("post_templates").delete().eq("id", id);
-    setTemplates(t => t.filter(x => x.id !== id));
-    if (editing?.id === id) setEditing(null);
+    const { error } = await supabase.from("post_templates").delete().eq("id", template.id);
+    if (error) return toast.error(error.message);
+
+    if (template.background_url) {
+      try {
+        const marker = "/storage/v1/object/public/template-backgrounds/";
+        const pathname = new URL(template.background_url).pathname;
+        const storagePath = pathname.includes(marker) ? decodeURIComponent(pathname.split(marker)[1]) : null;
+        if (storagePath) await supabase.storage.from("template-backgrounds").remove([storagePath]);
+      } catch {
+        // The database row is already gone; an invalid legacy URL must not block deletion.
+      }
+    }
+
+    setTemplates(current => current.filter(item => item.id !== template.id));
+    setDefaultIds(current => current[template.format] === template.id ? { ...current, [template.format]: null } : current);
+    if (editing?.id === template.id) setEditing(null);
+    if (previewing?.id === template.id) setPreviewing(null);
+    toast.success("Template removido");
   }
 
   async function saveConfig(t: Template) {
@@ -596,7 +645,7 @@ export default function Templates() {
                     onClick={() => addPreset(p, fmt.key)}
                     className="group text-left rounded-lg border border-border bg-card p-2 hover:border-primary hover:shadow-md transition-all"
                   >
-                    <div className={`${fmt.aspect} rounded-md mb-2 relative overflow-hidden`} style={{ background: p.preview }}>
+                    <div className={`${fmt.aspect} rounded-md mb-2 relative overflow-hidden`} style={{ background: templateGradientCss(p.key, p.config) }}>
                       {/* mock title + badge para parecer com uma arte real */}
                       <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase leading-tight" style={{ color: p.config.titleColor || "#fff" }}>
                         Título da<br />notícia
@@ -631,7 +680,7 @@ export default function Templates() {
                         {t.background_url ? (
                           <img src={t.background_url} alt={t.name} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full" style={{ background: PRESETS.find(p => p.key === t.preset_key)?.preview }} />
+                          <div className="w-full h-full" style={{ background: templateGradientCss(t.preset_key, t.config) }} />
                         )}
                         {activeDefaultId === t.id && (
                           <Badge className="absolute top-2 left-2 bg-primary"><Star className="h-3 w-3 mr-1" />Padrão</Badge>
@@ -650,7 +699,7 @@ export default function Templates() {
                           {activeDefaultId !== t.id && (
                             <Button size="sm" variant="ghost" title={`Definir como padrão de ${fmt.label}`} onClick={() => setDefault(t.id, fmt.key)}><Check className="h-4 w-4" /></Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => remove(t.id)}><Trash2 className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" title="Remover template" onClick={() => remove(t)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </Card>
@@ -718,7 +767,7 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
         {template.background_url ? (
           <img src={template.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
         ) : (
-          <div className="absolute inset-0" style={{ background: PRESETS.find(p => p.key === template.preset_key)?.preview }} />
+          <div className="absolute inset-0" style={{ background: templateGradientCss(template.preset_key, template.config) }} />
         )}
 
         {/* Foto real de exemplo da notícia */}
@@ -731,26 +780,25 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
           />
         )}
 
-        {/* Overlay escuro só quando o template é preset (sem background_url) */}
-        {!template.background_url && cfg.overlayOpacity > 0 && (
+        {cfg.overlayOpacity > 0 && (
           <div className="absolute inset-0 pointer-events-none" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
         )}
 
         {cfg.showHandle && (
           <div className="absolute font-mono font-bold tracking-wider"
-            style={{ left: "5.5%", top: yP(cfg.handleY), color: cfg.handleColor, fontSize: fontPct(28) }}>
+            style={{ left: "5.5%", top: yP(cfg.handleY - 24), color: cfg.handleColor, fontSize: fontPct(28) }}>
             @{handle.toUpperCase()}
           </div>
         )}
 
-        <div className="absolute font-black uppercase leading-[1.05]"
-          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.titleY), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize) }}>
-          {sampleTitle}
+        <div className="absolute whitespace-pre-line font-black uppercase leading-[1.05]"
+          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize) }}>
+          {wrapPreviewText(sampleTitle, cfg.titleMaxChars, 5)}
         </div>
 
-        <div className="absolute leading-snug"
-          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.subtitleY), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize) }}>
-          {sampleSub}
+        <div className="absolute whitespace-pre-line leading-snug"
+          style={{ left: "5.5%", right: "5.5%", top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize) }}>
+          {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), 3)}
         </div>
 
         {cfg.showBadge && (
@@ -1006,7 +1054,7 @@ function EditorPanel({ template, brand, onClose, onSave }: {
             {draft.background_url ? (
               <img src={draft.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
-              <div className="absolute inset-0" style={{ background: PRESETS.find(p => p.key === draft.preset_key)?.preview }} />
+              <div className="absolute inset-0" style={{ background: templateGradientCss(draft.preset_key, draft.config) }} />
             )}
             {cfg.showPhoto && (
               <div className="absolute bg-black/40 border-2 border-dashed border-yellow-400 flex items-center justify-center text-yellow-300 text-[10px] font-bold uppercase tracking-wider"
@@ -1014,27 +1062,27 @@ function EditorPanel({ template, brand, onClose, onSave }: {
                   left: `${(cfg.photoX / 1080) * 100}%`,
                   top: `${(cfg.photoY / canvasH) * 100}%`,
                   width: `${(cfg.photoW / 1080) * 100}%`,
-                  height: `${(cfg.photoH / 1080) * 100}%`,
+                  height: `${(cfg.photoH / canvasH) * 100}%`,
                 }}>
                 FOTO DA NOTÍCIA
               </div>
             )}
-            {!draft.background_url && (
+            {cfg.overlayOpacity > 0 && (
               <div className="absolute inset-0" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
             )}
             {cfg.showHandle && (
               <div className="absolute left-[5.5%] font-mono font-bold tracking-wider"
-                style={{ top: `${(cfg.handleY / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `clamp(10px, 2vw, 16px)` }}>
+                style={{ top: `${((cfg.handleY - 24) / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `clamp(10px, 2vw, 16px)` }}>
                 @SUAMARCA
               </div>
             )}
-            <div className="absolute left-[5.5%] right-[5.5%] font-black uppercase leading-tight"
-              style={{ top: `${(cfg.titleY / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw` }}>
-              {sampleTitle}
+            <div className="absolute left-[5.5%] right-[5.5%] whitespace-pre-line font-black uppercase leading-[1.05]"
+              style={{ top: `${((cfg.titleY - cfg.titleSize * 0.8) / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw` }}>
+              {wrapPreviewText(sampleTitle, cfg.titleMaxChars, 5)}
             </div>
-            <div className="absolute left-[5.5%] right-[5.5%]"
-              style={{ top: `${(cfg.subtitleY / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw` }}>
-              {sampleSub}
+            <div className="absolute left-[5.5%] right-[5.5%] whitespace-pre-line leading-[1.3]"
+              style={{ top: `${((cfg.subtitleY - cfg.subtitleSize * 0.8) / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw` }}>
+              {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), 3)}
             </div>
             {cfg.showBadge && (
               <div className="absolute right-[5.5%] px-3 py-2 font-bold text-xs"

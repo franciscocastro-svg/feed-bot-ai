@@ -1,6 +1,7 @@
 // Processes a news item: AI rewrites + image generation, then uploads to storage
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
+import { templateGradientSvg } from "../_shared/template-gradients.js";
 
 let wasmReady: Promise<void> | null = null;
 async function ensureWasm() {
@@ -865,24 +866,14 @@ function customTemplateSvg(opts: {
   const subLH = Math.round(cfg.subtitleSize * 1.3);
   const subTspans = subLines.map((l, i) => `<tspan x="60" y="${cfg.subtitleY + i * subLH}">${escapeXml(l)}</tspan>`).join("");
 
-  const badgeW = Math.max(280, cfg.badgeText.length * 18 + 40);
+  const badgeW = Math.min(960, Math.max(280, cfg.badgeText.length * 18 + 40));
   const badgeH = 60;
   const badgeX = 1080 - badgeW - 60;
 
-  // Preset backgrounds (apenas quando não há background customizado)
-  let presetBg = "";
-  if (!bgDataUrl) {
-    if (presetKey === "bold_stripe") {
-      presetBg = `<rect width="1080" height="${height}" fill="#FFFFFF"/><rect width="1080" height="240" fill="#FFD400"/>`;
-    } else if (presetKey === "breaking_news") {
-      presetBg = `<rect width="1080" height="${height}" fill="#0A0A0A"/><rect width="1080" height="200" fill="#DC2626"/>`;
-    } else {
-      presetBg = `<rect width="1080" height="${height}" fill="#FFFFFF"/><rect y="${Math.min(640, height - 440)}" width="1080" height="440" fill="#18181B"/>`;
-    }
-  }
-
-  // Para presets sem background, usa overlay; para template custom, sem overlay (preserva arte)
-  const overlay = bgDataUrl ? "" : `<rect width="1080" height="${height}" fill="rgba(0,0,0,${cfg.overlayOpacity})"/>`;
+  const presetBg = bgDataUrl ? "" : templateGradientSvg(presetKey, cfg, 1080, height);
+  const overlay = cfg.overlayOpacity > 0
+    ? `<rect width="1080" height="${height}" fill="#000000" fill-opacity="${Math.max(0, Math.min(0.9, Number(cfg.overlayOpacity) || 0))}"/>`
+    : "";
 
   // Foto da notícia encaixada na "caixa de foto" do template
   const photoBlock = (cfg.showPhoto && photoDataUrl)
@@ -997,10 +988,10 @@ async function generateAIImage(prompt: string): Promise<Uint8Array> {
 
 function templateIdForFormat(settings: any, format: string) {
   if (format === "story" || format === "stories") {
-    return settings?.default_story_template_id || settings?.default_template_id || null;
+    return settings?.default_story_template_id || null;
   }
   if (format === "reel" || format === "reels") {
-    return settings?.default_reel_template_id || settings?.default_template_id || null;
+    return settings?.default_reel_template_id || null;
   }
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
@@ -1172,7 +1163,11 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         // Template customizado: busca background se houver URL
         let bgDataUrl: string | null = null;
         if (activeFeedTemplate.background_url) {
-          bgDataUrl = await fetchAsDataUrl(activeFeedTemplate.background_url);
+          try {
+            bgDataUrl = await fetchAsDataUrl(activeFeedTemplate.background_url);
+          } catch (error) {
+            console.warn("[template] Fundo do Feed indisponível; usando o fundo seguro do preset", error);
+          }
         }
         feedSvg = customTemplateSvg({
           title: ai.title,
@@ -1223,7 +1218,11 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       if (activeVerticalTemplate && (activeVerticalTemplate.background_url || activeVerticalTemplate.preset_key)) {
         let bgDataUrl: string | null = null;
         if (activeVerticalTemplate.background_url) {
-          bgDataUrl = await fetchAsDataUrl(activeVerticalTemplate.background_url);
+          try {
+            bgDataUrl = await fetchAsDataUrl(activeVerticalTemplate.background_url);
+          } catch (error) {
+            console.warn("[template] Fundo vertical indisponível; usando o fundo seguro do preset", error);
+          }
         }
         rcSvg = customTemplateSvg({
           title: ai.title,

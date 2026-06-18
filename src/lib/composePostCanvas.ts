@@ -1,6 +1,7 @@
 // Renderiza o template do post (1080x1080) no canvas e retorna PNG blob.
 // Mesma lógica visual do PostCanvasEditor — usado em auto-processamento.
 import { supabase } from "@/integrations/supabase/client";
+import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 
 const SIZE = 1080;
 
@@ -19,13 +20,13 @@ function proxify(url: string, w = 1080) {
   return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&output=jpg`;
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxChars = Number.POSITIVE_INFINITY): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
     const test = cur ? cur + " " + w : w;
-    if (ctx.measureText(test).width > maxWidth && cur) {
+    if ((test.length > maxChars || ctx.measureText(test).width > maxWidth) && cur) {
       lines.push(cur);
       cur = w;
     } else cur = test;
@@ -41,27 +42,6 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numb
   const sx = (img.width - sw) / 2;
   const sy = (img.height - sh) / 2;
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-}
-
-function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | undefined, width: number, height: number) {
-  if (presetKey?.includes("yellow")) {
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#FFD400";
-    ctx.fillRect(0, 0, width, 240);
-    return;
-  }
-  if (presetKey?.includes("breaking")) {
-    ctx.fillStyle = "#0A0A0A";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#DC2626";
-    ctx.fillRect(0, 0, width, 220);
-    return;
-  }
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = "#18181B";
-  ctx.fillRect(0, height - 440, width, 440);
 }
 
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any) {
@@ -112,10 +92,10 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
       const bg = await loadImage(proxify(template.background_url, SIZE));
       drawCover(ctx, bg, 0, 0, SIZE, SIZE);
     } catch {
-      drawPreset(ctx, template.preset_key, SIZE, SIZE);
+      drawTemplateGradient(ctx, template.preset_key, template.config, SIZE, SIZE);
     }
   } else {
-    drawPreset(ctx, template.preset_key, SIZE, SIZE);
+    drawTemplateGradient(ctx, template.preset_key, template.config, SIZE, SIZE);
   }
 
   if (cfg.showPhoto && item.original_image_url) {
@@ -124,7 +104,7 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
       drawCover(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
     } catch {}
   }
-  if (!template.background_url && cfg.overlayOpacity > 0) {
+  if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, SIZE, SIZE);
   }
@@ -135,11 +115,11 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   }
   ctx.fillStyle = cfg.titleColor;
   ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
-  wrapText(ctx, title, SIZE - 120).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
+  wrapText(ctx, title, SIZE - 120, cfg.titleMaxChars).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
     ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
-    wrapText(ctx, subtitle, SIZE - 120).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
+    wrapText(ctx, subtitle, SIZE - 120, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
   }
   if (cfg.showBadge && cfg.badgeText) {
     const bw = Math.min(SIZE - 120, Math.max(280, cfg.badgeText.length * 18 + 40));

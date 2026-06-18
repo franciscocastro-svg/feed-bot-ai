@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import dotenv from "dotenv";
 import WebSocket from "ws";
+import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
 
 const execAsync = promisify(exec);
 
@@ -116,13 +117,13 @@ async function loadImageHelper(url) {
 }
 
 // Quebra de texto do Canvas
-function wrapText(ctx, text, maxWidth) {
+function wrapText(ctx, text, maxWidth, maxChars = Number.POSITIVE_INFINITY) {
   const words = text.split(/\s+/);
   const lines = [];
   let cur = "";
   for (const w of words) {
     const test = cur ? cur + " " + w : w;
-    if (ctx.measureText(test).width > maxWidth && cur) {
+    if ((test.length > maxChars || ctx.measureText(test).width > maxWidth) && cur) {
       lines.push(cur);
       cur = w;
     } else cur = test;
@@ -133,10 +134,10 @@ function wrapText(ctx, text, maxWidth) {
 
 function templateIdForFormat(settings, format) {
   if (format === "story" || format === "stories") {
-    return settings?.default_story_template_id || settings?.default_template_id || null;
+    return settings?.default_story_template_id || null;
   }
   if (format === "reel" || format === "reels") {
-    return settings?.default_reel_template_id || settings?.default_template_id || null;
+    return settings?.default_reel_template_id || null;
   }
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
@@ -157,27 +158,6 @@ async function loadTemplateForFormat(userId, settings, format) {
   }
   if (!data || (data.format || "feed") !== normalized) return null;
   return data;
-}
-
-function drawPresetBackground(ctx, presetKey, width, height) {
-  if (presetKey?.includes("yellow")) {
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#FFD400";
-    ctx.fillRect(0, 0, width, Math.min(240, height));
-    return;
-  }
-  if (presetKey?.includes("breaking")) {
-    ctx.fillStyle = "#0A0A0A";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#DC2626";
-    ctx.fillRect(0, 0, width, Math.min(220, height));
-    return;
-  }
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = "#18181B";
-  ctx.fillRect(0, Math.max(0, height - 440), width, 440);
 }
 
 function drawCoverImage(ctx, img, x, y, w, h) {
@@ -259,9 +239,9 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   if (template.background_url) {
     const bgImg = await loadImageHelper(template.background_url);
     if (bgImg) drawCoverImage(ctx, bgImg, 0, 0, width, height);
-    else drawPresetBackground(ctx, template.preset_key, width, height);
+    else drawTemplateGradient(ctx, template.preset_key, template.config, width, height);
   } else {
-    drawPresetBackground(ctx, template.preset_key, width, height);
+    drawTemplateGradient(ctx, template.preset_key, template.config, width, height);
   }
 
   if (cfg.showPhoto && item.original_image_url) {
@@ -269,7 +249,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
     if (photoImg) drawCoverImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
   }
 
-  if (!template.background_url && cfg.overlayOpacity > 0) {
+  if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, width, height);
   }
@@ -282,14 +262,14 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 
   ctx.fillStyle = cfg.titleColor;
   ctx.font = `900 ${cfg.titleSize}px InterBold, Inter, sans-serif`;
-  wrapText(ctx, title, width - 120).slice(0, 5).forEach((line, i) => {
+  wrapText(ctx, title, width - 120, cfg.titleMaxChars).slice(0, 5).forEach((line, i) => {
     ctx.fillText(line, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05));
   });
 
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
     ctx.font = `500 ${cfg.subtitleSize}px Inter, sans-serif`;
-    wrapText(ctx, subtitle, width - 120).slice(0, 3).forEach((line, i) => {
+    wrapText(ctx, subtitle, width - 120, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, 3).forEach((line, i) => {
       ctx.fillText(line, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3));
     });
   }

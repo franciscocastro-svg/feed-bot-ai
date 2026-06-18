@@ -1,6 +1,7 @@
 // Renderiza Story 1080x1920 — Opção 1: foto fullscreen + overlay editorial
 // Sem CTA e sem @handle. Foco em título + resumo.
 import { supabase } from "@/integrations/supabase/client";
+import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 
 const W = 1080;
 const H = 1920;
@@ -20,13 +21,13 @@ function proxify(url: string, w = 1080, h = 1920) {
   return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&h=${h}&fit=cover&output=jpg`;
 }
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxChars = Number.POSITIVE_INFINITY): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
     const test = cur ? cur + " " + w : w;
-    if (ctx.measureText(test).width > maxWidth && cur) {
+    if ((test.length > maxChars || ctx.measureText(test).width > maxWidth) && cur) {
       lines.push(cur);
       cur = w;
     } else cur = test;
@@ -42,27 +43,6 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numb
   const sx = (img.width - sw) / 2;
   const sy = (img.height - sh) / 2;
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-}
-
-function drawPreset(ctx: CanvasRenderingContext2D, presetKey: string | null | undefined) {
-  if (presetKey?.includes("yellow")) {
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#FFD400";
-    ctx.fillRect(0, 0, W, 360);
-    return;
-  }
-  if (presetKey?.includes("breaking")) {
-    ctx.fillStyle = "#0A0A0A";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#DC2626";
-    ctx.fillRect(0, 0, W, 320);
-    return;
-  }
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#18181B";
-  ctx.fillRect(0, H - 700, W, 700);
 }
 
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any, opts: { withFollowCta?: boolean }) {
@@ -113,10 +93,10 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
       const bg = await loadImage(proxify(template.background_url, 1080, 1920));
       drawCover(ctx, bg, 0, 0, W, H);
     } catch {
-      drawPreset(ctx, template.preset_key);
+      drawTemplateGradient(ctx, template.preset_key, template.config, W, H);
     }
   } else {
-    drawPreset(ctx, template.preset_key);
+    drawTemplateGradient(ctx, template.preset_key, template.config, W, H);
   }
 
   if (cfg.showPhoto && item.original_image_url) {
@@ -125,7 +105,7 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
       drawCover(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
     } catch {}
   }
-  if (!template.background_url && cfg.overlayOpacity > 0) {
+  if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, W, H);
   }
@@ -136,11 +116,11 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   }
   ctx.fillStyle = cfg.titleColor;
   ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
-  wrap(ctx, title, W - 120).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
+  wrap(ctx, title, W - 120, cfg.titleMaxChars).slice(0, 5).forEach((l, i) => ctx.fillText(l, 60, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
     ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
-    wrap(ctx, subtitle, W - 120).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
+    wrap(ctx, subtitle, W - 120, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, 3).forEach((l, i) => ctx.fillText(l, 60, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
   }
   if (cfg.showBadge && cfg.badgeText) {
     const bw = Math.min(W - 120, Math.max(300, cfg.badgeText.length * 18 + 52));
@@ -188,8 +168,8 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   const settings = await loadEffectiveSettings(item);
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const templateId = opts.withFollowCta
-    ? (settings?.default_reel_template_id || settings?.default_template_id)
-    : (settings?.default_story_template_id || settings?.default_template_id);
+    ? settings?.default_reel_template_id
+    : settings?.default_story_template_id;
   const { data: template } = templateId
     ? await supabase
       .from("post_templates")
