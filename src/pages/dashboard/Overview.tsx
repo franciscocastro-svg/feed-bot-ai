@@ -48,6 +48,7 @@ type InstagramAccountSummary = {
   id: string;
   active?: boolean | null;
   token_expires_at?: string | null;
+  username?: string | null;
 };
 
 type DashboardSettings = {
@@ -515,7 +516,7 @@ export default function Overview() {
                     scheduled: "bg-primary-glow/10 text-primary-glow border-primary-glow/20",
                     approved: "bg-success/10 text-success border-success/20",
                   };
-                  const cls = statusStyles[n.status] || "bg-secondary text-muted-foreground border-border";
+                  const cls = (n.status && statusStyles[n.status]) || "bg-secondary text-muted-foreground border-border";
                   return (
                     <div key={n.id} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-secondary/40 transition-colors">
                       <span className="text-xs text-foreground/90 truncate flex-1 min-w-0">{n.rewritten_title || n.original_title}</span>
