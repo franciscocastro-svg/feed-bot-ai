@@ -182,17 +182,20 @@ export default function Settings() {
         </Card>
       )}
 
-      <Card className="p-6 flex items-center justify-between gap-4">
+      <Card className="p-5 md:p-6 flex flex-col items-start justify-between gap-4 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow shrink-0">
             <GraduationCap className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-semibold">Tutorial da plataforma</h2>
-            <p className="text-xs text-muted-foreground">Reveja o passo a passo de como usar o Flux & Feed.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-lg font-semibold">Guia de primeiros passos</h2>
+              <span className="rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">9 etapas · 7 min</span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Da conexão do Instagram à publicação e análise dos resultados.</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setTutorialOpen(true)}>Ver tutorial</Button>
+        <Button variant="outline" onClick={() => setTutorialOpen(true)} className="w-full sm:w-auto">Abrir guia</Button>
       </Card>
       <TutorialModal open={tutorialOpen} onOpenChange={setTutorialOpen} />
 
