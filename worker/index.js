@@ -11,6 +11,61 @@ import { drawTemplateGradient } from "../supabase/functions/_shared/template-gra
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
 
 const execAsync = promisify(exec);
+const RETRY_DELAYS_MS = [1000, 3000, 7000];
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function errorStatus(error) {
+  const raw = error?.statusCode ?? error?.status ?? error?.cause?.statusCode;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isTransientError(error) {
+  const status = errorStatus(error);
+  if (status && (status === 408 || status === 425 || status === 429 || status >= 500)) return true;
+  const text = `${error?.message || ""} ${error?.code || ""} ${error?.cause?.code || ""}`.toLowerCase();
+  return /fetch failed|timeout|timed out|econnreset|econnrefused|enotfound|eai_again|socket|gateway/.test(text);
+}
+
+async function withTransientRetry(label, operation, delays = RETRY_DELAYS_MS) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isTransientError(error) || attempt >= delays.length) throw error;
+      const waitMs = delays[attempt];
+      console.warn(`[retry] ${label} falhou (${error?.message || error}); nova tentativa em ${waitMs}ms (${attempt + 2}/${delays.length + 1}).`);
+      await sleep(waitMs);
+    }
+  }
+}
+
+function detailedServiceError(label, error, details = {}) {
+  const status = errorStatus(error);
+  const suffix = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+  const wrapped = new Error(`${label}: ${error?.message || String(error)}${status ? ` (status ${status})` : ""}${suffix ? `; ${suffix}` : ""}`);
+  wrapped.status = status;
+  wrapped.code = error?.code;
+  wrapped.cause = error;
+  return wrapped;
+}
+
+async function uploadPostAsset(pathStorage, contents, options) {
+  return await withTransientRetry(`upload ${pathStorage}`, async () => {
+    const { error } = await supabase.storage.from("post-images").upload(pathStorage, contents, options);
+    if (error) {
+      throw detailedServiceError("Falha no upload ao Storage", error, {
+        path: pathStorage,
+        contentType: options?.contentType,
+        bytes: contents?.byteLength ?? contents?.length,
+      });
+    }
+  });
+}
 
 // Configuração de caminhos e env
 const __filename = fileURLToPath(import.meta.url);
@@ -51,10 +106,16 @@ if (!fs.existsSync(FONTS_DIR)) fs.mkdirSync(FONTS_DIR, { recursive: true });
 
 // Baixa um arquivo de forma simples
 async function downloadFile(url, destPath) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Falha ao baixar ${url}: ${res.statusText}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  await fs.promises.writeFile(destPath, buffer);
+  await withTransientRetry(`download ${new URL(url).hostname}`, async () => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) {
+      const error = new Error(`Falha ao baixar ${url}: ${res.status} ${res.statusText}`);
+      error.status = res.status;
+      throw error;
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    await fs.promises.writeFile(destPath, buffer);
+  });
 }
 
 // Configura as fontes Inter (Regular e Bold)
@@ -249,11 +310,10 @@ async function composeAndUploadPostNode(item, settings) {
     await drawConfiguredTemplate(ctx, item, settings, template, SIZE, SIZE);
     const buffer = await canvas.encode("png");
     const pathStorage = `${item.user_id}/${item.id}.png`;
-    const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+    await uploadPostAsset(pathStorage, buffer, {
       contentType: "image/png",
       upsert: true,
     });
-    if (error) throw error;
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
     const url = `${pub.publicUrl}?t=${Date.now()}`;
     await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
@@ -342,12 +402,10 @@ async function composeAndUploadPostNode(item, settings) {
   const buffer = await canvas.encode("png");
   const pathStorage = `${item.user_id}/${item.id}.png`;
 
-  const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+  await uploadPostAsset(pathStorage, buffer, {
     contentType: "image/png",
     upsert: true,
   });
-
-  if (error) throw error;
 
   const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
   const url = `${pub.publicUrl}?t=${Date.now()}`;
@@ -377,11 +435,10 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
     await drawConfiguredTemplate(ctx, item, settings, template, W, H, opts);
     const buffer = await canvas.encode("jpeg");
     const pathStorage = `${item.user_id}/${item.id}-story.jpg`;
-    const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+    await uploadPostAsset(pathStorage, buffer, {
       contentType: "image/jpeg",
       upsert: true,
     });
-    if (error) throw error;
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
     const url = `${pub.publicUrl}?t=${Date.now()}`;
     await supabase.from("news_items").update({ generated_cover_url: url }).eq("id", item.id);
@@ -523,12 +580,10 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
   const buffer = await canvas.encode("jpeg");
   const pathStorage = `${item.user_id}/${item.id}-story.jpg`;
 
-  const { error } = await supabase.storage.from("post-images").upload(pathStorage, buffer, {
+  await uploadPostAsset(pathStorage, buffer, {
     contentType: "image/jpeg",
     upsert: true,
   });
-
-  if (error) throw error;
 
   const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
   const url = `${pub.publicUrl}?t=${Date.now()}`;
@@ -599,12 +654,10 @@ async function generateReelVideoNode(item, settings) {
     const videoBuffer = await fs.promises.readFile(tempVideoPath);
     const pathStorage = `${item.user_id}/${item.id}.mp4`;
 
-    const { error: uploadError } = await supabase.storage.from("post-images").upload(pathStorage, videoBuffer, {
+    await uploadPostAsset(pathStorage, videoBuffer, {
       contentType: "video/mp4",
       upsert: true,
     });
-
-    if (uploadError) throw uploadError;
 
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
     const videoUrl = pub.publicUrl;
@@ -701,11 +754,10 @@ async function generateReelVideoFromJob(job) {
 
     const videoBuffer = await fs.promises.readFile(tempVideoPath);
     const pathStorage = `${job.user_id}/${job.news_item_id}.mp4`;
-    const { error: uploadError } = await supabase.storage.from("post-images").upload(pathStorage, videoBuffer, {
+    await uploadPostAsset(pathStorage, videoBuffer, {
       contentType: "video/mp4",
       upsert: true,
     });
-    if (uploadError) throw uploadError;
 
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
     const videoUrl = pub.publicUrl;
@@ -744,9 +796,16 @@ async function generateReelVideoFromJob(job) {
 }
 
 async function processQueuedReelJobs() {
-  const { data: jobs, error } = await supabase.rpc("claim_reel_jobs", { _worker: WORKER_ID, _limit: 1 });
-  if (error) {
-    console.error("Erro ao reclamar jobs de Reel:", error);
+  let jobs;
+  try {
+    const result = await withTransientRetry("reclamar jobs de Reel", async () => {
+      const response = await supabase.rpc("claim_reel_jobs", { _worker: WORKER_ID, _limit: 1 });
+      if (response.error) throw detailedServiceError("Falha ao reclamar jobs de Reel", response.error);
+      return response;
+    });
+    jobs = result.data;
+  } catch (error) {
+    console.error("Erro ao reclamar jobs de Reel após as tentativas:", error);
     return 0;
   }
   if (!jobs?.length) return 0;

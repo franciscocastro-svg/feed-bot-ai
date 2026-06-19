@@ -20,10 +20,10 @@ git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 
 echo "==> Installing web dependencies"
-npm install
+npm ci
 
 echo "==> Installing worker dependencies"
-npm --prefix worker install
+npm --prefix worker install --omit=dev --no-package-lock
 
 echo "==> Building frontend"
 npm run build
