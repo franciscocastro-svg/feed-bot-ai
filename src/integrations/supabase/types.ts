@@ -664,13 +664,7 @@ export type Database = {
           cultural_adaptation: boolean
           fetch_interval_minutes: number
           id: string
-          last_error: string | null
-          last_error_at: string | null
           last_fetched_at: string | null
-          last_items_created: number
-          last_items_found: number
-          last_new_item_at: string | null
-          last_success_at: string | null
           name: string
           niche: string | null
           source_language: string
@@ -686,13 +680,7 @@ export type Database = {
           cultural_adaptation?: boolean
           fetch_interval_minutes?: number
           id?: string
-          last_error?: string | null
-          last_error_at?: string | null
           last_fetched_at?: string | null
-          last_items_created?: number
-          last_items_found?: number
-          last_new_item_at?: string | null
-          last_success_at?: string | null
           name: string
           niche?: string | null
           source_language?: string
@@ -708,13 +696,7 @@ export type Database = {
           cultural_adaptation?: boolean
           fetch_interval_minutes?: number
           id?: string
-          last_error?: string | null
-          last_error_at?: string | null
           last_fetched_at?: string | null
-          last_items_created?: number
-          last_items_found?: number
-          last_new_item_at?: string | null
-          last_success_at?: string | null
           name?: string
           niche?: string | null
           source_language?: string
