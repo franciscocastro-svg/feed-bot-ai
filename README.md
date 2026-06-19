@@ -94,3 +94,13 @@ Para implantar todas as Edge Functions:
 supabase functions deploy
 ```
 *Lembre-se de configurar as variáveis de ambiente necessárias (como `APP_ORIGIN`, `LOVABLE_API_KEY`, `INTERNAL_CRON_SECRET` e `SUPABASE_SERVICE_ROLE_KEY`) no painel de controle do Supabase em Edge Functions -> Secrets.*
+
+### Provedor de texto Gemini
+
+Para usar o Gemini diretamente na reescrita de notícias, configure os secrets:
+
+- `AI_TEXT_PROVIDER=gemini`
+- `GEMINI_API_KEY=<chave do Google AI Studio>`
+- `GEMINI_TEXT_MODEL=gemini-2.5-flash-lite` (opcional; este já é o padrão)
+
+Se o Gemini falhar, `process-news` tenta a Groq quando `GROQ_API_KEY` estiver configurada e, por último, o gateway atual quando `LOVABLE_API_KEY` estiver disponível.

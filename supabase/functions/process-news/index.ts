@@ -60,6 +60,7 @@ const corsHeaders = {
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const GROQ_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GEMINI_AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -199,15 +200,19 @@ const LANG_NAMES: Record<string, string> = {
   pt: "português", auto: "detectar automaticamente",
 };
 
-function getTextAiProvider(): "lovable" | "groq" {
+type TextAiProvider = "lovable" | "groq" | "gemini";
+
+function getTextAiProvider(): TextAiProvider {
   const provider = (Deno.env.get("AI_TEXT_PROVIDER") || "").trim().toLowerCase();
+  if (provider === "gemini" && Deno.env.get("GEMINI_API_KEY")) return "gemini";
   return provider === "groq" && !!Deno.env.get("GROQ_API_KEY") ? "groq" : "lovable";
 }
 
 function getTextAiModel(): string {
-  return getTextAiProvider() === "groq"
-    ? (Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant")
-    : "google/gemini-2.5-pro";
+  const provider = getTextAiProvider();
+  if (provider === "gemini") return Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
+  if (provider === "groq") return Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant";
+  return "google/gemini-2.5-pro";
 }
 
 function extractJsonObject(text: string): any {
@@ -298,6 +303,36 @@ async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string
   if ((captionShort || reelShort) && attempt < 2) {
     console.log(`[groq] legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
     return await rewriteWithGroq(item, tone, srcOpts, attempt + 1);
+  }
+  return parsed;
+}
+
+async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) throw new Error("GEMINI_API_KEY ausente");
+
+  const res = await fetch(GEMINI_AI_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite",
+      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+      temperature: 0.45,
+      max_tokens: 3600,
+      reasoning_effort: "none",
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content || "{}";
+  const parsed = normalizeRewritePayload(extractJsonObject(content), item);
+  const captionShort = (parsed?.caption?.length || 0) < 1200;
+  const reelShort = (parsed?.reel_caption?.length || 0) < 800;
+  if ((captionShort || reelShort) && attempt < 2) {
+    console.log(`[gemini] legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
+    return await rewriteWithGemini(item, tone, srcOpts, attempt + 1);
   }
   return parsed;
 }
@@ -425,7 +460,22 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
 }
 
 async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
-  if (getTextAiProvider() === "groq") {
+  const provider = getTextAiProvider();
+  if (provider === "gemini") {
+    try {
+      return await rewriteWithGemini(item, tone, srcOpts, attempt);
+    } catch (e) {
+      console.warn("[gemini] falhou; tentando provedor de reserva", e);
+      if (Deno.env.get("GROQ_API_KEY")) {
+        try {
+          return await rewriteWithGroq(item, tone, srcOpts, attempt);
+        } catch (groqError) {
+          console.warn("[groq] reserva falhou; voltando para provedor Lovable/Gemini", groqError);
+        }
+      }
+      if (!Deno.env.get("LOVABLE_API_KEY")) throw e;
+    }
+  } else if (provider === "groq") {
     try {
       return await rewriteWithGroq(item, tone, srcOpts, attempt);
     } catch (e) {
