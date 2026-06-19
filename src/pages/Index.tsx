@@ -107,7 +107,7 @@ const proofComparison = [
   { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "+30%" },
   { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "+3.523%" },
   { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "+2.506%" },
-  { label: "Novos seguidores", before: "194", after: "4,5 mil", growth: "+2.220%" },
+  { label: "Seguidores atuais", before: "Não registrado", after: "8.208", growth: "Total atual" },
 ];
 
 const faqItems = [
@@ -174,7 +174,7 @@ const proofSlides = [
     period: "after" as const,
     eyebrow: "Após 30 dias",
     title: "Perfil com 8.208 seguidores",
-    description: "Perfil ativo com 1.763 posts e 10,6 milhões de visualizações no período atual.",
+    description: "Total atual confirmado diretamente no perfil do Instagram.",
     alt: "Perfil do Instagram após 30 dias com 8.208 seguidores",
     crop: "object-top",
   },
@@ -183,7 +183,7 @@ const proofSlides = [
     period: "after" as const,
     eyebrow: "Após 30 dias",
     title: "10,6 milhões de visualizações",
-    description: "86 mil interações, 4,5 mil novos seguidores e 1,3 mil conteúdos compartilhados.",
+    description: "86 mil interações e 4,5 mil novos seguidores registrados pela Meta até 13 de junho.",
     alt: "Painel profissional do Instagram após 30 dias com 10,6 milhões de visualizações",
     crop: "object-top",
   },
@@ -203,13 +203,13 @@ const proofMetrics = {
     ["998", "conteúdos"],
     ["292,6 mil", "visualizações"],
     ["3,3 mil", "interações"],
-    ["194", "novos seguidores"],
+    ["194", "novos no período"],
   ],
   after: [
     ["1,3 mil", "conteúdos"],
     ["10,6 mi", "visualizações"],
     ["86 mil", "interações"],
-    ["4,5 mil", "novos seguidores"],
+    ["8.208", "seguidores atuais"],
   ],
 };
 
@@ -706,6 +706,10 @@ export default function Index() {
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               Comparação entre os registros reais do primeiro ciclo e o período atual de 20 de maio a 18 de junho.
               Resultados variam conforme nicho, frequência e qualidade do conteúdo.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              A Meta registrava 4,5 mil novos seguidores até 13 de junho; o perfil do Instagram mostra 8.208
+              seguidores no total atual. Como são métricas diferentes, não calculamos uma evolução percentual entre elas.
             </p>
           </motion.div>
 
