@@ -7,6 +7,7 @@ export const ADMIN_PERMISSION_OPTIONS = [
   { key: "tokens", label: "Tokens", description: "Validade dos tokens Instagram." },
   { key: "meta", label: "Saúde API Meta", description: "Uso e alertas da API da Meta." },
   { key: "releases", label: "Novidades", description: "Comunicados dentro do app." },
+  { key: "email", label: "E-mail", description: "Campanhas, públicos e comunicações por e-mail." },
   { key: "support", label: "Suporte", description: "Tickets e mensagens de clientes." },
   { key: "roadmap", label: "Roadmap", description: "Planejamento do produto." },
 ] as const;

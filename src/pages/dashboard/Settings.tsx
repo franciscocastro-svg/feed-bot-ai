@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, Loader2, Music2, Trash2, GraduationCap, Instagram, ChevronRight } from "lucide-react";
+import { Upload, Loader2, Music2, Trash2, GraduationCap, Instagram, ChevronRight, Mail } from "lucide-react";
 import { TutorialModal } from "@/components/TutorialModal";
 
 export default function Settings() {
@@ -19,6 +19,7 @@ export default function Settings() {
   const [uploadingTrack, setUploadingTrack] = useState(false);
   const [planLimits, setPlanLimits] = useState<{ plan: string; display_name: string; max_posts_per_day: number } | null>(null);
   const [igAccounts, setIgAccounts] = useState<{ id: string; username: string }[]>([]);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const trackRef = useRef<HTMLInputElement>(null);
 
@@ -36,6 +37,8 @@ export default function Settings() {
         data = created;
       }
       setS(data);
+      const { data: profile } = await supabase.from("profiles").select("marketing_consent, marketing_unsubscribed_at").eq("id", user!.id).maybeSingle();
+      setMarketingConsent(!!profile?.marketing_consent && !profile?.marketing_unsubscribed_at);
       const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: user!.id });
       const row: any = Array.isArray(limits) ? limits[0] : limits;
       if (row) setPlanLimits({ plan: row.plan, display_name: row.display_name, max_posts_per_day: row.max_posts_per_day });
@@ -124,6 +127,18 @@ export default function Settings() {
     toast.success("Logo enviada");
   };
 
+  const updateMarketingConsent = async (enabled: boolean) => {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("profiles").update({
+      marketing_consent: enabled,
+      marketing_consent_at: enabled ? now : null,
+      marketing_unsubscribed_at: enabled ? null : now,
+    }).eq("id", s.user_id);
+    if (error) return toast.error("Não foi possível atualizar sua preferência");
+    setMarketingConsent(enabled);
+    toast.success(enabled ? "Você receberá novidades da Flux & Feed" : "Comunicações promocionais desativadas");
+  };
+
   const _uploadAudio = async (file: File) => {
     setUploading(true);
     const ext = file.name.split(".").pop() || "mp3";
@@ -198,6 +213,14 @@ export default function Settings() {
         <Button variant="outline" onClick={() => setTutorialOpen(true)} className="w-full sm:w-auto">Abrir guia</Button>
       </Card>
       <TutorialModal open={tutorialOpen} onOpenChange={setTutorialOpen} />
+
+      <Card className="p-6 flex items-start justify-between gap-4">
+        <div className="flex gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Mail className="h-5 w-5 text-primary" /></div>
+          <div><h2 className="font-display text-lg font-semibold">Novidades por e-mail</h2><p className="text-sm text-muted-foreground mt-1">Receba atualizações do produto, dicas e promoções. E-mails essenciais de segurança continuam normalmente.</p></div>
+        </div>
+        <Switch checked={marketingConsent} onCheckedChange={updateMarketingConsent} aria-label="Receber novidades por e-mail" />
+      </Card>
 
       <Card className="p-6 space-y-5">
         <h2 className="font-display text-xl font-semibold">Identidade da marca</h2>

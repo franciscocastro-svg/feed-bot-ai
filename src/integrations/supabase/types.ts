@@ -836,6 +836,9 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          marketing_consent: boolean
+          marketing_consent_at: string | null
+          marketing_unsubscribed_at: string | null
           state: string | null
           updated_at: string
           whatsapp: string | null
@@ -847,6 +850,9 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          marketing_consent?: boolean
+          marketing_consent_at?: string | null
+          marketing_unsubscribed_at?: string | null
           state?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -858,9 +864,81 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          marketing_consent?: boolean
+          marketing_consent_at?: string | null
+          marketing_unsubscribed_at?: string | null
           state?: string | null
           updated_at?: string
           whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      email_campaigns: {
+        Row: {
+          audience: string
+          body: string
+          campaign_type: string
+          created_at: string
+          created_by: string
+          cta_label: string | null
+          cta_url: string | null
+          error_message: string | null
+          heading: string
+          id: string
+          name: string
+          preview_text: string | null
+          provider_broadcast_id: string | null
+          provider_segment_id: string | null
+          recipient_count: number
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string
+          body: string
+          campaign_type?: string
+          created_at?: string
+          created_by: string
+          cta_label?: string | null
+          cta_url?: string | null
+          error_message?: string | null
+          heading: string
+          id?: string
+          name: string
+          preview_text?: string | null
+          provider_broadcast_id?: string | null
+          provider_segment_id?: string | null
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          body?: string
+          campaign_type?: string
+          created_at?: string
+          created_by?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          error_message?: string | null
+          heading?: string
+          id?: string
+          name?: string
+          preview_text?: string | null
+          provider_broadcast_id?: string | null
+          provider_segment_id?: string | null
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
         }
         Relationships: []
       }

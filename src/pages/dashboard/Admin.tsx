@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import {
   Shield, Users, CheckCircle2, XCircle, AlertTriangle, RefreshCw, DollarSign,
   Activity, Clock, Check, X, ArrowUpDown, Rss, Instagram, Calendar, Zap, TrendingUp,
-  LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map,
+  LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map, Mail,
   Server, Radio, ListChecks, Database, Plus, Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,7 @@ import { RoadmapCard } from "@/components/admin/RoadmapCard";
 const TokenHealth = lazy(() => import("./TokenHealth"));
 const MetaApiHealth = lazy(() => import("./MetaApiHealth"));
 const AdminReleases = lazy(() => import("./AdminReleases"));
+const AdminEmailCampaigns = lazy(() => import("./AdminEmailCampaigns"));
 const AdminSupport = lazy(() => import("./AdminSupport"));
 
 type Row = {
@@ -61,6 +62,7 @@ const ADMIN_TABS = [
   { value: "tokens", label: "Tokens", icon: ShieldCheck },
   { value: "meta", label: "Saúde API Meta", icon: Gauge },
   { value: "releases", label: "Novidades", icon: Megaphone },
+  { value: "email", label: "E-mail", icon: Mail },
   { value: "support", label: "Suporte", icon: LifeBuoy },
   { value: "roadmap", label: "Roadmap", icon: Map },
 ];
@@ -1212,6 +1214,12 @@ export default function Admin() {
         <TabsContent value="releases" className="mt-4 -mx-4 md:-mx-6">
           <Suspense fallback={<div className="p-6 text-muted-foreground">Carregando…</div>}>
             <AdminReleases />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="email" className="mt-4 -mx-4 md:-mx-6">
+          <Suspense fallback={<div className="p-6 text-muted-foreground">Carregando…</div>}>
+            <AdminEmailCampaigns />
           </Suspense>
         </TabsContent>
 
