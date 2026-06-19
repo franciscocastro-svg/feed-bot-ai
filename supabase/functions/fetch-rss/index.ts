@@ -483,8 +483,15 @@ Deno.serve(async (req) => {
       return elapsedMin >= (s.fetch_interval_minutes || 60);
     });
 
-    // Perfis de scoring por nicho
-    const PROFILES: Record<string, { hot: string[]; noise: string[]; minScore: number; maxAgeH: number }> = {
+    // Perfis de scoring por nicho. O perfil genérico evita que nichos desconhecidos
+    // sejam tratados como finanças e mantém a captação aberta para fontes válidas.
+    type RelevanceProfile = { hot: string[]; noise: string[]; minScore: number; maxAgeH: number };
+    const PROFILES: Record<string, RelevanceProfile> = {
+      geral: {
+        hot: ["urgente", "exclusivo", "ao vivo", "breaking", "revela", "anuncia"],
+        noise: [],
+        minScore: 0, maxAgeH: 24,
+      },
       financas: {
         hot: ["bitcoin","btc","ethereum","eth","cripto","crypto","blockchain","binance","coinbase",
           "bolsa","ibovespa","dólar","dolar","inflação","selic","copom","pib","mercado","ação","ações",
@@ -503,13 +510,51 @@ Deno.serve(async (req) => {
         noise: ["bitcoin","selic","copom","ibovespa","fed","powell","pib","banco central"],
         minScore: 1, maxAgeH: 24,
       },
+      esportes: {
+        hot: ["futebol", "campeonato", "copa", "brasileirão", "libertadores", "champions", "seleção",
+          "gol", "jogo", "partida", "vitória", "derrota", "empate", "técnico", "jogador", "contratação",
+          "fórmula 1", "nba", "vôlei", "tênis", "olimpíadas"],
+        noise: ["selic", "ibovespa", "novela", "reality"],
+        minScore: 1, maxAgeH: 24,
+      },
+      tecnologia: {
+        hot: ["tecnologia", "inteligência artificial", "machine learning", "software", "aplicativo", "app", "startup",
+          "google", "apple", "microsoft", "meta", "openai", "android", "iphone", "segurança", "dados",
+          "internet", "robô", "chip", "inovação"],
+        noise: ["novela", "reality", "horóscopo"],
+        minScore: 1, maxAgeH: 24,
+      },
+      politica: {
+        hot: ["governo", "congresso", "senado", "câmara", "presidente", "ministro", "prefeito", "governador",
+          "eleição", "política", "projeto de lei", "stf", "planalto", "lula", "bolsonaro"],
+        noise: ["novela", "reality", "horóscopo"],
+        minScore: 1, maxAgeH: 24,
+      },
+      saude: {
+        hot: ["saúde", "medicina", "médico", "hospital", "doença", "tratamento", "vacina", "pesquisa",
+          "sintoma", "prevenção", "anvisa", "sus", "bem-estar", "nutrição", "saúde mental"],
+        noise: ["novela", "reality", "ibovespa"],
+        minScore: 1, maxAgeH: 48,
+      },
+      direito: {
+        hot: ["direito", "justiça", "tribunal", "stf", "stj", "lei", "advogado", "decisão", "sentença",
+          "processo", "jurídico", "constituição", "ministério público", "oab"],
+        noise: ["novela", "reality", "horóscopo"],
+        minScore: 1, maxAgeH: 48,
+      },
     };
     function getProfile(niche?: string | null) {
       const n = (niche || "").toLowerCase();
       if (/(fofoca|celebr|entreten|famosos|tv|novela|reality)/.test(n)) return PROFILES.fofoca;
-      return PROFILES.financas;
+      if (/(finan|econom|mercado|invest|cripto|bolsa)/.test(n)) return PROFILES.financas;
+      if (/(esporte|futebol|copa|campeonato|atleta)/.test(n)) return PROFILES.esportes;
+      if (/(tecnolog|inova|startup|software|inteligência artificial|\bia\b)/.test(n)) return PROFILES.tecnologia;
+      if (/(política|politica|governo|eleição|eleicao)/.test(n)) return PROFILES.politica;
+      if (/(saúde|saude|medicina|bem-estar|nutri)/.test(n)) return PROFILES.saude;
+      if (/(direito|advoca|juríd|jurid|justiça|justica)/.test(n)) return PROFILES.direito;
+      return PROFILES.geral;
     }
-    function relevanceScore(title: string, desc: string, pubDate: string | undefined, profile: typeof PROFILES.financas): number {
+    function relevanceScore(title: string, desc: string, pubDate: string | undefined, profile: RelevanceProfile): number {
       const text = `${title} ${desc}`.toLowerCase();
       let score = 0;
       for (const k of profile.hot) if (text.includes(k)) score += 2;
@@ -532,6 +577,7 @@ Deno.serve(async (req) => {
 
     let totalNew = 0;
     for (const s of (sources || [])) {
+      let sourceNew = 0;
       try {
         // Busca IGs vinculados a esta fonte
         const { data: links } = await supabase
@@ -544,7 +590,8 @@ Deno.serve(async (req) => {
 
         const profile = getProfile(s.niche);
         const raw = await fetchXmlSmart(s.url);
-        const items: any[] = parseSourceItems(raw, s.url)
+        const parsedItems: any[] = parseSourceItems(raw, s.url);
+        const items: any[] = parsedItems
           .filter((it: any) => {
             if (!it.pubDate) return true; // aceita sem pubDate
             const ageH = (Date.now() - new Date(it.pubDate).getTime()) / 3600000;
@@ -599,12 +646,30 @@ Deno.serve(async (req) => {
               published_at: it.pubDate ? new Date(it.pubDate).toISOString() : null,
               niche: s.niche, status: "pending",
             });
-            if (!error) totalNew++;
+            if (!error) {
+              totalNew++;
+              sourceNew++;
+            }
           }
         }
-        await supabase.from("news_sources").update({ last_fetched_at: new Date().toISOString() }).eq("id", s.id);
+        const completedAt = new Date().toISOString();
+        await supabase.from("news_sources").update({
+          last_fetched_at: completedAt,
+          last_success_at: completedAt,
+          last_error: null,
+          last_items_found: parsedItems.length,
+          last_items_created: sourceNew,
+          ...(sourceNew > 0 ? { last_new_item_at: completedAt } : {}),
+        }).eq("id", s.id);
       } catch (e) {
         console.error("source error", s.url, e);
+        const message = e instanceof Error ? e.message : "Falha desconhecida ao captar a fonte";
+        await supabase.from("news_sources").update({
+          last_error_at: new Date().toISOString(),
+          last_error: message.slice(0, 500),
+          last_items_found: 0,
+          last_items_created: 0,
+        }).eq("id", s.id);
       }
     }
     await supabase.from("activity_logs").insert({ user_id: userId, action: "fetch_rss", details: { fetched: totalNew, sources: sources?.length || 0 } });

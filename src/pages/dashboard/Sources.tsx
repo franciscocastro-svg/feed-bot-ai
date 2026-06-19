@@ -279,14 +279,24 @@ export default function Sources() {
   };
 
   // Saúde da fonte: ok / warning / error
-  const sourceHealth = (s: any): { status: "ok" | "warning" | "error"; label: string } => {
-    if (!s.active) return { status: "warning", label: "Inativa" };
-    if (!s.last_fetched_at) return { status: "warning", label: "Nunca captada" };
-    const ageMin = (Date.now() - new Date(s.last_fetched_at).getTime()) / 60000;
+  const sourceHealth = (s: any): { status: "ok" | "warning" | "error"; label: string; detail: string } => {
+    if (!s.active) return { status: "warning", label: "Inativa", detail: "A captação está pausada para esta fonte." };
+    const lastSuccess = s.last_success_at || s.last_fetched_at;
+    const errorIsCurrent = !!s.last_error && !!s.last_error_at
+      && (!lastSuccess || new Date(s.last_error_at).getTime() > new Date(lastSuccess).getTime());
+    if (errorIsCurrent) return { status: "error", label: "Falha na captação", detail: s.last_error };
+    if (!lastSuccess) return { status: "warning", label: "Nunca captada", detail: "Execute a primeira captação para testar esta fonte." };
+    const ageMin = (Date.now() - new Date(lastSuccess).getTime()) / 60000;
     const expected = (s.fetch_interval_minutes || 60) * 3;
-    if (ageMin > 1440) return { status: "error", label: "Sem captar há +24h" };
-    if (ageMin > expected) return { status: "warning", label: "Atrasada" };
-    return { status: "ok", label: "Saudável" };
+    if (ageMin > 1440) return { status: "error", label: "Sem resposta há +24h", detail: "A fonte não conclui uma leitura há mais de 24 horas." };
+    if (ageMin > expected) return { status: "warning", label: "Atrasada", detail: "A última leitura está fora da frequência esperada." };
+    const hasDiagnostics = !!s.last_success_at;
+    const found = Number(s.last_items_found || 0);
+    return {
+      status: "ok",
+      label: !hasDiagnostics || found > 0 ? "Saudável" : "Saudável, sem conteúdo",
+      detail: !hasDiagnostics || found > 0 ? "A última leitura foi concluída normalmente." : "A fonte respondeu normalmente, mas não apresentou itens nessa leitura.",
+    };
   };
 
   const sourceKind = (s: any): { label: string; icon: any } => {
@@ -456,7 +466,7 @@ export default function Sources() {
                   </>
                 )}
 
-                <div><Label>Frequência (minutos)</Label><Input type="number" value={form.fetch_interval_minutes} onChange={e => setForm({ ...form, fetch_interval_minutes: +e.target.value })} /></div>
+                <div><Label>Frequência (minutos)</Label><Input type="number" min={5} max={1440} step={5} value={form.fetch_interval_minutes} onChange={e => setForm({ ...form, fetch_interval_minutes: Math.min(1440, Math.max(5, +e.target.value || 5)) })} /></div>
 
                 {translationEnabled ? (
                 <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
@@ -560,15 +570,22 @@ export default function Sources() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
-                            {health.status === "ok" && "Captação rodando dentro do esperado."}
-                            {health.status === "warning" && "Sem capturas recentes — verifique a URL ou a frequência."}
-                            {health.status === "error" && "Sem captação há mais de 24h. URL pode estar quebrada."}
+                            <p className="max-w-xs">{health.detail}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
                     <p className="text-xs text-muted-foreground truncate">{s.url}</p>
-                    <p className="text-xs text-muted-foreground">A cada {s.fetch_interval_minutes} min · {s.last_fetched_at ? `Última: ${new Date(s.last_fetched_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : "Nunca captada"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      A cada {s.fetch_interval_minutes} min · {(s.last_success_at || s.last_fetched_at) ? `Última leitura: ${new Date(s.last_success_at || s.last_fetched_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : "Nunca captada"}
+                    </p>
+                    {(s.last_success_at || s.last_error_at) && (
+                      <p className={`text-xs mt-1 ${health.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+                        {health.status === "error"
+                          ? `Erro: ${s.last_error || "não identificado"}`
+                          : `${Number(s.last_items_found || 0)} encontrados · ${Number(s.last_items_created || 0)} novos na última leitura`}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1 mt-2">
                       {linkedIgs.length === 0 ? (
                         <Badge variant="destructive" className="text-xs">Sem IG vinculado</Badge>
