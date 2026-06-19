@@ -104,7 +104,7 @@ const planBestFor: Record<string, string> = {
 };
 
 const proofComparison = [
-  { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "1,30×" },
+  { label: "Publicações no perfil", before: "964", after: "1.763", growth: "1,83×" },
   { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "36,23×" },
   { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "26,06×" },
   { label: "Total de seguidores", before: "243", after: "8.208", growth: "33,78×" },
@@ -174,7 +174,7 @@ const proofSlides = [
     period: "after" as const,
     eyebrow: "Após 30 dias",
     title: "Perfil com 8.208 seguidores",
-    description: "Total atual confirmado diretamente no perfil do Instagram.",
+    description: "Perfil atual com 1.763 publicações e 8.208 seguidores, confirmados diretamente no Instagram.",
     alt: "Perfil do Instagram após 30 dias com 8.208 seguidores",
     crop: "object-top",
   },
@@ -200,13 +200,13 @@ const proofSlides = [
 
 const proofMetrics = {
   before: [
-    ["998", "conteúdos"],
+    ["964", "publicações"],
     ["292,6 mil", "visualizações"],
     ["3,3 mil", "interações"],
     ["243", "seguidores iniciais"],
   ],
   after: [
-    ["1,3 mil", "conteúdos"],
+    ["1.763", "publicações"],
     ["10,6 mi", "visualizações"],
     ["86 mil", "interações"],
     ["8.208", "seguidores atuais"],
