@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, Send, Trash2, Pencil, RefreshCw, AlertTriangle, Zap, Clock } from "lucide-react";
+import { Loader2, Calendar, Send, Trash2, Pencil, RefreshCw, AlertTriangle, Zap, Clock, Eye, Film, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,12 +21,13 @@ export default function Scheduled() {
   const [running, setRunning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<any | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [editAccount, setEditAccount] = useState<string>("");
   const [editWhen, setEditWhen] = useState<string>("");
 
   const load = async () => {
-    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, caption), instagram_accounts(username)";
+    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, caption, reel_caption), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
       supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
       supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(POSTED_POST_LIMIT),
@@ -278,6 +279,9 @@ export default function Scheduled() {
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => setPreviewing(p)} title="Ver como será publicado" className="min-w-[7rem]">
+                    <Eye className="h-4 w-4 mr-1" /> Prévia
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => openEdit(p)} title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -290,6 +294,8 @@ export default function Scheduled() {
           })}
         </div>
       )}
+
+      <PublicationPreviewDialog post={previewing} onClose={() => setPreviewing(null)} />
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
@@ -317,4 +323,93 @@ export default function Scheduled() {
       </Dialog>
     </div>
   );
+}
+
+function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose: () => void }) {
+  if (!post) return null;
+
+  const news = post.news_items || {};
+  const mediaType = post.media_type === "reel" ? "reel" : post.media_type === "story" ? "story" : "feed";
+  const isVideo = mediaType === "reel" || (mediaType === "story" && !!news.generated_video_url);
+  const mediaUrl = mediaType === "feed"
+    ? news.generated_image_url || news.generated_cover_url
+    : isVideo
+      ? news.generated_video_url
+      : news.generated_cover_url || news.generated_image_url;
+  const caption = mediaType === "reel"
+    ? news.reel_caption || news.caption || ""
+    : news.caption || "";
+  const formatLabel = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
+
+  return (
+    <Dialog open={!!post} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Prévia da publicação</DialogTitle>
+          <DialogDescription>
+            Mídia e texto que serão enviados para @{post.instagram_accounts?.username || "conta não definida"}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+          <div className="rounded-xl border bg-black/95 p-2 flex items-center justify-center min-h-64">
+            {mediaUrl ? (
+              isVideo ? (
+                <video src={mediaUrl} poster={news.generated_cover_url || news.generated_image_url || undefined} controls playsInline className="max-h-[68vh] w-auto max-w-full rounded-lg bg-black" />
+              ) : (
+                <img
+                  src={mediaUrl}
+                  alt={`Prévia ${formatLabel}`}
+                  className={`w-full rounded-lg object-contain ${mediaType === "feed" ? "aspect-square max-h-[68vh]" : "aspect-[9/16] max-h-[68vh]"}`}
+                />
+              )
+            ) : (
+              <div className="py-16 text-center text-sm text-white/70">
+                {isVideo ? <Film className="h-10 w-10 mx-auto mb-3" /> : <ImageIcon className="h-10 w-10 mx-auto mb-3" />}
+                {isVideo ? "O vídeo ainda está sendo preparado." : "A arte ainda está sendo preparada."}
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">@{post.instagram_accounts?.username || "conta não definida"}</p>
+                  <p className="text-xs text-muted-foreground">{formatLabel} · {statusPreviewLabel(post.status)}</p>
+                </div>
+                <span className="rounded-full border px-2.5 py-1 text-xs font-medium">{formatLabel}</span>
+              </div>
+              <p className="mt-4 text-sm font-medium leading-snug">{news.rewritten_title || "Sem título"}</p>
+            </div>
+
+            <div className="rounded-xl border bg-muted/20 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {mediaType === "story" ? "Legenda no Story" : `Legenda do ${formatLabel}`}
+              </p>
+              {mediaType === "story" ? (
+                <p className="text-sm text-muted-foreground">Stories não exibem legenda. Toda a informação visível precisa estar na própria arte.</p>
+              ) : caption ? (
+                <div className="max-h-[42vh] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-relaxed">{caption}</div>
+              ) : (
+                <p className="text-sm text-amber-500">Nenhuma legenda preparada para esta publicação.</p>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Esta prévia usa os arquivos finais armazenados. Alterações posteriores na arte ou legenda aparecerão ao atualizar a fila.
+            </p>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function statusPreviewLabel(status: string) {
+  if (status === "posted") return "já publicado";
+  if (status === "awaiting_container") return "processando no Instagram";
+  if (status === "posting") return "em publicação";
+  if (status === "failed") return "falhou";
+  return "agendado";
 }

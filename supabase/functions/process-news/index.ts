@@ -1314,7 +1314,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       ["💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
       hashtagsLine,
     );
-    const reelCaptionFinal = buildCaptionWithExtras(usefulCaption, [followCta], reelHashtagsLine);
+    const usefulReelCaption = normalizeCaptionText(ai.reel_caption || usefulCaption);
+    const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [followCta], reelHashtagsLine);
 
     // Escolha automática de trilha sonora pela IA (com base no nome do arquivo + tom da notícia)
     let chosenTrackId: string | null = null;
