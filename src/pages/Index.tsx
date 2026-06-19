@@ -107,7 +107,7 @@ const proofComparison = [
   { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "+30%" },
   { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "+3.523%" },
   { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "+2.506%" },
-  { label: "Seguidores atuais", before: "Não registrado", after: "8.208", growth: "Total atual" },
+  { label: "Total de seguidores", before: "243", after: "8.208", growth: "+3.278%" },
 ];
 
 const faqItems = [
@@ -203,7 +203,7 @@ const proofMetrics = {
     ["998", "conteúdos"],
     ["292,6 mil", "visualizações"],
     ["3,3 mil", "interações"],
-    ["194", "novos no período"],
+    ["243", "seguidores iniciais"],
   ],
   after: [
     ["1,3 mil", "conteúdos"],
@@ -708,8 +708,8 @@ export default function Index() {
               Resultados variam conforme nicho, frequência e qualidade do conteúdo.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              A Meta registrava 4,5 mil novos seguidores até 13 de junho; o perfil do Instagram mostra 8.208
-              seguidores no total atual. Como são métricas diferentes, não calculamos uma evolução percentual entre elas.
+              O perfil passou de 243 para 8.208 seguidores. No painel da Meta, a atualização disponível até 13 de junho
+              registrava 4,5 mil novos seguidores; o total atual foi confirmado diretamente no perfil do Instagram.
             </p>
           </motion.div>
 
