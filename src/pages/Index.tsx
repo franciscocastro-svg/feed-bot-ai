@@ -104,10 +104,10 @@ const planBestFor: Record<string, string> = {
 };
 
 const proofComparison = [
-  { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "+30%" },
-  { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "+3.523%" },
-  { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "+2.506%" },
-  { label: "Total de seguidores", before: "243", after: "8.208", growth: "+3.278%" },
+  { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "1,30×" },
+  { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "36,23×" },
+  { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "26,06×" },
+  { label: "Total de seguidores", before: "243", after: "8.208", growth: "33,78×" },
 ];
 
 const faqItems = [
@@ -687,7 +687,7 @@ export default function Index() {
                 <span>Indicador</span>
                 <span>Inicial</span>
                 <span>Após 30 dias</span>
-                <span className="hidden text-right sm:block">Evolução</span>
+                <span className="hidden text-right sm:block">Vezes</span>
               </div>
               {proofComparison.map((item) => (
                 <div
@@ -705,7 +705,7 @@ export default function Index() {
             </div>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               Comparação entre os registros reais do primeiro ciclo e o período atual de 20 de maio a 18 de junho.
-              Resultados variam conforme nicho, frequência e qualidade do conteúdo.
+              A última coluna mostra quantas vezes o resultado atual representa o valor inicial.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               O perfil passou de 243 para 8.208 seguidores. No painel da Meta, a atualização disponível até 13 de junho
