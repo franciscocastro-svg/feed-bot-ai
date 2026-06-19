@@ -17,6 +17,9 @@ import whatsappBot from "@/assets/whatsapp-bot.jpg";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
+import proofInstagramAfterProfile from "@/assets/proof-instagram-after-profile.jpg";
+import proofInstagramAfterInsights from "@/assets/proof-instagram-after-insights.jpg";
+import proofInstagramAfterStories from "@/assets/proof-instagram-after-stories.jpg";
 
 const PLAN_SUBTITLES: Record<string, string> = {
   starter: "Para uma conta em crescimento",
@@ -100,10 +103,11 @@ const planBestFor: Record<string, string> = {
   business: "Times, portais e operações em escala.",
 };
 
-const proofItems = [
-  { label: "998 conteúdos compartilhados", text: "Volume real publicado em um ciclo de operação intensa." },
-  { label: "292,6 mil visualizações", text: "Alcance exibido no painel profissional do Instagram." },
-  { label: "3,3 mil interações", text: "Conteúdo recorrente gerando atividade na conta." },
+const proofComparison = [
+  { label: "Conteúdos compartilhados", before: "998", after: "1,3 mil", growth: "+30%" },
+  { label: "Visualizações", before: "292,6 mil", after: "10,6 mi", growth: "+3.523%" },
+  { label: "Interações", before: "3,3 mil", after: "86 mil", growth: "+2.506%" },
+  { label: "Novos seguidores", before: "194", after: "4,5 mil", growth: "+2.220%" },
 ];
 
 const faqItems = [
@@ -140,26 +144,74 @@ function FAQStructuredData({ items }: { items: { q: string; a: string }[] }) {
 const proofSlides = [
   {
     image: proofInstagramProfile,
-    title: "Perfil com volume real",
+    period: "before" as const,
+    eyebrow: "Resultado inicial",
+    title: "Perfil no primeiro ciclo",
     description: "964 posts publicados com identidade visual consistente.",
     alt: "Perfil do Instagram com posts gerados pelo Flux & Feed",
     crop: "object-top",
   },
   {
     image: proofInstagramInsights,
-    title: "Painel profissional",
+    period: "before" as const,
+    eyebrow: "Resultado inicial",
+    title: "Painel profissional no primeiro ciclo",
     description: "292,6 mil visualizações, 3,3 mil interações e 194 novos seguidores.",
     alt: "Painel profissional do Instagram com 292,6 mil visualizações",
     crop: "object-top",
   },
   {
     image: proofInstagramStories,
-    title: "Stories com público real",
+    period: "before" as const,
+    eyebrow: "Resultado inicial",
+    title: "Stories no primeiro ciclo",
     description: "Stories recebendo visualizações recorrentes ao longo da operação.",
     alt: "Stories do Instagram com contagem de visualizações",
     crop: "object-[center_top]",
   },
+  {
+    image: proofInstagramAfterProfile,
+    period: "after" as const,
+    eyebrow: "Após 30 dias",
+    title: "Perfil com 8.208 seguidores",
+    description: "Perfil ativo com 1.763 posts e 10,6 milhões de visualizações no período atual.",
+    alt: "Perfil do Instagram após 30 dias com 8.208 seguidores",
+    crop: "object-top",
+  },
+  {
+    image: proofInstagramAfterInsights,
+    period: "after" as const,
+    eyebrow: "Após 30 dias",
+    title: "10,6 milhões de visualizações",
+    description: "86 mil interações, 4,5 mil novos seguidores e 1,3 mil conteúdos compartilhados.",
+    alt: "Painel profissional do Instagram após 30 dias com 10,6 milhões de visualizações",
+    crop: "object-top",
+  },
+  {
+    image: proofInstagramAfterStories,
+    period: "after" as const,
+    eyebrow: "Após 30 dias",
+    title: "Stories alcançando público real",
+    description: "Um dos Stories registrou 311 visualizações, com audiência identificável no Instagram.",
+    alt: "Story do Instagram após 30 dias com 311 visualizações",
+    crop: "object-top",
+  },
 ];
+
+const proofMetrics = {
+  before: [
+    ["998", "conteúdos"],
+    ["292,6 mil", "visualizações"],
+    ["3,3 mil", "interações"],
+    ["194", "novos seguidores"],
+  ],
+  after: [
+    ["1,3 mil", "conteúdos"],
+    ["10,6 mi", "visualizações"],
+    ["86 mil", "interações"],
+    ["4,5 mil", "novos seguidores"],
+  ],
+};
 
 const roadmapItems = [
   {
@@ -321,7 +373,7 @@ export default function Index() {
   const heroRef = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [livePlans, setLivePlans] = useState<LandingPlan[] | null>(null);
-  const [proofSlide, setProofSlide] = useState(0);
+  const [proofSlide, setProofSlide] = useState(3);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -630,19 +682,31 @@ export default function Index() {
               O Flux & Feed foi pensado para portais, criadores e páginas de nicho que precisam transformar
               notícias em conteúdo visual com velocidade, controle e consistência.
             </p>
-            <div className="mt-8 grid gap-3">
-              {proofItems.map((item) => (
-                <div key={item.label} className="flex gap-3 rounded-xl border border-border/50 bg-card/50 p-4">
-                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                    <Check className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-foreground">{item.label}</div>
-                    <div className="text-sm text-muted-foreground">{item.text}</div>
-                  </div>
+            <div className="mt-8 overflow-hidden rounded-2xl border border-border/60 bg-card/55">
+              <div className="grid grid-cols-[1.25fr_0.8fr_0.8fr] border-b border-border/60 bg-background/40 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.65fr]">
+                <span>Indicador</span>
+                <span>Inicial</span>
+                <span>Após 30 dias</span>
+                <span className="hidden text-right sm:block">Evolução</span>
+              </div>
+              {proofComparison.map((item) => (
+                <div
+                  key={item.label}
+                  className="grid grid-cols-[1.25fr_0.8fr_0.8fr] items-center border-b border-border/40 px-4 py-4 last:border-b-0 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.65fr]"
+                >
+                  <span className="pr-2 text-sm font-medium text-foreground">{item.label}</span>
+                  <span className="text-sm text-muted-foreground">{item.before}</span>
+                  <span className="font-display text-base font-bold text-foreground">{item.after}</span>
+                  <span className="hidden justify-self-end rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300 sm:block">
+                    {item.growth}
+                  </span>
                 </div>
               ))}
             </div>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              Comparação entre os registros reais do primeiro ciclo e o período atual de 20 de maio a 18 de junho.
+              Resultados variam conforme nicho, frequência e qualidade do conteúdo.
+            </p>
           </motion.div>
 
           <motion.div
@@ -656,8 +720,8 @@ export default function Index() {
             <div className="relative rounded-2xl border border-border/60 bg-card/80 p-3 shadow-2xl backdrop-blur-xl sm:p-5">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-sm font-semibold">Resultados em conta real</div>
-                  <div className="text-xs text-muted-foreground">Prints reais do painel profissional e do perfil</div>
+                  <div className="text-sm font-semibold">Evolução comprovada em conta real</div>
+                  <div className="text-xs text-muted-foreground">Registros do primeiro ciclo e do resultado após 30 dias</div>
                 </div>
                 <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">Ativo</span>
               </div>
@@ -669,6 +733,7 @@ export default function Index() {
                   loading="lazy"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/80 to-transparent p-5">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">{activeProof.eyebrow}</div>
                   <div className="text-sm font-semibold text-foreground">{activeProof.title}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{activeProof.description}</div>
                 </div>
@@ -701,12 +766,7 @@ export default function Index() {
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                {[
-                  ["964", "posts"],
-                  ["292,6 mil", "visualizações"],
-                  ["3,3 mil", "interações"],
-                  ["194", "novos seguidores"],
-                ].map(([value, label]) => (
+                {proofMetrics[activeProof.period].map(([value, label]) => (
                   <div key={label} className="rounded-xl bg-background/70 p-3 text-center">
                     <div className="font-display text-xl font-bold text-gradient">{value}</div>
                     <div className="mt-1 text-[11px] text-muted-foreground">{label}</div>
