@@ -1,7 +1,8 @@
-const CACHE_VERSION = "flux-feed-pwa-v2";
+const CACHE_VERSION = "flux-feed-pwa-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
   "/manifest.json",
+  "/app-icon.svg",
   "/offline.html",
   "/favicon.png",
   "/favicon.ico",
