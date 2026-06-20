@@ -13,7 +13,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { BrandLogo } from "@/components/BrandLogo";
-import whatsappBot from "@/assets/whatsapp-bot.jpg";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
@@ -32,6 +31,8 @@ const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean 
   business: { label: "Falar com vendas", whatsapp: true },
 };
 const INSTAGRAM_URL = "https://www.instagram.com/fluxifeed?utm_source=qr&igsh=MXVkbHIxa3FwMWJ3YQ==";
+const WHATSAPP_CONTACT_URL =
+  "https://api.whatsapp.com/send?phone=5547996080134&text=Ol%C3%A1%21%20Quero%20saber%20mais%20sobre%20o%20Flux%20%26%20Feed.";
 
 type LandingPlan = {
   plan: string;
@@ -955,7 +956,7 @@ export default function Index() {
               </ul>
               {p.whatsapp ? (
                 <Button className="w-full" variant="outline" asChild>
-                  <a href="https://wa.me/5547996080134?text=Quero%20o%20plano%20Business" target="_blank" rel="noopener noreferrer">
+                  <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer">
                     <MessageCircle className="h-4 w-4 mr-2" /> {p.cta}
                   </a>
                 </Button>
@@ -1039,7 +1040,7 @@ export default function Index() {
           <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
-            <a href="https://wa.me/5547996080134" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
+            <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
             <a
               href={INSTAGRAM_URL}
               target="_blank"
@@ -1054,15 +1055,23 @@ export default function Index() {
         </div>
       </footer>
 
-      {/* WhatsApp flutuante */}
+      {/* Atendimento via WhatsApp */}
       <a
-        href="https://wa.me/5547996080134?text=Ol%C3%A1%21%20Tenho%20interesse%20no%20Flux%20%26%20Feed"
+        href={WHATSAPP_CONTACT_URL}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Falar no WhatsApp"
-        className="fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full overflow-hidden shadow-glow transition-transform hover:scale-110 sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
+        aria-label="Falar com a equipe do Flux & Feed pelo WhatsApp"
+        title="Falar com a equipe pelo WhatsApp"
+        className="group fixed bottom-4 right-4 z-[70] inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-emerald-400/30 bg-[#0d1712]/95 p-2 shadow-[0_16px_45px_rgba(0,0,0,0.45),0_0_28px_rgba(37,211,102,0.16)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-emerald-300/60 hover:shadow-[0_20px_55px_rgba(0,0,0,0.5),0_0_34px_rgba(37,211,102,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:bottom-6 sm:right-6 sm:pr-5"
       >
-        <img src={whatsappBot} alt="Falar no WhatsApp" width={64} height={64} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg shadow-emerald-950/40 transition-transform duration-300 group-hover:scale-105">
+          <MessageCircle className="h-6 w-6" strokeWidth={2.4} aria-hidden="true" />
+          <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-[#0d1712] bg-emerald-200" />
+        </span>
+        <span className="hidden min-w-0 flex-col text-left sm:flex">
+          <span className="whitespace-nowrap text-sm font-semibold text-white">Fale com a equipe</span>
+          <span className="whitespace-nowrap text-[11px] text-emerald-200/80">Atendimento pelo WhatsApp</span>
+        </span>
       </a>
     </div>
   );
