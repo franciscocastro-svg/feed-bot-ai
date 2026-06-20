@@ -6,7 +6,7 @@ import { motion, useTransform, useMotionValue, useSpring } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles, Newspaper, Bot, Image as ImageIcon, Instagram, Calendar, Shield,
-  ArrowRight, Check, MessageCircle, Zap, Rocket, TrendingUp, Star, Play, HelpCircle,
+  ArrowRight, Check, MessageCircle, Zap, Rocket, TrendingUp, Star, HelpCircle,
   ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -79,10 +79,10 @@ const features = [
 ];
 
 const stats = [
-  { value: "RSS", label: "Fontes automáticas" },
-  { value: "Reels", label: "Templates prontos" },
-  { value: "API", label: "Meta oficial" },
-  { value: "Seguro", label: "Intervalos por conta" },
+  { value: "Fontes", label: "RSS, sites, temas e URLs" },
+  { value: "Criação", label: "Texto, Feed, Stories e Reels" },
+  { value: "Operação", label: "Aprovação, agenda e filas" },
+  { value: "Publicação", label: "API oficial da Meta" },
 ];
 
 const steps = [
@@ -112,7 +112,7 @@ const proofComparison = [
 ];
 
 const faqItems = [
-  { q: "Como funciona o trial gratuito?", a: "Você tem 7 dias para testar todos os recursos do plano Free sem precisar de cartão. Pode cancelar a qualquer momento." },
+  { q: "Como funciona o teste de 7 dias?", a: "Você escolhe um plano, cadastra o cartão com segurança pela Stripe e testa a plataforma por 7 dias. A cobrança começa somente após o período de teste, e você pode cancelar antes disso." },
   { q: "Vocês usam a API oficial do Instagram?", a: "Sim, usamos integração oficial e segura com o Instagram." },
   { q: "O Instagram pode bloquear a conta?", a: "Qualquer automação pode sofrer limites se houver excesso de ações. Por isso o Flux & Feed usa intervalo mínimo, limite diário, horários e fila por conta para reduzir risco. Você também pode revisar manualmente antes de publicar." },
   { q: "Preciso deixar meu computador ligado?", a: "Não. A geração de mídia e a fila rodam na infraestrutura do sistema, então o painel pode ficar fechado." },
@@ -216,37 +216,37 @@ const proofMetrics = {
 
 const roadmapItems = [
   {
-    month: "Mês 7",
+    month: "Julho 2026",
     status: "Em desenvolvimento",
     title: "Mais estabilidade e segurança",
     text: "Fila inteligente, melhor prevenção contra falhas, melhorias no monitoramento e mais proteção contra ações repetitivas.",
   },
   {
-    month: "Mês 8",
+    month: "Agosto 2026",
     status: "Planejado",
     title: "Reels, Stories e Feed com ritmos separados",
     text: "Cada formato poderá ter sua própria frequência, evitando que Reels, Stories e Feed disputem o mesmo intervalo de postagem.",
   },
   {
-    month: "Mês 9",
+    month: "Setembro 2026",
     status: "Planejado",
     title: "Templates mais profissionais",
     text: "Mais modelos por nicho, prévias melhores, ajustes visuais mais simples e biblioteca de templates para acelerar a criação.",
   },
   {
-    month: "Mês 10",
+    month: "Outubro 2026",
     status: "Em estudo",
     title: "Inteligência por conta",
     text: "O sistema começará a aprender o melhor ritmo, formato e tipo de conteúdo para cada perfil conectado.",
   },
   {
-    month: "Mês 11",
+    month: "Novembro 2026",
     status: "Em estudo",
     title: "Vídeos com template",
     text: "Planejamento para permitir usar vídeos autorizados, aplicar templates do cliente e transformar em conteúdo com aparência de notícia.",
   },
   {
-    month: "Mês 12",
+    month: "Dezembro 2026",
     status: "Planejado",
     title: "Painel para agências",
     text: "Recursos para quem gerencia várias contas e clientes, com visão operacional, permissões e controle mais profissional.",
@@ -326,54 +326,12 @@ function MagneticCard({ children, className = "", glowColor = "320 90% 60%" }: {
   );
 }
 
-/** Custom cursor — small dot + trailing ring that grows over interactive elements */
-function CursorGlow() {
-  const dotX = useMotionValue(-100);
-  const dotY = useMotionValue(-100);
-  const ringX = useSpring(dotX, { stiffness: 250, damping: 28, mass: 0.5 });
-  const ringY = useSpring(dotY, { stiffness: 250, damping: 28, mass: 0.5 });
-  const [hovering, setHovering] = useState(false);
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      dotX.set(e.clientX);
-      dotY.set(e.clientY);
-      const t = e.target as HTMLElement | null;
-      setHovering(!!t?.closest("a, button, [role='button'], input, textarea, select, label"));
-    };
-    window.addEventListener("mousemove", move);
-    return () => window.removeEventListener("mousemove", move);
-  }, [dotX, dotY]);
-
-  return (
-    <>
-      <motion.div
-        aria-hidden
-        style={{ x: dotX, y: dotY }}
-        className="pointer-events-none fixed left-0 top-0 z-[60] hidden md:block"
-      >
-        <div className="h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary))]" />
-      </motion.div>
-      <motion.div
-        aria-hidden
-        style={{ x: ringX, y: ringY }}
-        className="pointer-events-none fixed left-0 top-0 z-[60] hidden md:block"
-      >
-        <motion.div
-          animate={{ scale: hovering ? 2.2 : 1, opacity: hovering ? 0.9 : 0.5 }}
-          transition={{ type: "spring", stiffness: 250, damping: 20 }}
-          className="h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/60"
-        />
-      </motion.div>
-    </>
-  );
-}
-
 export default function Index() {
   const { user } = useAuth();
   const heroRef = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [livePlans, setLivePlans] = useState<LandingPlan[] | null>(null);
+  const [plansStatus, setPlansStatus] = useState<"loading" | "ready" | "error">("loading");
   const [proofSlide, setProofSlide] = useState(3);
 
   useEffect(() => {
@@ -384,12 +342,18 @@ export default function Index() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("plan_limits")
         .select("*")
         .neq("plan", "expired")
         .order("sort_order");
-      if (data) setLivePlans(data);
+      if (error) {
+        setLivePlans([]);
+        setPlansStatus("error");
+        return;
+      }
+      setLivePlans(data ?? []);
+      setPlansStatus("ready");
     })();
   }, []);
 
@@ -401,19 +365,19 @@ export default function Index() {
   }, []);
 
   const activeProof = proofSlides[proofSlide];
+  const availablePlans = (livePlans ?? []).filter((row) => row.plan !== "free");
   const previousProof = () => setProofSlide((current) => (current - 1 + proofSlides.length) % proofSlides.length);
   const nextProof = () => setProofSlide((current) => (current + 1) % proofSlides.length);
 
   return (
     <div className="min-h-screen overflow-x-hidden">
       <SEO
-        title="Flux & Feed — Automação de Instagram com IA"
-        description="Automação de Instagram com IA para transformar notícias, pautas e conteúdos em posts, stories e reels."
+        title="Flux & Feed — Plataforma de conteúdo para Instagram"
+        description="Centralize fontes, criação com IA, templates, aprovações, agendamento e publicação no Instagram em uma única plataforma."
         path="/"
       />
       <FAQStructuredData items={faqItems} />
 
-      <CursorGlow />
       {/* Header */}
       <motion.header
         initial={{ y: -100, opacity: 0 }}
@@ -425,10 +389,13 @@ export default function Index() {
           <Link to="/" className="min-w-0">
             <BrandLogo priority className="h-8 max-w-[190px] sm:h-10 sm:max-w-[240px]" />
           </Link>
-          <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">Recursos</a>
+          <nav aria-label="Navegação principal" className="hidden items-center gap-5 text-sm text-muted-foreground xl:flex">
+            <a href="#features" className="hover:text-foreground transition-colors">Plataforma</a>
+            <a href="#resultados" className="hover:text-foreground transition-colors">Resultados</a>
             <a href="#como-funciona" className="hover:text-foreground transition-colors">Como funciona</a>
             <a href="#planos" className="hover:text-foreground transition-colors">Planos</a>
+            <a href="#roadmap" className="hover:text-foreground transition-colors">Roadmap</a>
+            <a href="#faq" className="hover:text-foreground transition-colors">Ajuda</a>
           </nav>
           <div className="flex shrink-0 items-center gap-2">
             {user ? (
@@ -439,7 +406,7 @@ export default function Index() {
               <>
                 <Button variant="ghost" asChild className="px-3 sm:px-4"><Link to="/auth">Entrar</Link></Button>
                 <Button asChild className="hidden bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90 sm:inline-flex">
-                  <Link to="/auth">Testar 7 dias</Link>
+                  <Link to="/auth">Começar teste</Link>
                 </Button>
               </>
             )}
@@ -464,29 +431,25 @@ export default function Index() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            RSS + IA + Instagram em um fluxo seguro
+            Toda a operação de conteúdo em um único sistema
           </motion.div>
 
           <div className="grid min-w-0 items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12">
             <div className="min-w-0 text-center lg:text-left">
               <h1
-                className="mx-auto max-w-[22rem] font-display text-3xl font-bold leading-[1.08] tracking-normal sm:max-w-2xl sm:text-5xl md:text-7xl lg:mx-0 lg:text-8xl"
+                className="mx-auto max-w-[22rem] font-display text-3xl font-bold leading-[1.06] tracking-normal sm:max-w-2xl sm:text-5xl md:text-6xl lg:mx-0 lg:max-w-3xl lg:text-7xl"
               >
-                <span className="block sm:inline">Transforme notícias</span>{" "}
-                <span className="block sm:inline">
-                  em{" "}
-                  <span className="relative inline-block">
-                    <span className="text-gradient glow-text">Reels prontos</span>
-                    <motion.span
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
-                      className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-brand origin-left rounded-full"
-                    />
-                  </span>
+                <span className="block">Sua operação de</span>
+                <span className="relative inline-block text-gradient glow-text">
+                  conteúdo para Instagram
+                  <motion.span
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: 1 }}
+                    transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
+                    className="absolute -bottom-2 left-0 right-0 h-1 origin-left rounded-full bg-gradient-brand"
+                  />
                 </span>
-                <br className="hidden sm:block" />
-                <span className="block sm:inline">para postar no Instagram.</span>
+                <span className="mt-1 block">em um só lugar.</span>
               </h1>
 
               <motion.p
@@ -495,8 +458,8 @@ export default function Index() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg md:mt-8 md:text-xl lg:mx-0"
               >
-                O Flux & Feed busca notícias por RSS, reescreve com IA, monta artes e Reels com template
-                e publica respeitando horários, limite diário e intervalo de cada conta.
+                Centralize fontes, pautas, IA, templates, aprovações, Feed, Stories, Reels e agendamentos.
+                Publique pela API oficial da Meta com regras próprias para cada conta.
               </motion.p>
 
               <motion.div
@@ -506,15 +469,18 @@ export default function Index() {
                 className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center md:mt-10 lg:justify-start"
               >
                 <Button size="lg" asChild className="h-12 w-full bg-gradient-brand px-5 text-primary-foreground shadow-glow hover:opacity-90 group sm:w-auto sm:px-7">
-                  <Link to="/auth">
-                    Testar 7 dias com cartão
+                  <a href="#features">
+                    Explorar a plataforma
                     <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Link>
+                  </a>
                 </Button>
                 <Button size="lg" variant="outline" asChild className="glass h-12 w-full px-5 group sm:w-auto sm:px-7">
-                  <a href="#como-funciona"><Play className="h-4 w-4 mr-2 group-hover:scale-125 transition-transform" /> Ver como funciona</a>
+                  <a href="#resultados">Ver resultados reais</a>
                 </Button>
               </motion.div>
+              <p className="mt-4 text-center text-xs text-muted-foreground lg:text-left">
+                Teste por 7 dias com cartão cadastrado. Cancele antes da primeira cobrança.
+              </p>
             </div>
 
             <motion.div
@@ -527,8 +493,8 @@ export default function Index() {
               <div className="relative w-full max-w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
                 <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-5">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">Fila do autopiloto</div>
-                    <div className="text-xs text-muted-foreground">1 notícia por vez, com intervalo seguro</div>
+                    <div className="text-sm font-semibold text-foreground">Central de operação</div>
+                    <div className="text-xs text-muted-foreground">Conteúdo, agenda e publicação por conta</div>
                   </div>
                   <span className="hidden rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">Online</span>
                 </div>
@@ -598,7 +564,7 @@ export default function Index() {
         <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-background to-transparent pointer-events-none" />
       </section>
 
-      {/* Marquee logos / trust */}
+      {/* Capacidades da plataforma */}
       <section className="relative border-y border-border/40 py-6 overflow-hidden glass">
         <div className="marquee whitespace-nowrap">
           {[...Array(2)].map((_, k) => (
@@ -619,7 +585,7 @@ export default function Index() {
       </section>
 
       {/* FEATURES */}
-      <section id="features" className="container relative py-20 md:py-32">
+      <section id="features" className="container relative scroll-mt-20 py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -628,13 +594,13 @@ export default function Index() {
           className="mx-auto mb-12 max-w-2xl text-center md:mb-16"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
-            <Sparkles className="h-3 w-3 text-primary" /> Tudo que você precisa
+            <Sparkles className="h-3 w-3 text-primary" /> Módulos da plataforma
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Uma plataforma. <span className="text-gradient">Zero esforço.</span>
+            Toda a operação. <span className="text-gradient">Um só painel.</span>
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Da captação à publicação — automatizamos cada etapa do seu fluxo de conteúdo.
+            Explore os recursos que conectam descoberta, produção, aprovação, agenda e publicação.
           </p>
         </motion.div>
 
@@ -665,7 +631,7 @@ export default function Index() {
       </section>
 
       {/* PROVA VISUAL */}
-      <section className="container relative py-20 md:py-24">
+      <section id="resultados" className="container relative scroll-mt-20 py-20 md:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -784,7 +750,7 @@ export default function Index() {
       </section>
 
       {/* COMO FUNCIONA */}
-      <section id="como-funciona" className="container relative py-20 md:py-32">
+      <section id="como-funciona" className="container relative scroll-mt-20 py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -796,7 +762,7 @@ export default function Index() {
             <Rocket className="h-3 w-3 text-primary" /> Como funciona
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Do feed ao feed em <span className="text-gradient">4 passos</span>
+            Da fonte à publicação em <span className="text-gradient">4 passos</span>
           </h2>
         </motion.div>
 
@@ -825,7 +791,7 @@ export default function Index() {
       </section>
 
       {/* ROADMAP */}
-      <section className="container relative py-20 md:py-28">
+      <section id="roadmap" className="container relative scroll-mt-20 py-20 md:py-28">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -837,7 +803,7 @@ export default function Index() {
             <Sparkles className="h-3 w-3 text-primary" /> Roadmap de evolução
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Roadmap de evolução: <span className="text-gradient">próximos 6 meses</span>
+            O que vem a seguir na <span className="text-gradient">plataforma</span>
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             O Flux & Feed está em evolução constante. Nosso foco é transformar sua operação de conteúdo em um sistema cada vez mais inteligente, seguro e lucrativo.
@@ -882,7 +848,7 @@ export default function Index() {
       </section>
 
       {/* PLANOS */}
-      <section id="planos" className="container relative py-20 md:py-32">
+      <section id="planos" className="container relative scroll-mt-20 py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -902,7 +868,36 @@ export default function Index() {
         </motion.div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 max-w-7xl mx-auto">
-          {(livePlans ?? []).filter(row => row.plan !== "free").map((row, i) => {
+          {plansStatus === "loading" && [...Array(3)].map((_, index) => (
+            <div key={index} className="h-[430px] animate-pulse rounded-2xl border border-border/40 bg-card/45" aria-hidden="true" />
+          ))}
+          {plansStatus === "error" && (
+            <div className="col-span-full rounded-2xl border border-amber-300/20 bg-amber-300/5 p-8 text-center">
+              <h3 className="font-display text-xl font-semibold">Planos temporariamente indisponíveis</h3>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+                Não foi possível carregar os valores agora. Nossa equipe pode apresentar o plano ideal para sua operação.
+              </p>
+              <Button variant="outline" asChild className="mt-5">
+                <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="mr-2 h-4 w-4" /> Falar com a equipe
+                </a>
+              </Button>
+            </div>
+          )}
+          {plansStatus === "ready" && availablePlans.length === 0 && (
+            <div className="col-span-full rounded-2xl border border-border/50 bg-card/50 p-8 text-center">
+              <h3 className="font-display text-xl font-semibold">Novos planos em configuração</h3>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+                Fale com nossa equipe para conhecer os limites, valores e opções disponíveis para sua operação.
+              </p>
+              <Button variant="outline" asChild className="mt-5">
+                <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="mr-2 h-4 w-4" /> Consultar planos
+                </a>
+              </Button>
+            </div>
+          )}
+          {plansStatus === "ready" && availablePlans.map((row, i) => {
             const cta = PLAN_CTA[row.plan] || { label: "Saiba mais", to: "/pricing" };
             const p = {
               name: row.display_name?.split(" (")[0] || row.plan,
@@ -979,7 +974,7 @@ export default function Index() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="container py-20 md:py-32">
+      <section id="faq" className="container scroll-mt-20 py-20 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -1019,14 +1014,14 @@ export default function Index() {
           <div className="absolute inset-0 bg-grid opacity-50" />
           <div className="relative">
             <h2 className="mx-auto max-w-3xl font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-              Crie seu autopiloto de notícias para <span className="text-gradient">Instagram</span>
+              Organize sua operação de conteúdo no <span className="text-gradient">Flux & Feed</span>
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg">
-              Teste grátis, sem cartão, com RSS, IA, templates e fila de publicação em um único painel.
+              Teste por 7 dias com cartão cadastrado. A cobrança começa somente depois do período de teste.
             </p>
             <Button size="lg" asChild className="mt-8 h-14 w-full bg-gradient-brand px-6 text-base text-primary-foreground shadow-glow hover:opacity-90 group sm:mt-10 sm:w-auto sm:px-10">
               <Link to="/auth">
-                Criar meu autopiloto <ArrowRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                Começar teste de 7 dias <ArrowRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>
           </div>
@@ -1040,6 +1035,8 @@ export default function Index() {
           <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <Link to="/terms" className="hover:text-foreground transition-colors">Termos</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacidade</Link>
+            <a href="#roadmap" className="hover:text-foreground transition-colors">Roadmap</a>
+            <a href="#faq" className="hover:text-foreground transition-colors">Ajuda</a>
             <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Contato</a>
             <a
               href={INSTAGRAM_URL}
