@@ -242,6 +242,57 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_events: {
+        Row: {
+          completion_tokens: number
+          created_at: string
+          estimated_cost_usd: number
+          http_status: number | null
+          id: string
+          latency_ms: number | null
+          metadata: Json
+          model: string
+          operation: string
+          prompt_tokens: number
+          provider: string
+          success: boolean
+          total_tokens: number
+          user_id: string | null
+        }
+        Insert: {
+          completion_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number
+          http_status?: number | null
+          id?: string
+          latency_ms?: number | null
+          metadata?: Json
+          model: string
+          operation?: string
+          prompt_tokens?: number
+          provider: string
+          success?: boolean
+          total_tokens?: number
+          user_id?: string | null
+        }
+        Update: {
+          completion_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number
+          http_status?: number | null
+          id?: string
+          latency_ms?: number | null
+          metadata?: Json
+          model?: string
+          operation?: string
+          prompt_tokens?: number
+          provider?: string
+          success?: boolean
+          total_tokens?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       channel_settings: {
         Row: {
           active: boolean
@@ -1604,6 +1655,23 @@ export type Database = {
       }
     }
     Views: {
+      admin_ai_usage_daily: {
+        Row: {
+          average_latency_ms: number | null
+          calls: number | null
+          completion_tokens: number | null
+          estimated_cost_usd: number | null
+          failed_calls: number | null
+          last_used_at: string | null
+          model: string | null
+          prompt_tokens: number | null
+          provider: string | null
+          successful_calls: number | null
+          total_tokens: number | null
+          usage_day: string | null
+        }
+        Relationships: []
+      }
       meta_api_usage_latest: {
         Row: {
           app_call_count: number | null
