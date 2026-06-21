@@ -965,6 +965,51 @@ function templateSvg(opts: {
 </svg>`;
 }
 
+async function embedTemplateBrandElements(config: any) {
+  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
+  const embedded = await Promise.all(elements.map(async (element: any) => {
+    if (element?.type !== "image" || typeof element.url !== "string") return element;
+    const dataUrl = await fetchAsDataUrl(element.url);
+    return dataUrl ? { ...element, dataUrl } : element;
+  }));
+  return { ...(config || {}), brandElements: embedded };
+}
+
+function templateBrandElementsSvg(config: any, canvasHeight: number) {
+  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
+  const number = (value: unknown, min: number, max: number, fallback: number) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+  };
+  const color = (value: unknown, fallback = "#FFFFFF") =>
+    typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+
+  return elements.map((element: any) => {
+    const x = number(element?.x, 0, 1080, 0);
+    const y = number(element?.y, 0, canvasHeight, 0);
+    const opacity = number(element?.opacity, 0.1, 1, 1);
+    if (element?.type === "image") {
+      const dataUrl = typeof element.dataUrl === "string" && element.dataUrl.startsWith("data:image/") ? element.dataUrl : "";
+      if (!dataUrl) return "";
+      const width = number(element.width, 20, 1080, 240);
+      const height = number(element.height, 20, canvasHeight, 120);
+      return `<image href="${dataUrl}" x="${x}" y="${y}" width="${width}" height="${height}" opacity="${opacity}" preserveAspectRatio="xMidYMid meet"/>`;
+    }
+    if (element?.type === "text") {
+      const text = typeof element.text === "string" ? element.text.slice(0, 80) : "";
+      if (!text) return "";
+      const width = number(element.width, 40, 1080, 420);
+      const size = number(element.fontSize, 12, 160, 34);
+      const weight = number(element.fontWeight, 300, 900, 700);
+      const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
+      const anchor = textAnchorForAlign(align);
+      const textX = textXForBox(x, width, align);
+      return `<text x="${textX}" y="${y + size}" font-family="Inter, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${color(element.color)}" text-anchor="${anchor}" opacity="${opacity}">${escapeXml(text)}</text>`;
+    }
+    return "";
+  }).join("");
+}
+
 // Custom template renderer: user-uploaded background OR preset, with config overlay
 function customTemplateSvg(opts: {
   title: string;
@@ -996,6 +1041,7 @@ function customTemplateSvg(opts: {
   const overlay = cfg.overlayOpacity > 0
     ? `<rect width="1080" height="${height}" fill="#000000" fill-opacity="${Math.max(0, Math.min(0.9, Number(cfg.overlayOpacity) || 0))}"/>`
     : "";
+  const brandElements = templateBrandElementsSvg(cfg, height);
 
   // Foto da notícia encaixada na "caixa de foto" do template
   const photoBlock = (cfg.showPhoto && photoDataUrl)
@@ -1014,6 +1060,7 @@ function customTemplateSvg(opts: {
   <text font-family="Inter, Arial, sans-serif" font-size="${cfg.subtitleSize}" font-weight="500" fill="${cfg.subtitleColor}" text-anchor="${textAnchorForAlign(cfg.subtitleAlign)}">${subTspans}</text>
   ${cfg.showBadge ? `<rect x="${cfg.badgeX}" y="${cfg.badgeY}" width="${cfg.badgeW}" height="${cfg.badgeH}" fill="${cfg.badgeBg}"/>
   <text x="${cfg.badgeX + cfg.badgeW / 2}" y="${cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35}" font-family="Inter, monospace" font-size="${cfg.badgeSize}" font-weight="900" fill="${cfg.badgeColor}" text-anchor="middle" letter-spacing="3">${escapeXml(cfg.badgeText)}</text>` : ""}
+  ${brandElements}
 </svg>`;
 }
 
@@ -1281,7 +1328,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       const brandName  = settings?.brand_name  || "";
       const brandHandle = settings?.brand_handle || brandName;
 
-      if (activeFeedTemplate && (activeFeedTemplate.background_url || activeFeedTemplate.preset_key)) {
+      if (activeFeedTemplate) {
         // Template customizado: busca background se houver URL
         let bgDataUrl: string | null = null;
         if (activeFeedTemplate.background_url) {
@@ -1291,6 +1338,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
             console.warn("[template] Fundo do Feed indisponível; usando o fundo seguro do preset", error);
           }
         }
+        const templateConfig = await embedTemplateBrandElements(activeFeedTemplate.config ?? {});
         feedSvg = customTemplateSvg({
           title: ai.title,
           subtitle: ai.subtitle,
@@ -1298,7 +1346,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           brandName,
           bgDataUrl,
           presetKey: activeFeedTemplate.preset_key ?? null,
-          config: activeFeedTemplate.config ?? {},
+          config: templateConfig,
           photoDataUrl: rawPhotoDataUrl,
           height: 1080,
           format: "feed",
@@ -1338,7 +1386,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     let reelCoverUrl: string | null = null;
     try {
       let rcSvg: string;
-      if (activeVerticalTemplate && (activeVerticalTemplate.background_url || activeVerticalTemplate.preset_key)) {
+      if (activeVerticalTemplate) {
         let bgDataUrl: string | null = null;
         if (activeVerticalTemplate.background_url) {
           try {
@@ -1347,6 +1395,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
             console.warn("[template] Fundo vertical indisponível; usando o fundo seguro do preset", error);
           }
         }
+        const templateConfig = await embedTemplateBrandElements(activeVerticalTemplate.config ?? {});
         rcSvg = customTemplateSvg({
           title: ai.title,
           subtitle: ai.subtitle,
@@ -1354,7 +1403,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           brandName: settings?.brand_name || "",
           bgDataUrl,
           presetKey: activeVerticalTemplate.preset_key ?? null,
-          config: activeVerticalTemplate.config ?? {},
+          config: templateConfig,
           photoDataUrl: rawPhotoDataUrl,
           height: 1920,
           format: intendedMediaType,

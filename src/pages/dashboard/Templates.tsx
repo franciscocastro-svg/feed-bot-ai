@@ -32,6 +32,38 @@ type Template = {
   format: PostFormat;
 };
 
+type BrandTextElement = {
+  id: string;
+  type: "text";
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  color: string;
+  fontWeight: number;
+  align: "left" | "center" | "right";
+  opacity: number;
+};
+
+type BrandImageElement = {
+  id: string;
+  type: "image";
+  name: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  opacity: number;
+};
+
+type BrandElement = BrandTextElement | BrandImageElement;
+
+function templateBrandElements(config: any): BrandElement[] {
+  return Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
+}
+
 const FORMATS: { key: PostFormat; label: string; icon: any; description: string; aspect: string }[] = [
   { key: "feed", label: "Feed", icon: Newspaper, description: "Posts quadrados 1080×1080", aspect: "aspect-square" },
   { key: "stories", label: "Stories", icon: Camera, description: "Vertical 1080×1920 — 24h", aspect: "aspect-[9/16]" },
@@ -842,6 +874,31 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
             {cfg.badgeText}
           </div>
         )}
+
+        {templateBrandElements(cfg).map(element => element.type === "image" ? (
+          <img
+            key={element.id}
+            src={element.url}
+            alt={element.name || "Elemento de marca"}
+            className="absolute object-contain"
+            style={{
+              left: xP(element.x), top: yP(element.y), width: wP(element.width), height: hP(element.height),
+              opacity: element.opacity ?? 1,
+            }}
+          />
+        ) : (
+          <div
+            key={element.id}
+            className="absolute whitespace-pre-line leading-tight"
+            style={{
+              left: xP(element.x), top: yP(element.y), width: wP(element.width), color: element.color,
+              fontSize: fontPct(element.fontSize), fontWeight: element.fontWeight, textAlign: element.align,
+              opacity: element.opacity ?? 1,
+            }}
+          >
+            {element.text}
+          </div>
+        ))}
       </div>
     );
   };
@@ -1031,11 +1088,15 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
   onSave: (t: Template) => void;
   isNew?: boolean;
 }) {
+  const { user } = useAuth();
   const [draft, setDraft] = useState<Template>(() => ({
     ...template,
     config: { ...normalizeTemplateConfig(template.config, template.format || "feed") },
   }));
   const [finalPreviewOpen, setFinalPreviewOpen] = useState(false);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [elementUploading, setElementUploading] = useState(false);
+  const elementFileRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fmt = draft.format || "feed";
   const canvasH = fmt === "feed" ? 1080 : 1920;
@@ -1046,6 +1107,83 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
     const currentCfg = normalizeTemplateConfig(current.config, currentFmt);
     return { ...current, config: { ...currentCfg, ...patch } };
   });
+  const elements = templateBrandElements(cfg);
+  const selectedElement = elements.find(element => element.id === selectedElementId) || null;
+  const updateElements = (next: BrandElement[]) => update({ brandElements: next.slice(0, 12) });
+  const patchElement = (id: string, patch: Partial<BrandElement>) => {
+    updateElements(elements.map(element => element.id === id ? { ...element, ...patch } as BrandElement : element));
+  };
+  const addTextElement = () => {
+    if (elements.length >= 12) return toast.error("Cada template pode ter até 12 elementos de marca.");
+    const element: BrandTextElement = {
+      id: crypto.randomUUID(),
+      type: "text",
+      text: "NOME DA EDITORIA",
+      x: 70,
+      y: canvasH - 180,
+      width: 420,
+      fontSize: 34,
+      color: "#FFFFFF",
+      fontWeight: 700,
+      align: "left",
+      opacity: 1,
+    };
+    updateElements([...elements, element]);
+    setSelectedElementId(element.id);
+  };
+  const uploadBrandElement = async (file: File) => {
+    if (!user) return;
+    if (elements.length >= 12) return toast.error("Cada template pode ter até 12 elementos de marca.");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      return toast.error("Use PNG, JPG ou WebP. Para logotipos, prefira PNG transparente.");
+    }
+    if (file.size > 2 * 1024 * 1024) return toast.error("O elemento precisa ter até 2 MB.");
+    setElementUploading(true);
+    try {
+      const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve({ width: image.naturalWidth, height: image.naturalHeight });
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Não consegui ler esta imagem."));
+        };
+        image.src = objectUrl;
+      });
+      const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${user.id}/elements/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("template-backgrounds").upload(path, file, {
+        upsert: false,
+        contentType: file.type,
+      });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
+      const width = Math.min(420, Math.max(120, dimensions.width));
+      const height = Math.min(320, Math.max(60, Math.round(width * dimensions.height / dimensions.width)));
+      const element: BrandImageElement = {
+        id: crypto.randomUUID(),
+        type: "image",
+        name: file.name.replace(/\.[^.]+$/, ""),
+        url: publicUrl,
+        x: Math.round((1080 - width) / 2),
+        y: Math.max(40, canvasH - height - 80),
+        width,
+        height,
+        opacity: 1,
+      };
+      updateElements([...elements, element]);
+      setSelectedElementId(element.id);
+      toast.success("Elemento adicionado ao template");
+    } catch (error: any) {
+      toast.error(error.message || "Não foi possível enviar o elemento.");
+    } finally {
+      setElementUploading(false);
+      if (elementFileRef.current) elementFileRef.current.value = "";
+    }
+  };
   const layouts = getTemplateLayoutOptions(fmt);
   const gradient = resolveTemplateGradient(draft.preset_key, cfg);
   const updateGradient = (patch: { angle?: number; first?: string; last?: string }) => {
@@ -1073,6 +1211,25 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
       const nextY = Math.max(0, Math.min(canvasH - height, Math.round(startY + (moveEvent.clientY - pointerY) * canvasH / rect.height)));
       update({ [xKey]: nextX, [yKey]: nextY });
     };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+  const beginElementDrag = (event: ReactPointerEvent, element: BrandElement) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    setSelectedElementId(element.id);
+    const pointerX = event.clientX;
+    const pointerY = event.clientY;
+    const elementHeight = element.type === "image" ? element.height : element.fontSize * 1.4;
+    const move = (moveEvent: PointerEvent) => patchElement(element.id, {
+      x: Math.max(0, Math.min(1080 - element.width, Math.round(element.x + (moveEvent.clientX - pointerX) * 1080 / rect.width))),
+      y: Math.max(0, Math.min(canvasH - elementHeight, Math.round(element.y + (moveEvent.clientY - pointerY) * canvasH / rect.height))),
+    });
     const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
@@ -1155,6 +1312,36 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
                 {cfg.badgeText}
               </div>
             )}
+            {elements.map(element => element.type === "image" ? (
+              <img
+                key={element.id}
+                src={element.url}
+                alt={element.name}
+                onClick={() => setSelectedElementId(element.id)}
+                onPointerDown={event => beginElementDrag(event, element)}
+                className={`absolute z-[15] cursor-move object-contain outline outline-2 ${selectedElementId === element.id ? "outline-primary" : "outline-transparent hover:outline-primary/60"}`}
+                style={{
+                  left: `${(element.x / 1080) * 100}%`, top: `${(element.y / canvasH) * 100}%`,
+                  width: `${(element.width / 1080) * 100}%`, height: `${(element.height / canvasH) * 100}%`,
+                  opacity: element.opacity ?? 1,
+                }}
+              />
+            ) : (
+              <div
+                key={element.id}
+                onClick={() => setSelectedElementId(element.id)}
+                onPointerDown={event => beginElementDrag(event, element)}
+                className={`absolute z-[15] cursor-move whitespace-pre-line leading-tight outline outline-2 ${selectedElementId === element.id ? "outline-primary" : "outline-transparent hover:outline-primary/60"}`}
+                style={{
+                  left: `${(element.x / 1080) * 100}%`, top: `${(element.y / canvasH) * 100}%`,
+                  width: `${(element.width / 1080) * 100}%`, color: element.color,
+                  fontSize: `${(element.fontSize / 1080) * 100}cqw`, fontWeight: element.fontWeight,
+                  textAlign: element.align, opacity: element.opacity ?? 1,
+                }}
+              >
+                {element.text}
+              </div>
+            ))}
             <div className="pointer-events-none absolute inset-[5.5%] z-20 border border-white/20" />
           </div>
           </div>
@@ -1180,6 +1367,89 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
             <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => update({ ...getDefaultTemplateConfig(fmt), ...getPresetTemplateLayout(draft.preset_key, fmt) })}>
               Restaurar composicao do modelo
             </Button>
+          </Section>
+
+          <Section title="Elementos de marca">
+            <p className="text-xs text-muted-foreground">
+              Adicione editorias, chamadas fixas, logotipos, selos ou imagens transparentes. Esses elementos permanecem em todas as publicações deste template.
+            </p>
+            <input
+              ref={elementFileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={event => event.target.files?.[0] && uploadBrandElement(event.target.files[0])}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={addTextElement}>
+                <Plus className="mr-2 h-4 w-4" /> Adicionar texto
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={elementUploading} onClick={() => elementFileRef.current?.click()}>
+                <ImageIcon className="mr-2 h-4 w-4" /> {elementUploading ? "Enviando..." : "Logo ou imagem"}
+              </Button>
+            </div>
+
+            {elements.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                Nenhum elemento de marca adicionado.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {elements.map((element, index) => (
+                  <button
+                    key={element.id}
+                    type="button"
+                    onClick={() => setSelectedElementId(element.id)}
+                    className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition ${selectedElementId === element.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                  >
+                    <span className="truncate">
+                      {index + 1}. {element.type === "text" ? element.text || "Texto sem conteúdo" : element.name || "Imagem"}
+                    </span>
+                    <Badge variant="outline" className="ml-2 text-[10px]">{element.type === "text" ? "Texto" : "Imagem"}</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedElement && (
+              <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">Editar elemento</div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      updateElements(elements.filter(element => element.id !== selectedElement.id));
+                      setSelectedElementId(null);
+                    }}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                  </Button>
+                </div>
+
+                {selectedElement.type === "text" ? (
+                  <>
+                    <div><Label>Texto fixo</Label><Input value={selectedElement.text} maxLength={80} onChange={event => patchElement(selectedElement.id, { text: event.target.value })} /></div>
+                    <RangeRow label="Largura" value={selectedElement.width} min={100} max={1080} onChange={value => patchElement(selectedElement.id, { width: value })} />
+                    <RangeRow label="Tamanho" value={selectedElement.fontSize} min={14} max={140} onChange={value => patchElement(selectedElement.id, { fontSize: value })} />
+                    <RangeRow label="Peso" value={selectedElement.fontWeight} min={300} max={900} onChange={value => patchElement(selectedElement.id, { fontWeight: value })} />
+                    <AlignRow label="Alinhamento" value={selectedElement.align} onChange={value => patchElement(selectedElement.id, { align: value })} />
+                    <ColorRow label="Cor" value={selectedElement.color} onChange={value => patchElement(selectedElement.id, { color: value })} />
+                  </>
+                ) : (
+                  <>
+                    <div><Label>Nome do elemento</Label><Input value={selectedElement.name} maxLength={80} onChange={event => patchElement(selectedElement.id, { name: event.target.value })} /></div>
+                    <RangeRow label="Largura" value={selectedElement.width} min={40} max={1080} onChange={value => patchElement(selectedElement.id, { width: value })} />
+                    <RangeRow label="Altura" value={selectedElement.height} min={30} max={canvasH} onChange={value => patchElement(selectedElement.id, { height: value })} />
+                  </>
+                )}
+                <RangeRow label="Posição horizontal" value={selectedElement.x} min={0} max={1080} onChange={value => patchElement(selectedElement.id, { x: value })} />
+                <RangeRow label="Posição vertical" value={selectedElement.y} min={0} max={canvasH} onChange={value => patchElement(selectedElement.id, { y: value })} />
+                <RangeRow label="Opacidade" value={Math.round((selectedElement.opacity ?? 1) * 100)} min={10} max={100} onChange={value => patchElement(selectedElement.id, { opacity: value / 100 })} />
+              </div>
+            )}
           </Section>
 
           <Section title="Título">

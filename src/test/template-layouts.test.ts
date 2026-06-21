@@ -54,4 +54,14 @@ describe("professional template layouts", () => {
     expect(textAnchorForAlign("center")).toBe("middle");
     expect(textAnchorForAlign("right")).toBe("end");
   });
+
+  it("preserves permanent brand elements in saved template configs", () => {
+    const brandElements = [
+      { id: "category", type: "text", text: "MULHER", x: 70, y: 900, width: 300, fontSize: 34, color: "#FFFFFF" },
+      { id: "logo", type: "image", name: "Logo", url: "https://example.com/logo.png", x: 720, y: 900, width: 280, height: 120 },
+    ];
+    const config = normalizeTemplateConfig({ brandElements }, "feed");
+
+    expect(config.brandElements).toEqual(brandElements);
+  });
 });
