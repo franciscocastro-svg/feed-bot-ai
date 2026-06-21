@@ -201,6 +201,8 @@ export default function Templates() {
   const [brand, setBrand] = useState<{ handle?: string; name?: string; logo?: string }>({});
   const [uploading, setUploading] = useState(false);
   const [criteriaOpen, setCriteriaOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createFormat, setCreateFormat] = useState<PostFormat>("feed");
   const [selectedNiche, setSelectedNiche] = useState<string>(NICHES[0].key);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -349,7 +351,38 @@ export default function Templates() {
   }
   function triggerUpload(format: PostFormat) {
     uploadFormatRef.current = format;
+    setCreateOpen(false);
     fileRef.current?.click();
+  }
+
+  function openCreate(format: PostFormat) {
+    setCreateFormat(format);
+    setCreateOpen(true);
+  }
+
+  function startBlankTemplate(format: PostFormat) {
+    const config = {
+      ...getDefaultTemplateConfig(format),
+      backgroundGradient: {
+        angle: 135,
+        stops: [
+          { color: "#18111b", position: 0 },
+          { color: "#34132d", position: 1 },
+        ],
+      },
+    };
+    const label = FORMATS.find(item => item.key === format)?.label || "Template";
+    setCreateOpen(false);
+    setEditing({
+      id: `new-${crypto.randomUUID()}`,
+      name: `Novo template de ${label}`,
+      kind: "custom",
+      preset_key: null,
+      background_url: null,
+      config,
+      is_default: false,
+      format,
+    });
   }
 
   async function remove(template: Template) {
@@ -376,6 +409,27 @@ export default function Templates() {
   }
 
   async function saveConfig(t: Template) {
+    if (t.id.startsWith("new-")) {
+      try {
+        await ensureTemplateLimit();
+      } catch (e: any) {
+        return toast.error(e.message);
+      }
+      const { data, error } = await supabase.from("post_templates").insert({
+        user_id: user!.id,
+        name: t.name,
+        kind: "custom",
+        preset_key: null,
+        background_url: null,
+        config: t.config,
+        format: t.format,
+      }).select().single();
+      if (error) return toast.error(error.message);
+      setTemplates(list => [data as Template, ...list]);
+      setEditing(null);
+      toast.success("Template criado com sucesso");
+      return;
+    }
     const { error } = await supabase.from("post_templates").update({
       name: t.name, config: t.config,
     }).eq("id", t.id);
@@ -498,6 +552,56 @@ export default function Templates() {
         onChange={e => e.target.files?.[0] && uploadBackground(e.target.files[0])}
       />
 
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Criar template de {FORMATS.find(item => item.key === createFormat)?.label}</DialogTitle>
+            <DialogDescription>
+              Escolha um ponto de partida. O template só será usado depois que você ajustar os blocos, conferir a prévia e defini-lo como padrão.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => startBlankTemplate(createFormat)}
+              className="group rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary hover:bg-primary/5"
+            >
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Plus className="h-5 w-5" />
+              </div>
+              <div className="font-semibold">Começar do zero</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Monte o fundo e posicione título, subtítulo, foto, selo e identificação da marca no editor.
+              </p>
+              <div className="mt-4 text-xs font-medium text-primary">Abrir editor em branco →</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => triggerUpload(createFormat)}
+              disabled={uploading}
+              className="group rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+            >
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Upload className="h-5 w-5" />
+              </div>
+              <div className="font-semibold">Usar arte como base</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Envie um PNG ou JPG validado e depois marque exatamente onde cada conteúdo automático deve aparecer.
+              </p>
+              <div className="mt-4 text-xs font-medium text-primary">
+                {TEMPLATE_REQUIREMENTS[createFormat].label} · até 5 MB →
+              </div>
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+            <strong className="text-foreground">Importante:</strong> enviar uma arte não publica a imagem diretamente. Ela vira o fundo do template e será combinada com os textos e fotos de cada notícia.
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {FORMATS.map(fmt => {
         const Icon = fmt.icon;
         const list = templates.filter(t => (t.format || "feed") === fmt.key);
@@ -520,8 +624,8 @@ export default function Templates() {
                   </Badge>
                 )}
               </div>
-              <Button size="sm" onClick={() => triggerUpload(fmt.key)} disabled={uploading}>
-                <Upload className="h-4 w-4 mr-2" /> Subir arte
+              <Button size="sm" onClick={() => openCreate(fmt.key)} disabled={uploading}>
+                <Plus className="h-4 w-4 mr-2" /> Criar template
               </Button>
             </div>
 
@@ -642,6 +746,7 @@ export default function Templates() {
           brand={brand}
           onClose={() => setEditing(null)}
           onSave={saveConfig}
+          isNew={editing.id.startsWith("new-")}
         />
       )}
 
@@ -919,11 +1024,12 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
   );
 }
 
-function EditorPanel({ template, brand, onClose, onSave }: {
+function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
   template: Template;
   brand: { handle?: string; name?: string; logo?: string };
   onClose: () => void;
   onSave: (t: Template) => void;
+  isNew?: boolean;
 }) {
   const [draft, setDraft] = useState<Template>(() => ({
     ...template,
@@ -976,7 +1082,7 @@ function EditorPanel({ template, brand, onClose, onSave }: {
   };
   const sampleTitle = "TÍTULO DA NOTÍCIA EM DESTAQUE AQUI";
   const sampleSub = "Subtítulo curto explicando o contexto da notícia";
-  const hasChanges = JSON.stringify({ name: template.name, config: normalizeTemplateConfig(template.config, fmt) }) !== JSON.stringify({ name: draft.name, config: cfg });
+  const hasChanges = isNew || JSON.stringify({ name: template.name, config: normalizeTemplateConfig(template.config, fmt) }) !== JSON.stringify({ name: draft.name, config: cfg });
   const canSave = draft.name.trim().length > 0 && hasChanges;
 
   return (
@@ -987,8 +1093,8 @@ function EditorPanel({ template, brand, onClose, onSave }: {
           <div className="border-b border-border px-5 py-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <DialogTitle>Ajustar template — {draft.name || template.name}</DialogTitle>
-                <DialogDescription>Edite como rascunho, confira a prévia final e salve apenas quando estiver pronto.</DialogDescription>
+                <DialogTitle>{isNew ? "Criar template" : "Ajustar template"} — {draft.name || template.name}</DialogTitle>
+                <DialogDescription>{isNew ? "Comece pela composição, posicione cada bloco e confira a prévia antes de criar." : "Edite como rascunho, confira a prévia final e salve apenas quando estiver pronto."}</DialogDescription>
               </div>
               <Badge variant={hasChanges ? "default" : "outline"} className={hasChanges ? "bg-primary text-primary-foreground" : ""}>
                 {hasChanges ? "Rascunho não salvo" : "Sem alterações"}
@@ -1150,7 +1256,7 @@ function EditorPanel({ template, brand, onClose, onSave }: {
             </Button>
             <Button variant="outline" onClick={onClose} className="sm:order-3">Cancelar</Button>
             <Button onClick={() => onSave({ ...draft, name: draft.name.trim(), config: cfg })} disabled={!canSave} className="sm:order-1">
-              Salvar alterações
+              {isNew ? "Criar template" : "Salvar alterações"}
             </Button>
           </div>
         </div>
