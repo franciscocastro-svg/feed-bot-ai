@@ -307,15 +307,93 @@ async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string
   return parsed;
 }
 
+function readGeminiUsage(data: any) {
+  const usage = data?.usage || {};
+  const native = data?.usageMetadata || data?.usage_metadata || {};
+  const promptTokens = Number(
+    usage.prompt_tokens ?? usage.promptTokenCount ?? native.promptTokenCount ?? native.prompt_token_count ?? 0,
+  );
+  const candidatesTokens = Number(
+    usage.completion_tokens ?? usage.candidatesTokenCount ?? native.candidatesTokenCount ?? native.candidates_token_count ?? 0,
+  );
+  const thoughtsTokens = usage.completion_tokens == null
+    ? Number(native.thoughtsTokenCount ?? native.thoughts_token_count ?? 0)
+    : 0;
+  const completionTokens = candidatesTokens + thoughtsTokens;
+  const totalTokens = Number(
+    usage.total_tokens ?? usage.totalTokenCount ?? native.totalTokenCount ?? native.total_token_count
+      ?? (promptTokens + completionTokens),
+  );
+  return {
+    promptTokens: Number.isFinite(promptTokens) ? Math.max(0, promptTokens) : 0,
+    completionTokens: Number.isFinite(completionTokens) ? Math.max(0, completionTokens) : 0,
+    totalTokens: Number.isFinite(totalTokens) ? Math.max(0, totalTokens) : 0,
+    thoughtsTokens: Number.isFinite(thoughtsTokens) ? Math.max(0, thoughtsTokens) : 0,
+  };
+}
+
+function estimateGeminiCostUsd(model: string, promptTokens: number, completionTokens: number) {
+  const normalized = model.toLowerCase();
+  const rates = normalized.includes("2.5-flash-lite")
+    ? { input: 0.10, output: 0.40 }
+    : normalized.includes("2.5-flash")
+      ? { input: 0.30, output: 2.50 }
+      : null;
+  if (!rates) return 0;
+  return (promptTokens * rates.input + completionTokens * rates.output) / 1_000_000;
+}
+
+async function recordGeminiUsage(event: {
+  userId?: string | null;
+  model: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  success: boolean;
+  httpStatus?: number;
+  latencyMs: number;
+  metadata?: Record<string, unknown>;
+}) {
+  const sb = getCacheClient();
+  if (!sb) return;
+  const estimatedCostUsd = estimateGeminiCostUsd(
+    event.model,
+    event.promptTokens || 0,
+    event.completionTokens || 0,
+  );
+  try {
+    const { error } = await sb.from("ai_usage_events").insert({
+      user_id: event.userId || null,
+      provider: "gemini",
+      model: event.model,
+      operation: "rewrite_news",
+      prompt_tokens: event.promptTokens || 0,
+      completion_tokens: event.completionTokens || 0,
+      total_tokens: event.totalTokens || 0,
+      estimated_cost_usd: estimatedCostUsd,
+      success: event.success,
+      http_status: event.httpStatus || null,
+      latency_ms: event.latencyMs,
+      metadata: event.metadata || {},
+    });
+    if (error) console.warn("[gemini-metrics] não foi possível registrar o uso:", error.message);
+  } catch (error) {
+    console.warn("[gemini-metrics] falha não bloqueante:", error);
+  }
+}
+
 async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new Error("GEMINI_API_KEY ausente");
+
+  const model = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
+  const startedAt = Date.now();
 
   const res = await fetch(GEMINI_AI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite",
+      model,
       messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
       temperature: 0.45,
       max_tokens: 3600,
@@ -323,9 +401,32 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
       response_format: { type: "json_object" },
     }),
   });
-  if (!res.ok) throw new Error(`Gemini AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
+  if (!res.ok) {
+    const errorBody = (await res.text()).slice(0, 500);
+    await recordGeminiUsage({
+      userId: item?.user_id,
+      model,
+      success: false,
+      httpStatus: res.status,
+      latencyMs: Date.now() - startedAt,
+      metadata: { attempt, error: errorBody },
+    });
+    throw new Error(`Gemini AI ${res.status}: ${errorBody}`);
+  }
 
   const data = await res.json();
+  const usage = readGeminiUsage(data);
+  await recordGeminiUsage({
+    userId: item?.user_id,
+    model,
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+    success: true,
+    httpStatus: res.status,
+    latencyMs: Date.now() - startedAt,
+    metadata: { attempt, thoughts_tokens: usage.thoughtsTokens },
+  });
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(content), item);
   const captionShort = (parsed?.caption?.length || 0) < 1200;

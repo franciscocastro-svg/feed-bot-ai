@@ -81,6 +81,20 @@ type AdminExpense = {
   notes: string | null;
   created_at: string;
 };
+type AiUsageDaily = {
+  usage_day: string;
+  provider: string;
+  model: string;
+  calls: number;
+  successful_calls: number;
+  failed_calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  average_latency_ms: number | null;
+  last_used_at: string;
+};
 type QueueSummary = {
   scheduled: number;
   posting: number;
@@ -114,6 +128,7 @@ export default function Admin() {
   const [detail, setDetail] = useState<Row | null>(null);
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
   const [expenses, setExpenses] = useState<AdminExpense[]>([]);
+  const [aiUsage, setAiUsage] = useState<AiUsageDaily[]>([]);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     category: "IA",
@@ -163,13 +178,23 @@ export default function Admin() {
     setLoading(true);
     const shouldLoadPlans = hasAdminPermission("plans") || hasAdminPermission("finance");
     const shouldLoadExpenses = hasAdminPermission("finance");
-    const [{ data, error }, { data: plans }, expenseRes] = await Promise.all([
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const [{ data, error }, { data: plans }, expenseRes, aiUsageRes] = await Promise.all([
       supabase.rpc("admin_overview"),
       shouldLoadPlans
         ? supabase.from("plan_limits").select("plan, price_brl")
         : Promise.resolve({ data: null }),
       shouldLoadExpenses
         ? supabase.from("admin_expenses" as any).select("*").order("spent_at", { ascending: false }).limit(100)
+        : Promise.resolve({ data: [], error: null }),
+      shouldLoadExpenses
+        ? supabase.from("admin_ai_usage_daily" as any)
+            .select("*")
+            .eq("provider", "gemini")
+            .gte("usage_day", monthStart.toISOString())
+            .order("usage_day", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (error) { toast.error("Erro ao carregar: " + error.message); setRows([]); }
@@ -180,6 +205,7 @@ export default function Admin() {
       setPlanPrices(map);
     }
     if (!expenseRes.error) setExpenses((expenseRes.data || []) as unknown as AdminExpense[]);
+    if (!aiUsageRes.error) setAiUsage((aiUsageRes.data || []) as unknown as AiUsageDaily[]);
     setLoading(false);
   };
 
@@ -363,6 +389,39 @@ export default function Admin() {
       byCategory,
     };
   }, [expenses, mrr.total]);
+
+  const geminiSummary = useMemo(() => {
+    const totals = aiUsage.reduce((acc, row) => {
+      acc.calls += Number(row.calls || 0);
+      acc.successful += Number(row.successful_calls || 0);
+      acc.failed += Number(row.failed_calls || 0);
+      acc.promptTokens += Number(row.prompt_tokens || 0);
+      acc.completionTokens += Number(row.completion_tokens || 0);
+      acc.totalTokens += Number(row.total_tokens || 0);
+      acc.estimatedCostUsd += Number(row.estimated_cost_usd || 0);
+      acc.weightedLatency += Number(row.average_latency_ms || 0) * Number(row.calls || 0);
+      return acc;
+    }, {
+      calls: 0,
+      successful: 0,
+      failed: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      estimatedCostUsd: 0,
+      weightedLatency: 0,
+    });
+    const lastUsedAt = aiUsage.reduce<string | null>((latest, row) => {
+      if (!latest || new Date(row.last_used_at) > new Date(latest)) return row.last_used_at;
+      return latest;
+    }, null);
+    return {
+      ...totals,
+      averageLatencyMs: totals.calls ? Math.round(totals.weightedLatency / totals.calls) : 0,
+      lastUsedAt,
+      models: [...new Set(aiUsage.map(row => row.model))],
+    };
+  }, [aiUsage]);
 
   const tokenStats = useMemo(() => {
     let expired = 0, soon = 0, ok = 0, none = 0;
@@ -548,6 +607,16 @@ export default function Admin() {
   );
 
   const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const fmtUSD = (n: number) => n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: n > 0 && n < 0.01 ? 4 : 2,
+    maximumFractionDigits: 6,
+  });
+  const fmtCompact = (n: number) => n.toLocaleString("pt-BR", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
   const visibleAdminTabs = ADMIN_TABS.filter((tab) => hasAdminPermission(tab.value));
   const visibleTabKeys = visibleAdminTabs.map((tab) => tab.value).join("|");
 
@@ -1075,6 +1144,70 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="border-fuchsia-500/20">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-fuchsia-500" /> Uso da Gemini neste mês
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Consumo registrado diretamente nas gerações de texto da plataforma.
+                  </p>
+                </div>
+                <Badge variant={geminiSummary.failed > 0 ? "destructive" : "outline"}>
+                  {geminiSummary.failed > 0 ? `${geminiSummary.failed} falha(s)` : "Operação normal"}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Chamadas</div>
+                  <div className="text-xl font-bold mt-1">{geminiSummary.calls.toLocaleString("pt-BR")}</div>
+                  <div className="text-[11px] text-green-600">{geminiSummary.successful} concluídas</div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Tokens de entrada</div>
+                  <div className="text-xl font-bold mt-1">{fmtCompact(geminiSummary.promptTokens)}</div>
+                  <div className="text-[11px] text-muted-foreground">prompts e notícias</div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Tokens de saída</div>
+                  <div className="text-xl font-bold mt-1">{fmtCompact(geminiSummary.completionTokens)}</div>
+                  <div className="text-[11px] text-muted-foreground">legendas geradas</div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Tokens totais</div>
+                  <div className="text-xl font-bold mt-1">{fmtCompact(geminiSummary.totalTokens)}</div>
+                  <div className="text-[11px] text-muted-foreground">mês atual</div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Tempo médio</div>
+                  <div className="text-xl font-bold mt-1">{geminiSummary.averageLatencyMs ? `${(geminiSummary.averageLatencyMs / 1000).toFixed(1)}s` : "—"}</div>
+                  <div className="text-[11px] text-muted-foreground">por chamada</div>
+                </div>
+                <div className="rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">
+                  <div className="text-xs text-muted-foreground">Custo estimado</div>
+                  <div className="text-xl font-bold text-fuchsia-500 mt-1">{fmtUSD(geminiSummary.estimatedCostUsd)}</div>
+                  <div className="text-[11px] text-muted-foreground">tabela paga</div>
+                </div>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 flex-wrap border-t pt-3 text-xs text-muted-foreground">
+                <p>
+                  Estimativa baseada nos tokens e preços públicos do modelo. O nível gratuito pode manter a fatura real em US$ 0,00.
+                </p>
+                <div className="text-right">
+                  <div>{geminiSummary.models.length ? geminiSummary.models.join(", ") : "Aguardando o primeiro registro"}</div>
+                  {geminiSummary.lastUsedAt && (
+                    <div>Último uso: {new Date(geminiSummary.lastUsedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid lg:grid-cols-2 gap-4">
             <Card>
