@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -30,13 +30,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminFullAccess, setAdminFullAccess] = useState(false);
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
+  const resolvedPermissionUserId = useRef<string | null>(null);
 
   useEffect(() => {
     // Fix: usar APENAS onAuthStateChange (evita race condition com getSession)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      // Keep protected routes waiting until the permission record is loaded.
-      setLoading(!!s?.user);
+      const nextUserId = s?.user?.id || null;
+      if (!nextUserId) {
+        resolvedPermissionUserId.current = null;
+        setLoading(false);
+      } else if (resolvedPermissionUserId.current !== nextUserId) {
+        // Only wait when the authenticated identity actually changes. Token
+        // refresh events for the same user must not restart the route loader.
+        setLoading(true);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -47,6 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsAdmin(false);
       setAdminFullAccess(false);
       setAdminPermissions([]);
+      resolvedPermissionUserId.current = null;
       setLoading(false);
       return;
     }
@@ -62,6 +71,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!admin) {
         setAdminFullAccess(false);
         setAdminPermissions([]);
+        resolvedPermissionUserId.current = session.user.id;
         setLoading(false);
         return;
       }
@@ -77,6 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // never turn a restricted administrator into a full-access one.
         setAdminFullAccess(false);
         setAdminPermissions([]);
+        resolvedPermissionUserId.current = session.user.id;
         setLoading(false);
         return;
       }
@@ -84,6 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const perm = permissions as { full_access?: boolean; sections?: string[] | null } | null;
       setAdminFullAccess(perm?.full_access ?? false);
       setAdminPermissions(perm?.sections || []);
+      resolvedPermissionUserId.current = session.user.id;
       setLoading(false);
     })();
   }, [session?.user?.id]);
