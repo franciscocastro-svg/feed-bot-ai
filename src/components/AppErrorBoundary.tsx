@@ -28,6 +28,9 @@ export class AppErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-muted-foreground mt-2">
               Uma atualização pode ter substituído os arquivos que estavam abertos no navegador.
             </p>
+            <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 font-mono text-[11px] text-muted-foreground break-words">
+              {this.state.error.message || "Erro desconhecido ao carregar a área"}
+            </p>
           </div>
           <Button onClick={() => window.location.reload()} className="gap-2">
             <RefreshCw className="h-4 w-4" /> Atualizar página

@@ -10,6 +10,7 @@ import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
+import Admin from "./pages/dashboard/Admin";
 
 // Lazy-loaded routes (reduces initial bundle, defers Stripe SDK to /pricing only)
 const DashboardLayout = lazy(() => import("@/components/DashboardLayout"));
@@ -29,7 +30,6 @@ const Templates = lazy(() => import("./pages/dashboard/Templates"));
 const TokenHealth = lazy(() => import("./pages/dashboard/TokenHealth"));
 const MetaApiHealth = lazy(() => import("./pages/dashboard/MetaApiHealth"));
 const ChannelConfig = lazy(() => import("./pages/dashboard/ChannelConfig"));
-const Admin = lazy(() => import("./pages/dashboard/Admin"));
 const AdminReleases = lazy(() => import("./pages/dashboard/AdminReleases"));
 const Support = lazy(() => import("./pages/dashboard/Support"));
 const AdminSupport = lazy(() => import("./pages/dashboard/AdminSupport"));
