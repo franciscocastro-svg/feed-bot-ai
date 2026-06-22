@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
 import {
   getDefaultTemplateConfig,
@@ -18,8 +19,23 @@ import {
   getTemplateLayoutOptions,
   normalizeTemplateConfig,
 } from "../../../supabase/functions/_shared/template-layouts.js";
+import { resolveAccountTemplateDefaults, type TemplateFormat } from "@/lib/templateDefaults";
 
-type PostFormat = "feed" | "stories" | "reels";
+type PostFormat = TemplateFormat;
+const GLOBAL_SCOPE = "__global";
+
+type InstagramAccount = { id: string; username: string; active: boolean };
+type TemplateSettings = {
+  user_id?: string;
+  instagram_account_id?: string;
+  default_template_id?: string | null;
+  default_feed_template_id?: string | null;
+  default_story_template_id?: string | null;
+  default_reel_template_id?: string | null;
+  brand_handle?: string | null;
+  brand_name?: string | null;
+  brand_logo_url?: string | null;
+};
 
 type Template = {
   id: string;
@@ -228,6 +244,11 @@ export default function Templates() {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [defaultIds, setDefaultIds] = useState<Record<PostFormat, string | null>>({ feed: null, stories: null, reels: null });
+  const [defaultSources, setDefaultSources] = useState<Record<PostFormat, "account" | "global" | null>>({ feed: null, stories: null, reels: null });
+  const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState(GLOBAL_SCOPE);
+  const [globalSettings, setGlobalSettings] = useState<TemplateSettings | null>(null);
+  const [accountSettings, setAccountSettings] = useState<TemplateSettings[]>([]);
   const [editing, setEditing] = useState<Template | null>(null);
   const [previewing, setPreviewing] = useState<Template | null>(null);
   const [brand, setBrand] = useState<{ handle?: string; name?: string; logo?: string }>({});
@@ -240,13 +261,15 @@ export default function Templates() {
 
   async function load() {
     if (!user) return;
-    const [{ data: tpls }, settingsRes] = await Promise.all([
+    const [{ data: tpls }, settingsRes, { data: igAccounts }, { data: overrides }] = await Promise.all([
       supabase.from("post_templates").select("*").order("created_at", { ascending: false }),
       supabase
         .from("user_settings")
         .select("default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase.from("instagram_accounts").select("id, username, active").order("username"),
+      supabase.from("account_settings").select("user_id, instagram_account_id, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url"),
     ]);
     let settings = settingsRes.data;
     if (!settings) {
@@ -258,34 +281,63 @@ export default function Templates() {
       settings = created;
     }
     setTemplates((tpls || []) as Template[]);
-    const templateList = (tpls || []) as Template[];
-    const hasFormat = (id: string | null | undefined, format: PostFormat) =>
-      !!id && templateList.some(template => template.id === id && (template.format || "feed") === format);
-    const legacyDefault = settings?.default_template_id || null;
-    const feedDefault = settings?.default_feed_template_id || legacyDefault;
-    setDefaultIds({
-      feed: hasFormat(feedDefault, "feed") ? feedDefault : null,
-      stories: hasFormat(settings?.default_story_template_id, "stories") ? settings?.default_story_template_id ?? null : null,
-      reels: hasFormat(settings?.default_reel_template_id, "reels") ? settings?.default_reel_template_id ?? null : null,
-    });
+    setGlobalSettings(settings as TemplateSettings);
+    setAccounts((igAccounts || []) as InstagramAccount[]);
+    setAccountSettings((overrides || []) as TemplateSettings[]);
+    if (selectedAccountId === GLOBAL_SCOPE && (igAccounts || []).length > 0) {
+      setSelectedAccountId(igAccounts![0].id);
+    }
     setBrand({ handle: settings?.brand_handle ?? undefined, name: settings?.brand_name ?? undefined, logo: settings?.brand_logo_url ?? undefined });
   }
   useEffect(() => { load(); }, [user]);
+
+  useEffect(() => {
+    if (!globalSettings) return;
+    const override = selectedAccountId === GLOBAL_SCOPE
+      ? null
+      : accountSettings.find(item => item.instagram_account_id === selectedAccountId) || null;
+    const resolved = resolveAccountTemplateDefaults(templates, globalSettings, override, selectedAccountId !== GLOBAL_SCOPE);
+    setDefaultIds(resolved.ids);
+    setDefaultSources(resolved.sources);
+
+    if (selectedAccountId === GLOBAL_SCOPE) {
+      setBrand({ handle: globalSettings.brand_handle ?? undefined, name: globalSettings.brand_name ?? undefined, logo: globalSettings.brand_logo_url ?? undefined });
+    } else {
+      setBrand({
+        handle: override?.brand_handle || globalSettings.brand_handle || undefined,
+        name: override?.brand_name || globalSettings.brand_name || undefined,
+        logo: override?.brand_logo_url || globalSettings.brand_logo_url || undefined,
+      });
+    }
+  }, [selectedAccountId, templates, globalSettings, accountSettings]);
 
   async function setDefault(id: string, format: PostFormat) {
     const column = DEFAULT_COLUMN_BY_FORMAT[format];
     const update: Record<string, string> = { [column]: id };
     if (format === "feed") update.default_template_id = id;
-    const [userSettingsResult, accountSettingsResult] = await Promise.all([
-      supabase.from("user_settings").update(update as any).eq("user_id", user!.id),
-      supabase.from("account_settings").update(update as any).eq("user_id", user!.id),
-    ]);
-    if (userSettingsResult.error) return toast.error(userSettingsResult.error.message);
-    if (accountSettingsResult.error) {
-      toast.warning("Padrão salvo, mas não consegui sincronizar as contas conectadas.");
+    if (selectedAccountId === GLOBAL_SCOPE) {
+      const { error } = await supabase.from("user_settings").update(update as any).eq("user_id", user!.id);
+      if (error) return toast.error(error.message);
+      setGlobalSettings(current => current ? { ...current, ...update } : current);
+      toast.success(`Padrão global de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido`);
+    } else {
+      const payload = {
+        user_id: user!.id,
+        instagram_account_id: selectedAccountId,
+        ...update,
+      };
+      const { data, error } = await supabase.from("account_settings")
+        .upsert(payload as any, { onConflict: "instagram_account_id" })
+        .select("user_id, instagram_account_id, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
+        .single();
+      if (error) return toast.error(error.message);
+      setAccountSettings(current => [
+        ...current.filter(item => item.instagram_account_id !== selectedAccountId),
+        data as TemplateSettings,
+      ]);
+      const account = accounts.find(item => item.id === selectedAccountId);
+      toast.success(`Template de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} aplicado somente em @${account?.username || "conta"}`);
     }
-    setDefaultIds(prev => ({ ...prev, [format]: id }));
-    toast.success(`Template padrão de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido e aplicado às contas`);
   }
 
   function getImageSize(file: File): Promise<{ width: number; height: number }> {
@@ -485,6 +537,30 @@ export default function Templates() {
         </Button>
       </div>
 
+      <Card className="p-4 border-primary/20 bg-primary/5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Templates ativos para</p>
+            <p className="text-xs text-muted-foreground">
+              Escolha uma conta antes de definir o padrão. Alterar uma conta não modifica as demais.
+            </p>
+          </div>
+          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+            <SelectTrigger className="w-full sm:w-[280px] bg-background">
+              <SelectValue placeholder="Selecione uma conta" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GLOBAL_SCOPE}>Padrão global</SelectItem>
+              {accounts.map(account => (
+                <SelectItem key={account.id} value={account.id}>
+                  @{account.username}{account.active ? "" : " (inativa)"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+
       <Dialog open={criteriaOpen} onOpenChange={setCriteriaOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -648,7 +724,12 @@ export default function Templates() {
                 <span className="text-xs text-muted-foreground hidden sm:inline">— {fmt.description}</span>
                 {activeDefaultId ? (
                   <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-400">
-                    <ShieldCheck className="h-3 w-3" /> Padrão ativo
+                    <ShieldCheck className="h-3 w-3" />
+                    {selectedAccountId === GLOBAL_SCOPE
+                      ? "Padrão global"
+                      : defaultSources[fmt.key] === "global"
+                        ? "Herdando padrão global"
+                        : "Padrão desta conta"}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-400">
@@ -758,7 +839,10 @@ export default function Templates() {
                             <Eye className="h-4 w-4 mr-1" /> Prévia
                           </Button>
                           {activeDefaultId !== t.id && (
-                            <Button size="sm" variant="ghost" title={`Definir como padrão de ${fmt.label}`} onClick={() => setDefault(t.id, fmt.key)}><Check className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" title={`Definir como padrão de ${fmt.label}`} onClick={() => setDefault(t.id, fmt.key)}>
+                              <Check className="h-4 w-4 mr-1" />
+                              {selectedAccountId === GLOBAL_SCOPE ? "Usar globalmente" : "Usar nesta conta"}
+                            </Button>
                           )}
                           <Button size="sm" variant="ghost" title="Remover template" onClick={() => remove(t)}><Trash2 className="h-4 w-4" /></Button>
                         </div>

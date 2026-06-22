@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, Send, Trash2, Pencil, RefreshCw, AlertTriangle, Zap, Clock, Eye, Film, Image as ImageIcon } from "lucide-react";
+import { Loader2, Calendar, Send, Trash2, Pencil, RefreshCw, AlertTriangle, Zap, Clock, Eye, Film, Image as ImageIcon, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +21,7 @@ export default function Scheduled() {
   const [running, setRunning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<any | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [editAccount, setEditAccount] = useState<string>("");
@@ -115,6 +116,53 @@ export default function Scheduled() {
     if (error) return toast.error(error.message);
     toast.success("Reenfileirado");
     load();
+  };
+
+  const regenerateArtwork = async (post: any) => {
+    if (!post.news_item_id || !post.instagram_account_id) {
+      toast.error("Este agendamento não possui notícia ou conta vinculada.");
+      return;
+    }
+    setRegeneratingId(post.id);
+    try {
+      const { data: item, error } = await supabase.from("news_items").select("*").eq("id", post.news_item_id).maybeSingle();
+      if (error || !item) throw new Error(error?.message || "Notícia não encontrada");
+
+      item.instagram_account_id = post.instagram_account_id;
+      const { error: accountError } = await supabase.from("news_items")
+        .update({ instagram_account_id: post.instagram_account_id })
+        .eq("id", item.id);
+      if (accountError) throw accountError;
+
+      if (post.media_type === "feed" || !post.media_type) {
+        const { composeAndUploadPost } = await import("@/lib/composePostCanvas");
+        await composeAndUploadPost(item);
+      } else {
+        const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
+        const coverUrl = await composeAndUploadStory(item, { withFollowCta: post.media_type === "reel" });
+        if (post.media_type === "reel") {
+          toast.info("Atualizando o vídeo com a nova arte...");
+          const { data: effective } = await supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id });
+          const { imageToReelVideo } = await import("@/lib/imageToVideo");
+          const blob = await imageToReelVideo(coverUrl, 6, (effective as any)?.reel_audio_url || undefined);
+          if (!(blob.type || "").includes("mp4")) throw new Error("Este navegador não conseguiu gerar o vídeo MP4.");
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error("Sessão expirada");
+          const path = `${user.id}/${item.id}.mp4`;
+          const { error: uploadError } = await supabase.storage.from("post-images").upload(path, blob, { contentType: "video/mp4", upsert: true });
+          if (uploadError) throw uploadError;
+          const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
+          await supabase.from("news_items").update({ generated_video_url: `${pub.publicUrl}?t=${Date.now()}` }).eq("id", item.id);
+        }
+      }
+
+      toast.success(`Arte regenerada com o template atual de @${post.instagram_accounts?.username || "conta"}`);
+      await load();
+    } catch (error) {
+      toast.error(`Não foi possível regenerar a arte: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+    } finally {
+      setRegeneratingId(null);
+    }
   };
 
   const publishNow = async (id: string) => {
@@ -282,6 +330,12 @@ export default function Scheduled() {
                   <Button size="sm" variant="outline" onClick={() => setPreviewing(p)} title="Ver como será publicado" className="min-w-[7rem]">
                     <Eye className="h-4 w-4 mr-1" /> Prévia
                   </Button>
+                  {p.status !== "posted" && !awaitingContainer && !posting && p.instagram_account_id && (
+                    <Button size="sm" variant="outline" onClick={() => regenerateArtwork(p)} disabled={regeneratingId === p.id} title="Gerar novamente usando o template atual desta conta">
+                      {regeneratingId === p.id ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                      Regenerar arte
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => openEdit(p)} title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
