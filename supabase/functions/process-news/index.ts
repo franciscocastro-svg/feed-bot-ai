@@ -424,7 +424,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
       success: false,
       httpStatus: res.status,
       latencyMs: Date.now() - startedAt,
-      metadata: { attempt, error: errorBody },
+      metadata: { attempt, error: errorBody, news_item_id: item?.id || null },
     });
     throw new Error(`Gemini AI ${res.status}: ${errorBody}`);
   }
@@ -440,7 +440,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
     success: true,
     httpStatus: res.status,
     latencyMs: Date.now() - startedAt,
-    metadata: { attempt, thoughts_tokens: usage.thoughtsTokens },
+    metadata: { attempt, thoughts_tokens: usage.thoughtsTokens, news_item_id: item?.id || null },
   });
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(content), item);

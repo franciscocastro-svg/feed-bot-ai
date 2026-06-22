@@ -95,6 +95,12 @@ type AiUsageDaily = {
   average_latency_ms: number | null;
   last_used_at: string;
 };
+type AiFailureEvent = {
+  id: string;
+  http_status: number | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
 type QueueSummary = {
   scheduled: number;
   posting: number;
@@ -129,6 +135,7 @@ export default function Admin() {
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
   const [expenses, setExpenses] = useState<AdminExpense[]>([]);
   const [aiUsage, setAiUsage] = useState<AiUsageDaily[]>([]);
+  const [aiFailures, setAiFailures] = useState<AiFailureEvent[]>([]);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     category: "IA",
@@ -181,7 +188,7 @@ export default function Admin() {
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
-    const [{ data, error }, { data: plans }, expenseRes, aiUsageRes] = await Promise.all([
+    const [{ data, error }, { data: plans }, expenseRes, aiUsageRes, aiFailuresRes] = await Promise.all([
       supabase.rpc("admin_overview"),
       shouldLoadPlans
         ? supabase.from("plan_limits").select("plan, price_brl")
@@ -196,6 +203,15 @@ export default function Admin() {
             .gte("usage_day", monthStart.toISOString())
             .order("usage_day", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
+      shouldLoadExpenses
+        ? supabase.from("ai_usage_events")
+            .select("id, http_status, metadata, created_at")
+            .eq("provider", "gemini")
+            .eq("success", false)
+            .gte("created_at", monthStart.toISOString())
+            .order("created_at", { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [], error: null }),
     ]);
     if (error) { toast.error("Erro ao carregar: " + error.message); setRows([]); }
     else setRows((data || []) as Row[]);
@@ -206,6 +222,7 @@ export default function Admin() {
     }
     if (!expenseRes.error) setExpenses((expenseRes.data || []) as unknown as AdminExpense[]);
     if (!aiUsageRes.error) setAiUsage((aiUsageRes.data || []) as unknown as AiUsageDaily[]);
+    if (!aiFailuresRes.error) setAiFailures((aiFailuresRes.data || []) as unknown as AiFailureEvent[]);
     setLoading(false);
   };
 
@@ -418,10 +435,29 @@ export default function Admin() {
     return {
       ...totals,
       averageLatencyMs: totals.calls ? Math.round(totals.weightedLatency / totals.calls) : 0,
+      successRate: totals.calls ? (totals.successful / totals.calls) * 100 : 100,
       lastUsedAt,
       models: [...new Set(aiUsage.map(row => row.model))],
     };
   }, [aiUsage]);
+
+  const geminiFailureBreakdown = useMemo(() => {
+    const groups = new Map<string, { label: string; count: number; status: number | null }>();
+    for (const event of aiFailures) {
+      const status = event.http_status;
+      const key = status === null ? "unknown" : String(status);
+      let label = "Erro sem código HTTP";
+      if (status === 429) label = "Limite de taxa ou quota";
+      else if (status === 401 || status === 403) label = "Chave ou permissão recusada";
+      else if (status === 408 || status === 504) label = "Tempo limite excedido";
+      else if (status !== null && status >= 500) label = "Instabilidade da Gemini";
+      else if (status === 400) label = "Requisição rejeitada";
+      else if (status !== null) label = "Erro da API Gemini";
+      const current = groups.get(key);
+      groups.set(key, { label, status, count: (current?.count || 0) + 1 });
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count);
+  }, [aiFailures]);
 
   const tokenStats = useMemo(() => {
     let expired = 0, soon = 0, ok = 0, none = 0;
@@ -1157,7 +1193,7 @@ export default function Admin() {
                   </p>
                 </div>
                 <Badge variant={geminiSummary.failed > 0 ? "destructive" : "outline"}>
-                  {geminiSummary.failed > 0 ? `${geminiSummary.failed} falha(s)` : "Operação normal"}
+                  {geminiSummary.failed > 0 ? `${geminiSummary.failed} tentativa(s) com erro` : "Operação normal"}
                 </Badge>
               </div>
             </CardHeader>
@@ -1166,7 +1202,9 @@ export default function Admin() {
                 <div className="rounded-lg border bg-muted/20 p-3">
                   <div className="text-xs text-muted-foreground">Chamadas</div>
                   <div className="text-xl font-bold mt-1">{geminiSummary.calls.toLocaleString("pt-BR")}</div>
-                  <div className="text-[11px] text-green-600">{geminiSummary.successful} concluídas</div>
+                  <div className="text-[11px] text-green-600">
+                    {geminiSummary.successful} concluídas · {geminiSummary.successRate.toFixed(1).replace(".", ",")}%
+                  </div>
                 </div>
                 <div className="rounded-lg border bg-muted/20 p-3">
                   <div className="text-xs text-muted-foreground">Tokens de entrada</div>
@@ -1194,6 +1232,30 @@ export default function Admin() {
                   <div className="text-[11px] text-muted-foreground">tabela paga</div>
                 </div>
               </div>
+
+              {geminiSummary.failed > 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-sm font-medium">Diagnóstico das tentativas com erro</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Cada número abaixo representa uma tentativa recusada pela Gemini. Isso não significa, por si só, que a notícia deixou de ser processada: o sistema pode ter concluído usando o provedor de reserva.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {geminiFailureBreakdown.map((group) => (
+                      <Badge key={group.status ?? "unknown"} variant="outline" className="bg-background/60">
+                        {group.count}× {group.label}{group.status !== null ? ` (HTTP ${group.status})` : ""}
+                      </Badge>
+                    ))}
+                    {!geminiFailureBreakdown.length && (
+                      <span className="text-xs text-muted-foreground">Detalhes ainda não disponíveis para os registros agregados.</span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-start justify-between gap-3 flex-wrap border-t pt-3 text-xs text-muted-foreground">
                 <p>
