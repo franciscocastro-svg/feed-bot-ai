@@ -447,6 +447,13 @@ export default function Admin() {
     return [...groups.values()].sort((a, b) => b.count - a.count);
   }, [aiFailures]);
 
+  const geminiFailureRecency = useMemo(() => {
+    const now = Date.now();
+    const lastHour = aiFailures.filter((event) => now - new Date(event.created_at).getTime() <= 60 * 60 * 1000).length;
+    const last24Hours = aiFailures.filter((event) => now - new Date(event.created_at).getTime() <= 24 * 60 * 60 * 1000).length;
+    return { lastHour, last24Hours, latest: aiFailures[0]?.created_at || null };
+  }, [aiFailures]);
+
   const tokenStats = useMemo(() => {
     let expired = 0, soon = 0, ok = 0, none = 0;
     rows.forEach(r => {
@@ -1185,8 +1192,12 @@ export default function Admin() {
                     Consumo registrado diretamente nas gerações de texto da plataforma.
                   </p>
                 </div>
-                <Badge variant={geminiSummary.failed > 0 ? "destructive" : "outline"}>
-                  {geminiSummary.failed > 0 ? `${geminiSummary.failed} tentativa(s) com erro` : "Operação normal"}
+                <Badge variant={geminiFailureRecency.lastHour > 0 ? "destructive" : "outline"}>
+                  {geminiFailureRecency.lastHour > 0
+                    ? `${geminiFailureRecency.lastHour} erro(s) na última hora`
+                    : geminiSummary.failed > 0
+                      ? `${geminiSummary.failed} tentativa(s) no mês`
+                      : "Operação normal"}
                 </Badge>
               </div>
             </CardHeader>
@@ -1234,6 +1245,10 @@ export default function Admin() {
                       <div className="text-sm font-medium">Diagnóstico das tentativas com erro</div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Cada número abaixo representa uma tentativa recusada pela Gemini. Isso não significa, por si só, que a notícia deixou de ser processada: o sistema pode ter concluído usando o provedor de reserva.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Últimas 24h: {geminiFailureRecency.last24Hours} · Histórico do mês: {geminiSummary.failed}
+                        {geminiFailureRecency.latest ? ` · Última recusa: ${new Date(geminiFailureRecency.latest).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}
                       </p>
                     </div>
                   </div>

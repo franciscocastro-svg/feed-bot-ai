@@ -61,6 +61,8 @@ const corsHeaders = {
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const GROQ_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+const GEMINI_CIRCUIT_BREAKER_MS = 60_000;
+let geminiUnavailableUntil = 0;
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -400,6 +402,9 @@ async function recordGeminiUsage(event: {
 async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new Error("GEMINI_API_KEY ausente");
+  if (Date.now() < geminiUnavailableUntil) {
+    throw new Error("Gemini temporariamente indisponível; usando provedor de reserva");
+  }
 
   const model = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
   const requestBody = JSON.stringify({
@@ -422,6 +427,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
     });
 
     if (res.ok) {
+      geminiUnavailableUntil = 0;
       data = await res.json();
       const usage = readGeminiUsage(data);
       await recordGeminiUsage({
@@ -450,6 +456,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
 
     const retryable = res.status === 429 || res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504;
     if (!retryable || apiAttempt === maxApiAttempts) {
+      if (retryable) geminiUnavailableUntil = Date.now() + GEMINI_CIRCUIT_BREAKER_MS;
       throw new Error(`Gemini AI ${res.status}: ${errorBody}`);
     }
 
@@ -1689,7 +1696,27 @@ Deno.serve(async (req) => {
     const { data: item, error } = await supabase.from("news_items").select("*").eq("id", news_item_id).eq("user_id", userId).maybeSingle();
     if (error || !item) return new Response(JSON.stringify({ error: "news item not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    await supabase.from("news_items").update({ status: "processing", error_message: null }).eq("id", item.id);
+    // Claim atômico: duas execuções sobrepostas não podem processar a mesma
+    // notícia nem consumir IA duas vezes.
+    const { data: claimed, error: claimError } = await supabase
+      .from("news_items")
+      .update({ status: "processing", error_message: null })
+      .eq("id", item.id)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (claimError) {
+      return new Response(JSON.stringify({ error: `claim_failed: ${claimError.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!claimed) {
+      return new Response(JSON.stringify({ ok: true, duplicate_ignored: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Chamadas internas do autopilot precisam de processamento confirmado.
     // O modo background pode ser interrompido depois que a resposta HTTP volta,
