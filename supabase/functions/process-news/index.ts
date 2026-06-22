@@ -402,21 +402,42 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
   if (!key) throw new Error("GEMINI_API_KEY ausente");
 
   const model = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
-  const startedAt = Date.now();
-
-  const res = await fetch(GEMINI_AI_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
-      temperature: 0.45,
-      max_tokens: 3600,
-      reasoning_effort: "none",
-      response_format: { type: "json_object" },
-    }),
+  const requestBody = JSON.stringify({
+    model,
+    messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+    temperature: 0.45,
+    max_tokens: 3600,
+    reasoning_effort: "none",
+    response_format: { type: "json_object" },
   });
-  if (!res.ok) {
+  const maxApiAttempts = 3;
+  let data: any = null;
+
+  for (let apiAttempt = 1; apiAttempt <= maxApiAttempts; apiAttempt++) {
+    const startedAt = Date.now();
+    const res = await fetch(GEMINI_AI_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: requestBody,
+    });
+
+    if (res.ok) {
+      data = await res.json();
+      const usage = readGeminiUsage(data);
+      await recordGeminiUsage({
+        userId: item?.user_id,
+        model,
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        success: true,
+        httpStatus: res.status,
+        latencyMs: Date.now() - startedAt,
+        metadata: { attempt, api_attempt: apiAttempt, thoughts_tokens: usage.thoughtsTokens, news_item_id: item?.id || null },
+      });
+      break;
+    }
+
     const errorBody = (await res.text()).slice(0, 500);
     await recordGeminiUsage({
       userId: item?.user_id,
@@ -424,24 +445,24 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
       success: false,
       httpStatus: res.status,
       latencyMs: Date.now() - startedAt,
-      metadata: { attempt, error: errorBody, news_item_id: item?.id || null },
+      metadata: { attempt, api_attempt: apiAttempt, error: errorBody, news_item_id: item?.id || null },
     });
-    throw new Error(`Gemini AI ${res.status}: ${errorBody}`);
+
+    const retryable = res.status === 429 || res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504;
+    if (!retryable || apiAttempt === maxApiAttempts) {
+      throw new Error(`Gemini AI ${res.status}: ${errorBody}`);
+    }
+
+    const retryAfterSeconds = Number(res.headers.get("retry-after"));
+    const exponentialDelay = 700 * (2 ** (apiAttempt - 1));
+    const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(retryAfterSeconds * 1000, 5000)
+      : exponentialDelay + Math.floor(Math.random() * 400);
+    console.warn(`[gemini] HTTP ${res.status}; nova tentativa ${apiAttempt + 1}/${maxApiAttempts} em ${retryDelay}ms`);
+    await new Promise((resolve) => setTimeout(resolve, retryDelay));
   }
 
-  const data = await res.json();
-  const usage = readGeminiUsage(data);
-  await recordGeminiUsage({
-    userId: item?.user_id,
-    model,
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens,
-    success: true,
-    httpStatus: res.status,
-    latencyMs: Date.now() - startedAt,
-    metadata: { attempt, thoughts_tokens: usage.thoughtsTokens, news_item_id: item?.id || null },
-  });
+  if (!data) throw new Error("Gemini AI não retornou conteúdo após as tentativas");
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(content), item);
   if (assertCaptionQuality(parsed, "Gemini", attempt) && attempt < 2) {
