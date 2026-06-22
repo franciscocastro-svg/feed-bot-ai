@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import {
   Shield, Users, CheckCircle2, XCircle, AlertTriangle, RefreshCw, DollarSign,
   Activity, Clock, Check, X, ArrowUpDown, Rss, Instagram, Calendar, Zap, TrendingUp,
-  LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map, Mail,
+  LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map as MapIcon, Mail,
   Server, Radio, ListChecks, Database, Plus, Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -63,7 +63,7 @@ const ADMIN_TABS = [
   { value: "releases", label: "Novidades", icon: Megaphone },
   { value: "email", label: "E-mail", icon: Mail },
   { value: "support", label: "Suporte", icon: LifeBuoy },
-  { value: "roadmap", label: "Roadmap", icon: Map },
+  { value: "roadmap", label: "Roadmap", icon: MapIcon },
 ];
 
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
