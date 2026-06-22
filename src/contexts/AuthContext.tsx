@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { ALL_ADMIN_PERMISSION_KEYS } from "@/config/adminPermissions";
 
 interface AuthCtx {
   user: User | null;
@@ -36,7 +35,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Fix: usar APENAS onAuthStateChange (evita race condition com getSession)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      setLoading(false);
+      // Keep protected routes waiting until the permission record is loaded.
+      setLoading(!!s?.user);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -47,20 +47,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsAdmin(false);
       setAdminFullAccess(false);
       setAdminPermissions([]);
+      setLoading(false);
       return;
     }
     (async () => {
-      const { data } = await supabase
+      const { data, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id)
         .eq("role", "admin")
         .maybeSingle();
-      const admin = !!data;
+      const admin = !roleError && !!data;
       setIsAdmin(admin);
       if (!admin) {
         setAdminFullAccess(false);
         setAdminPermissions([]);
+        setLoading(false);
         return;
       }
 
@@ -71,14 +73,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .maybeSingle();
 
       if (error) {
-        setAdminFullAccess(true);
-        setAdminPermissions([...ALL_ADMIN_PERMISSION_KEYS]);
+        // Permission lookup must fail closed. A transient database error must
+        // never turn a restricted administrator into a full-access one.
+        setAdminFullAccess(false);
+        setAdminPermissions([]);
+        setLoading(false);
         return;
       }
 
       const perm = permissions as { full_access?: boolean; sections?: string[] | null } | null;
-      setAdminFullAccess(perm?.full_access ?? true);
-      setAdminPermissions(perm?.sections || [...ALL_ADMIN_PERMISSION_KEYS]);
+      setAdminFullAccess(perm?.full_access ?? false);
+      setAdminPermissions(perm?.sections || []);
+      setLoading(false);
     })();
   }, [session?.user?.id]);
 

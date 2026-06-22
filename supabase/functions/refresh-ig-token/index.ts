@@ -18,17 +18,23 @@ Deno.serve(async (req) => {
     const auth = req.headers.get("Authorization");
     if (!auth) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
     {
-      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const { data: approved } = await adminClient.rpc("is_approved", { _uid: user.id });
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: corsHeaders });
     }
 
     const { account_id } = await req.json();
-    const { data: acc, error } = await supabase.from("instagram_accounts").select("*").eq("id", account_id).eq("user_id", user.id).maybeSingle();
+    const { data: canManageTokens } = await supabase.rpc("admin_has_permission", { _section: "tokens" });
+    const accountQuery = (canManageTokens ? adminClient : supabase)
+      .from("instagram_accounts").select("*").eq("id", account_id);
+    const { data: acc, error } = canManageTokens
+      ? await accountQuery.maybeSingle()
+      : await accountQuery.eq("user_id", user.id).maybeSingle();
     if (error || !acc) throw new Error("Conta não encontrada");
+    const dataClient = canManageTokens ? adminClient : supabase;
     if (!acc.access_token) throw new Error("Conta sem access_token atual");
     if (isInstagramLoginToken(acc.access_token)) {
       const refreshUrl = new URL("https://graph.instagram.com/refresh_access_token");
@@ -46,7 +52,7 @@ Deno.serve(async (req) => {
         throw new Error(`Meta: ${me.error?.message || "não foi possível validar o token do Instagram"}`);
       }
 
-      await supabase.from("instagram_accounts").update({
+      await dataClient.from("instagram_accounts").update({
         username: me.username || acc.username,
         ig_user_id: String(me.user_id ?? me.id),
         page_id: null,
@@ -76,7 +82,7 @@ Deno.serve(async (req) => {
 
     if (curType === "PAGE") {
       const expIso = curExpires && curExpires > 0 ? new Date(curExpires * 1000).toISOString() : null;
-      await supabase.from("instagram_accounts").update({
+      await dataClient.from("instagram_accounts").update({
         token_expires_at: expIso,
         last_verified_at: new Date().toISOString(),
         verification_status: "ready",
@@ -110,16 +116,16 @@ Deno.serve(async (req) => {
       newExpiresAt = new Date(dbgD.data.expires_at * 1000).toISOString();
     }
 
-    await supabase.from("instagram_accounts").update({
+    await dataClient.from("instagram_accounts").update({
       access_token: pageToken,
       token_expires_at: newExpiresAt, // null = permanente
       last_verified_at: new Date().toISOString(),
       verification_status: "ready",
     }).eq("id", account_id);
 
-    await supabase.from("activity_logs").insert({
-      user_id: user.id, action: "refresh_ig_token", entity_type: "instagram_account", entity_id: account_id,
-      details: { page_id: acc.page_id, expires_at: newExpiresAt, permanent: !newExpiresAt },
+    await dataClient.from("activity_logs").insert({
+      user_id: acc.user_id, action: "refresh_ig_token", entity_type: "instagram_account", entity_id: account_id,
+      details: { page_id: acc.page_id, expires_at: newExpiresAt, permanent: !newExpiresAt, performed_by: user.id },
     });
 
     return new Response(JSON.stringify({

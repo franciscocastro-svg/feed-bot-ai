@@ -73,11 +73,13 @@ Deno.serve(async (req) => {
       { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  const { data: accounts, error: aErr } = await admin
+  const { data: canManageMeta } = await userClient.rpc("admin_has_permission", { _section: "meta" });
+  let accountsQuery = admin
     .from("instagram_accounts")
-    .select("id, username, ig_user_id, access_token, active")
-    .eq("user_id", userId)
+    .select("id, user_id, username, ig_user_id, access_token, active")
     .eq("active", true);
+  if (!canManageMeta) accountsQuery = accountsQuery.eq("user_id", userId);
+  const { data: accounts, error: aErr } = await accountsQuery;
   if (aErr) {
     return new Response(JSON.stringify({ error: aErr.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
         continue;
       }
       await admin.from("meta_api_usage").insert({
-        user_id: userId,
+        user_id: acc.user_id,
         instagram_account_id: acc.id,
         app_call_count: snap.appCallCount,
         app_total_time: snap.appTotalTime,
@@ -121,6 +123,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ refreshed: results.length, results }),
+  const refreshed = results.filter(result => result.ok && !result.error && !result.skipped).length;
+  const failed = results.filter(result => result.error || result.ok === false).length;
+  const skipped = results.filter(result => result.skipped || result.no_headers).length;
+  return new Response(JSON.stringify({ refreshed, failed, skipped, results }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });

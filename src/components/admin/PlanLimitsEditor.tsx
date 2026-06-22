@@ -39,6 +39,16 @@ export function PlanLimitsEditor() {
 
   const save = async (plan: any) => {
     setSavingId(plan.plan);
+    const { data: previous, error: previousError } = await supabase
+      .from("plan_limits")
+      .select("*")
+      .eq("plan", plan.plan)
+      .single();
+    if (previousError || !previous) {
+      setSavingId(null);
+      toast.error("Não foi possível confirmar a configuração atual antes de salvar.");
+      return;
+    }
     const payload: any = {};
     NUM_FIELDS.forEach(f => { payload[f.key] = plan[f.key] === "" || plan[f.key] === null ? null : Number(plan[f.key]); });
     payload.auto_publish_enabled = !!plan.auto_publish_enabled;
@@ -59,7 +69,19 @@ export function PlanLimitsEditor() {
         body: { plan: plan.plan, price_brl: payload.price_brl, environment: env },
       });
       if (syncErr || (syncRes as any)?.error) {
-        toast.error(`Salvo no banco, mas falha ao sincronizar Stripe: ${syncErr?.message || (syncRes as any)?.error}`);
+        const rollback: Record<string, unknown> = {};
+        NUM_FIELDS.forEach(f => { rollback[f.key] = (previous as any)[f.key]; });
+        rollback.auto_publish_enabled = previous.auto_publish_enabled;
+        rollback.translation_enabled = previous.translation_enabled;
+        rollback.is_negotiable = previous.is_negotiable;
+        rollback.display_name = previous.display_name;
+        const { error: rollbackError } = await supabase.from("plan_limits").update(rollback).eq("plan", plan.plan);
+        if (rollbackError) {
+          toast.error(`Stripe falhou e o banco não pôde ser restaurado. Não altere novamente até revisão manual: ${rollbackError.message}`);
+        } else {
+          toast.error(`Stripe não foi atualizado; a configuração anterior foi restaurada: ${syncErr?.message || (syncRes as any)?.error}`);
+          await load();
+        }
       } else if ((syncRes as any)?.unchanged) {
         toast.success(`${plan.plan} atualizado (preço Stripe inalterado)`);
       } else {

@@ -106,7 +106,9 @@ Deno.serve(async (req) => {
     try {
       const segment = await resend("/segments", apiKey, { method: "POST", body: JSON.stringify({ name: `FluxFeed ${campaign.name} ${campaign.id.slice(0, 8)}` }) });
       for (const contact of contacts) {
-        const created = await fetch("https://api.resend.com/contacts", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ email: contact.email, first_name: contact.firstName, unsubscribed: false }) });
+        // Never force a provider-side unsubscribed contact back into marketing.
+        // New contacts default to subscribed; existing suppression remains intact.
+        const created = await fetch("https://api.resend.com/contacts", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ email: contact.email, first_name: contact.firstName }) });
         if (!created.ok && created.status !== 409) throw new Error(`Falha ao sincronizar ${contact.email}`);
         await resend(`/contacts/${encodeURIComponent(contact.email)}/segments/${segment.id}`, apiKey, { method: "POST" });
       }

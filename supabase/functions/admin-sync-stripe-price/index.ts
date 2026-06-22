@@ -24,8 +24,13 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
-    if (!isAdmin) throw new Error("Forbidden — admin only");
+    const { data: canManagePlans } = await supabase.rpc("admin_has_permission", { _section: "plans" });
+    if (!canManagePlans) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { plan, price_brl, environment } = await req.json();
     const map = PLAN_MAP[plan];

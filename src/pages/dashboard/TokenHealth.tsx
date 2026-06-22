@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,6 @@ type Account = {
   verification_status: string | null;
   token_expires_at: string | null;
   last_verified_at: string | null;
-  access_token: string | null;
   ig_user_id: string | null;
   page_id: string | null;
 };
@@ -45,22 +43,16 @@ const healthBadge = (h: Health, days: number | null) => {
 };
 
 export default function TokenHealth() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [busy, setBusy] = useState<Record<string, "verify" | "refresh" | undefined>>({});
   const [bulk, setBulk] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      if (!user) return;
-      const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
-      setIsAdmin(!!data);
-    })();
-  }, [user]);
-
   const load = async () => {
-    const { data } = await supabase.from("instagram_accounts").select("*").order("username");
+    const { data, error } = await supabase.rpc("admin_list_instagram_token_health" as never);
+    if (error) {
+      toast.error(`Não foi possível carregar as contas: ${error.message}`);
+      return;
+    }
     setAccounts((data as Account[]) || []);
   };
   useEffect(() => { load(); }, []);
@@ -73,9 +65,10 @@ export default function TokenHealth() {
 
   const verify = async (id: string) => {
     setBusy(b => ({ ...b, [id]: "verify" }));
-    const { error } = await supabase.functions.invoke("verify-ig-token", { body: { account_id: id } });
+    const { data, error } = await supabase.functions.invoke("verify-ig-token", { body: { account_id: id } });
     setBusy(b => ({ ...b, [id]: undefined }));
-    if (error) toast.error(error.message); else toast.success("Verificado");
+    if (error || data?.error) toast.error(data?.error || error?.message || "Falha na verificação");
+    else toast.success("Verificado");
     load();
   };
 
@@ -90,24 +83,18 @@ export default function TokenHealth() {
 
   const verifyAll = async () => {
     setBulk(true);
+    let succeeded = 0;
+    let failed = 0;
     for (const a of accounts) {
-      await supabase.functions.invoke("verify-ig-token", { body: { account_id: a.id } });
+      const { data, error } = await supabase.functions.invoke("verify-ig-token", { body: { account_id: a.id } });
+      if (error || data?.error) failed++;
+      else succeeded++;
     }
     setBulk(false);
-    toast.success("Todas as contas verificadas");
+    if (failed) toast.warning(`${succeeded} verificada(s); ${failed} falharam.`);
+    else toast.success(`${succeeded} conta(s) verificadas com sucesso.`);
     load();
   };
-
-  if (isAdmin === false) {
-    return (
-      <div className="p-8 max-w-2xl">
-        <Card className="p-8 text-center text-muted-foreground border-dashed">
-          <ShieldAlert className="h-10 w-10 mx-auto mb-3 opacity-50" />
-          <p>Acesso restrito a administradores.</p>
-        </Card>
-      </div>
-    );
-  }
 
   const alerts = accounts
     .map(a => ({ a, c: classify(a) }))

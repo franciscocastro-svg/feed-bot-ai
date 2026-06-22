@@ -87,8 +87,8 @@ const App = () => (
               <Route path="logs" element={<Logs />} />
               <Route path="insights" element={<Insights />} />
               <Route path="templates" element={<Templates />} />
-              <Route path="token-health" element={<TokenHealth />} />
-              <Route path="meta-api-health" element={<MetaApiHealth />} />
+              <Route path="token-health" element={<AdminOnlyRoute permission="tokens"><TokenHealth /></AdminOnlyRoute>} />
+              <Route path="meta-api-health" element={<AdminOnlyRoute permission="meta"><MetaApiHealth /></AdminOnlyRoute>} />
               <Route path="channels/:channel" element={<ChannelConfig />} />
               <Route path="admin" element={<AdminOnlyRoute><Admin /></AdminOnlyRoute>} />
               <Route path="admin/releases" element={<AdminOnlyRoute permission="releases"><AdminReleases /></AdminOnlyRoute>} />

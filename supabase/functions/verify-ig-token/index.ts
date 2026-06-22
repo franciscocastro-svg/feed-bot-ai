@@ -34,16 +34,21 @@ Deno.serve(async (req) => {
     const auth = req.headers.get("Authorization");
     if (!auth) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
     {
-      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const { data: approved } = await adminClient.rpc("is_approved", { _uid: user.id });
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: corsHeaders });
     }
 
     const { account_id } = await req.json();
-    const { data: acc, error } = await supabase.from("instagram_accounts").select("*").eq("id", account_id).eq("user_id", user.id).maybeSingle();
+    const { data: canManageTokens } = await supabase.rpc("admin_has_permission", { _section: "tokens" });
+    const accountQuery = (canManageTokens ? adminClient : supabase)
+      .from("instagram_accounts").select("*").eq("id", account_id);
+    const { data: acc, error } = canManageTokens
+      ? await accountQuery.maybeSingle()
+      : await accountQuery.eq("user_id", user.id).maybeSingle();
     if (error || !acc) throw new Error("account not found");
 
     const token = acc.access_token;
@@ -150,7 +155,7 @@ Deno.serve(async (req) => {
       active: ready ? true : acc.active,
     };
     if (instagramLoginToken) updates.page_id = null;
-    await supabase.from("instagram_accounts").update(updates).eq("id", account_id);
+    await (canManageTokens ? adminClient : supabase).from("instagram_accounts").update(updates).eq("id", account_id);
 
     return new Response(JSON.stringify({ ok: true, ready, ...checks }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

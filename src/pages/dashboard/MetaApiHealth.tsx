@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Save, Gauge } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Gauge } from "lucide-react";
 import { toast } from "sonner";
 
 type UsageRow = {
@@ -23,7 +20,14 @@ type UsageRow = {
   captured_at: string;
 };
 
-type Account = { id: string; username: string; active: boolean };
+type Account = { id: string; username: string; active: boolean; pause_threshold: number };
+
+type MetaHealthRow = UsageRow & {
+  account_id: string;
+  username: string;
+  active: boolean;
+  pause_threshold: number;
+};
 
 function colorFor(pct: number) {
   if (pct >= 90) return "text-destructive";
@@ -39,25 +43,39 @@ function pctBadge(pct: number) {
 }
 
 export default function MetaApiHealth() {
-  const { user } = useAuth();
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [threshold, setThreshold] = useState<number>(80);
-  const [savingThreshold, setSavingThreshold] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const [{ data: u }, { data: a }, { data: s }] = await Promise.all([
-      supabase.from("meta_api_usage_latest").select("*"),
-      supabase.from("instagram_accounts").select("id, username, active").order("username"),
-      supabase.from("user_settings").select("meta_usage_pause_threshold").eq("user_id", user!.id).maybeSingle(),
-    ]);
-    setUsage((u as UsageRow[]) || []);
-    setAccounts((a as Account[]) || []);
-    if (s?.meta_usage_pause_threshold) setThreshold(s.meta_usage_pause_threshold);
+    const { data, error } = await supabase.rpc("admin_list_meta_health" as never);
+    if (error) {
+      toast.error(`Não foi possível carregar a saúde da Meta: ${error.message}`);
+      setLoading(false);
+      return;
+    }
+    const rows = ((data || []) as MetaHealthRow[]);
+    setAccounts(rows.map(row => ({
+      id: row.account_id,
+      username: row.username,
+      active: row.active,
+      pause_threshold: row.pause_threshold || 80,
+    })));
+    setUsage(rows.filter(row => row.captured_at).map(row => ({
+      instagram_account_id: row.account_id,
+      max_usage_percent: row.max_usage_percent,
+      app_call_count: row.app_call_count,
+      app_total_time: row.app_total_time,
+      app_total_cputime: row.app_total_cputime,
+      buc_call_count: row.buc_call_count,
+      buc_total_time: row.buc_total_time,
+      buc_total_cputime: row.buc_total_cputime,
+      buc_estimated_time_to_regain_access: row.buc_estimated_time_to_regain_access,
+      captured_at: row.captured_at,
+    })));
     setLoading(false);
   };
 
@@ -67,7 +85,10 @@ export default function MetaApiHealth() {
       const { data, error } = await supabase.functions.invoke("meta-usage-refresh");
       if (error) throw error;
       const ok = (data as any)?.refreshed ?? 0;
-      toast.success(`Uso atualizado para ${ok} conta(s)`);
+      const failed = (data as any)?.failed ?? 0;
+      const skipped = (data as any)?.skipped ?? 0;
+      if (failed || skipped) toast.warning(`${ok} atualizada(s), ${failed} falharam e ${skipped} ficaram sem leitura.`);
+      else toast.success(`Uso atualizado para ${ok} conta(s)`);
       await load();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao consultar a Meta");
@@ -76,17 +97,7 @@ export default function MetaApiHealth() {
     }
   };
 
-  useEffect(() => { if (user) load(); }, [user]);
-
-  const saveThreshold = async () => {
-    setSavingThreshold(true);
-    const { error } = await supabase.from("user_settings")
-      .update({ meta_usage_pause_threshold: Math.max(10, Math.min(100, threshold)) })
-      .eq("user_id", user!.id);
-    setSavingThreshold(false);
-    if (error) toast.error(error.message);
-    else toast.success(`Auto-freio configurado para ${threshold}%`);
-  };
+  useEffect(() => { load(); }, []);
 
   const usageByAcc = new Map(usage.map(u => [u.instagram_account_id, u]));
 
@@ -113,27 +124,6 @@ export default function MetaApiHealth() {
         </div>
       </div>
 
-      <Card className="p-5">
-        <div className="flex items-end gap-4 flex-wrap">
-          <div className="space-y-2 flex-1 min-w-[200px]">
-            <Label htmlFor="thr" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" /> Pausar publicações quando o uso passar de
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input id="thr" type="number" min={10} max={100} value={threshold}
-                onChange={e => setThreshold(Number(e.target.value))} className="w-28" />
-              <span className="text-sm text-muted-foreground">% do limite Meta</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Recomendado: 80%. Quando uma conta passa desse percentual, o agendador adia automaticamente os próximos posts dela até a Meta liberar a quota.
-            </p>
-          </div>
-          <Button onClick={saveThreshold} disabled={savingThreshold}>
-            <Save className="h-4 w-4 mr-2" /> Salvar
-          </Button>
-        </div>
-      </Card>
-
       <div className="grid gap-4">
         {accounts.length === 0 && (
           <Card className="p-8 text-center text-muted-foreground border-dashed">
@@ -144,6 +134,7 @@ export default function MetaApiHealth() {
           const u = usageByAcc.get(acc.id);
           const pct = u?.max_usage_percent ?? 0;
           const noData = !u;
+          const threshold = acc.pause_threshold;
           return (
             <Card key={acc.id} className="p-5 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -153,6 +144,7 @@ export default function MetaApiHealth() {
                     {noData ? "Sem leitura ainda — clique em \"Verificar uso agora\" para consultar a Meta" :
                       `Uso atual: ${pct}% • atualizado em ${new Date(u!.captured_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
                   </p>
+                  <p className="text-xs text-muted-foreground">Auto-freio configurado pelo cliente: {threshold}%</p>
                 </div>
                 {!acc.active && <Badge variant="secondary">Inativa</Badge>}
                 {!noData && pctBadge(pct)}

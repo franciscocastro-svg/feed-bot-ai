@@ -47,8 +47,8 @@ export function AdminManager({ allUsers }: { allUsers: any[] }) {
     if (!permissionsError) {
       (permissions || []).forEach((p: any) => {
         permissionMap.set(p.user_id, {
-          full_access: p.full_access ?? true,
-          sections: (p.sections as string[] | null) || [...ALL_ADMIN_PERMISSION_KEYS],
+          full_access: p.full_access ?? false,
+          sections: (p.sections as string[] | null) || [],
         });
       });
     }
@@ -57,8 +57,8 @@ export function AdminManager({ allUsers }: { allUsers: any[] }) {
       const permission = permissionMap.get(role.user_id);
       return {
         ...role,
-        full_access: permission?.full_access ?? true,
-        sections: permission?.sections || [...ALL_ADMIN_PERMISSION_KEYS],
+        full_access: permission?.full_access ?? false,
+        sections: permission?.sections || [],
       };
     }));
     setLoading(false);
