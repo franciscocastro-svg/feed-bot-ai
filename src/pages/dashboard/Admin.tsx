@@ -18,7 +18,6 @@ import {
   Server, Radio, ListChecks, Database, Plus, Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
 import { AlertsCard } from "@/components/admin/AlertsCard";
 import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
@@ -113,9 +112,8 @@ type QueueSummary = {
 };
 
 export default function Admin() {
-  const { user, hasAdminPermission, adminFullAccess, adminPermissions } = useAuth();
-  const navigate = useNavigate();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const { user, isAdmin, hasAdminPermission, adminFullAccess, adminPermissions } = useAuth();
+  const allowed = isAdmin;
   const [activeTab, setActiveTab] = useState("users");
   const [loadedPermissionVersion, setLoadedPermissionVersion] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -170,16 +168,6 @@ export default function Admin() {
   const [stuckPosting, setStuckPosting] = useState<any[]>([]);
   const [systemLoaded, setSystemLoaded] = useState(false);
   const adminPermissionVersion = `${adminFullAccess}:${adminPermissions.join("|")}`;
-
-  useEffect(() => {
-    if (!user) return;
-    supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle()
-      .then(({ data }) => {
-        const ok = !!data;
-        setAllowed(ok);
-        if (!ok) navigate("/dashboard");
-      });
-  }, [user, navigate]);
 
   const load = async () => {
     setLoading(true);
@@ -664,8 +652,13 @@ export default function Admin() {
     }
   }, [activeTab, allowed, visibleTabKeys]);
 
-  if (allowed === null) return <div className="p-6">Verificando...</div>;
-  if (!allowed) return null;
+  if (!allowed) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Seu acesso administrativo não pôde ser confirmado. Atualize a página ou entre novamente.
+      </div>
+    );
+  }
 
   const kpis = [
     { key: "users", permission: "users", icon: Users, label: "Usuários", value: totals.users, tint: "bg-blue-500/10 text-blue-400" },

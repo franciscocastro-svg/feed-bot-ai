@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
 
 // Lazy-loaded routes (reduces initial bundle, defers Stripe SDK to /pricing only)
@@ -56,7 +58,12 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Suspense fallback={null}>
+          <AppErrorBoundary>
+          <Suspense fallback={
+            <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" /> Carregando área...
+            </div>
+          }>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -91,6 +98,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          </AppErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
