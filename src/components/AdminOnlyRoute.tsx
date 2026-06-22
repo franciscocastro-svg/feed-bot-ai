@@ -8,10 +8,10 @@ import { isPathVisible } from "@/config/featureFlags";
  * isAdmin agora vem do AuthContext centralizado — sem query duplicada.
  */
 export function AdminOnlyRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
-  const { user, isAdmin, loading, hasAdminPermission } = useAuth();
+  const { user, isAdmin, loading, adminPermissionsLoading, hasAdminPermission } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  if (loading || adminPermissionsLoading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />

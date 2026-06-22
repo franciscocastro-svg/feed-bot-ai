@@ -20,23 +20,43 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { signOut } = useAuth();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setApproval("loading");
+      setSubscription(null);
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+
     (async () => {
-      // Usa isAdmin do contexto em vez de query duplicada
-      const { data: roleData } = await supabase
-        .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
-      if (roleData) {
-        setIsAdmin(true);
-        setApproval("approved");
-        return;
+      try {
+        const { data: roleData } = await supabase
+          .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
+        if (cancelled) return;
+        if (roleData) {
+          setIsAdmin(true);
+          setApproval("approved");
+          return;
+        }
+
+        const [{ data: approvalData }, { data: subscriptionData }] = await Promise.all([
+          supabase.from("user_subscriptions").select("approval_status").eq("user_id", user.id).maybeSingle(),
+          supabase.rpc("get_subscription_status", { _user_id: user.id }),
+        ]);
+        if (cancelled) return;
+
+        const status = approvalData?.approval_status || "pending";
+        setApproval(status === "approved" ? "approved" : status === "rejected" ? "rejected" : "pending");
+        setSubscription((subscriptionData as any)?.[0] || null);
+      } catch {
+        if (cancelled) return;
+        // Never leave a signed-in customer trapped behind an endless loader.
+        setApproval("pending");
+        setSubscription(null);
       }
-      const { data } = await supabase
-        .from("user_subscriptions").select("approval_status").eq("user_id", user.id).maybeSingle();
-      const s = data?.approval_status || "pending";
-      setApproval(s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending");
-      const { data: subData } = await supabase.rpc("get_subscription_status", { _user_id: user.id });
-      setSubscription((subData as any)?.[0] || null);
     })();
+
+    return () => { cancelled = true; };
   }, [user]);
 
   if (loading || (user && approval === "loading"))
