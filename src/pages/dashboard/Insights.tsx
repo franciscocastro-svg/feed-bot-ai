@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { RefreshCw, Eye, Heart, MessageCircle, Bookmark, TrendingUp, Film, Image as ImageIcon, ExternalLink, Users, ArrowUp, ArrowDown, Instagram } from "lucide-react";
+import { RefreshCw, Eye, Heart, MessageCircle, Bookmark, TrendingUp, Film, Image as ImageIcon, ExternalLink, Users, ArrowUp, ArrowDown, Instagram, PlayCircle } from "lucide-react";
 
 type Post = {
   id: string;
@@ -133,23 +133,25 @@ export default function Insights() {
   const totals = filteredPosts.reduce(
     (a, p) => ({
       reach: a.reach + (p.reach || 0),
+      views: a.views + (p.impressions || 0),
       likes: a.likes + (p.likes || 0),
       comments: a.comments + (p.comments || 0),
       saves: a.saves + (p.saves || 0),
     }),
-    { reach: 0, likes: 0, comments: 0, saves: 0 },
+    { reach: 0, views: 0, likes: 0, comments: 0, saves: 0 },
   );
 
   const groupStats = (type: "reel" | "feed") => {
     const arr = filteredPosts.filter(p => (p.media_type || "feed").toLowerCase() === type);
     const sum = arr.reduce((a, p) => ({
+      views: a.views + (p.impressions || 0),
       reach: a.reach + (p.reach || 0), likes: a.likes + (p.likes || 0),
       comments: a.comments + (p.comments || 0), saves: a.saves + (p.saves || 0),
-    }), { reach: 0, likes: 0, comments: 0, saves: 0 });
+    }), { views: 0, reach: 0, likes: 0, comments: 0, saves: 0 });
     const c = Math.max(1, arr.length);
     return {
-      count: arr.length, reach: sum.reach, likes: sum.likes, comments: sum.comments, saves: sum.saves,
-      avgReach: Math.round(sum.reach / c), avgLikes: Math.round(sum.likes / c),
+      count: arr.length, views: sum.views, reach: sum.reach, likes: sum.likes, comments: sum.comments, saves: sum.saves,
+      avgViews: Math.round(sum.views / c), avgReach: Math.round(sum.reach / c), avgLikes: Math.round(sum.likes / c),
       engagement: sum.reach > 0 ? +(((sum.likes + sum.comments + sum.saves) / sum.reach) * 100).toFixed(1) : 0,
     };
   };
@@ -164,7 +166,7 @@ export default function Insights() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-display font-bold">Insights do Instagram</h1>
-          <p className="text-sm text-muted-foreground">Alcance, curtidas, comentários e salvamentos por post</p>
+          <p className="text-sm text-muted-foreground">Visualizações, alcance, curtidas, comentários e salvamentos por post</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {followers.length > 1 && (
@@ -188,8 +190,9 @@ export default function Insights() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
+          { label: "Visualizações", value: totals.views, icon: PlayCircle },
           { label: "Alcance total", value: totals.reach, icon: Eye },
           { label: "Curtidas", value: totals.likes, icon: Heart },
           { label: "Comentários", value: totals.comments, icon: MessageCircle },
@@ -271,7 +274,7 @@ export default function Insights() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.news_items?.rewritten_title || p.news_items?.original_title}</p>
-                  <p className="text-sm text-muted-foreground">Alcance: {fmt(p.reach)} · Curtidas: {fmt(p.likes)} · Salvamentos: {fmt(p.saves)}</p>
+                  <p className="text-sm text-muted-foreground">Visualizações: {fmt(p.impressions)} · Alcance: {fmt(p.reach)} · Curtidas: {fmt(p.likes)} · Salvamentos: {fmt(p.saves)}</p>
                 </div>
                 {p.permalink && (
                   <a href={p.permalink} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">Ver</a>
@@ -319,6 +322,7 @@ export default function Insights() {
                     </p>
                   </div>
                   <div className="hidden md:flex gap-6 text-sm">
+                    <Stat icon={PlayCircle} label="Views" value={p.impressions} />
                     <Stat icon={Eye} label="Alcance" value={p.reach} />
                     <Stat icon={Heart} label="Curtidas" value={p.likes} />
                     <Stat icon={MessageCircle} label="Coment." value={p.comments} />
@@ -359,9 +363,11 @@ function FormatCard({ title, icon: Icon, stats, highlight, emptyMsg }: { title: 
           <>
             <div className="text-xs text-muted-foreground">{stats.count} publicado(s)</div>
             <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><div className="text-xs text-muted-foreground">Visualizações média</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgViews)}</div></div>
               <div><div className="text-xs text-muted-foreground">Alcance médio</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgReach)}</div></div>
               <div><div className="text-xs text-muted-foreground">Curtidas média</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgLikes)}</div></div>
               <div><div className="text-xs text-muted-foreground">Engajamento</div><div className="font-bold text-lg tabular-nums">{stats.engagement}%</div></div>
+              <div><div className="text-xs text-muted-foreground">Visualizações total</div><div className="font-bold text-lg tabular-nums">{fmt(stats.views)}</div></div>
               <div><div className="text-xs text-muted-foreground">Alcance total</div><div className="font-bold text-lg tabular-nums">{fmt(stats.reach)}</div></div>
             </div>
           </>

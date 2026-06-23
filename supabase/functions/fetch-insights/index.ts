@@ -1,4 +1,4 @@
-// Busca insights (alcance, curtidas, comentários, salvamentos) dos posts publicados no Instagram
+// Busca insights (visualizações, alcance, curtidas, comentários, salvamentos) dos posts publicados no Instagram
 // Throttle inteligente para NÃO saturar o limite do app na Meta:
 //  - posts < 24h: refresh a cada 1h
 //  - posts 1-7d: refresh a cada 6h
