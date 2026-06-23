@@ -231,6 +231,57 @@ function drawCoverImage(ctx, img, x, y, w, h) {
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
+function drawContainImage(ctx, img, x, y, w, h) {
+  const ratio = Math.min(w / img.width, h / img.height);
+  const dw = img.width * ratio;
+  const dh = img.height * ratio;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+function safeTemplateNumber(value, min, max, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+}
+
+function safeTemplateColor(value, fallback = "#FFFFFF") {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+async function drawBrandElementsNode(ctx, config, width, height) {
+  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
+  for (const element of elements) {
+    const x = safeTemplateNumber(element?.x, 0, width, 0);
+    const y = safeTemplateNumber(element?.y, 0, height, 0);
+    const opacity = safeTemplateNumber(element?.opacity, 0.1, 1, 1);
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    if (element?.type === "image" && typeof element.url === "string") {
+      const image = await loadImageHelper(element.url);
+      if (image) {
+        const elementWidth = safeTemplateNumber(element.width, 20, width, 240);
+        const elementHeight = safeTemplateNumber(element.height, 20, height, 120);
+        drawContainImage(ctx, image, x, y, elementWidth, elementHeight);
+      }
+    }
+    if (element?.type === "text") {
+      const text = typeof element.text === "string" ? element.text.slice(0, 80) : "";
+      if (text) {
+        const textWidth = safeTemplateNumber(element.width, 40, width, 420);
+        const size = safeTemplateNumber(element.fontSize, 12, 160, 34);
+        const weight = safeTemplateNumber(element.fontWeight, 300, 900, 700);
+        const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
+        ctx.fillStyle = safeTemplateColor(element.color);
+        ctx.font = `${weight} ${size}px InterBold, Inter, sans-serif`;
+        ctx.textAlign = align;
+        ctx.fillText(text, textXForBox(x, textWidth, align), y + size);
+      }
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left";
+}
+
 async function drawConfiguredTemplate(ctx, item, settings, template, width, height, opts = {}) {
   const cfg = normalizeTemplateConfig(template.config, height === 1080 ? "feed" : opts.withFollowCta ? "reels" : "stories");
   const title = (item.rewritten_title || item.original_title || "Notícia").toUpperCase();
@@ -288,6 +339,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
     ctx.fillText(cfg.badgeText, cfg.badgeX + cfg.badgeW / 2, cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35);
     ctx.textAlign = "left";
   }
+  await drawBrandElementsNode(ctx, cfg, width, height);
 }
 
 // 1. Renderiza e faz upload do Post (1080x1080)

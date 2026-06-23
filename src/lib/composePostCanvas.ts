@@ -45,6 +45,57 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numb
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
+function drawContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const ratio = Math.min(w / img.width, h / img.height);
+  const dw = img.width * ratio;
+  const dh = img.height * ratio;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+function safeNumber(value: unknown, min: number, max: number, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+}
+
+function safeColor(value: unknown, fallback = "#FFFFFF") {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+async function drawBrandElements(ctx: CanvasRenderingContext2D, config: any, canvasHeight: number) {
+  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
+  for (const element of elements) {
+    const x = safeNumber(element?.x, 0, SIZE, 0);
+    const y = safeNumber(element?.y, 0, canvasHeight, 0);
+    const opacity = safeNumber(element?.opacity, 0.1, 1, 1);
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    if (element?.type === "image" && typeof element.url === "string") {
+      try {
+        const img = await loadImage(element.url);
+        const w = safeNumber(element.width, 20, SIZE, 240);
+        const h = safeNumber(element.height, 20, canvasHeight, 120);
+        drawContain(ctx, img, x, y, w, h);
+      } catch {}
+    }
+    if (element?.type === "text") {
+      const text = typeof element.text === "string" ? element.text.slice(0, 80) : "";
+      if (text) {
+        const width = safeNumber(element.width, 40, SIZE, 420);
+        const size = safeNumber(element.fontSize, 12, 160, 34);
+        const weight = safeNumber(element.fontWeight, 300, 900, 700);
+        const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
+        ctx.fillStyle = safeColor(element.color);
+        ctx.font = `${weight} ${size}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = align;
+        ctx.fillText(text, textXForBox(x, width, align), y + size);
+      }
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left";
+}
+
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any) {
   const cfg = normalizeTemplateConfig(template.config, "feed");
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
@@ -98,6 +149,7 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
     ctx.fillText(cfg.badgeText, cfg.badgeX + cfg.badgeW / 2, cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35);
     ctx.textAlign = "left";
   }
+  await drawBrandElements(ctx, cfg, SIZE);
 }
 
 async function loadEffectiveSettings(item: any) {
