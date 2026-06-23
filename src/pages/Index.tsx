@@ -21,13 +21,13 @@ import proofInstagramAfterInsights from "@/assets/proof-instagram-after-insights
 import proofInstagramAfterStories from "@/assets/proof-instagram-after-stories.jpg";
 
 const PLAN_SUBTITLES: Record<string, string> = {
-  starter: "Para validar o primeiro nicho",
-  pro: "Para escalar uma rede de perfis",
-  business: "Para operação de mídia em escala",
+  starter: "Para uma conta em crescimento",
+  pro: "Para criadores e agências",
+  business: "Para operação com várias contas",
 };
 const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean }> = {
-  starter: { label: "Criar autopiloto grátis", to: "/pricing?plan=starter_monthly" },
-  pro: { label: "Escalar minha operação", to: "/pricing?plan=pro_monthly" },
+  starter: { label: "Assinar Starter", to: "/pricing?plan=starter_monthly" },
+  pro: { label: "Assinar Pro", to: "/pricing?plan=pro_monthly" },
   business: { label: "Falar com vendas", whatsapp: true },
 };
 const INSTAGRAM_URL = "https://www.instagram.com/fluxifeed?utm_source=qr&igsh=MXVkbHIxa3FwMWJ3YQ==";
@@ -70,12 +70,12 @@ function buildFeatures(p: LandingPlan): string[] {
 
 
 const features = [
-  { icon: Newspaper, title: "Radar de oportunidades", text: "Conecte RSS, sites, temas e URLs para transformar assuntos quentes em pautas prontas antes que a concorrência perceba.", color: "from-pink-500 to-rose-500" },
-  { icon: Bot, title: "IA trabalhando sob seu comando", text: "A plataforma interpreta a notícia, reescreve no tom da marca e entrega título, resumo e legenda para você revisar ou aprovar em lote.", color: "from-purple-500 to-pink-500" },
-  { icon: ImageIcon, title: "Identidade visual por conta", text: "Crie Feed, Stories e Reels com templates próprios, elementos de marca e composição consistente para cada perfil.", color: "from-orange-500 to-pink-500" },
-  { icon: Instagram, title: "Publicação pela API oficial", text: "Agende e publique pela Meta Graph API, com conexão autorizada, sem depender de navegador aberto ou extensão improvisada.", color: "from-fuchsia-500 to-purple-500" },
-  { icon: Calendar, title: "Escala com controle", text: "Organize a semana em minutos com fila, horários, limites por conta, status de publicação e reprocessamento quando necessário.", color: "from-pink-500 to-orange-400" },
-  { icon: Shield, title: "Operação mais protegida", text: "Intervalos inteligentes, limites diários e revisão manual opcional ajudam a manter consistência sem exagerar no ritmo da conta.", color: "from-purple-500 to-fuchsia-500" },
+  { icon: Newspaper, title: "Captação de notícias", text: "Conecte feeds RSS por nicho e deixe o sistema buscar as melhores pautas automaticamente.", color: "from-pink-500 to-rose-500" },
+  { icon: Bot, title: "Texto pronto com IA", text: "Título, resumo e legenda adaptados para Instagram, com revisão manual opcional.", color: "from-purple-500 to-pink-500" },
+  { icon: ImageIcon, title: "Reels e artes com template", text: "Gere vídeos, capas e posts com identidade visual consistente para cada conta.", color: "from-orange-500 to-pink-500" },
+  { icon: Instagram, title: "Publicação pela API oficial", text: "Agende ou publique usando a Meta Graph API, sem depender de navegador aberto.", color: "from-fuchsia-500 to-purple-500" },
+  { icon: Calendar, title: "Fila inteligente", text: "Acompanhe status, erros, horários e próximas tentativas em um painel simples.", color: "from-pink-500 to-orange-400" },
+  { icon: Shield, title: "Intervalo seguro", text: "Controle ritmo, limite diário e horários para reduzir excesso de ações no Instagram.", color: "from-purple-500 to-fuchsia-500" },
 ];
 
 const stats = [
@@ -86,10 +86,10 @@ const stats = [
 ];
 
 const steps = [
-  { n: "01", title: "Mapeie o mercado", text: "Escolha portais, RSS, temas ou URLs e veja o sistema transformar o que está em alta em uma fila de pautas aproveitáveis." },
-  { n: "02", title: "A IA cria a primeira versão", text: "Título, resumo, legenda, roteiro e arte saem organizados no tom da marca, sem começar do zero a cada publicação." },
-  { n: "03", title: "Você aprova ou automatiza", text: "Revise manualmente, ajuste templates ou libere o piloto automático com regras próprias para cada conta." },
-  { n: "04", title: "A operação escala com segurança", text: "A fila respeita horários, limites e intervalos, enquanto você acompanha erros, métricas e próximas publicações no painel." },
+  { n: "01", title: "Conecte fontes RSS", text: "Escolha os sites, nichos e contas do Instagram que receberão as notícias." },
+  { n: "02", title: "A IA prepara o conteúdo", text: "O Flux & Feed reescreve, cria legenda e monta o Reel ou post com template." },
+  { n: "03", title: "A fila organiza tudo", text: "Cada conta segue horários, limite diário e intervalo mínimo configurado." },
+  { n: "04", title: "Você acompanha em tempo real", text: "Veja status, erros, próximos horários e posts publicados dentro do painel." },
 ];
 
 const heroQueue = [
@@ -99,9 +99,9 @@ const heroQueue = [
 ];
 
 const planBestFor: Record<string, string> = {
-  starter: "1 perfil, rotina diária e validação do primeiro nicho.",
-  pro: "Até 3 perfis, mais volume e uma operação de conteúdo recorrente.",
-  business: "Múltiplas contas, equipe, aprovação e volume para operação profissional.",
+  starter: "Uma marca, um nicho e rotina simples.",
+  pro: "Mais contas, volume e suporte prioritário.",
+  business: "Times, portais e operações em escala.",
 };
 
 const proofComparison = [
@@ -372,8 +372,8 @@ export default function Index() {
   return (
     <div className="min-h-screen overflow-x-hidden">
       <SEO
-        title="Flux & Feed — Autopiloto de conteúdo para Instagram"
-        description="Transforme notícias em Feed, Stories e Reels prontos para revisar, agendar e publicar pela API oficial da Meta."
+        title="Flux & Feed — Plataforma de conteúdo para Instagram"
+        description="Centralize fontes, criação com IA, templates, aprovações, agendamento e publicação no Instagram em uma única plataforma."
         path="/"
       />
       <FAQStructuredData items={faqItems} />
@@ -431,7 +431,7 @@ export default function Index() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            RSS + IA + Instagram em um fluxo seguro
+            Toda a operação de conteúdo em um único sistema
           </motion.div>
 
           <div className="grid min-w-0 items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-12">
@@ -439,9 +439,9 @@ export default function Index() {
               <h1
                 className="mx-auto max-w-[22rem] font-display text-3xl font-bold leading-[1.06] tracking-normal sm:max-w-2xl sm:text-5xl md:text-6xl lg:mx-0 lg:max-w-3xl lg:text-7xl"
               >
-                <span className="block">Domine seu nicho com</span>
+                <span className="block">Sua operação de</span>
                 <span className="relative inline-block text-gradient glow-text">
-                  conteúdo no piloto automático
+                  conteúdo para Instagram
                   <motion.span
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: 1 }}
@@ -449,7 +449,7 @@ export default function Index() {
                     className="absolute -bottom-2 left-0 right-0 h-1 origin-left rounded-full bg-gradient-brand"
                   />
                 </span>
-                <span className="mt-1 block">para o Instagram.</span>
+                <span className="mt-1 block">em um só lugar.</span>
               </h1>
 
               <motion.p
@@ -458,8 +458,8 @@ export default function Index() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg md:mt-8 md:text-xl lg:mx-0"
               >
-                Alimente múltiplos perfis com notícias frescas todos os dias. O Flux & Feed busca as pautas,
-                reescreve com IA, monta artes e Reels com seus templates e organiza a fila pela API oficial da Meta.
+                Centralize fontes, pautas, IA, templates, aprovações, Feed, Stories, Reels e agendamentos.
+                Publique pela API oficial da Meta com regras próprias para cada conta.
               </motion.p>
 
               <motion.div
@@ -469,17 +469,17 @@ export default function Index() {
                 className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center md:mt-10 lg:justify-start"
               >
                 <Button size="lg" asChild className="h-12 w-full bg-gradient-brand px-5 text-primary-foreground shadow-glow hover:opacity-90 group sm:w-auto sm:px-7">
-                  <Link to="/auth">
-                    Criar meu autopiloto grátis
+                  <a href="#features">
+                    Explorar a plataforma
                     <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Link>
+                  </a>
                 </Button>
                 <Button size="lg" variant="outline" asChild className="glass h-12 w-full px-5 group sm:w-auto sm:px-7">
                   <a href="#resultados">Ver resultados reais</a>
                 </Button>
               </motion.div>
               <p className="mt-4 text-center text-xs text-muted-foreground lg:text-left">
-                Teste grátis por 7 dias. Você mantém revisão, agenda e limites sob controle.
+                Teste por 7 dias com cartão cadastrado. Cancele antes da primeira cobrança.
               </p>
             </div>
 
@@ -493,8 +493,8 @@ export default function Index() {
               <div className="relative w-full max-w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-2xl backdrop-blur-xl">
                 <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-5">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">Fila do autopiloto</div>
-                    <div className="text-xs text-muted-foreground">1 notícia por vez, com intervalo seguro</div>
+                    <div className="text-sm font-semibold text-foreground">Central de operação</div>
+                    <div className="text-xs text-muted-foreground">Conteúdo, agenda e publicação por conta</div>
                   </div>
                   <span className="hidden rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">Online</span>
                 </div>
@@ -594,13 +594,13 @@ export default function Index() {
           className="mx-auto mb-12 max-w-2xl text-center md:mb-16"
         >
           <div className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs font-medium mb-4">
-            <Sparkles className="h-3 w-3 text-primary" /> O que muda na sua rotina
+            <Sparkles className="h-3 w-3 text-primary" /> Módulos da plataforma
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Mais volume, menos esforço. <span className="text-gradient">Com controle.</span>
+            Toda a operação. <span className="text-gradient">Um só painel.</span>
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            A plataforma conecta descoberta, criação, aprovação, agenda e publicação para quem precisa manter perfis ativos todos os dias.
+            Explore os recursos que conectam descoberta, produção, aprovação, agenda e publicação.
           </p>
         </motion.div>
 
@@ -762,7 +762,7 @@ export default function Index() {
             <Rocket className="h-3 w-3 text-primary" /> Como funciona
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Do mercado à publicação em <span className="text-gradient">4 passos</span>
+            Da fonte à publicação em <span className="text-gradient">4 passos</span>
           </h2>
         </motion.div>
 
@@ -860,10 +860,10 @@ export default function Index() {
             <Star className="h-3 w-3 text-primary" /> Planos
           </div>
           <h2 className="font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-            Escolha o tamanho do seu <span className="text-gradient">autopiloto</span>
+            Escolha seu <span className="text-gradient">volume</span>
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Comece validando um nicho, aumente o volume e escale para múltiplas contas quando a operação pedir mais força.
+            Comece pequeno, valide sua operação e escale para mais contas quando precisar.
           </p>
         </motion.div>
 
@@ -971,13 +971,6 @@ export default function Index() {
         <p className="mx-auto mt-8 max-w-2xl text-center text-sm text-muted-foreground">
           Todos os planos usam publicação pela API oficial da Meta. O ritmo de postagem depende dos limites configurados e das políticas do Instagram.
         </p>
-        <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/10 p-5 text-center shadow-glow/20">
-          <h3 className="font-display text-lg font-semibold text-foreground">Teste protegido por 7 dias</h3>
-          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Crie seus fluxos, conecte uma conta, gere conteúdos e sinta a velocidade da operação. Se não fizer sentido para sua rotina,
-            cancele antes do fim do teste pelo painel. Sem fidelidade e sem primeira cobrança durante o período gratuito.
-          </p>
-        </div>
       </section>
 
       {/* FAQ */}
@@ -1021,10 +1014,10 @@ export default function Index() {
           <div className="absolute inset-0 bg-grid opacity-50" />
           <div className="relative">
             <h2 className="mx-auto max-w-3xl font-display text-3xl font-bold tracking-normal sm:text-4xl md:text-6xl">
-              Monte seu autopiloto de conteúdo no <span className="text-gradient">Flux & Feed</span>
+              Organize sua operação de conteúdo no <span className="text-gradient">Flux & Feed</span>
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg">
-              Saia da rotina manual de procurar pauta, escrever legenda, montar arte e lembrar horário. Teste por 7 dias e veja a operação rodando no painel.
+              Teste por 7 dias com cartão cadastrado. A cobrança começa somente depois do período de teste.
             </p>
             <Button size="lg" asChild className="mt-8 h-14 w-full bg-gradient-brand px-6 text-base text-primary-foreground shadow-glow hover:opacity-90 group sm:mt-10 sm:w-auto sm:px-10">
               <Link to="/auth">
