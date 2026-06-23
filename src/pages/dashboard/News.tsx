@@ -204,6 +204,9 @@ export default function News() {
     }
     setLoad(item.id, true);
     try {
+      item.instagram_account_id = acc.id;
+      await supabase.from("news_items").update({ instagram_account_id: acc.id }).eq("id", item.id);
+
       // Para Story OU Reel, compõe a arte editorial 9:16 (1080×1920) no navegador
       if (mediaType === "story" || mediaType === "reel") {
         toast.info("Gerando arte 1080×1920...");
