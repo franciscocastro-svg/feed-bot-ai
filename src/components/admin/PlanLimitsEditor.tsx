@@ -69,7 +69,7 @@ export function PlanLimitsEditor() {
         body: { plan: plan.plan, price_brl: payload.price_brl, environment: env },
       });
       if (syncErr || (syncRes as any)?.error) {
-        const rollback: Record<string, unknown> = {};
+        const rollback: any = {};
         NUM_FIELDS.forEach(f => { rollback[f.key] = (previous as any)[f.key]; });
         rollback.auto_publish_enabled = previous.auto_publish_enabled;
         rollback.translation_enabled = previous.translation_enabled;
