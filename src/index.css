@@ -5,81 +5,81 @@
 /* Flux & Feed design system — editorial dark with electric gradient */
 @layer base {
   :root {
-    --background: 240 47% 6%;
-    --foreground: 220 20% 96%;
+    --background: 240 14% 6%;
+    --foreground: 240 10% 96%;
 
-    --card: 240 40% 10%;
-    --card-foreground: 220 20% 96%;
+    --card: 240 12% 9%;
+    --card-foreground: 240 10% 96%;
 
-    --popover: 240 45% 8%;
-    --popover-foreground: 220 20% 96%;
+    --popover: 240 14% 8%;
+    --popover-foreground: 240 10% 96%;
 
-    --primary: 243 75% 59%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 235 85% 70%;
+    --primary: 320 90% 60%;
+    --primary-foreground: 240 14% 6%;
+    --primary-glow: 280 95% 65%;
 
-    --secondary: 240 30% 14%;
-    --secondary-foreground: 220 20% 96%;
+    --secondary: 240 10% 14%;
+    --secondary-foreground: 240 10% 96%;
 
-    --muted: 240 25% 14%;
-    --muted-foreground: 220 12% 65%;
+    --muted: 240 8% 14%;
+    --muted-foreground: 240 6% 64%;
 
-    --accent: 217 91% 65%;
-    --accent-foreground: 240 47% 6%;
+    --accent: 32 100% 60%;
+    --accent-foreground: 240 14% 6%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
     --success: 150 70% 50%;
-    --success-foreground: 240 47% 6%;
+    --success-foreground: 240 14% 6%;
 
     --warning: 42 100% 60%;
-    --warning-foreground: 240 47% 6%;
+    --warning-foreground: 240 14% 6%;
 
-    --border: 240 25% 18%;
-    --input: 240 25% 16%;
-    --ring: 243 75% 59%;
+    --border: 240 8% 18%;
+    --input: 240 8% 16%;
+    --ring: 320 90% 60%;
 
     --radius: 0.875rem;
 
-    --gradient-brand: linear-gradient(135deg, hsl(243 75% 59%) 0%, hsl(235 85% 70%) 55%, hsl(217 91% 70%) 100%);
-    --gradient-subtle: linear-gradient(135deg, hsl(240 45% 8%) 0%, hsl(240 40% 11%) 100%);
-    --gradient-radial: radial-gradient(ellipse at top, hsl(243 75% 30% / 0.35), transparent 60%);
+    --gradient-brand: linear-gradient(135deg, hsl(320 90% 60%) 0%, hsl(280 95% 65%) 50%, hsl(32 100% 60%) 100%);
+    --gradient-subtle: linear-gradient(135deg, hsl(240 14% 8%) 0%, hsl(240 12% 11%) 100%);
+    --gradient-radial: radial-gradient(ellipse at top, hsl(320 90% 20% / 0.4), transparent 60%);
 
-    --shadow-glow: 0 20px 60px -20px hsl(243 75% 59% / 0.45);
-    --shadow-card: 0 8px 30px -8px hsl(240 47% 2% / 0.6);
-    --shadow-elegant: 0 4px 20px -4px hsl(240 47% 2% / 0.5);
+    --shadow-glow: 0 20px 60px -20px hsl(320 90% 60% / 0.45);
+    --shadow-card: 0 8px 30px -8px hsl(240 14% 2% / 0.6);
+    --shadow-elegant: 0 4px 20px -4px hsl(240 14% 2% / 0.5);
 
     --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
 
-    --sidebar-background: 240 47% 7%;
-    --sidebar-foreground: 220 14% 80%;
-    --sidebar-primary: 243 75% 59%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 30% 12%;
-    --sidebar-accent-foreground: 220 20% 96%;
-    --sidebar-border: 240 25% 16%;
-    --sidebar-ring: 243 75% 59%;
+    --sidebar-background: 240 14% 7%;
+    --sidebar-foreground: 240 8% 80%;
+    --sidebar-primary: 320 90% 60%;
+    --sidebar-primary-foreground: 240 14% 6%;
+    --sidebar-accent: 240 10% 12%;
+    --sidebar-accent-foreground: 240 10% 96%;
+    --sidebar-border: 240 8% 16%;
+    --sidebar-ring: 320 90% 60%;
   }
 
   .light {
     --background: 0 0% 100%;
-    --foreground: 240 47% 8%;
+    --foreground: 240 14% 6%;
     --card: 0 0% 100%;
-    --card-foreground: 240 47% 8%;
+    --card-foreground: 240 14% 6%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 47% 8%;
-    --primary: 243 75% 55%;
+    --popover-foreground: 240 14% 6%;
+    --primary: 320 90% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 20% 96%;
-    --secondary-foreground: 240 47% 8%;
-    --muted: 240 20% 96%;
-    --muted-foreground: 240 10% 40%;
-    --accent: 217 91% 55%;
-    --accent-foreground: 0 0% 100%;
-    --border: 240 15% 90%;
-    --input: 240 15% 90%;
-    --ring: 243 75% 55%;
+    --secondary: 240 10% 96%;
+    --secondary-foreground: 240 14% 6%;
+    --muted: 240 10% 96%;
+    --muted-foreground: 240 6% 40%;
+    --accent: 32 100% 55%;
+    --accent-foreground: 240 14% 6%;
+    --border: 240 10% 90%;
+    --input: 240 10% 90%;
+    --ring: 320 90% 50%;
   }
 }
 
