@@ -53,6 +53,51 @@ const TRUST_ITEMS = [
   { icon: Zap, title: "7 dias com cartão", text: "O teste começa após confirmar o checkout." },
 ];
 
+const ROADMAP_ITEMS = [
+  {
+    month: "Julho 2026",
+    status: "Em desenvolvimento",
+    title: "Mais estabilidade e segurança",
+    text: "Fila inteligente, melhor prevenção contra falhas, melhorias no monitoramento e mais proteção contra ações repetitivas.",
+  },
+  {
+    month: "Agosto 2026",
+    status: "Planejado",
+    title: "Reels, Stories e Feed com ritmos separados",
+    text: "Cada formato poderá ter sua própria frequência, evitando que Reels, Stories e Feed disputem o mesmo intervalo de postagem.",
+  },
+  {
+    month: "Setembro 2026",
+    status: "Planejado",
+    title: "Templates mais profissionais",
+    text: "Mais modelos por nicho, prévias melhores, ajustes visuais mais simples e biblioteca de templates para acelerar a criação.",
+  },
+  {
+    month: "Outubro 2026",
+    status: "Em estudo",
+    title: "Inteligência por conta",
+    text: "O sistema começará a aprender o melhor ritmo, formato e tipo de conteúdo para cada perfil conectado.",
+  },
+  {
+    month: "Novembro 2026",
+    status: "Em estudo",
+    title: "Vídeos com template",
+    text: "Planejamento para permitir usar vídeos autorizados, aplicar templates do cliente e transformar em conteúdo com aparência de notícia.",
+  },
+  {
+    month: "Dezembro 2026",
+    status: "Planejado",
+    title: "Painel para agências",
+    text: "Recursos para quem gerencia várias contas e clientes, com visão operacional, permissões e controle mais profissional.",
+  },
+];
+
+const ROADMAP_STATUS_STYLES: Record<string, string> = {
+  "Em desenvolvimento": "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  Planejado: "border-primary/30 bg-primary/10 text-primary",
+  "Em estudo": "border-amber-300/30 bg-amber-300/10 text-amber-300",
+};
+
 function parseWhatsAppNumber(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 10) return null;
@@ -268,6 +313,47 @@ export default function Pricing() {
               </div>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-border/60 bg-card/45 p-6 md:p-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge variant="secondary" className="mx-auto">
+              <Sparkles className="mr-1 h-3 w-3" /> Evolução da plataforma
+            </Badge>
+            <h2 className="mt-4 font-display text-3xl font-bold md:text-4xl">
+              O que estamos preparando para os próximos meses
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+              Ao escolher um plano, você entra em uma plataforma que continua evoluindo em segurança,
+              criação visual e gestão de múltiplas contas.
+            </p>
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {ROADMAP_ITEMS.map((item) => (
+              <article
+                key={item.month}
+                className="group relative min-w-0 overflow-hidden rounded-xl border border-border/60 bg-background/55 p-5 transition duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
+              >
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent opacity-0 transition group-hover:opacity-100" />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                    {item.month}
+                  </span>
+                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${ROADMAP_STATUS_STYLES[item.status]}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <h3 className="mt-5 font-display text-lg font-semibold leading-snug">{item.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.text}</p>
+              </article>
+            ))}
+          </div>
+
+          <p className="mx-auto mt-6 max-w-3xl text-center text-xs leading-relaxed text-muted-foreground">
+            Este planejamento pode mudar conforme feedback dos usuários, prioridades técnicas,
+            políticas das plataformas e melhorias de segurança.
+          </p>
         </section>
       </div>
 
