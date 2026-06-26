@@ -12,35 +12,51 @@ import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
 import Admin from "./pages/dashboard/Admin";
 
+function lazyRoute<T extends { default: React.ComponentType<any> }>(factory: () => Promise<T>) {
+  return lazy(() =>
+    factory().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      const isChunkLoadError = /Failed to fetch dynamically imported module|Loading chunk|Importing a module script failed/i.test(message);
+
+      if (isChunkLoadError && !sessionStorage.getItem("ff_chunk_reload")) {
+        sessionStorage.setItem("ff_chunk_reload", "1");
+        window.location.reload();
+      }
+
+      throw error;
+    })
+  );
+}
+
 // Lazy-loaded routes (reduces initial bundle, defers Stripe SDK to /pricing only)
-const DashboardLayout = lazy(() => import("@/components/DashboardLayout"));
-const Auth = lazy(() => import("./pages/Auth"));
-const Overview = lazy(() => import("./pages/dashboard/Overview"));
-const Sources = lazy(() => import("./pages/dashboard/Sources"));
-const Topics = lazy(() => import("./pages/dashboard/Topics"));
-const CreatorProfile = lazy(() => import("./pages/dashboard/CreatorProfile"));
-const News = lazy(() => import("./pages/dashboard/News"));
-const Scheduled = lazy(() => import("./pages/dashboard/Scheduled"));
-const Accounts = lazy(() => import("./pages/dashboard/Accounts"));
-const Settings = lazy(() => import("./pages/dashboard/Settings"));
-const AccountSettings = lazy(() => import("./pages/dashboard/AccountSettings"));
-const Logs = lazy(() => import("./pages/dashboard/Logs"));
-const Insights = lazy(() => import("./pages/dashboard/Insights"));
-const Templates = lazy(() => import("./pages/dashboard/Templates"));
-const TokenHealth = lazy(() => import("./pages/dashboard/TokenHealth"));
-const MetaApiHealth = lazy(() => import("./pages/dashboard/MetaApiHealth"));
-const ChannelConfig = lazy(() => import("./pages/dashboard/ChannelConfig"));
-const AdminReleases = lazy(() => import("./pages/dashboard/AdminReleases"));
-const Support = lazy(() => import("./pages/dashboard/Support"));
-const AdminSupport = lazy(() => import("./pages/dashboard/AdminSupport"));
-const Pricing = lazy(() => import("./pages/Pricing"));
-const CheckoutReturn = lazy(() => import("./pages/CheckoutReturn"));
-const Terms = lazy(() => import("./pages/Terms"));
-const Privacy = lazy(() => import("./pages/Privacy"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const DataDeletionStatus = lazy(() => import("./pages/DataDeletionStatus"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+const DashboardLayout = lazyRoute(() => import("@/components/DashboardLayout"));
+const Auth = lazyRoute(() => import("./pages/Auth"));
+const Overview = lazyRoute(() => import("./pages/dashboard/Overview"));
+const Sources = lazyRoute(() => import("./pages/dashboard/Sources"));
+const Topics = lazyRoute(() => import("./pages/dashboard/Topics"));
+const CreatorProfile = lazyRoute(() => import("./pages/dashboard/CreatorProfile"));
+const News = lazyRoute(() => import("./pages/dashboard/News"));
+const Scheduled = lazyRoute(() => import("./pages/dashboard/Scheduled"));
+const Accounts = lazyRoute(() => import("./pages/dashboard/Accounts"));
+const Settings = lazyRoute(() => import("./pages/dashboard/Settings"));
+const AccountSettings = lazyRoute(() => import("./pages/dashboard/AccountSettings"));
+const Logs = lazyRoute(() => import("./pages/dashboard/Logs"));
+const Insights = lazyRoute(() => import("./pages/dashboard/Insights"));
+const Templates = lazyRoute(() => import("./pages/dashboard/Templates"));
+const TokenHealth = lazyRoute(() => import("./pages/dashboard/TokenHealth"));
+const MetaApiHealth = lazyRoute(() => import("./pages/dashboard/MetaApiHealth"));
+const ChannelConfig = lazyRoute(() => import("./pages/dashboard/ChannelConfig"));
+const AdminReleases = lazyRoute(() => import("./pages/dashboard/AdminReleases"));
+const Support = lazyRoute(() => import("./pages/dashboard/Support"));
+const AdminSupport = lazyRoute(() => import("./pages/dashboard/AdminSupport"));
+const Pricing = lazyRoute(() => import("./pages/Pricing"));
+const CheckoutReturn = lazyRoute(() => import("./pages/CheckoutReturn"));
+const Terms = lazyRoute(() => import("./pages/Terms"));
+const Privacy = lazyRoute(() => import("./pages/Privacy"));
+const ForgotPassword = lazyRoute(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazyRoute(() => import("./pages/ResetPassword"));
+const DataDeletionStatus = lazyRoute(() => import("./pages/DataDeletionStatus"));
+const NotFound = lazyRoute(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
