@@ -196,10 +196,10 @@ function wrapText(ctx, text, maxWidth, maxChars = Number.POSITIVE_INFINITY) {
 
 function templateIdForFormat(settings, format) {
   if (format === "story" || format === "stories") {
-    return settings?.default_story_template_id || null;
+    return settings?.default_story_template_id || settings?.default_template_id || null;
   }
   if (format === "reel" || format === "reels") {
-    return settings?.default_reel_template_id || null;
+    return settings?.default_reel_template_id || settings?.default_template_id || null;
   }
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
@@ -892,7 +892,10 @@ async function loadEffectivePostSettings(post) {
 
 // Processa uma publicação agendada
 async function processPost(post) {
-  const news = post.news_items;
+  const news = {
+    ...post.news_items,
+    instagram_account_id: post.instagram_account_id || post.news_items?.instagram_account_id || null,
+  };
   console.log(`--- [PROCESSANDO] Post ${post.id} (Tipo: ${post.media_type}) | Usuário: ${post.user_id} | News: ${news.id} ---`);
 
   try {

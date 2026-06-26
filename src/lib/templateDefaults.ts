@@ -18,10 +18,14 @@ export function resolveAccountTemplateDefaults(
     !!id && templates.some(template => template.id === id && (template.format || "feed") === format);
   const globalFeed = globalSettings.default_feed_template_id || globalSettings.default_template_id || null;
   const accountFeed = accountSettings?.default_feed_template_id || accountSettings?.default_template_id || null;
+  const globalStory = globalSettings.default_story_template_id || globalSettings.default_template_id || null;
+  const accountStory = accountSettings?.default_story_template_id || accountSettings?.default_template_id || null;
+  const globalReel = globalSettings.default_reel_template_id || globalSettings.default_template_id || null;
+  const accountReel = accountSettings?.default_reel_template_id || accountSettings?.default_template_id || null;
   const candidates: Record<TemplateFormat, { account: string | null; global: string | null }> = {
     feed: { account: accountFeed, global: globalFeed },
-    stories: { account: accountSettings?.default_story_template_id || null, global: globalSettings.default_story_template_id || null },
-    reels: { account: accountSettings?.default_reel_template_id || null, global: globalSettings.default_reel_template_id || null },
+    stories: { account: accountStory, global: globalStory },
+    reels: { account: accountReel, global: globalReel },
   };
   const ids = {} as Record<TemplateFormat, string | null>;
   const sources = {} as Record<TemplateFormat, "account" | "global" | null>;

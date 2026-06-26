@@ -5,6 +5,7 @@ const templates = [
   { id: "feed-global", format: "feed" },
   { id: "feed-fuxico", format: "feed" },
   { id: "story-global", format: "stories" },
+  { id: "story-fuxico", format: "stories" },
   { id: "reel-dolariza", format: "reels" },
 ];
 
@@ -38,5 +39,16 @@ describe("account template defaults", () => {
       true,
     );
     expect(result.ids.stories).toBeNull();
+  });
+
+  it("uses the legacy default only when it matches the selected format", () => {
+    const result = resolveAccountTemplateDefaults(
+      templates,
+      { default_template_id: "feed-global", default_story_template_id: "story-global" },
+      { default_template_id: "story-fuxico" },
+      true,
+    );
+    expect(result.ids).toEqual({ feed: "feed-global", stories: "story-fuxico", reels: null });
+    expect(result.sources).toEqual({ feed: "global", stories: "account", reels: null });
   });
 });

@@ -222,10 +222,12 @@ export default function News() {
           if (!sourceUrl) throw new Error("Imagem não gerada ainda");
           toast.info("Gerando vídeo 9:16 (~20s)...");
           const { imageToReelVideo } = await import("@/lib/imageToVideo");
-          // busca a trilha sonora padrão configurada
           const { data: { user: u0 } } = await supabase.auth.getUser();
-          const { data: settings } = await supabase.from("user_settings").select("reel_audio_url").eq("user_id", u0!.id).maybeSingle();
-          const blob = await imageToReelVideo(sourceUrl, 6, settings?.reel_audio_url);
+          const [{ data: effective }, { data: settings }] = await Promise.all([
+            supabase.rpc("get_effective_account_settings", { _account_id: acc.id }),
+            supabase.from("user_settings").select("reel_audio_url").eq("user_id", u0!.id).maybeSingle(),
+          ]);
+          const blob = await imageToReelVideo(sourceUrl, 6, (effective as any)?.reel_audio_url || settings?.reel_audio_url);
           const isMp4 = (blob.type || "").includes("mp4");
           if (!isMp4) throw new Error("Seu navegador não consegue gerar MP4. Use o Chrome desktop para aprovar Reels.");
           const { data: { user } } = await supabase.auth.getUser();

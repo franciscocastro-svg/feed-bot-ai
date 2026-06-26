@@ -26,7 +26,7 @@ export function useReelVideoGenerator() {
 
         const { data: pending } = await supabase
           .from("scheduled_posts")
-          .select("id, media_type, news_item_id, news_items(*)")
+          .select("id, media_type, instagram_account_id, news_item_id, news_items(*)")
           .eq("user_id", user.id)
           .eq("status", "scheduled")
           .limit(10);
@@ -55,9 +55,17 @@ export function useReelVideoGenerator() {
 
         for (const p of todo) {
           if (stopped) return;
-          const news = (p as any).news_items;
+          const post = p as any;
+          const accountId = post.instagram_account_id || post.news_items?.instagram_account_id || null;
+          const news = { ...post.news_items, instagram_account_id: accountId };
           const mediaType = (p as any).media_type as "feed" | "reel" | "story";
           try {
+            if (accountId && post.news_items?.id && post.news_items.instagram_account_id !== accountId) {
+              await supabase
+                .from("news_items")
+                .update({ instagram_account_id: accountId })
+                .eq("id", post.news_items.id);
+            }
             if (mediaType === "feed") {
               const { composeAndUploadPost } = await import("@/lib/composePostCanvas");
               await composeAndUploadPost(news);
@@ -76,7 +84,12 @@ export function useReelVideoGenerator() {
               // 2) MP4
               if (!news.generated_video_url && sourceUrl) {
                 const { imageToReelVideo } = await import("@/lib/imageToVideo");
-                const audioUrl = news.chosen_audio_url || fallbackAudio;
+                let accountAudio = null;
+                if (accountId) {
+                  const { data: effective } = await supabase.rpc("get_effective_account_settings", { _account_id: accountId });
+                  accountAudio = (effective as any)?.reel_audio_url || null;
+                }
+                const audioUrl = news.chosen_audio_url || accountAudio || fallbackAudio;
                 const blob = await imageToReelVideo(sourceUrl, 6, audioUrl);
                 if (!(blob.type || "").includes("mp4")) {
                   console.warn("[reel-bg] navegador não gera mp4, pulando", news.id);

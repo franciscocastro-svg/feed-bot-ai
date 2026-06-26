@@ -186,8 +186,8 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   const settings = await loadEffectiveSettings(item);
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const templateId = opts.withFollowCta
-    ? settings?.default_reel_template_id
-    : settings?.default_story_template_id;
+    ? settings?.default_reel_template_id || settings?.default_template_id
+    : settings?.default_story_template_id || settings?.default_template_id;
   const { data: template } = templateId
     ? await supabase
       .from("post_templates")

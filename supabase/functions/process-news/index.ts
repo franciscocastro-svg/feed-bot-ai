@@ -1246,10 +1246,10 @@ async function generateAIImage(prompt: string): Promise<Uint8Array> {
 
 function templateIdForFormat(settings: any, format: string) {
   if (format === "story" || format === "stories") {
-    return settings?.default_story_template_id || null;
+    return settings?.default_story_template_id || settings?.default_template_id || null;
   }
   if (format === "reel" || format === "reels") {
-    return settings?.default_reel_template_id || null;
+    return settings?.default_reel_template_id || settings?.default_template_id || null;
   }
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
