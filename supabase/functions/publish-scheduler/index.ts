@@ -18,6 +18,15 @@ const GRAPH_VERSION = "v21.0";
 const AWAITING_CONTAINER_TTL_MINUTES = 120;
 const ACTIVE_QUEUE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+  if (!url || !userId || !itemId) return false;
+  const clean = String(url).split("?")[0];
+  let decoded = clean;
+  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
+  const expectedPath = `${userId}/${itemId}.mp4`;
+  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
+}
+
 // =============================================================
 // Captura headers de quota da Meta Graph API.
 // X-App-Usage: { call_count, total_time, total_cputime } (0-100 cada)
@@ -688,15 +697,20 @@ Deno.serve(async (req) => {
       const postCfg = getPostConfig(p);
       const waitedMs = Date.now() - new Date(p.created_at).getTime();
       const useFallback = waitedMs >= FALLBACK_AFTER_MS;
+      const managedReelVideo = mt === "reel"
+        ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id)
+        : false;
+      const staleReelVideo = mt === "reel" && !!news?.generated_video_url && !managedReelVideo;
 
       // Reel sem MP4 e fora da janela: converte pra Feed usando a capa/foto.
-      if (mt === "reel" && !news?.generated_video_url && useFallback &&
+      // Se existe um vídeo antigo, não fazemos fallback: aguardamos regenerar o Reel correto.
+      if (mt === "reel" && !managedReelVideo && !staleReelVideo && useFallback &&
           (news?.generated_cover_url || news?.generated_image_url)) {
         p._fallback_reel_to_feed = true;
       }
 
       const hasMedia = (mt === "reel" && !p._fallback_reel_to_feed)
-        ? !!news?.generated_video_url
+        ? managedReelVideo
         : mt === "story"
           ? !!(news?.generated_video_url || news?.generated_cover_url || news?.generated_image_url)
           : !!(news?.generated_image_url || news?.generated_cover_url);
@@ -921,11 +935,15 @@ Deno.serve(async (req) => {
         let fellBackToFeed = false;
         const waitedMs = Date.now() - new Date(p.created_at).getTime();
         const pastFallbackWindow = waitedMs >= 15 * 60_000;
+        const managedReelVideo = mediaType === "reel"
+          ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id)
+          : false;
+        const staleReelVideo = mediaType === "reel" && !!news?.generated_video_url && !managedReelVideo;
 
         if (mediaType === "reel") {
-          if (news?.generated_video_url) {
+          if (managedReelVideo) {
             mediaUrl = news.generated_video_url;
-          } else if (pastFallbackWindow && (news?.generated_cover_url || news?.generated_image_url)) {
+          } else if (!staleReelVideo && pastFallbackWindow && (news?.generated_cover_url || news?.generated_image_url)) {
             // Fallback: publica como Feed com a foto/capa que existir
             mediaType = "feed";
             isVideo = false;
@@ -949,11 +967,22 @@ Deno.serve(async (req) => {
             scheduled_for: next,
             error_message: !editorialReady
               ? "Aguardando geração da arte editorial/template"
-              : "Aguardando mídia",
+              : p.media_type === "reel" && news?.generated_video_url
+                ? "Aguardando regeneração do Reel com template"
+                : "Aguardando mídia",
           }).eq("id", p.id);
           await supabase.from("activity_logs").insert({
             user_id: userId, action: "publish_postponed", entity_type: "scheduled_post", entity_id: p.id,
-            details: { reason: !editorialReady ? "editorial_not_ready" : "media_not_ready", media_type: mediaType, retry_at: next, waited_ms: waitedMs },
+            details: {
+              reason: !editorialReady
+                ? "editorial_not_ready"
+                : p.media_type === "reel" && news?.generated_video_url
+                  ? "stale_reel_video_url"
+                  : "media_not_ready",
+              media_type: mediaType,
+              retry_at: next,
+              waited_ms: waitedMs,
+            },
           });
           continue;
         }

@@ -13,6 +13,15 @@ const ACTIVE_POST_LIMIT = 150;
 const POSTED_POST_LIMIT = 30;
 const SCHEDULE_REFRESH_MS = 30000;
 
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+  if (!url || !userId || !itemId) return false;
+  const clean = String(url).split("?")[0];
+  let decoded = clean;
+  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
+  const expectedPath = `${userId}/${itemId}.mp4`;
+  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
+}
+
 export default function Scheduled() {
   const fmtBR = (d: string | Date) =>
     new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) + " (Brasília)";
@@ -250,8 +259,11 @@ export default function Scheduled() {
             const awaitingContainer = p.status === "awaiting_container";
             const posting = p.status === "posting";
             const news = p.news_items || {};
+            const managedReelVideo = p.media_type === "reel"
+              ? isManagedReelVideoUrl(news.generated_video_url, p.user_id, p.news_item_id)
+              : false;
             const finalMediaReady = p.media_type === "reel"
-              ? !!(news.generated_video_url && news.editorial_ready)
+              ? !!(managedReelVideo && news.editorial_ready)
               : p.media_type === "story"
                 ? !!((news.generated_video_url || news.generated_cover_url || news.generated_image_url) && news.editorial_ready)
                 : !!((news.generated_image_url || news.generated_cover_url) && news.editorial_ready);
@@ -298,10 +310,10 @@ export default function Scheduled() {
                     {p.media_type === "reel" && p.status !== "posted" && (
                       awaitingContainer ? (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · Instagram/Meta processando o vídeo</p>
-                      ) : p.news_items?.generated_video_url && p.news_items?.editorial_ready ? (
+                      ) : managedReelVideo && p.news_items?.editorial_ready ? (
                         <p className="text-xs text-emerald-500 mt-1">🎬 Reel · vídeo pronto</p>
                       ) : p.news_items?.generated_video_url ? (
-                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · finalizando template…</p>
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · regenerando vídeo com template…</p>
                       ) : (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · vídeo gerando…</p>
                       )
@@ -393,7 +405,10 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
 
   const news = post.news_items || {};
   const mediaType = post.media_type === "reel" ? "reel" : post.media_type === "story" ? "story" : "feed";
-  const isVideo = mediaType === "reel" || (mediaType === "story" && !!news.generated_video_url);
+  const managedReelVideo = mediaType === "reel"
+    ? isManagedReelVideoUrl(news.generated_video_url, post.user_id, post.news_item_id)
+    : false;
+  const isVideo = (mediaType === "reel" && managedReelVideo) || (mediaType === "story" && !!news.generated_video_url);
   const mediaUrl = mediaType === "feed"
     ? news.generated_image_url || news.generated_cover_url
     : isVideo

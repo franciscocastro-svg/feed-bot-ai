@@ -55,6 +55,15 @@ function feedPreviewUrl(item: any) {
   return item?.generated_image_url || item?.generated_cover_url || "";
 }
 
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+  if (!url || !userId || !itemId) return false;
+  const clean = String(url).split("?")[0];
+  let decoded = clean;
+  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
+  const expectedPath = `${userId}/${itemId}.mp4`;
+  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
+}
+
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
   const globalMin = Math.max(10, Number(userSettings?.min_post_interval_minutes) || 10);
   const channelMin = Math.max(globalMin, Number(channelSettings?.min_interval_minutes) || globalMin);
@@ -666,12 +675,12 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   const [busy, setBusy] = useState(false);
 
   const ensureReelVideo = async (): Promise<string> => {
-    if (item.generated_video_url) return item.generated_video_url;
-    const sourceUrl = item.generated_cover_url || item.generated_image_url;
-    if (!sourceUrl) throw new Error("Imagem não gerada ainda");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (isManagedReelVideoUrl(item.generated_video_url, user?.id, item.id)) return item.generated_video_url;
+    const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
+    const sourceUrl = await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id }, { withFollowCta: true });
     toast.info("Gerando vídeo 9:16 (pode levar ~20s)...");
     const { imageToReelVideo } = await import("@/lib/imageToVideo");
-    const { data: { user } } = await supabase.auth.getUser();
     const { data: settings } = await supabase.from("user_settings").select("reel_audio_url").eq("user_id", user!.id).maybeSingle();
     const blob = await imageToReelVideo(sourceUrl, 6, settings?.reel_audio_url);
     const path = `${user!.id}/${item.id}.mp4`;

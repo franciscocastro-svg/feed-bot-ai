@@ -67,6 +67,15 @@ async function uploadPostAsset(pathStorage, contents, options) {
   });
 }
 
+function isManagedReelVideoUrl(url, userId, itemId) {
+  if (!url || !userId || !itemId) return false;
+  const clean = String(url).split("?")[0];
+  let decoded = clean;
+  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
+  const expectedPath = `${userId}/${itemId}.mp4`;
+  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
+}
+
 // Configuração de caminhos e env
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -646,12 +655,9 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
 
 // 3. Mescla imagem de capa + áudio com FFmpeg e gera o Reel (MP4)
 async function generateReelVideoNode(item, settings) {
-  // 1) Garante a capa editorial 9:16
-  let sourceUrl = item.generated_cover_url;
-  if (!sourceUrl) {
-    console.log(`[reel] Gerando capa editorial para o item ${item.id}...`);
-    sourceUrl = await composeAndUploadStoryNode(item, settings, { withFollowCta: true });
-  }
+  // 1) Sempre recompõe a capa editorial 9:16 para respeitar o template atual da conta.
+  console.log(`[reel] Gerando capa editorial para o item ${item.id}...`);
+  const sourceUrl = await composeAndUploadStoryNode(item, settings, { withFollowCta: true });
 
   // 2) Caminhos dos arquivos temporários locais
   const idStr = `${item.user_id.substring(0, 5)}_${item.id.substring(0, 8)}`;
@@ -774,10 +780,7 @@ async function generateReelVideoFromJob(job) {
         .update({ cover_url: sourceUrl, updated_at: new Date().toISOString() })
         .eq("id", job.id);
     } catch (coverErr) {
-      if (!sourceUrl) {
-        throw new Error(`Job de Reel sem cover_url e falha ao gerar capa editorial: ${coverErr?.message || coverErr}`);
-      }
-      console.warn(`[job:${job.id}] Falha ao gerar capa editorial; usando cover_url existente.`, coverErr);
+      throw new Error(`Falha ao gerar capa editorial do Reel com template: ${coverErr?.message || coverErr}`);
     }
 
     console.log(`[job:${job.id}] Baixando capa do Reel...`);
@@ -966,7 +969,7 @@ async function main() {
           if (!n.rewritten_title || !n.rewritten_summary) return false;
           // Se já está pronto, mas é reel sem vídeo, precisa processar
           if (n.editorial_ready) {
-            if (p.media_type === "reel" && !n.generated_video_url) return true;
+            if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id)) return true;
             return false;
           }
           return true;

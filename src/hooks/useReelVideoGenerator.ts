@@ -1,6 +1,15 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+  if (!url || !userId || !itemId) return false;
+  const clean = String(url).split("?")[0];
+  let decoded = clean;
+  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
+  const expectedPath = `${userId}/${itemId}.mp4`;
+  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
+}
+
 /**
  * Roda em background no dashboard: para cada post agendado, garante que a arte
  * editorial correta já está pronta:
@@ -38,8 +47,8 @@ export function useReelVideoGenerator() {
           // renderizar um Story/Reel sem título e sem resumo.
           if (!n.rewritten_title || !n.rewritten_summary) return false;
           if (n.editorial_ready) {
-            // mesmo "ready", se for reel sem vídeo ainda, precisamos gerar o MP4
-            if (p.media_type === "reel" && !n.generated_video_url) return true;
+            // mesmo "ready", se o Reel não foi renderizado pelo Flux & Feed para esta notícia, gera o MP4.
+            if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || user.id, n.id)) return true;
             return false;
           }
           return true;
@@ -75,14 +84,11 @@ export function useReelVideoGenerator() {
               await composeAndUploadStory(news);
               await supabase.from("news_items").update({ editorial_ready: true }).eq("id", news.id);
             } else if (mediaType === "reel") {
-              // 1) capa editorial 9:16
-              let sourceUrl = news.generated_cover_url;
-              if (!sourceUrl) {
-                const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
-                sourceUrl = await composeAndUploadStory(news, { withFollowCta: true });
-              }
+              // 1) sempre recompõe a capa editorial 9:16 para respeitar o template atual da conta.
+              const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
+              const sourceUrl = await composeAndUploadStory(news, { withFollowCta: true });
               // 2) MP4
-              if (!news.generated_video_url && sourceUrl) {
+              if (!isManagedReelVideoUrl(news.generated_video_url, user.id, news.id) && sourceUrl) {
                 const { imageToReelVideo } = await import("@/lib/imageToVideo");
                 let accountAudio = null;
                 if (accountId) {
