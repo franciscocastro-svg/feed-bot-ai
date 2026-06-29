@@ -717,7 +717,7 @@ async function generateReelVideoNode(item, settings) {
     console.log(`[reel] Upload de vídeo concluído: ${videoUrl}`);
 
     await supabase.from("news_items")
-      .update({ generated_video_url: videoUrl, editorial_ready: true })
+      .update({ generated_video_url: videoUrl, editorial_ready: true, error_message: null })
       .eq("id", item.id);
 
     return videoUrl;
@@ -818,6 +818,12 @@ async function generateReelVideoFromJob(job) {
       .update({ generated_video_url: videoUrl, editorial_ready: true, error_message: null })
       .eq("id", job.news_item_id);
 
+    await supabase.from("scheduled_posts")
+      .update({ error_message: null })
+      .eq("news_item_id", job.news_item_id)
+      .eq("status", "scheduled")
+      .ilike("error_message", "%Aguardando geração da arte/vídeo com template%");
+
     await supabase.from("reel_render_jobs")
       .update({ status: "done", output_url: videoUrl, completed_at: new Date().toISOString(), error_message: null })
       .eq("id", job.id);
@@ -910,6 +916,10 @@ async function processPost(post) {
       console.log(`[OK] Story processado: ${url}`);
     } else if (post.media_type === "reel") {
       const url = await generateReelVideoNode(news, settings);
+      await supabase.from("scheduled_posts")
+        .update({ error_message: null })
+        .eq("id", post.id)
+        .ilike("error_message", "%Aguardando geração da arte/vídeo com template%");
       console.log(`[OK] Reel processado com vídeo: ${url}`);
     } else {
       console.warn(`[WARN] Tipo de mídia desconhecido: ${post.media_type}`);

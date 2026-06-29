@@ -28,7 +28,7 @@ export default function Scheduled() {
   const [editWhen, setEditWhen] = useState<string>("");
 
   const load = async () => {
-    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, caption, reel_caption), instagram_accounts(username)";
+    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, editorial_ready, caption, reel_caption), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
       supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
       supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(POSTED_POST_LIMIT),
@@ -249,7 +249,14 @@ export default function Scheduled() {
             const failed = p.status === "failed";
             const awaitingContainer = p.status === "awaiting_container";
             const posting = p.status === "posting";
-            const friendlyError = getFriendlyError(p.error_message);
+            const news = p.news_items || {};
+            const finalMediaReady = p.media_type === "reel"
+              ? !!(news.generated_video_url && news.editorial_ready)
+              : p.media_type === "story"
+                ? !!((news.generated_video_url || news.generated_cover_url || news.generated_image_url) && news.editorial_ready)
+                : !!((news.generated_image_url || news.generated_cover_url) && news.editorial_ready);
+            const staleGenerationNotice = /Aguardando geração da arte\/vídeo com template/i.test(p.error_message || "") && finalMediaReady;
+            const friendlyError = staleGenerationNotice ? null : getFriendlyError(p.error_message);
             const scheduledAt = new Date(p.scheduled_for);
             const minutesUntilPost = Math.round((scheduledAt.getTime() - Date.now()) / 60000);
             const isDelayed = p.status === "scheduled" && minutesUntilPost >= 60;
@@ -291,8 +298,10 @@ export default function Scheduled() {
                     {p.media_type === "reel" && p.status !== "posted" && (
                       awaitingContainer ? (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · Instagram/Meta processando o vídeo</p>
-                      ) : p.news_items?.generated_video_url ? (
+                      ) : p.news_items?.generated_video_url && p.news_items?.editorial_ready ? (
                         <p className="text-xs text-emerald-500 mt-1">🎬 Reel · vídeo pronto</p>
+                      ) : p.news_items?.generated_video_url ? (
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · finalizando template…</p>
                       ) : (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · vídeo gerando…</p>
                       )
