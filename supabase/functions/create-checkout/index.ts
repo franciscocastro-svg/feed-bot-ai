@@ -25,8 +25,11 @@ function isAllowedUrl(raw: string | undefined | null): raw is string {
     const url = new URL(raw);
     if (url.protocol !== "https:" && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url.origin)) return false;
     if (url.searchParams.get("session_id") !== "{CHECKOUT_SESSION_ID}") return false;
-    return allowedOrigins().some((origin) => url.origin === origin)
-      || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url.origin);
+    if (allowedOrigins().some((origin) => url.origin === origin)) return true;
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url.origin)) return true;
+    // Allow Lovable preview/sandbox subdomains (e.g. id-preview--*.lovable.app, *.lovable.app, *.lovableproject.com)
+    if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.(lovable\.app|lovableproject\.com|lovable\.dev)$/i.test(url.origin)) return true;
+    return false;
   } catch {
     return false;
   }
