@@ -6,6 +6,43 @@ BRANCH="${DEPLOY_BRANCH:-main}"
 
 cd "$APP_DIR"
 
+secure_secret_files() {
+  for secret_file in .env .env.local .env.production worker/.env worker/.env.production; do
+    if [ -f "$secret_file" ]; then
+      chmod 600 "$secret_file"
+    fi
+  done
+}
+
+install_web_dependencies() {
+  echo "==> Installing web dependencies"
+  if npm ci; then
+    return
+  fi
+
+  echo "==> Web dependency install failed; cleaning node_modules and retrying once"
+  rm -rf node_modules
+  npm ci
+}
+
+install_worker_dependencies() {
+  echo "==> Installing worker dependencies"
+  local -a install_cmd
+  if [ -f worker/package-lock.json ]; then
+    install_cmd=(npm --prefix worker ci --omit=dev)
+  else
+    install_cmd=(npm --prefix worker install --omit=dev --no-package-lock)
+  fi
+
+  if "${install_cmd[@]}"; then
+    return
+  fi
+
+  echo "==> Worker dependency install failed; cleaning worker/node_modules and retrying once"
+  rm -rf worker/node_modules
+  "${install_cmd[@]}"
+}
+
 echo "==> Deploy started at $(date -Is)"
 echo "==> Directory: $APP_DIR"
 
@@ -17,13 +54,15 @@ fi
 echo "==> Fetching origin/$BRANCH"
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH"
+if ! git pull --ff-only origin "$BRANCH"; then
+  echo "ERRO: a copia do VPS divergiu da origin/$BRANCH. Resolva o historico local antes de fazer deploy."
+  exit 1
+fi
 
-echo "==> Installing web dependencies"
-npm ci
+secure_secret_files
 
-echo "==> Installing worker dependencies"
-npm --prefix worker install --omit=dev --no-package-lock
+install_web_dependencies
+install_worker_dependencies
 
 echo "==> Building frontend"
 npm run build

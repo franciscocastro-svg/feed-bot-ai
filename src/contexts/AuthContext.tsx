@@ -110,9 +110,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setAdminFullAccess(false);
         setAdminPermissions([]);
       } finally {
-        if (cancelled) return;
-        resolvedPermissionUserId.current = userId;
-        setAdminPermissionsLoading(false);
+        if (!cancelled) {
+          resolvedPermissionUserId.current = userId;
+          setAdminPermissionsLoading(false);
+        }
       }
     })();
 

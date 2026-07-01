@@ -682,9 +682,8 @@ Deno.serve(async (req) => {
     }
 
     // Janela de tolerância: até X min esperando o navegador renderizar a arte
-    // editorial (template Feed / capa Story / MP4 do Reel). Depois disso,
-    // publicamos com fallback (foto crua, ou Reel convertido em Feed) — assim
-    // o autopiloto nunca trava se ninguém abriu o painel.
+    // editorial (template Feed / capa Story / MP4 do Reel). Reels nunca fazem
+    // fallback para Feed, porque isso quebraria o formato escolhido pelo cliente.
     const FALLBACK_AFTER_MS = 15 * 60_000;
 
     let chosen: any = null;
@@ -700,25 +699,19 @@ Deno.serve(async (req) => {
       const managedReelVideo = mt === "reel"
         ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id)
         : false;
-      const staleReelVideo = mt === "reel" && !!news?.generated_video_url && !managedReelVideo;
 
-      // Reel sem MP4 e fora da janela: converte pra Feed usando a capa/foto.
-      // Se existe um vídeo antigo, não fazemos fallback: aguardamos regenerar o Reel correto.
-      if (mt === "reel" && !managedReelVideo && !staleReelVideo && useFallback &&
-          (news?.generated_cover_url || news?.generated_image_url)) {
-        p._fallback_reel_to_feed = true;
-      }
-
-      const hasMedia = (mt === "reel" && !p._fallback_reel_to_feed)
+      const hasMedia = mt === "reel"
         ? managedReelVideo
         : mt === "story"
           ? !!(news?.generated_video_url || news?.generated_cover_url || news?.generated_image_url)
           : !!(news?.generated_image_url || news?.generated_cover_url);
 
       // Feed nunca publica foto crua: precisa da arte editorial/template pronta.
-      // Stories/Reels ainda podem usar fallback depois da janela para não travar.
-      const allowRawFallback = mt !== "feed";
-      const ready = (allowRawFallback && useFallback) ? hasMedia : (news?.editorial_ready && hasMedia);
+      // Stories ainda podem usar fallback depois da janela; Reels precisam do MP4 final.
+      const allowRawFallback = mt === "story";
+      const ready = mt === "reel"
+        ? !!news?.editorial_ready && hasMedia
+        : (allowRawFallback && useFallback) ? hasMedia : (news?.editorial_ready && hasMedia);
       if (!ready) {
         skippedNotReady.push(p);
         continue;
@@ -928,11 +921,10 @@ Deno.serve(async (req) => {
           }
         }
 
-        let mediaType: "feed" | "reel" | "story" =
+        const mediaType: "feed" | "reel" | "story" =
           p.media_type === "reel" ? "reel" : p.media_type === "story" ? "story" : "feed";
         let isVideo = mediaType === "reel";
         let mediaUrl: string | null | undefined;
-        let fellBackToFeed = false;
         const waitedMs = Date.now() - new Date(p.created_at).getTime();
         const pastFallbackWindow = waitedMs >= 15 * 60_000;
         const managedReelVideo = mediaType === "reel"
@@ -943,12 +935,6 @@ Deno.serve(async (req) => {
         if (mediaType === "reel") {
           if (managedReelVideo) {
             mediaUrl = news.generated_video_url;
-          } else if (!staleReelVideo && pastFallbackWindow && (news?.generated_cover_url || news?.generated_image_url)) {
-            // Fallback: publica como Feed com a foto/capa que existir
-            mediaType = "feed";
-            isVideo = false;
-            mediaUrl = news.generated_image_url || news.generated_cover_url;
-            fellBackToFeed = true;
           }
         } else if (mediaType === "story") {
           if (news?.generated_video_url) { mediaUrl = news.generated_video_url; isVideo = true; }
@@ -957,28 +943,33 @@ Deno.serve(async (req) => {
           mediaUrl = news?.generated_image_url || news?.generated_cover_url;
         }
         // Feed nunca publica foto crua: precisa da arte/template pronta.
-        // Reels/Stories podem usar fallback depois da janela para não travar.
+        // Stories podem usar fallback depois da janela; Reels precisam do MP4 final.
         const editorialReady = !!news?.editorial_ready;
-        const allowRawFallback = mediaType !== "feed" || fellBackToFeed;
-        if (!mediaUrl || (!editorialReady && !(allowRawFallback && pastFallbackWindow))) {
+        const allowRawFallback = mediaType === "story";
+        if (!mediaUrl || (mediaType === "reel" && !managedReelVideo) || (!editorialReady && !(allowRawFallback && pastFallbackWindow))) {
           const next = new Date(Date.now() + minIntervalMin * 60_000).toISOString();
+          const reelNotReady = p.media_type === "reel" && !managedReelVideo;
           await supabase.from("scheduled_posts").update({
             status: "scheduled",
             scheduled_for: next,
-            error_message: !editorialReady
-              ? "Aguardando geração da arte editorial/template"
-              : p.media_type === "reel" && news?.generated_video_url
+            error_message: reelNotReady
+              ? news?.generated_video_url
                 ? "Aguardando regeneração do Reel com template"
-                : "Aguardando mídia",
+                : "Aguardando geração do Reel com template"
+              : !editorialReady
+              ? "Aguardando geração da arte editorial/template"
+              : "Aguardando mídia",
           }).eq("id", p.id);
           await supabase.from("activity_logs").insert({
             user_id: userId, action: "publish_postponed", entity_type: "scheduled_post", entity_id: p.id,
             details: {
-              reason: !editorialReady
-                ? "editorial_not_ready"
-                : p.media_type === "reel" && news?.generated_video_url
+              reason: reelNotReady
+                ? staleReelVideo
                   ? "stale_reel_video_url"
-                  : "media_not_ready",
+                  : "reel_video_not_ready"
+                : !editorialReady
+                ? "editorial_not_ready"
+                : "media_not_ready",
               media_type: mediaType,
               retry_at: next,
               waited_ms: waitedMs,
@@ -991,12 +982,6 @@ Deno.serve(async (req) => {
           : news.caption || news.rewritten_title || "";
         const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
         const mediaId = await publishToInstagram(acc.ig_user_id, acc.access_token, mediaUrl, captionToUse, mediaType, isVideo, usageCtx);
-        if (fellBackToFeed) {
-          await supabase.from("activity_logs").insert({
-            user_id: userId, action: "reel_fallback_to_feed", entity_type: "scheduled_post", entity_id: p.id,
-            details: { reason: "video_not_ready_after_15min", waited_ms: waitedMs },
-          });
-        }
         await supabase.from("scheduled_posts").update({ status: "posted", posted_at: new Date().toISOString(), ig_media_id: mediaId, error_message: null }).eq("id", p.id);
         await supabase.from("news_items").update({ status: "posted" }).eq("id", news.id);
         await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_instagram", entity_type: "scheduled_post", entity_id: p.id, details: { media_id: mediaId } });
