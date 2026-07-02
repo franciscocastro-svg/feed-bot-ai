@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Sparkles, Newspaper, Instagram } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { trackMetaEvent } from "@/lib/metaPixel";
 
 const schema = z.object({
   email: z.string().trim().email("Email inválido").max(255),
@@ -70,6 +71,7 @@ export default function Auth() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+    trackMetaEvent("Lead", { content_name: "signup" });
     toast.success("Conta criada! Confirme seu email e cadastre o cartão para ativar os 7 dias.");
   };
 

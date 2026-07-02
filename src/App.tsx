@@ -8,11 +8,12 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { MetaPixelTracker } from "@/components/MetaPixelTracker";
 import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
 import Admin from "./pages/dashboard/Admin";
 
-function lazyRoute<T extends { default: React.ComponentType<any> }>(factory: () => Promise<T>) {
+function lazyRoute<T extends { default: React.ComponentType<Record<string, never>> }>(factory: () => Promise<T>) {
   return lazy(() =>
     factory().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -75,6 +76,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <MetaPixelTracker />
           <AppErrorBoundary>
           <Suspense fallback={
             <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">

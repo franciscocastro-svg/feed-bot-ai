@@ -13,6 +13,7 @@ import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { usePlanUsage } from "@/hooks/usePlanUsage";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
+import { trackMetaEvent } from "@/lib/metaPixel";
 
 const WHATSAPP_BUSINESS = "5547996080134";
 type PlanLimit = Database["public"]["Tables"]["plan_limits"]["Row"];
@@ -166,6 +167,7 @@ export default function Pricing() {
       navigate(`/auth?redirect=${encodeURIComponent(`/pricing?plan=${priceId}`)}`);
       return;
     }
+    trackMetaEvent("InitiateCheckout", { content_name: priceId });
     setSelectedPriceId(priceId);
     setCheckoutOpen(true);
   };
