@@ -4,7 +4,6 @@ import path from "path";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import dotenv from "dotenv";
 import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
@@ -14,6 +13,29 @@ const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let canvasRuntimePromise = null;
+
+async function getCanvasRuntime() {
+  if (!canvasRuntimePromise) {
+    canvasRuntimePromise = import("@napi-rs/canvas").catch((error) => {
+      canvasRuntimePromise = null;
+      const message = "Dependência visual @napi-rs/canvas não instalada. Rode npm install no VPS antes de gerar artes, stories, reels ou cortes.";
+      const wrapped = new Error(message);
+      wrapped.cause = error;
+      throw wrapped;
+    });
+  }
+  return canvasRuntimePromise;
+}
+
+async function encodeCanvas(canvas, format) {
+  if (typeof canvas.encode === "function") return canvas.encode(format);
+  if (typeof canvas.toBuffer === "function") {
+    const mime = format === "jpeg" ? "image/jpeg" : "image/png";
+    return canvas.toBuffer(mime);
+  }
+  throw new Error("Runtime visual não conseguiu exportar a imagem.");
+}
 
 function errorStatus(error) {
   const raw = error?.statusCode ?? error?.status ?? error?.cause?.statusCode;
@@ -133,6 +155,7 @@ async function downloadFile(url, destPath) {
 async function setupFonts() {
   const fontRegularPath = path.join(FONTS_DIR, "Inter-Regular.ttf");
   const fontBoldPath = path.join(FONTS_DIR, "Inter-Bold.ttf");
+  const { GlobalFonts } = await getCanvasRuntime();
 
   if (!fs.existsSync(fontRegularPath)) {
     console.log("Baixando fonte Inter-Regular.ttf...");
@@ -164,6 +187,7 @@ async function setupFonts() {
 // Carrega imagem localmente para evitar problemas de CORS
 async function loadImageHelper(url) {
   if (!url) return null;
+  const { loadImage } = await getCanvasRuntime();
   // Proxy de imagem do weserv (igual ao front)
   const cleanUrl = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
   const proxiedUrl = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&output=jpg`;
@@ -356,6 +380,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 // 1. Renderiza e faz upload do Post (1080x1080)
 async function composeAndUploadPostNode(item, settings) {
   const SIZE = 1080;
+  const { createCanvas } = await getCanvasRuntime();
   const template = await loadTemplateForFormat(item.user_id, settings, "feed");
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
@@ -371,7 +396,7 @@ async function composeAndUploadPostNode(item, settings) {
 
   if (template) {
     await drawConfiguredTemplate(ctx, item, settings, template, SIZE, SIZE);
-    const buffer = await canvas.encode("png");
+    const buffer = await encodeCanvas(canvas, "png");
     const pathStorage = `${item.user_id}/${item.id}.png`;
     await uploadPostAsset(pathStorage, buffer, {
       contentType: "image/png",
@@ -462,7 +487,7 @@ async function composeAndUploadPostNode(item, settings) {
   ctx.fillText("LEIA A LEGENDA →", bx + bw / 2, by + 40);
   ctx.textAlign = "left";
 
-  const buffer = await canvas.encode("png");
+  const buffer = await encodeCanvas(canvas, "png");
   const pathStorage = `${item.user_id}/${item.id}.png`;
 
   await uploadPostAsset(pathStorage, buffer, {
@@ -481,6 +506,7 @@ async function composeAndUploadPostNode(item, settings) {
 async function composeAndUploadStoryNode(item, settings, opts = {}) {
   const W = 1080;
   const H = 1920;
+  const { createCanvas } = await getCanvasRuntime();
   const template = await loadTemplateForFormat(item.user_id, settings, opts.withFollowCta ? "reel" : "story");
 
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia");
@@ -496,7 +522,7 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
 
   if (template) {
     await drawConfiguredTemplate(ctx, item, settings, template, W, H, opts);
-    const buffer = await canvas.encode("jpeg");
+    const buffer = await encodeCanvas(canvas, "jpeg");
     const pathStorage = `${item.user_id}/${item.id}-story.jpg`;
     await uploadPostAsset(pathStorage, buffer, {
       contentType: "image/jpeg",
@@ -640,7 +666,7 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
     ctx.textBaseline = "alphabetic";
   }
 
-  const buffer = await canvas.encode("jpeg");
+  const buffer = await encodeCanvas(canvas, "jpeg");
   const pathStorage = `${item.user_id}/${item.id}-story.jpg`;
 
   await uploadPostAsset(pathStorage, buffer, {
@@ -1067,6 +1093,7 @@ function drawOverlayText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
 async function writeCutOverlayPng(clip, settings, outputPath) {
   const width = 1080;
   const height = 1920;
+  const { createCanvas } = await getCanvasRuntime();
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -1105,7 +1132,7 @@ async function writeCutOverlayPng(clip, settings, outputPath) {
   ctx.fillStyle = "rgba(255,255,255,0.72)";
   drawOverlayText(ctx, "Corte gerado para revisão antes de publicar", 70, height - 128, 880, 34, 1);
 
-  const buffer = await canvas.encode("png");
+  const buffer = await encodeCanvas(canvas, "png");
   await fs.promises.writeFile(outputPath, buffer);
 }
 
@@ -1413,8 +1440,7 @@ async function main() {
   try {
     await setupFonts();
   } catch (err) {
-    console.error("Erro fatal ao configurar fontes do sistema:", err);
-    process.exit(1);
+    console.warn("Aviso: fontes/runtime visual não carregados na inicialização. O worker continua online, mas a geração visual vai falhar até corrigir a dependência.", err?.message || err);
   }
 
   while (true) {
