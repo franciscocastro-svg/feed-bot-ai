@@ -413,9 +413,9 @@ export default function Cuts() {
               </div>
             )}
 
-            {job.video_cut_clips?.length > 0 && (
+            {(job.video_cut_clips?.length ?? 0) > 0 && (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {job.video_cut_clips.map((clip) => (
+                {job.video_cut_clips!.map((clip) => (
                   <Card key={clip.id} className="overflow-hidden border-border/80">
                     <div className="aspect-[9/16] bg-black">
                       {clip.video_url ? (
