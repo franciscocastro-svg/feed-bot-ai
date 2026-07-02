@@ -15,6 +15,82 @@ function lookupKeyToPlan(key: string | undefined | null): string {
   return "free";
 }
 
+async function sha256(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value.trim().toLowerCase());
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function centsToCurrencyValue(amount: number | null | undefined): number | undefined {
+  if (!amount || amount <= 0) return undefined;
+  return Number((amount / 100).toFixed(2));
+}
+
+async function sendMetaConversionEvent(
+  eventName: "StartTrial" | "Purchase",
+  params: {
+    env: StripeEnv;
+    eventId: string;
+    created: number | undefined;
+    email?: string | null;
+    currency?: string | null;
+    amount?: number | null;
+    orderId?: string | null;
+    plan?: string | null;
+  },
+): Promise<void> {
+  if (params.env !== "live") return;
+
+  const pixelId = Deno.env.get("META_PIXEL_ID");
+  const accessToken = Deno.env.get("META_CONVERSIONS_ACCESS_TOKEN");
+  if (!pixelId || !accessToken) {
+    console.warn("Meta Conversions API not configured");
+    return;
+  }
+
+  const eventSourceUrl = Deno.env.get("PUBLIC_SITE_URL") ||
+    Deno.env.get("PUBLIC_APP_URL") ||
+    "https://fluxifeed.com";
+  const eventTime = params.created || Math.floor(Date.now() / 1000);
+  const customData: Record<string, unknown> = {
+    currency: (params.currency || "BRL").toUpperCase(),
+  };
+  const value = centsToCurrencyValue(params.amount);
+  if (value !== undefined) customData.value = value;
+  if (params.orderId) customData.order_id = params.orderId;
+  if (params.plan) customData.content_name = params.plan;
+
+  const userData: Record<string, unknown> = {};
+  if (params.email) userData.em = [await sha256(params.email)];
+
+  const graphVersion = Deno.env.get("META_GRAPH_VERSION") || "v23.0";
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: [{
+          event_name: eventName,
+          event_time: eventTime,
+          event_id: params.eventId,
+          action_source: "website",
+          event_source_url: eventSourceUrl,
+          user_data: userData,
+          custom_data: customData,
+        }],
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Meta CAPI ${response.status}: ${text.slice(0, 500)}`);
+  }
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const env: StripeEnv = url.searchParams.get("env") === "live" ? "live" : "sandbox";
@@ -35,6 +111,21 @@ Deno.serve(async (req) => {
 
   try {
     switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const priceLookup = session.metadata?.priceId as string | undefined;
+        await sendMetaConversionEvent("StartTrial", {
+          env,
+          eventId: `stripe_${event.id}`,
+          created: event.created,
+          email: session.customer_details?.email || session.customer_email,
+          currency: session.currency,
+          amount: session.amount_total,
+          orderId: session.id,
+          plan: lookupKeyToPlan(priceLookup),
+        }).catch((error) => console.warn("Meta StartTrial failed:", error.message));
+        break;
+      }
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object;
@@ -97,6 +188,19 @@ Deno.serve(async (req) => {
           await supabase.from("user_subscriptions").update({
             status: "active",
           }).eq("stripe_subscription_id", subId).eq("environment", env);
+        }
+        if ((inv.amount_paid || 0) > 0) {
+          const priceLookup = inv.lines?.data?.[0]?.price?.lookup_key as string | undefined;
+          await sendMetaConversionEvent("Purchase", {
+            env,
+            eventId: `stripe_${event.id}`,
+            created: event.created,
+            email: inv.customer_email,
+            currency: inv.currency,
+            amount: inv.amount_paid,
+            orderId: inv.id,
+            plan: lookupKeyToPlan(priceLookup),
+          }).catch((error) => console.warn("Meta Purchase failed:", error.message));
         }
         break;
       }
