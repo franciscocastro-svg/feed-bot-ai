@@ -15,6 +15,11 @@ export interface PlanUsage {
   rss_sources_limit: number;
   posts_today: number;
   posts_per_day_limit: number;
+  cuts_used_today?: number;
+  cuts_reserved_today?: number;
+  cuts_limit?: number;
+  max_cut_video_minutes?: number;
+  max_cuts_per_job?: number;
   auto_publish_enabled: boolean;
   translation_enabled?: boolean;
 }

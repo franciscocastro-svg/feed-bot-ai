@@ -43,6 +43,7 @@ const AccountSettings = lazyRoute(() => import("./pages/dashboard/AccountSetting
 const Logs = lazyRoute(() => import("./pages/dashboard/Logs"));
 const Insights = lazyRoute(() => import("./pages/dashboard/Insights"));
 const Templates = lazyRoute(() => import("./pages/dashboard/Templates"));
+const Cuts = lazyRoute(() => import("./pages/dashboard/Cuts"));
 const TokenHealth = lazyRoute(() => import("./pages/dashboard/TokenHealth"));
 const MetaApiHealth = lazyRoute(() => import("./pages/dashboard/MetaApiHealth"));
 const ChannelConfig = lazyRoute(() => import("./pages/dashboard/ChannelConfig"));
@@ -103,6 +104,7 @@ const App = () => (
               <Route path="logs" element={<Logs />} />
               <Route path="insights" element={<Insights />} />
               <Route path="templates" element={<Templates />} />
+              <Route path="cortes" element={<Cuts />} />
               <Route path="token-health" element={<AdminOnlyRoute permission="tokens"><TokenHealth /></AdminOnlyRoute>} />
               <Route path="meta-api-health" element={<AdminOnlyRoute permission="meta"><MetaApiHealth /></AdminOnlyRoute>} />
               <Route path="channels/:channel" element={<ChannelConfig />} />

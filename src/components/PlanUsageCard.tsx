@@ -59,6 +59,11 @@ export function PlanUsageCard() {
         <UsageRow label="Contas Instagram" used={usage.ig_accounts_used} limit={usage.ig_accounts_limit} />
         <UsageRow label="Fontes RSS" used={usage.rss_sources_used} limit={usage.rss_sources_limit} />
         <UsageRow label="Posts hoje" used={usage.posts_today} limit={usage.posts_per_day_limit} />
+        <UsageRow
+          label="Cortes IA hoje"
+          used={(usage.cuts_used_today || 0) + (usage.cuts_reserved_today || 0)}
+          limit={usage.cuts_limit ?? 0}
+        />
       </div>
       {usage.plan !== "business" && (
         <Button asChild size="sm" variant="outline" className="w-full">

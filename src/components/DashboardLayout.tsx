@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2 } from "lucide-react";
+import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2, Scissors } from "lucide-react";
 import { ReleaseNotesBell } from "@/components/ReleaseNotes";
 import { BrandLogo } from "@/components/BrandLogo";
 import { PlanUsageCard } from "@/components/PlanUsageCard";
@@ -27,6 +27,7 @@ const nav = [
   { to: "/dashboard/channels/feed", icon: ImageIcon, label: "Feed" },
   { to: "/dashboard/channels/story", icon: Camera, label: "Stories" },
   { to: "/dashboard/channels/reel", icon: Film, label: "Reels" },
+  { to: "/dashboard/cortes", icon: Scissors, label: "Cortes IA" },
   { to: "/dashboard/insights", icon: BarChart3, label: "Insights" },
   { to: "/dashboard/accounts", icon: Instagram, label: "Contas IG" },
   { to: "/dashboard/logs", icon: ScrollText, label: "Atividade" },

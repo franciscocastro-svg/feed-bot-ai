@@ -90,6 +90,8 @@ if (fs.existsSync(path.join(__dirname, ".env"))) {
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKER_ID = process.env.WORKER_ID || `vps-${process.pid}`;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
+const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("ERRO: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não definidos no .env!");
@@ -856,6 +858,474 @@ async function generateReelVideoFromJob(job) {
   }
 }
 
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+async function commandExists(command) {
+  try {
+    await execAsync(`command -v ${shellQuote(command)}`, { maxBuffer: 1024 * 1024 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseJsonFromText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function toSeconds(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  if (/^\d+(\.\d+)?$/.test(text)) return Math.max(0, Math.round(Number(text)));
+  const parts = text.split(":").map((part) => Number(part));
+  if (parts.some((part) => !Number.isFinite(part))) return 0;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+function cleanCutText(value, fallback = "") {
+  return String(value || fallback || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeHashtags(value) {
+  const source = Array.isArray(value) ? value.join(" ") : String(value || "");
+  return source
+    .split(/[,\s]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`))
+    .slice(0, 12);
+}
+
+function clampClipSuggestion(clip, index, durationSeconds) {
+  const start = Math.max(0, toSeconds(clip?.start_seconds ?? clip?.start ?? clip?.inicio));
+  let end = Math.max(start + 8, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
+  const videoDuration = Math.max(0, Number(durationSeconds || 0));
+  if (videoDuration > 0) end = Math.min(end, videoDuration);
+  if (end - start > 90) end = start + 90;
+  if (end - start < 8) end = start + 20;
+
+  return {
+    clip_index: index,
+    start_seconds: start,
+    end_seconds: end,
+    duration_seconds: Math.max(1, end - start),
+    title: cleanCutText(clip?.title || clip?.titulo, `Corte ${index}`),
+    hook: cleanCutText(clip?.hook || clip?.gancho, "Momento importante do vídeo"),
+    caption: cleanCutText(clip?.caption || clip?.legenda, ""),
+    reason: cleanCutText(clip?.reason || clip?.motivo, "Trecho com potencial para Reel."),
+    score: Math.max(0, Math.min(100, Number(clip?.score || clip?.nota || 70))),
+    hashtags: normalizeHashtags(clip?.hashtags || "#reels #cortes #instagram"),
+  };
+}
+
+function fallbackClipSuggestions(job, metadata) {
+  const requested = Math.max(1, Math.min(5, Number(job.requested_clips || 1)));
+  const duration = Math.max(30, Number(metadata?.duration_seconds || 180));
+  const safeWindow = Math.min(duration - 10, 90);
+  const step = Math.max(25, Math.floor(safeWindow / requested));
+
+  return Array.from({ length: requested }).map((_, idx) => {
+    const start = Math.min(Math.max(0, idx * step), Math.max(0, duration - 45));
+    const end = Math.min(duration, start + 35);
+    return clampClipSuggestion({
+      start_seconds: start,
+      end_seconds: end,
+      title: metadata?.title || `Corte ${idx + 1}`,
+      hook: "Trecho selecionado para revisão",
+      caption: `${metadata?.title || "Novo corte"}\n\nAssista ao trecho e ajuste a legenda antes de agendar.`,
+      reason: "Fallback automático para permitir revisão quando a IA não retorna timestamps confiáveis.",
+      score: 60 - idx,
+      hashtags: ["#cortes", "#reels", "#instagram"],
+    }, idx + 1, duration);
+  });
+}
+
+async function probeYoutubeMetadata(youtubeUrl) {
+  if (!(await commandExists("yt-dlp"))) {
+    throw new Error("yt-dlp não está instalado no VPS.");
+  }
+
+  const { stdout } = await execAsync(
+    `yt-dlp --dump-json --skip-download --no-playlist ${shellQuote(youtubeUrl)}`,
+    { maxBuffer: 15 * 1024 * 1024 },
+  );
+  const data = JSON.parse(stdout);
+  return {
+    duration_seconds: Number(data.duration || 0),
+    title: cleanCutText(data.title, "Vídeo do YouTube"),
+    webpage_url: data.webpage_url || youtubeUrl,
+  };
+}
+
+async function analyzeYoutubeForCuts(job, metadata) {
+  if (!GEMINI_API_KEY) {
+    console.warn(`[cuts:${job.id}] GEMINI_API_KEY ausente; usando sugestões fallback.`);
+    return fallbackClipSuggestions(job, metadata);
+  }
+
+  const prompt = `Você é editor de Reels para Instagram. Analise este vídeo público autorizado e escolha até ${Math.min(5, job.requested_clips || 1)} melhores cortes.
+
+Regras:
+- Retorne apenas JSON válido, sem markdown.
+- Cada corte deve ter start_seconds, end_seconds, title, hook, caption, reason, score e hashtags.
+- Prefira trechos de 15 a 60 segundos com começo claro, assunto completo e final natural.
+- Não prometa viralização. Evite contexto enganoso.
+- Legenda em português brasileiro, curta, sem repetição e pronta para revisão.
+
+Formato:
+{"clips":[{"start_seconds":12,"end_seconds":42,"title":"Título curto","hook":"Gancho","caption":"Legenda curta","reason":"Por que esse trecho funciona","score":82,"hashtags":["#tema","#reels"]}]}`;
+
+  try {
+    const res = await withTransientRetry(`Gemini video cuts ${job.id}`, async () => {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          model: GEMINI_VIDEO_MODEL,
+          input: [
+            { type: "text", text: prompt },
+            { type: "video", uri: job.youtube_url },
+          ],
+        }),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        const error = new Error(`Gemini retornou ${response.status}: ${body.slice(0, 500)}`);
+        error.status = response.status;
+        throw error;
+      }
+      return response;
+    }, [2000, 5000]);
+
+    const payload = await res.json();
+    const text =
+      payload.output_text ||
+      payload.outputText ||
+      payload.response?.output_text ||
+      payload.steps?.flatMap((step) => step.content || []).map((part) => part.text).filter(Boolean).join("\n");
+    const parsed = parseJsonFromText(text);
+    const clips = Array.isArray(parsed?.clips) ? parsed.clips : [];
+    if (!clips.length) {
+      console.warn(`[cuts:${job.id}] Gemini não retornou cortes úteis; usando fallback.`);
+      return fallbackClipSuggestions(job, metadata);
+    }
+    return clips
+      .slice(0, Math.min(5, job.requested_clips || 1))
+      .map((clip, index) => clampClipSuggestion(clip, index + 1, metadata?.duration_seconds));
+  } catch (err) {
+    console.warn(`[cuts:${job.id}] Falha na análise Gemini; usando fallback:`, err?.message || err);
+    return fallbackClipSuggestions(job, metadata);
+  }
+}
+
+async function downloadYoutubeVideo(youtubeUrl, outputPath) {
+  if (!(await commandExists("yt-dlp"))) {
+    throw new Error("yt-dlp não está instalado no VPS.");
+  }
+
+  const command = [
+    "yt-dlp",
+    "--no-playlist",
+    "-f", shellQuote("bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
+    "--merge-output-format", "mp4",
+    "-o", shellQuote(outputPath),
+    shellQuote(youtubeUrl),
+  ].join(" ");
+  const { stderr } = await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    throw new Error(`Vídeo original não foi baixado. ${stderr || ""}`.trim());
+  }
+}
+
+function drawOverlayText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const lines = wrapText(ctx, cleanCutText(text), maxWidth).slice(0, maxLines);
+  lines.forEach((line, idx) => ctx.fillText(line, x, y + idx * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+async function writeCutOverlayPng(clip, settings, outputPath) {
+  const width = 1080;
+  const height = 1920;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, width, height);
+
+  const gradient = ctx.createLinearGradient(0, height * 0.35, 0, height);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(0.58, "rgba(0,0,0,0.68)");
+  gradient.addColorStop(1, "rgba(0,0,0,0.9)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  const handle = cleanCutText(settings?.brand_handle || settings?.brand_name || "");
+  if (handle) {
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "32px InterBold, Inter, Arial";
+    ctx.fillText(handle.startsWith("@") ? handle : `@${handle}`, 70, 110);
+  }
+
+  ctx.fillStyle = "#FFD400";
+  ctx.fillRect(70, height - 600, 82, 8);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "64px InterBold, Inter, Arial";
+  ctx.textBaseline = "top";
+  const titleBottom = drawOverlayText(ctx, clip.title, 70, height - 560, 900, 74, 3);
+
+  const hook = cleanCutText(clip.hook);
+  if (hook) {
+    ctx.font = "34px InterBold, Inter, Arial";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    drawOverlayText(ctx, hook, 70, titleBottom + 34, 880, 44, 2);
+  }
+
+  ctx.font = "26px Inter, Arial";
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  drawOverlayText(ctx, "Corte gerado para revisão antes de publicar", 70, height - 128, 880, 34, 1);
+
+  const buffer = await canvas.encode("png");
+  await fs.promises.writeFile(outputPath, buffer);
+}
+
+async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
+  const overlayPath = path.join(tempDir, `${clip.id}-overlay.png`);
+  const outputPath = path.join(tempDir, `${clip.id}.mp4`);
+  const thumbPath = path.join(tempDir, `${clip.id}.jpg`);
+
+  await writeCutOverlayPng(clip, settings, overlayPath);
+
+  const cutCmd = [
+    "ffmpeg -y",
+    "-ss", shellQuote(clip.start_seconds),
+    "-i", shellQuote(sourcePath),
+    "-t", shellQuote(clip.duration_seconds),
+    "-i", shellQuote(overlayPath),
+    "-filter_complex",
+    shellQuote("[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[base];[base][1:v]overlay=0:0:format=auto[v]"),
+    "-map", shellQuote("[v]"),
+    "-map", "0:a?",
+    "-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p",
+    "-c:a aac -b:a 128k -movflags +faststart",
+    shellQuote(outputPath),
+  ].join(" ");
+  const { stderr } = await execAsync(cutCmd, { maxBuffer: 20 * 1024 * 1024 });
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    throw new Error(`Corte não foi gerado. ${stderr || ""}`.trim());
+  }
+
+  await execAsync(
+    `ffmpeg -y -ss 1 -i ${shellQuote(outputPath)} -frames:v 1 -q:v 3 ${shellQuote(thumbPath)}`,
+    { maxBuffer: 10 * 1024 * 1024 },
+  );
+
+  const videoStoragePath = `${job.user_id}/cuts/${clip.id}.mp4`;
+  const thumbStoragePath = `${job.user_id}/cuts/${clip.id}.jpg`;
+  await uploadPostAsset(videoStoragePath, await fs.promises.readFile(outputPath), {
+    contentType: "video/mp4",
+    upsert: true,
+  });
+
+  let thumbnailUrl = null;
+  if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 500) {
+    await uploadPostAsset(thumbStoragePath, await fs.promises.readFile(thumbPath), {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+    thumbnailUrl = supabase.storage.from("post-images").getPublicUrl(thumbStoragePath).data.publicUrl;
+  }
+
+  const videoUrl = supabase.storage.from("post-images").getPublicUrl(videoStoragePath).data.publicUrl;
+  await supabase.from("video_cut_clips")
+    .update({
+      status: "draft",
+      video_url: videoUrl,
+      thumbnail_url: thumbnailUrl,
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", clip.id);
+
+  return { videoUrl, thumbnailUrl };
+}
+
+async function finishVideoCutUsage(jobId, generatedCount) {
+  const { error } = await supabase.rpc("finalize_video_cut_job_usage", {
+    _job_id: jobId,
+    _generated_count: generatedCount,
+  });
+  if (error) console.warn(`[cuts:${jobId}] Falha ao finalizar uso diário:`, error.message || error);
+}
+
+async function failVideoCutJob(job, message, fallbackRequired = false, generatedCount = 0) {
+  await supabase.from("video_cut_jobs")
+    .update({
+      status: "failed",
+      progress: 100,
+      error_message: message,
+      fallback_required: fallbackRequired,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", job.id);
+  await finishVideoCutUsage(job.id, generatedCount);
+}
+
+async function processVideoCutJob(job) {
+  const tempDir = path.join(TEMP_DIR, `cut_${job.id}`);
+  const sourcePath = path.join(tempDir, "source.mp4");
+  let generatedCount = 0;
+
+  try {
+    await fs.promises.mkdir(tempDir, { recursive: true });
+
+    if (!(await commandExists("ffmpeg"))) {
+      throw new Error("FFmpeg não está instalado no VPS.");
+    }
+
+    await supabase.from("video_cut_jobs")
+      .update({ status: "analyzing", progress: 10, updated_at: new Date().toISOString() })
+      .eq("id", job.id);
+
+    const metadata = await probeYoutubeMetadata(job.youtube_url);
+    const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
+    const maxMinutes = Math.max(1, Number(limits?.max_cut_video_minutes || 60));
+    if (metadata.duration_seconds > maxMinutes * 60) {
+      throw new Error(`Este vídeo tem ${Math.ceil(metadata.duration_seconds / 60)} min. O limite do plano é ${maxMinutes} min por link.`);
+    }
+
+    await supabase.from("video_cut_jobs")
+      .update({
+        source_title: metadata.title,
+        duration_seconds: metadata.duration_seconds,
+        progress: 25,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+
+    const suggestions = await analyzeYoutubeForCuts(job, metadata);
+
+    await supabase.from("video_cut_jobs")
+      .update({ status: "processing", progress: 40, updated_at: new Date().toISOString() })
+      .eq("id", job.id);
+
+    try {
+      await downloadYoutubeVideo(job.youtube_url, sourcePath);
+    } catch (err) {
+      await failVideoCutJob(
+        job,
+        `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como fallback. Detalhe: ${err?.message || err}`,
+        true,
+        0,
+      );
+      return;
+    }
+
+    const settings = await loadEffectivePostSettings({
+      user_id: job.user_id,
+      instagram_account_id: job.instagram_account_id,
+    });
+
+    const total = suggestions.length || 1;
+    for (let idx = 0; idx < suggestions.length; idx += 1) {
+      const suggestion = suggestions[idx];
+      const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
+        .insert({
+          job_id: job.id,
+          user_id: job.user_id,
+          instagram_account_id: job.instagram_account_id,
+          clip_index: idx + 1,
+          title: suggestion.title,
+          hook: suggestion.hook,
+          caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
+          hashtags: suggestion.hashtags,
+          reason: suggestion.reason,
+          score: suggestion.score,
+          start_seconds: suggestion.start_seconds,
+          end_seconds: suggestion.end_seconds,
+          duration_seconds: suggestion.duration_seconds,
+          status: "rendering",
+        })
+        .select("*")
+        .single();
+
+      if (clipError) throw clipError;
+      await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
+      generatedCount += 1;
+
+      await supabase.from("video_cut_jobs")
+        .update({
+          generated_clips: generatedCount,
+          progress: Math.min(95, 45 + Math.round(((idx + 1) / total) * 45)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+    }
+
+    await supabase.from("video_cut_jobs")
+      .update({
+        status: "ready",
+        progress: 100,
+        generated_clips: generatedCount,
+        error_message: null,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+    await finishVideoCutUsage(job.id, generatedCount);
+    console.log(`[cuts:${job.id}] ${generatedCount} corte(s) pronto(s) para revisão.`);
+  } catch (err) {
+    const message = err?.message || String(err);
+    console.error(`[cuts:${job.id}] Falha no processamento:`, message);
+    await failVideoCutJob(job, message, /youtube|yt-dlp|baixar/i.test(message), generatedCount);
+  } finally {
+    try { await fs.promises.rm(tempDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+async function processQueuedVideoCutJobs() {
+  let jobs;
+  try {
+    const result = await withTransientRetry("reclamar jobs de Cortes IA", async () => {
+      const response = await supabase.rpc("claim_video_cut_jobs", { _worker: WORKER_ID, _limit: 1 });
+      if (response.error) throw detailedServiceError("Falha ao reclamar jobs de Cortes IA", response.error);
+      return response;
+    });
+    jobs = result.data;
+  } catch (error) {
+    console.error("Erro ao reclamar jobs de Cortes IA após as tentativas:", error);
+    return 0;
+  }
+  if (!jobs?.length) return 0;
+
+  console.log(`Fila video_cut_jobs: ${jobs.length} job(s) reclamado(s).`);
+  for (const job of jobs) {
+    await processVideoCutJob(job);
+  }
+  return jobs.length;
+}
+
 async function processQueuedReelJobs() {
   let jobs;
   try {
@@ -949,6 +1419,7 @@ async function main() {
 
   while (true) {
     try {
+      await processQueuedVideoCutJobs();
       await processQueuedReelJobs();
 
       // Busca posts agendados

@@ -16,6 +16,9 @@ const NUM_FIELDS: { key: string; label: string; hint?: string }[] = [
   { key: "max_reels_per_month", label: "Reels/mês", hint: "-1 = ilimitado" },
   { key: "max_images_per_month", label: "Imagens/mês", hint: "-1 = ilimitado" },
   { key: "max_templates", label: "Templates", hint: "-1 = ilimitado" },
+  { key: "max_cuts_per_day", label: "Cortes IA/dia", hint: "-1 = ilimitado, 0 = desativado" },
+  { key: "max_cut_video_minutes", label: "Min/vídeo corte" },
+  { key: "max_cuts_per_job", label: "Cortes por vídeo", hint: "MVP limita em até 5" },
 ];
 
 export function PlanLimitsEditor() {
