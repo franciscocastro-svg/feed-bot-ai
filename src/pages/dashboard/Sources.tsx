@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,23 +9,99 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Rss, Trash2, RefreshCw, Loader2, Pencil, Sparkles, Instagram, CheckCircle2, AlertTriangle, XCircle, Play, UserRound, Hash, Link as LinkIcon, Newspaper } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Hash,
+  Instagram,
+  Link as LinkIcon,
+  Loader2,
+  Newspaper,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Rss,
+  SearchCheck,
+  Sparkles,
+  Trash2,
+  UserRound,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { UpgradeModal } from "@/components/UpgradeModal";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type SourceMode = "rss" | "person" | "topic" | "url";
+type SourceKind = "rss" | "site" | "url" | "person" | "topic" | "google_news";
+type WizardStep = 1 | 2 | 3;
+
+type PreviewResult = {
+  valid: boolean;
+  url?: string;
+  final_url?: string;
+  parse_type?: string;
+  items_count?: number;
+  sample_items?: Array<{ title: string; url: string; published_at?: string | null; image?: string | null; score?: number }>;
+  feed_candidates?: string[];
+  diagnostics?: Record<string, any>;
+  error?: string | null;
+};
+
+type DiscoverCandidate = {
+  name: string;
+  url: string;
+  niche?: string;
+  valid: boolean;
+  error?: string;
+  preview?: PreviewResult | null;
+  quality_score?: number;
+};
 
 const sourceModeOptions: Array<{ value: SourceMode; label: string; description: string; icon: any }> = [
-  { value: "rss", label: "RSS/Site", description: "Feed RSS ou página de notícias", icon: Rss },
+  { value: "rss", label: "RSS/Site", description: "Feed ou página de notícias", icon: Rss },
   { value: "person", label: "Pessoa", description: "Famoso, atleta, político, artista", icon: UserRound },
   { value: "topic", label: "Tema", description: "Assunto, nicho ou palavra-chave", icon: Hash },
-  { value: "url", label: "URL", description: "Monitorar uma página específica", icon: LinkIcon },
+  { value: "url", label: "URL", description: "Monitorar página específica", icon: LinkIcon },
 ];
 
-const googleNewsSearchUrl = (query: string) =>
-  `https://news.google.com/rss/search?q=${encodeURIComponent(query.trim())}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+const sourceKindLabels: Record<SourceKind, string> = {
+  rss: "RSS",
+  site: "Site",
+  url: "URL",
+  person: "Pessoa",
+  topic: "Tema",
+  google_news: "Google News",
+};
+
+const googleNewsSearchUrl = (query: string, country = "BR", language = "pt-BR") => {
+  const gl = country.toUpperCase();
+  const ceidLang = gl === "BR" ? "pt-419" : language.split("-")[0] || "en";
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(query.trim())}&hl=${encodeURIComponent(language)}&gl=${encodeURIComponent(gl)}&ceid=${encodeURIComponent(`${gl}:${ceidLang}`)}`;
+};
+
+const parseTerms = (value: string) =>
+  value
+    .split(/[,\n;]/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+
+const quoteSearchTerm = (term: string) => {
+  const clean = term.trim();
+  if (!clean) return "";
+  if (/^".+"$/.test(clean)) return clean;
+  return /\s/.test(clean) ? `"${clean}"` : clean;
+};
 
 const getHostname = (value: string) => {
   try {
@@ -40,6 +116,22 @@ const cleanLabelPrefix = (value?: string | null) => {
   return value.replace(/^(Pessoa|Tema|URL|RSS):\s*/i, "");
 };
 
+const defaultForm = {
+  name: "",
+  url: "",
+  niche: "",
+  fetch_interval_minutes: 60,
+  ig_ids: [] as string[],
+  source_language: "auto",
+  translate_to_pt: false,
+  cultural_adaptation: false,
+  query: "",
+  include_terms_text: "",
+  exclude_terms_text: "",
+  country: "BR",
+  language: "pt-BR",
+};
+
 export default function Sources() {
   const [sources, setSources] = useState<any[]>([]);
   const [translationEnabled, setTranslationEnabled] = useState(false);
@@ -47,53 +139,87 @@ export default function Sources() {
   const [igAccounts, setIgAccounts] = useState<any[]>([]);
   const [sourceIgMap, setSourceIgMap] = useState<Record<string, string[]>>({});
   const [open, setOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [discoverSaving, setDiscoverSaving] = useState(false);
   const [discoverNiche, setDiscoverNiche] = useState("");
   const [discoverIgIds, setDiscoverIgIds] = useState<string[]>([]);
+  const [discoverCandidates, setDiscoverCandidates] = useState<DiscoverCandidate[]>([]);
+  const [selectedDiscoverUrls, setSelectedDiscoverUrls] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sourceMode, setSourceMode] = useState<SourceMode>("rss");
   const [smartInput, setSmartInput] = useState("");
-  const [form, setForm] = useState({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [] as string[], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
+  const [form, setForm] = useState(defaultForm);
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [upgrade, setUpgrade] = useState<{ open: boolean; used?: number; limit?: number }>({ open: false });
-  const [validating, setValidating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [perSourceFetching, setPerSourceFetching] = useState<string | null>(null);
 
+  const includeTerms = useMemo(() => parseTerms(form.include_terms_text), [form.include_terms_text]);
+  const excludeTerms = useMemo(() => parseTerms(form.exclude_terms_text), [form.exclude_terms_text]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setSourceMode("rss");
+    setSmartInput("");
+    setPreview(null);
+    setWizardStep(1);
+    setForm({ ...defaultForm, ig_ids: igAccounts.length === 1 ? [igAccounts[0].id] : [] });
+  };
+
+  const inferMode = (s: any): SourceMode => {
+    const kind = s.source_kind as SourceKind | undefined;
+    if (kind === "person") return "person";
+    if (kind === "topic" || kind === "google_news") return "topic";
+    if (kind === "url") return "url";
+    const niche = String(s.niche || "");
+    if (/^Pessoa:/i.test(niche)) return "person";
+    if (/^Tema:/i.test(niche)) return "topic";
+    if (/^URL:/i.test(niche)) return "url";
+    return "rss";
+  };
+
   const openEdit = (s: any) => {
+    const mode = inferMode(s);
     setEditingId(s.id);
-    const niche = s.niche || "";
-    if (/^Pessoa:/i.test(niche)) {
-      setSourceMode("person");
-      setSmartInput(cleanLabelPrefix(niche));
-    } else if (/^Tema:/i.test(niche)) {
-      setSourceMode("topic");
-      setSmartInput(cleanLabelPrefix(niche));
-    } else if (/^URL:/i.test(niche)) {
-      setSourceMode("url");
-      setSmartInput(s.url || "");
-    } else {
-      setSourceMode("rss");
-      setSmartInput("");
-    }
+    setSourceMode(mode);
+    setSmartInput(s.query || cleanLabelPrefix(s.niche) || "");
+    setPreview(null);
+    setWizardStep(1);
     setForm({
-      name: s.name, url: s.url, niche: s.niche || "",
-      fetch_interval_minutes: s.fetch_interval_minutes,
+      name: s.name || "",
+      url: s.url || "",
+      niche: cleanLabelPrefix(s.niche) || "",
+      fetch_interval_minutes: s.fetch_interval_minutes || 60,
       ig_ids: sourceIgMap[s.id] || [],
       source_language: s.source_language || "auto",
       translate_to_pt: !!s.translate_to_pt,
       cultural_adaptation: !!s.cultural_adaptation,
+      query: s.query || "",
+      include_terms_text: Array.isArray(s.include_terms) ? s.include_terms.join(", ") : "",
+      exclude_terms_text: Array.isArray(s.exclude_terms) ? s.exclude_terms.join(", ") : "",
+      country: s.country || "BR",
+      language: s.language || "pt-BR",
     });
     setOpen(true);
   };
 
   const openNew = () => {
-    setEditingId(null);
-    setSourceMode("rss");
-    setSmartInput("");
-    setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: igAccounts.length === 1 ? [igAccounts[0].id] : [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
+    resetForm();
     setOpen(true);
+  };
+
+  const buildSearchQuery = () => {
+    const base = (sourceMode === "person" || sourceMode === "topic") ? smartInput.trim() : form.query.trim();
+    const pieces: string[] = [];
+    if (base) pieces.push(sourceMode === "person" ? quoteSearchTerm(base) : base);
+    includeTerms.forEach((term) => pieces.push(quoteSearchTerm(term)));
+    excludeTerms.forEach((term) => pieces.push(`-${quoteSearchTerm(term)}`));
+    return pieces.join(" ").replace(/\s+/g, " ").trim();
   };
 
   const buildSourcePayload = () => {
@@ -102,15 +228,23 @@ export default function Sources() {
       source_language: form.source_language,
       translate_to_pt: form.translate_to_pt,
       cultural_adaptation: form.cultural_adaptation,
+      include_terms: includeTerms,
+      exclude_terms: excludeTerms,
+      country: form.country,
+      language: form.language,
     };
 
     if (sourceMode === "person") {
       const person = smartInput.trim();
+      const query = person;
       return {
         ...base,
         name: form.name.trim() || person,
-        url: googleNewsSearchUrl(`"${person}"`),
+        url: googleNewsSearchUrl(buildSearchQuery(), form.country, form.language),
+        source_kind: "person" as SourceKind,
+        query,
         niche: `Pessoa: ${person}`,
+        source_config: { mode: "person", aliases: includeTerms, preview },
       };
     }
 
@@ -119,99 +253,169 @@ export default function Sources() {
       return {
         ...base,
         name: form.name.trim() || topic,
-        url: googleNewsSearchUrl(topic),
+        url: googleNewsSearchUrl(buildSearchQuery(), form.country, form.language),
+        source_kind: "topic" as SourceKind,
+        query: topic,
         niche: `Tema: ${topic}`,
+        source_config: { mode: "topic", preview },
       };
     }
 
     if (sourceMode === "url") {
       const url = form.url.trim();
       const host = getHostname(url);
-      const nicheHint = form.niche.trim();
       return {
         ...base,
         name: form.name.trim() || host || "Fonte por URL",
         url,
-        niche: `URL: ${host || url}${nicheHint ? ` | ${nicheHint}` : ""}`,
+        source_kind: "url" as SourceKind,
+        query: form.query.trim() || null,
+        niche: `URL: ${host || url}${form.niche.trim() ? ` | ${form.niche.trim()}` : ""}`,
+        source_config: { mode: "url", preview },
       };
     }
 
+    const sourceKind = preview?.parse_type === "html" ? "site" : "rss";
     return {
       ...base,
       name: form.name.trim(),
       url: form.url.trim(),
+      source_kind: sourceKind as SourceKind,
+      query: form.query.trim() || null,
       niche: form.niche.trim() ? `RSS: ${form.niche.trim()}` : "",
+      source_config: { mode: "rss", preview, feed_candidates: preview?.feed_candidates || [] },
     };
+  };
+
+  const validateConfig = () => {
+    if (sourceMode === "person" && !smartInput.trim()) return "Digite o nome da pessoa";
+    if (sourceMode === "topic" && !smartInput.trim()) return "Digite o tema";
+    if ((sourceMode === "rss" || sourceMode === "url") && !form.url.trim()) return "Preencha a URL";
+    if (sourceMode === "rss" && !form.name.trim()) return "Preencha o nome da fonte";
+    if (sourceMode === "url") {
+      try {
+        new URL(form.url.trim());
+      } catch {
+        return "Digite uma URL válida";
+      }
+    }
+    return "";
+  };
+
+  const previewCurrent = async (advance = true): Promise<PreviewResult | null> => {
+    const validationError = validateConfig();
+    if (validationError) {
+      toast.error(validationError);
+      return null;
+    }
+    const payload = buildSourcePayload();
+    setPreviewing(true);
+    const { data, error } = await supabase.functions.invoke("preview-source", { body: payload });
+    setPreviewing(false);
+    if (error) {
+      toast.error("Não foi possível gerar prévia: " + error.message);
+      return null;
+    }
+    setPreview(data as PreviewResult);
+    if (!data?.valid) {
+      toast.warning(data?.error || data?.diagnostics?.warnings?.[0] || "Nenhum item aproveitável encontrado");
+    } else {
+      toast.success(`${data.sample_items?.length || 0} exemplos prontos para revisar`);
+    }
+    if (advance) setWizardStep(2);
+    return data as PreviewResult;
   };
 
   const syncLinks = async (sourceId: string, userId: string, igIds: string[]) => {
     await supabase.from("news_source_instagram_accounts").delete().eq("source_id", sourceId);
     if (igIds.length > 0) {
       await supabase.from("news_source_instagram_accounts").insert(
-        igIds.map(ig => ({ source_id: sourceId, instagram_account_id: ig, user_id: userId }))
+        igIds.map((ig) => ({ source_id: sourceId, instagram_account_id: ig, user_id: userId })),
       );
     }
   };
 
   const save = async () => {
-    if (sourceMode === "person" && !smartInput.trim()) return toast.error("Digite o nome da pessoa");
-    if (sourceMode === "topic" && !smartInput.trim()) return toast.error("Digite o tema");
-    if ((sourceMode === "rss" || sourceMode === "url") && !form.url.trim()) return toast.error("Preencha a URL");
-    if (sourceMode === "rss" && !form.name.trim()) return toast.error("Preencha o nome da fonte");
     if (form.ig_ids.length === 0) return toast.error("Selecione pelo menos um Instagram");
-    if (sourceMode === "url") {
-      try {
-        new URL(form.url.trim());
-      } catch {
-        return toast.error("Digite uma URL válida");
-      }
+    setSaving(true);
+    const currentPreview = preview?.valid ? preview : await previewCurrent(false);
+    if (!currentPreview?.valid) {
+      setSaving(false);
+      return toast.error("Revise a fonte: ela ainda não tem conteúdo aproveitável.");
     }
-    const payload = buildSourcePayload();
-    try {
-      new URL(payload.url);
-    } catch {
-      return toast.error("URL inválida");
-    }
-    setValidating(true);
-    const { data: validation, error: vErr } = await supabase.functions.invoke("fetch-rss", { body: { validate_url: payload.url } });
-    setValidating(false);
-    if (vErr) return toast.error("Não foi possível validar o feed: " + vErr.message);
-    if (!validation?.valid) return toast.error("Fonte sem conteúdo captável: " + (validation?.error || "sem itens encontrados"));
-    toast.success(`Fonte válida! ${validation.items_count} itens encontrados.`);
 
+    const payload = buildSourcePayload();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setSaving(false);
+      return toast.error("Sessão expirada");
+    }
+
     if (editingId) {
       const { error } = await supabase.from("news_sources").update({
-        name: payload.name, url: payload.url, niche: payload.niche, fetch_interval_minutes: payload.fetch_interval_minutes,
-        source_language: payload.source_language, translate_to_pt: payload.translate_to_pt, cultural_adaptation: payload.cultural_adaptation,
+        name: payload.name,
+        url: payload.url,
+        niche: payload.niche,
+        source_kind: payload.source_kind,
+        query: payload.query,
+        include_terms: payload.include_terms,
+        exclude_terms: payload.exclude_terms,
+        country: payload.country,
+        language: payload.language,
+        source_config: payload.source_config,
+        quality_score: currentPreview.valid ? 70 : 0,
+        fetch_interval_minutes: payload.fetch_interval_minutes,
+        source_language: payload.source_language,
+        translate_to_pt: payload.translate_to_pt,
+        cultural_adaptation: payload.cultural_adaptation,
       }).eq("id", editingId);
-      if (error) return toast.error(error.message);
-      await syncLinks(editingId, user!.id, form.ig_ids);
+      if (error) {
+        setSaving(false);
+        return toast.error(error.message);
+      }
+      await syncLinks(editingId, user.id, form.ig_ids);
       toast.success("Fonte atualizada");
     } else {
       const { data: check } = await supabase.rpc("can_create_resource", {
-        _user_id: user!.id, _resource: "rss_source",
+        _user_id: user.id,
+        _resource: "rss_source",
       });
       const c = check as any;
       if (c && !c.allowed) {
         setOpen(false);
+        setSaving(false);
         setUpgrade({ open: true, used: c.used, limit: c.limit });
         return;
       }
       const { data: inserted, error } = await supabase.from("news_sources").insert({
-        name: payload.name, url: payload.url, niche: payload.niche, fetch_interval_minutes: payload.fetch_interval_minutes,
-        source_language: payload.source_language, translate_to_pt: payload.translate_to_pt, cultural_adaptation: payload.cultural_adaptation,
-        user_id: user!.id,
+        name: payload.name,
+        url: payload.url,
+        niche: payload.niche,
+        source_kind: payload.source_kind,
+        query: payload.query,
+        include_terms: payload.include_terms,
+        exclude_terms: payload.exclude_terms,
+        country: payload.country,
+        language: payload.language,
+        source_config: payload.source_config,
+        quality_score: currentPreview.valid ? 70 : 0,
+        fetch_interval_minutes: payload.fetch_interval_minutes,
+        source_language: payload.source_language,
+        translate_to_pt: payload.translate_to_pt,
+        cultural_adaptation: payload.cultural_adaptation,
+        user_id: user.id,
       }).select("id").single();
-      if (error) return toast.error(error.message);
-      await syncLinks(inserted.id, user!.id, form.ig_ids);
+      if (error) {
+        setSaving(false);
+        return toast.error(error.message);
+      }
+      await syncLinks(inserted.id, user.id, form.ig_ids);
       toast.success("Fonte adicionada");
     }
+
+    setSaving(false);
     setOpen(false);
-    setEditingId(null);
-    setSourceMode("rss");
-    setSmartInput("");
-    setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false });
+    resetForm();
     load();
   };
 
@@ -236,8 +440,8 @@ export default function Sources() {
     setTranslationEnabled(!!row?.translation_enabled);
     setPlanName(row?.display_name || row?.plan || "");
   };
-  useEffect(() => { load(); }, []);
 
+  useEffect(() => { load(); }, []);
 
   const toggle = async (id: string, active: boolean) => {
     await supabase.from("news_sources").update({ active }).eq("id", id);
@@ -278,7 +482,6 @@ export default function Sources() {
     load();
   };
 
-  // Saúde da fonte: ok / warning / error
   const sourceHealth = (s: any): { status: "ok" | "warning" | "error"; label: string; detail: string } => {
     if (!s.active) return { status: "warning", label: "Inativa", detail: "A captação está pausada para esta fonte." };
     const lastSuccess = s.last_success_at || s.last_fetched_at;
@@ -290,16 +493,22 @@ export default function Sources() {
     const expected = (s.fetch_interval_minutes || 60) * 3;
     if (ageMin > 1440) return { status: "error", label: "Sem resposta há +24h", detail: "A fonte não conclui uma leitura há mais de 24 horas." };
     if (ageMin > expected) return { status: "warning", label: "Atrasada", detail: "A última leitura está fora da frequência esperada." };
-    const hasDiagnostics = !!s.last_success_at;
     const found = Number(s.last_items_found || 0);
     return {
       status: "ok",
-      label: !hasDiagnostics || found > 0 ? "Saudável" : "Saudável, sem conteúdo",
-      detail: !hasDiagnostics || found > 0 ? "A última leitura foi concluída normalmente." : "A fonte respondeu normalmente, mas não apresentou itens nessa leitura.",
+      label: found > 0 ? "Saudável" : "Saudável, sem conteúdo",
+      detail: found > 0 ? "A última leitura encontrou conteúdos." : "A fonte respondeu, mas não apresentou itens nessa leitura.",
     };
   };
 
   const sourceKind = (s: any): { label: string; icon: any } => {
+    const kind = (s.source_kind || "") as SourceKind;
+    if (kind && sourceKindLabels[kind]) {
+      if (kind === "person") return { label: sourceKindLabels[kind], icon: UserRound };
+      if (kind === "topic" || kind === "google_news") return { label: sourceKindLabels[kind], icon: Hash };
+      if (kind === "url") return { label: sourceKindLabels[kind], icon: LinkIcon };
+      return { label: sourceKindLabels[kind], icon: Rss };
+    }
     const niche = String(s.niche || "");
     if (/^Pessoa:/i.test(niche)) return { label: "Pessoa", icon: UserRound };
     if (/^Tema:/i.test(niche)) return { label: "Tema", icon: Hash };
@@ -311,19 +520,40 @@ export default function Sources() {
     if (!discoverNiche.trim()) return toast.error("Digite um nicho");
     if (discoverIgIds.length === 0) return toast.error("Selecione ao menos um IG para vincular");
     setDiscovering(true);
+    setDiscoverCandidates([]);
+    setSelectedDiscoverUrls([]);
     const { data, error } = await supabase.functions.invoke("discover-rss", {
       body: { niche: discoverNiche.trim(), ig_ids: discoverIgIds },
     });
     setDiscovering(false);
     if (error) return toast.error(error.message);
-    if (!data?.inserted) {
-      toast.warning(`Nenhum feed novo encontrado (${data?.valid || 0} válidos, já cadastrados).`);
-    } else {
-      toast.success(`${data.inserted} fontes adicionadas automaticamente!`);
-    }
+    const candidates = (data?.feeds || []) as DiscoverCandidate[];
+    setDiscoverCandidates(candidates);
+    setSelectedDiscoverUrls(candidates.filter((c) => c.valid).map((c) => c.url));
+    if (!candidates.some((c) => c.valid)) toast.warning("Nenhuma fonte aproveitável encontrada.");
+    else toast.success(`${candidates.filter((c) => c.valid).length} fontes prontas para revisão`);
+  };
+
+  const addDiscovered = async () => {
+    if (selectedDiscoverUrls.length === 0) return toast.error("Selecione ao menos uma fonte válida");
+    setDiscoverSaving(true);
+    const { data, error } = await supabase.functions.invoke("discover-rss", {
+      body: {
+        niche: discoverNiche.trim(),
+        ig_ids: discoverIgIds,
+        insert: true,
+        selected_feeds: selectedDiscoverUrls,
+      },
+    });
+    setDiscoverSaving(false);
+    if (error) return toast.error(error.message);
+    if (!data?.inserted) toast.warning("Nenhuma fonte nova foi adicionada. Talvez elas já existam.");
+    else toast.success(`${data.inserted} fontes adicionadas`);
     setDiscoverOpen(false);
     setDiscoverNiche("");
     setDiscoverIgIds([]);
+    setDiscoverCandidates([]);
+    setSelectedDiscoverUrls([]);
     load();
   };
 
@@ -337,15 +567,15 @@ export default function Sources() {
     }
     return (
       <div className="space-y-2 border rounded-md p-3 max-h-48 overflow-y-auto">
-        {igAccounts.map(ig => {
+        {igAccounts.map((ig) => {
           const checked = selected.includes(ig.id);
           return (
             <label key={ig.id} className="flex items-center gap-2 cursor-pointer">
               <Checkbox
                 checked={checked}
-                onCheckedChange={v => {
+                onCheckedChange={(v) => {
                   if (v) onChange([...selected, ig.id]);
-                  else onChange(selected.filter(x => x !== ig.id));
+                  else onChange(selected.filter((x) => x !== ig.id));
                 }}
               />
               <Instagram className="h-4 w-4 text-muted-foreground" />
@@ -357,37 +587,250 @@ export default function Sources() {
     );
   };
 
+  const PreviewPanel = ({ result }: { result: PreviewResult | null }) => {
+    if (!result) {
+      return (
+        <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground text-center">
+          Gere uma prévia para confirmar se a fonte entrega notícias aproveitáveis.
+        </div>
+      );
+    }
+    const diagnostics = result.diagnostics || {};
+    return (
+      <div className="space-y-3">
+        <div className={`rounded-lg border p-3 ${result.valid ? "border-green-500/30 bg-green-500/5" : "border-destructive/30 bg-destructive/5"}`}>
+          <div className="flex items-center gap-2 font-medium">
+            {result.valid ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <XCircle className="h-4 w-4 text-destructive" />}
+            {result.valid ? "Fonte com conteúdo aproveitável" : "Fonte sem conteúdo aproveitável"}
+          </div>
+          <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
+            <span>{Number(diagnostics.items_found || result.items_count || 0)} encontrados</span>
+            <span>{Number(diagnostics.items_after_freshness || 0)} recentes</span>
+            <span>{Number(diagnostics.items_after_relevance || 0)} relevantes</span>
+            <span>{result.parse_type || "sem parser"}</span>
+          </div>
+          {diagnostics.warnings?.[0] && <p className="text-xs text-muted-foreground mt-2">{diagnostics.warnings[0]}</p>}
+        </div>
+
+        {(result.feed_candidates?.length || 0) > 0 && (
+          <div className="rounded-lg border p-3 bg-muted/30">
+            <p className="text-sm font-medium">Feeds candidatos encontrados</p>
+            <div className="mt-2 space-y-1">
+              {result.feed_candidates?.slice(0, 3).map((url) => (
+                <p key={url} className="text-xs text-muted-foreground truncate">{url}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {(result.sample_items || []).map((item) => (
+            <div key={item.url} className="rounded-lg border p-3">
+              <p className="text-sm font-medium">{item.title}</p>
+              <p className="text-xs text-muted-foreground truncate">{item.url}</p>
+              <div className="flex gap-2 mt-2">
+                {item.published_at && <Badge variant="outline" className="text-xs">{new Date(item.published_at).toLocaleString("pt-BR")}</Badge>}
+                <Badge variant="secondary" className="text-xs">Score {item.score || 0}</Badge>
+                {item.image ? <Badge variant="secondary" className="text-xs">Com imagem</Badge> : <Badge variant="outline" className="text-xs">Sem imagem</Badge>}
+              </div>
+            </div>
+          ))}
+          {result.valid && (result.sample_items || []).length === 0 && (
+            <p className="text-sm text-muted-foreground">A fonte respondeu, mas não retornou exemplos na prévia.</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderStepOne = () => (
+    <div className="space-y-4">
+      <div>
+        <Label>Tipo de fonte</Label>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {sourceModeOptions.map((option) => {
+            const Icon = option.icon;
+            const active = sourceMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setSourceMode(option.value);
+                  setSmartInput("");
+                  setPreview(null);
+                  setForm({ ...form, name: "", url: "", niche: "", query: "", include_terms_text: "", exclude_terms_text: "" });
+                }}
+                className={`text-left rounded-lg border p-3 transition-colors ${active ? "border-primary bg-primary/10" : "hover:bg-muted/50"}`}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Icon className="h-4 w-4" /> {option.label}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {sourceMode === "rss" && (
+        <>
+          <div><Label>Nome</Label><Input value={form.name} onChange={(e) => { setPreview(null); setForm({ ...form, name: e.target.value }); }} placeholder="G1 Tecnologia" /></div>
+          <div><Label>URL do feed ou página</Label><Input value={form.url} onChange={(e) => { setPreview(null); setForm({ ...form, url: e.target.value }); }} placeholder="https://site.com/feed ou https://site.com/noticias" /></div>
+          <div><Label>Nicho</Label><Input value={form.niche} onChange={(e) => { setPreview(null); setForm({ ...form, niche: e.target.value }); }} placeholder="tecnologia" /></div>
+        </>
+      )}
+
+      {sourceMode === "person" && (
+        <>
+          <div><Label>Nome da pessoa</Label><Input value={smartInput} onChange={(e) => { setPreview(null); setSmartInput(e.target.value); }} placeholder="Virginia Fonseca, Neymar, Lula..." /></div>
+          <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="opcional" /></div>
+          <div><Label>Apelidos ou termos obrigatórios</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: nome artístico, clube, partido" /></div>
+          <div><Label>Termos para bloquear</Label><Input value={form.exclude_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, exclude_terms_text: e.target.value }); }} placeholder="ex: homônimo, assunto indesejado" /></div>
+        </>
+      )}
+
+      {sourceMode === "topic" && (
+        <>
+          <div><Label>Tema ou palavra-chave</Label><Input value={smartInput} onChange={(e) => { setPreview(null); setSmartInput(e.target.value); }} placeholder="mercado financeiro, fofoca, futebol..." /></div>
+          <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="opcional" /></div>
+          <div><Label>Termos obrigatórios</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: Brasil, Instagram, clube" /></div>
+          <div><Label>Termos para bloquear</Label><Input value={form.exclude_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, exclude_terms_text: e.target.value }); }} placeholder="ex: política, BBB, cripto" /></div>
+        </>
+      )}
+
+      {sourceMode === "url" && (
+        <>
+          <div><Label>URL do site ou página</Label><Input value={form.url} onChange={(e) => { setPreview(null); setForm({ ...form, url: e.target.value }); }} placeholder="https://site.com/noticias" /></div>
+          <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="opcional" /></div>
+          <div><Label>Nicho</Label><Input value={form.niche} onChange={(e) => { setPreview(null); setForm({ ...form, niche: e.target.value }); }} placeholder="fofoca, esportes, tecnologia..." /></div>
+        </>
+      )}
+
+      {(sourceMode === "person" || sourceMode === "topic") && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>País</Label>
+            <Select value={form.country} onValueChange={(v) => { setPreview(null); setForm({ ...form, country: v }); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="BR">Brasil</SelectItem>
+                <SelectItem value="US">Estados Unidos</SelectItem>
+                <SelectItem value="PT">Portugal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Idioma da busca</Label>
+            <Select value={form.language} onValueChange={(v) => { setPreview(null); setForm({ ...form, language: v }); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pt-BR">Português BR</SelectItem>
+                <SelectItem value="en-US">Inglês</SelectItem>
+                <SelectItem value="es">Espanhol</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStepThree = () => (
+    <div className="space-y-4">
+      <div><Label>Frequência (minutos)</Label><Input type="number" min={5} max={1440} step={5} value={form.fetch_interval_minutes} onChange={(e) => setForm({ ...form, fetch_interval_minutes: Math.min(1440, Math.max(5, +e.target.value || 5)) })} /></div>
+
+      {translationEnabled ? (
+        <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+          <div className="flex items-center gap-2 text-sm font-medium">Tradução & Adaptação</div>
+          <div>
+            <Label className="text-xs">Idioma da fonte</Label>
+            <Select value={form.source_language} onValueChange={(v) => setForm({ ...form, source_language: v, translate_to_pt: v !== "pt" ? true : form.translate_to_pt })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pt">Português</SelectItem>
+                <SelectItem value="auto">Detectar automaticamente</SelectItem>
+                <SelectItem value="en">Inglês</SelectItem>
+                <SelectItem value="es">Espanhol</SelectItem>
+                <SelectItem value="fr">Francês</SelectItem>
+                <SelectItem value="it">Italiano</SelectItem>
+                <SelectItem value="de">Alemão</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {form.source_language !== "pt" && (
+            <>
+              <label className="flex items-center justify-between gap-2 cursor-pointer">
+                <div>
+                  <div className="text-sm font-medium">Traduzir para português</div>
+                  <div className="text-xs text-muted-foreground">A IA traduz e reescreve em PT-BR</div>
+                </div>
+                <Switch checked={form.translate_to_pt} onCheckedChange={(v) => setForm({ ...form, translate_to_pt: v })} />
+              </label>
+              <label className="flex items-center justify-between gap-2 cursor-pointer">
+                <div>
+                  <div className="text-sm font-medium">Adaptação cultural BR</div>
+                  <div className="text-xs text-muted-foreground">Converte valores e explica referências</div>
+                </div>
+                <Switch checked={form.cultural_adaptation} onCheckedChange={(v) => setForm({ ...form, cultural_adaptation: v })} />
+              </label>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="border border-dashed rounded-lg p-3 bg-muted/20 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">Tradução & Adaptação <Badge variant="secondary" className="text-[10px]">Pro / Business</Badge></div>
+          <p className="text-xs text-muted-foreground">
+            Tradução automática fica disponível nos planos Pro e Business.
+            {planName && <> Seu plano atual: <strong>{planName}</strong>.</>}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => window.location.assign("/pricing")} className="w-full">Fazer upgrade</Button>
+        </div>
+      )}
+
+      <div>
+        <Label>Publicar nestes Instagram <span className="text-destructive">*</span></Label>
+        {igPicker(form.ig_ids, (ids) => setForm({ ...form, ig_ids: ids }))}
+        <p className="text-xs text-muted-foreground mt-1">Cada Instagram marcado recebe uma cópia da notícia.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-5xl">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl md:text-3xl font-bold">Fontes de conteúdo</h1>
-          <p className="text-sm md:text-base text-muted-foreground mt-1">RSS, sites, pessoas, temas e URLs. Cada fonte alimenta os IGs vinculados.</p>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">RSS, sites, pessoas, temas e URLs com prévia e diagnóstico.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={fetchNow} disabled={fetching} className="flex-1 sm:flex-none">
             {fetching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Captar agora
           </Button>
-          <Dialog open={discoverOpen} onOpenChange={(v) => { setDiscoverOpen(v); if (!v) setDiscoverIgIds([]); }}>
+          <Dialog open={discoverOpen} onOpenChange={(v) => {
+            setDiscoverOpen(v);
+            if (!v) {
+              setDiscoverIgIds([]);
+              setDiscoverCandidates([]);
+              setSelectedDiscoverUrls([]);
+            }
+          }}>
             <DialogTrigger asChild>
               <Button variant="secondary" className="flex-1 sm:flex-none">
                 <Sparkles className="h-4 w-4 mr-2" /> Descobrir por nicho
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Descobrir RSS automaticamente</DialogTitle></DialogHeader>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Descobrir fontes por nicho</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Digite um nicho e a IA vai buscar e cadastrar os melhores feeds RSS brasileiros sobre o tema.
-                </p>
                 <div>
                   <Label>Nicho</Label>
                   <Input
                     value={discoverNiche}
-                    onChange={e => setDiscoverNiche(e.target.value)}
+                    onChange={(e) => setDiscoverNiche(e.target.value)}
                     placeholder="ex: tecnologia, economia, esportes, cripto..."
-                    onKeyDown={e => e.key === "Enter" && !discovering && discover()}
+                    onKeyDown={(e) => e.key === "Enter" && !discovering && discover()}
                   />
                 </div>
                 <div>
@@ -395,141 +838,97 @@ export default function Sources() {
                   {igPicker(discoverIgIds, setDiscoverIgIds)}
                 </div>
                 <Button onClick={discover} disabled={discovering} className="w-full">
-                  {discovering ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Buscando feeds...</> : <><Sparkles className="h-4 w-4 mr-2" /> Buscar e adicionar</>}
+                  {discovering ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Validando fontes...</> : <><SearchCheck className="h-4 w-4 mr-2" /> Buscar prévias</>}
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setSourceMode("rss"); setSmartInput(""); setForm({ name: "", url: "", niche: "", fetch_interval_minutes: 60, ig_ids: [], source_language: "auto", translate_to_pt: false, cultural_adaptation: false }); } }}>
-            <DialogTrigger asChild><Button onClick={openNew} className="flex-1 sm:flex-none"><Plus className="h-4 w-4 mr-2" /> Nova fonte</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editingId ? "Editar fonte" : "Adicionar fonte de conteúdo"}</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Tipo de fonte</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {sourceModeOptions.map(option => {
-                      const Icon = option.icon;
-                      const active = sourceMode === option.value;
+
+                {discoverCandidates.length > 0 && (
+                  <div className="space-y-2">
+                    {discoverCandidates.map((candidate) => {
+                      const checked = selectedDiscoverUrls.includes(candidate.url);
                       return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => {
-                            setSourceMode(option.value);
-                            setSmartInput("");
-                            setForm({ ...form, name: "", url: "", niche: "" });
-                          }}
-                          className={`text-left rounded-lg border p-3 transition-colors ${active ? "border-primary bg-primary/10" : "hover:bg-muted/50"}`}
-                        >
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <Icon className="h-4 w-4" /> {option.label}
+                        <div key={candidate.url} className={`rounded-lg border p-3 ${candidate.valid ? "" : "opacity-60"}`}>
+                          <div className="flex items-start gap-2">
+                            <Checkbox
+                              checked={checked}
+                              disabled={!candidate.valid}
+                              onCheckedChange={(v) => {
+                                if (v) setSelectedDiscoverUrls([...selectedDiscoverUrls, candidate.url]);
+                                else setSelectedDiscoverUrls(selectedDiscoverUrls.filter((url) => url !== candidate.url));
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate">{candidate.name}</p>
+                                {candidate.valid ? <Badge variant="secondary">Válida</Badge> : <Badge variant="outline">Sem prévia</Badge>}
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{candidate.url}</p>
+                              {candidate.preview?.sample_items?.[0] && (
+                                <p className="text-xs text-muted-foreground mt-2">Exemplo: {candidate.preview.sample_items[0].title}</p>
+                              )}
+                              {!candidate.valid && candidate.error && <p className="text-xs text-destructive mt-2">{candidate.error}</p>}
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
-                        </button>
+                        </div>
                       );
                     })}
-                  </div>
-                </div>
-
-                {sourceMode === "rss" && (
-                  <>
-                    <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="G1 Tecnologia" /></div>
-                    <div><Label>URL do feed ou página</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://site.com/feed ou https://site.com/noticias" /></div>
-                    <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="tecnologia" /></div>
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se a URL não for RSS, o sistema tenta ler a página, encontrar links de notícias e abrir cada matéria para captar título, texto e imagem.</p>
-                  </>
-                )}
-
-                {sourceMode === "person" && (
-                  <>
-                    <div><Label>Nome da pessoa</Label><Input value={smartInput} onChange={e => setSmartInput(e.target.value)} placeholder="Virginia Fonseca, Neymar, Lula..." /></div>
-                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Virginia Fonseca" /></div>
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">O sistema vai monitorar notícias e conteúdos públicos sobre essa pessoa automaticamente.</p>
-                  </>
-                )}
-
-                {sourceMode === "topic" && (
-                  <>
-                    <div><Label>Tema ou palavra-chave</Label><Input value={smartInput} onChange={e => setSmartInput(e.target.value)} placeholder="mercado financeiro, fofoca, futebol, tecnologia..." /></div>
-                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Mercado Financeiro" /></div>
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Use temas amplos para captar novidades do nicho ou termos específicos para acompanhar um assunto.</p>
-                  </>
-                )}
-
-                {sourceMode === "url" && (
-                  <>
-                    <div><Label>URL do site ou feed</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://site.com/noticias ou https://site.com/feed" /></div>
-                    <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="opcional, ex: Site de famosos" /></div>
-                    <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} placeholder="fofoca, esportes, tecnologia..." /></div>
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md p-3">Se for uma página comum, o sistema procura matérias públicas dentro dela e usa cada link encontrado como notícia.</p>
-                  </>
-                )}
-
-                <div><Label>Frequência (minutos)</Label><Input type="number" min={5} max={1440} step={5} value={form.fetch_interval_minutes} onChange={e => setForm({ ...form, fetch_interval_minutes: Math.min(1440, Math.max(5, +e.target.value || 5)) })} /></div>
-
-                {translationEnabled ? (
-                <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                  <div className="flex items-center gap-2 text-sm font-medium">🌍 Tradução & Adaptação</div>
-                  <div>
-                    <Label className="text-xs">Idioma da fonte</Label>
-                    <Select value={form.source_language} onValueChange={v => setForm({ ...form, source_language: v, translate_to_pt: v !== "pt" ? true : form.translate_to_pt })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pt">Português (sem tradução)</SelectItem>
-                        <SelectItem value="auto">Detectar automaticamente</SelectItem>
-                        <SelectItem value="en">Inglês</SelectItem>
-                        <SelectItem value="es">Espanhol</SelectItem>
-                        <SelectItem value="fr">Francês</SelectItem>
-                        <SelectItem value="it">Italiano</SelectItem>
-                        <SelectItem value="de">Alemão</SelectItem>
-                        <SelectItem value="ja">Japonês</SelectItem>
-                        <SelectItem value="zh">Chinês</SelectItem>
-                        <SelectItem value="ko">Coreano</SelectItem>
-                        <SelectItem value="ru">Russo</SelectItem>
-                        <SelectItem value="ar">Árabe</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {form.source_language !== "pt" && (
-                    <>
-                      <label className="flex items-center justify-between gap-2 cursor-pointer">
-                        <div>
-                          <div className="text-sm font-medium">Traduzir para português</div>
-                          <div className="text-xs text-muted-foreground">A IA traduz e reescreve em PT-BR</div>
-                        </div>
-                        <Switch checked={form.translate_to_pt} onCheckedChange={v => setForm({ ...form, translate_to_pt: v })} />
-                      </label>
-                      <label className="flex items-center justify-between gap-2 cursor-pointer">
-                        <div>
-                          <div className="text-sm font-medium">Adaptação cultural BR 🇧🇷</div>
-                          <div className="text-xs text-muted-foreground">Converte $ → R$, explica referências, etc.</div>
-                        </div>
-                        <Switch checked={form.cultural_adaptation} onCheckedChange={v => setForm({ ...form, cultural_adaptation: v })} />
-                      </label>
-                    </>
-                  )}
-                </div>
-                ) : (
-                  <div className="border border-dashed rounded-lg p-3 bg-muted/20 space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">🌍 Tradução & Adaptação <Badge variant="secondary" className="text-[10px]">Pro / Business</Badge></div>
-                    <p className="text-xs text-muted-foreground">
-                      Traduza fontes em outros idiomas para português e adapte referências culturais automaticamente. Disponível nos planos <strong>Pro</strong> e <strong>Business</strong>.
-                      {planName && <> Seu plano atual: <strong>{planName}</strong>.</>}
-                    </p>
-                    <Button size="sm" variant="outline" onClick={() => window.location.assign("/pricing")} className="w-full">
-                      Fazer upgrade
+                    <Button onClick={addDiscovered} disabled={discoverSaving || selectedDiscoverUrls.length === 0} className="w-full">
+                      {discoverSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Adicionando...</> : `Adicionar ${selectedDiscoverUrls.length} fonte(s) selecionada(s)`}
                     </Button>
                   </div>
                 )}
-                <div>
-                  <Label>Publicar nestes Instagram <span className="text-destructive">*</span></Label>
-                  {igPicker(form.ig_ids, ids => setForm({ ...form, ig_ids: ids }))}
-                  <p className="text-xs text-muted-foreground mt-1">Cada IG marcado recebe uma cópia da notícia. Cada cópia consome 1 cota.</p>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={open} onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) resetForm();
+          }}>
+            <DialogTrigger asChild><Button onClick={openNew} className="flex-1 sm:flex-none"><Plus className="h-4 w-4 mr-2" /> Nova fonte</Button></DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>{editingId ? "Editar fonte" : "Adicionar fonte de conteúdo"}</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { step: 1 as WizardStep, label: "Configurar" },
+                    { step: 2 as WizardStep, label: "Prévia" },
+                    { step: 3 as WizardStep, label: "Publicação" },
+                  ].map((item) => (
+                    <button
+                      key={item.step}
+                      type="button"
+                      onClick={() => setWizardStep(item.step)}
+                      className={`rounded-md border px-2 py-2 text-xs font-medium ${wizardStep === item.step ? "border-primary bg-primary/10" : "text-muted-foreground"}`}
+                    >
+                      {item.step}. {item.label}
+                    </button>
+                  ))}
                 </div>
-                <Button onClick={save} disabled={validating} className="w-full">
-                  {validating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Validando fonte...</> : (editingId ? "Salvar" : "Adicionar fonte")}
-                </Button>
+
+                {wizardStep === 1 && renderStepOne()}
+                {wizardStep === 2 && <PreviewPanel result={preview} />}
+                {wizardStep === 3 && renderStepThree()}
+
+                <div className="flex gap-2 pt-2">
+                  {wizardStep > 1 && <Button variant="outline" onClick={() => setWizardStep((wizardStep - 1) as WizardStep)} className="flex-1">Voltar</Button>}
+                  {wizardStep === 1 && (
+                    <Button onClick={() => previewCurrent(true)} disabled={previewing} className="flex-1">
+                      {previewing ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando prévia...</> : <><SearchCheck className="h-4 w-4 mr-2" /> Gerar prévia</>}
+                    </Button>
+                  )}
+                  {wizardStep === 2 && (
+                    <>
+                      <Button variant="outline" onClick={() => previewCurrent(false)} disabled={previewing} className="flex-1">
+                        {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar prévia"}
+                      </Button>
+                      <Button onClick={() => setWizardStep(3)} disabled={!preview?.valid} className="flex-1">Continuar</Button>
+                    </>
+                  )}
+                  {wizardStep === 3 && (
+                    <Button onClick={save} disabled={saving || previewing} className="flex-1">
+                      {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Salvando...</> : (editingId ? "Salvar fonte" : "Adicionar fonte")}
+                    </Button>
+                  )}
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -539,19 +938,20 @@ export default function Sources() {
       {sources.length === 0 ? (
         <Card className="p-12 text-center text-muted-foreground border-dashed">
           <Newspaper className="h-10 w-10 mx-auto mb-3 opacity-50" />
-          Nenhuma fonte. Adicione RSS, pessoa, tema ou URL para começar a captar conteúdos.
+          Nenhuma fonte. Adicione RSS, pessoa, tema ou URL para começar.
         </Card>
       ) : (
         <div className="grid gap-3">
-          {sources.map(s => {
+          {sources.map((s) => {
             const linkedIgs = (sourceIgMap[s.id] || [])
-              .map(id => igAccounts.find(ig => ig.id === id))
+              .map((id) => igAccounts.find((ig) => ig.id === id))
               .filter(Boolean);
             const health = sourceHealth(s);
             const kind = sourceKind(s);
             const KindIcon = kind.icon;
             const HealthIcon = health.status === "ok" ? CheckCircle2 : health.status === "warning" ? AlertTriangle : XCircle;
             const healthColor = health.status === "ok" ? "text-green-600" : health.status === "warning" ? "text-yellow-600" : "text-destructive";
+            const summary = s.last_run_summary || {};
             return (
               <Card key={s.id} className={`p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4 ${!s.active ? "opacity-60" : ""}`}>
                 <div className="flex items-center gap-3 md:gap-4 min-w-0">
@@ -559,9 +959,8 @@ export default function Sources() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{s.name} {s.niche && <span className="text-xs text-muted-foreground ml-1">· {cleanLabelPrefix(s.niche)}</span>}</p>
-                      <Badge variant="outline" className="text-xs gap-1">
-                        <KindIcon className="h-3 w-3" /> {kind.label}
-                      </Badge>
+                      <Badge variant="outline" className="text-xs gap-1"><KindIcon className="h-3 w-3" /> {kind.label}</Badge>
+                      {Number(s.quality_score || 0) > 0 && <Badge variant="secondary" className="text-xs">Qualidade {Number(s.quality_score || 0).toFixed(0)}</Badge>}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -583,7 +982,7 @@ export default function Sources() {
                       <p className={`text-xs mt-1 ${health.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
                         {health.status === "error"
                           ? `Erro: ${s.last_error || "não identificado"}`
-                          : `${Number(s.last_items_found || 0)} encontrados · ${Number(s.last_items_created || 0)} novos na última leitura`}
+                          : `${Number(summary.items_found ?? s.last_items_found ?? 0)} encontrados · ${Number(summary.items_after_relevance ?? 0)} relevantes · ${Number(summary.items_duplicates ?? 0)} duplicados · ${Number(s.last_items_created || 0)} novos`}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1 mt-2">
@@ -598,19 +997,17 @@ export default function Sources() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 md:gap-3 shrink-0 flex-wrap">
-                  <Select value={String(s.fetch_interval_minutes)} onValueChange={v => updateInterval(s.id, +v)}>
-                    <SelectTrigger className="w-[130px] md:w-[140px] h-9">
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={String(s.fetch_interval_minutes)} onValueChange={(v) => updateInterval(s.id, +v)}>
+                    <SelectTrigger className="w-[130px] md:w-[140px] h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {INTERVAL_OPTIONS.map(m => (
+                      {INTERVAL_OPTIONS.map((m) => (
                         <SelectItem key={m} value={String(m)}>
                           {m < 60 ? `A cada ${m} min` : m === 60 ? "A cada 1h" : m < 1440 ? `A cada ${m / 60}h` : "A cada 24h"}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Switch checked={s.active} onCheckedChange={v => toggle(s.id, v)} />
+                  <Switch checked={s.active} onCheckedChange={(v) => toggle(s.id, v)} />
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -629,18 +1026,20 @@ export default function Sources() {
           })}
         </div>
       )}
+
       <UpgradeModal
         open={upgrade.open}
         onOpenChange={(o) => setUpgrade({ ...upgrade, open: o })}
         resource="fontes RSS"
-        used={upgrade.used} limit={upgrade.limit}
+        used={upgrade.used}
+        limit={upgrade.limit}
       />
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover fonte?</AlertDialogTitle>
             <AlertDialogDescription>
-              A fonte <strong>{confirmDelete?.name}</strong> será removida. Notícias já captadas dela não serão apagadas, mas nenhuma nova será buscada.
+              A fonte <strong>{confirmDelete?.name}</strong> será removida. Notícias já captadas dela não serão apagadas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,24 +1,11 @@
 // Descobre feeds RSS automaticamente a partir de um nicho usando Lovable AI
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { previewSource } from "../_shared/source-capture.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-async function isValidRss(url: string): Promise<boolean> {
-  try {
-    const r = await fetch(url, {
-      headers: { "User-Agent": "FluxFeed/1.0" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) return false;
-    const text = (await r.text()).slice(0, 5000).toLowerCase();
-    return text.includes("<rss") || text.includes("<feed") || text.includes("<channel");
-  } catch {
-    return false;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -39,7 +26,7 @@ Deno.serve(async (req) => {
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { niche, ig_ids } = await req.json();
+    const { niche, ig_ids, insert, selected_feeds } = await req.json();
     if (!niche || typeof niche !== "string") {
       return new Response(JSON.stringify({ error: "niche required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -142,11 +129,49 @@ Deno.serve(async (req) => {
       suggestions = getFallback(niche).map(f => ({ ...f, niche }));
     }
 
-    // valida em paralelo
     const validated = await Promise.all(
-      suggestions.map(async (s) => ({ ...s, valid: await isValidRss(s.url) }))
+      suggestions.map(async (s) => {
+        try {
+          const preview = await previewSource({
+            name: s.name,
+            url: s.url,
+            niche: s.niche || niche,
+            source_kind: "rss",
+          }, 5);
+          return {
+            ...s,
+            source_kind: "rss",
+            valid: preview.valid,
+            preview,
+            quality_score: preview.valid ? Math.min(100, 50 + (preview.sample_items?.length || 0) * 10) : 0,
+          };
+        } catch (e) {
+          return {
+            ...s,
+            source_kind: "rss",
+            valid: false,
+            error: e instanceof Error ? e.message : "Falha ao validar fonte",
+            preview: null,
+            quality_score: 0,
+          };
+        }
+      })
     );
     const valid = validated.filter((s) => s.valid);
+
+    if (!insert) {
+      return new Response(
+        JSON.stringify({
+          suggested: suggestions.length,
+          valid: valid.length,
+          inserted: 0,
+          feeds: validated,
+          usedFallback,
+          preview_only: true,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // insere apenas os que não existem ainda
     const { data: existing } = await supabase
@@ -154,14 +179,21 @@ Deno.serve(async (req) => {
       .select("url")
       .eq("user_id", user.id);
     const existingUrls = new Set((existing || []).map((e: any) => e.url));
+    const selectedUrls = Array.isArray(selected_feeds) && selected_feeds.length > 0
+      ? new Set(selected_feeds.map((s: any) => typeof s === "string" ? s : s?.url).filter(Boolean))
+      : null;
 
     const toInsert = valid
+      .filter((s) => !selectedUrls || selectedUrls.has(s.url))
       .filter((s) => !existingUrls.has(s.url))
       .map((s) => ({
         user_id: user.id,
         name: s.name,
         url: s.url,
+        source_kind: "rss",
         niche: s.niche || niche,
+        source_config: { discovered_by: "discover-rss", preview: s.preview },
+        quality_score: s.quality_score || 0,
         fetch_interval_minutes: 60,
         active: true,
       }));
@@ -193,8 +225,9 @@ Deno.serve(async (req) => {
         suggested: suggestions.length,
         valid: valid.length,
         inserted,
-        feeds: valid,
+        feeds: validated,
         usedFallback,
+        preview_only: false,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

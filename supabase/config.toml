@@ -29,6 +29,8 @@ project_id = "gewnaxrhiyylfizgbqdi"
     verify_jwt = true
   [functions.process-news]
     verify_jwt = false
+  [functions.preview-source]
+    verify_jwt = false
   [functions.publish-scheduler]
     verify_jwt = false
   [functions.retry-failed-news]

@@ -727,6 +727,80 @@ export type Database = {
         }
         Relationships: []
       }
+      source_fetch_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          diagnostics: Json
+          duration_ms: number
+          error_message: string | null
+          id: string
+          items_after_freshness: number
+          items_after_relevance: number
+          items_created: number
+          items_duplicates: number
+          items_found: number
+          items_without_image: number
+          sample_items: Json
+          source_id: string | null
+          source_kind: Database["public"]["Enums"]["source_kind"]
+          source_name: string | null
+          started_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          diagnostics?: Json
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          items_after_freshness?: number
+          items_after_relevance?: number
+          items_created?: number
+          items_duplicates?: number
+          items_found?: number
+          items_without_image?: number
+          sample_items?: Json
+          source_id?: string | null
+          source_kind?: Database["public"]["Enums"]["source_kind"]
+          source_name?: string | null
+          started_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          diagnostics?: Json
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          items_after_freshness?: number
+          items_after_relevance?: number
+          items_created?: number
+          items_duplicates?: number
+          items_found?: number
+          items_without_image?: number
+          sample_items?: Json
+          source_id?: string | null
+          source_kind?: Database["public"]["Enums"]["source_kind"]
+          source_name?: string | null
+          started_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_fetch_runs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "news_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       news_items: {
         Row: {
           caption: string | null
@@ -747,6 +821,7 @@ export type Database = {
           instagram_account_id: string | null
           next_retry_at: string | null
           niche: string | null
+          original_canonical_url: string | null
           original_content: string | null
           original_image_url: string | null
           original_title: string
@@ -782,6 +857,7 @@ export type Database = {
           instagram_account_id?: string | null
           next_retry_at?: string | null
           niche?: string | null
+          original_canonical_url?: string | null
           original_content?: string | null
           original_image_url?: string | null
           original_title: string
@@ -817,6 +893,7 @@ export type Database = {
           instagram_account_id?: string | null
           next_retry_at?: string | null
           niche?: string | null
+          original_canonical_url?: string | null
           original_content?: string | null
           original_image_url?: string | null
           original_title?: string
@@ -867,8 +944,10 @@ export type Database = {
       news_sources: {
         Row: {
           active: boolean
+          country: string
           created_at: string
           cultural_adaptation: boolean
+          exclude_terms: string[]
           fetch_interval_minutes: number
           id: string
           last_error: string | null
@@ -877,9 +956,16 @@ export type Database = {
           last_items_created: number
           last_items_found: number
           last_new_item_at: string | null
+          last_run_summary: Json
           last_success_at: string | null
+          include_terms: string[]
+          language: string
           name: string
           niche: string | null
+          quality_score: number
+          query: string | null
+          source_config: Json
+          source_kind: Database["public"]["Enums"]["source_kind"]
           source_language: string
           source_type: Database["public"]["Enums"]["source_type"]
           translate_to_pt: boolean
@@ -889,8 +975,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          country?: string
           created_at?: string
           cultural_adaptation?: boolean
+          exclude_terms?: string[]
           fetch_interval_minutes?: number
           id?: string
           last_error?: string | null
@@ -899,9 +987,16 @@ export type Database = {
           last_items_created?: number
           last_items_found?: number
           last_new_item_at?: string | null
+          last_run_summary?: Json
           last_success_at?: string | null
+          include_terms?: string[]
+          language?: string
           name: string
           niche?: string | null
+          quality_score?: number
+          query?: string | null
+          source_config?: Json
+          source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
           translate_to_pt?: boolean
@@ -911,8 +1006,10 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          country?: string
           created_at?: string
           cultural_adaptation?: boolean
+          exclude_terms?: string[]
           fetch_interval_minutes?: number
           id?: string
           last_error?: string | null
@@ -921,9 +1018,16 @@ export type Database = {
           last_items_created?: number
           last_items_found?: number
           last_new_item_at?: string | null
+          last_run_summary?: Json
           last_success_at?: string | null
+          include_terms?: string[]
+          language?: string
           name?: string
           niche?: string | null
+          quality_score?: number
+          query?: string | null
+          source_config?: Json
+          source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
           translate_to_pt?: boolean
@@ -1910,6 +2014,7 @@ export type Database = {
         | "failed"
         | "cancelled"
         | "awaiting_container"
+      source_kind: "rss" | "site" | "url" | "person" | "topic" | "google_news"
       source_type: "rss" | "newsapi"
     }
     CompositeTypes: {
@@ -2058,6 +2163,7 @@ export const Constants = {
         "cancelled",
         "awaiting_container",
       ],
+      source_kind: ["rss", "site", "url", "person", "topic", "google_news"],
       source_type: ["rss", "newsapi"],
     },
   },
