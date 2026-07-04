@@ -38,6 +38,9 @@ export type SourceDiagnostics = {
   filtered_excluded_terms: number;
   filtered_missing_required_terms: number;
   warnings: string[];
+  relaxed_preview?: boolean;
+  resolved_via?: "direct" | "feed_candidate" | "search_variant" | "domain_search";
+  resolved_query?: string;
 };
 
 export function createDiagnostics(parseType: SourceDiagnostics["parse_type"] = "none"): SourceDiagnostics {
@@ -378,6 +381,29 @@ function quoteSearchTerm(term: string, force = false): string {
   return force || /\s/.test(clean) ? `"${clean}"` : clean;
 }
 
+function normalizeSearchKey(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function appendExcludedTerms(query: string, excludeTerms: string[]): string {
+  return [query, ...excludeTerms.map((term) => `-${quoteSearchTerm(term)}`)]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueSearchQueries(queries: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const query of queries.map((q) => q.replace(/\s+/g, " ").trim()).filter(Boolean)) {
+    const key = normalizeSearchKey(query);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(query);
+  }
+  return unique;
+}
+
 export function buildGoogleNewsSearchUrl(query: string, country = "BR", language = "pt-BR"): string {
   const hl = language || "pt-BR";
   const gl = (country || "BR").toUpperCase();
@@ -397,10 +423,45 @@ export function buildSearchQuery(source: SourceLike): string {
   return pieces.join(" ").replace(/\s+/g, " ").trim();
 }
 
+export function buildSearchQueryVariants(source: SourceLike): string[] {
+  const kind = inferSourceKind(source);
+  const base = extractLegacyQuery(source);
+  const includeTerms = normalizeTerms(source.include_terms);
+  const excludeTerms = normalizeTerms(source.exclude_terms);
+  const queries = [buildSearchQuery(source)];
+  const context = normalizeSearchKey(`${base} ${source.niche || ""} ${source.name || ""} ${includeTerms.join(" ")}`);
+
+  if (base) {
+    const quotedBase = kind === "person" ? quoteSearchTerm(base, true) : base;
+    queries.push(appendExcludedTerms(quotedBase, excludeTerms));
+    for (const term of includeTerms.slice(0, 4)) {
+      queries.push(appendExcludedTerms(`${quotedBase} ${quoteSearchTerm(term)}`, excludeTerms));
+    }
+  }
+
+  if (kind === "topic" || kind === "google_news") {
+    if (/(fofoca|celebr|famos|entreten|novela|reality|influencer)/.test(context)) {
+      queries.push(appendExcludedTerms("famosos celebridades", excludeTerms));
+      queries.push(appendExcludedTerms("fofoca celebridades famosos", excludeTerms));
+      queries.push(appendExcludedTerms("entretenimento celebridades", excludeTerms));
+    }
+    if (/(esporte|futebol|luta|ufc|mma|atleta)/.test(context)) {
+      queries.push(appendExcludedTerms("esportes brasil", excludeTerms));
+      queries.push(appendExcludedTerms("futebol brasileiro", excludeTerms));
+    }
+    if (/(tecnolog|startup|software|inteligencia artificial|\bia\b)/.test(context)) {
+      queries.push(appendExcludedTerms("tecnologia brasil", excludeTerms));
+      queries.push(appendExcludedTerms("inteligência artificial tecnologia", excludeTerms));
+    }
+  }
+
+  return uniqueSearchQueries(queries).slice(0, 8);
+}
+
 export function buildSourceFetchUrl(source: SourceLike): string {
   const kind = inferSourceKind(source);
   if (kind === "person" || kind === "topic" || kind === "google_news") {
-    const query = buildSearchQuery(source);
+    const query = buildSearchQueryVariants(source)[0];
     if (!query) throw new Error("Fonte precisa de uma busca");
     return buildGoogleNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR");
   }
@@ -559,6 +620,66 @@ export function filterItemsForSource(
       diagnostics.warnings.push("A fonte respondeu, mas todos os itens foram filtrados por relevância.");
     }
   }
+  return { items: sorted, diagnostics };
+}
+
+function dateValue(item: ParsedSourceItem): number {
+  if (!item.pubDate) return 0;
+  const time = new Date(item.pubDate).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function relaxedSearchPreviewItems(
+  items: ParsedSourceItem[],
+  source: SourceLike,
+  parseType: SourceDiagnostics["parse_type"],
+  limit = 5,
+): { items: ParsedSourceItem[]; diagnostics: SourceDiagnostics } {
+  const diagnostics = createDiagnostics(parseType);
+  const profile = getProfile(source);
+  const includeTerms = normalizeTerms(source.include_terms).map(normalizedText);
+  const excludeTerms = normalizeTerms(source.exclude_terms).map(normalizedText);
+  const maxAgeH = freshnessWindowHours(source, profile);
+  diagnostics.items_found = items.length;
+
+  const candidates: ParsedSourceItem[] = [];
+  for (const item of items) {
+    const text = normalizedText(`${item.title} ${item.description || ""}`);
+    if (excludeTerms.some((term) => term && text.includes(term))) {
+      diagnostics.filtered_excluded_terms++;
+      continue;
+    }
+    if (item.pubDate) {
+      const ageH = (Date.now() - new Date(item.pubDate).getTime()) / 3600000;
+      if (!Number.isNaN(ageH) && ageH > maxAgeH) diagnostics.filtered_old++;
+    }
+    const matchesFocusTerm = includeTerms.some((term) => term && text.includes(term));
+    const score = relevanceScore(item, profile) + (matchesFocusTerm ? 3 : 0);
+    if (score < -6) {
+      diagnostics.filtered_low_score++;
+      continue;
+    }
+    candidates.push({ ...item, _score: score });
+  }
+
+  const sorted = candidates
+    .sort((a, b) => {
+      const scoreDiff = (b._score || 0) - (a._score || 0);
+      return scoreDiff !== 0 ? scoreDiff : dateValue(b) - dateValue(a);
+    })
+    .slice(0, limit);
+
+  diagnostics.items_after_freshness = sorted.length;
+  diagnostics.items_after_relevance = sorted.length;
+  diagnostics.relaxed_preview = true;
+  if (sorted.length > 0) {
+    diagnostics.warnings.push(
+      "A busca respondeu. Mostrei exemplos em modo amplo para validar a fonte; a captação automática continua filtrando data, bloqueios e duplicados.",
+    );
+  } else if (items.length > 0) {
+    diagnostics.warnings.push("A busca respondeu, mas os itens foram bloqueados pelos termos proibidos ou ruído muito baixo.");
+  }
+
   return { items: sorted, diagnostics };
 }
 
@@ -795,6 +916,99 @@ export function buildPreviewItems(items: ParsedSourceItem[]) {
   }));
 }
 
+function markDiagnostics(
+  diagnostics: SourceDiagnostics,
+  resolvedVia: NonNullable<SourceDiagnostics["resolved_via"]>,
+  resolvedQuery?: string,
+) {
+  diagnostics.resolved_via = resolvedVia;
+  if (resolvedQuery) diagnostics.resolved_query = resolvedQuery;
+  return diagnostics;
+}
+
+function buildPreviewResponse(
+  valid: boolean,
+  url: string,
+  finalUrl: string,
+  parseType: SourceDiagnostics["parse_type"],
+  parsedItems: ParsedSourceItem[],
+  sampleItems: ParsedSourceItem[],
+  feedCandidates: string[],
+  diagnostics: SourceDiagnostics,
+) {
+  return {
+    valid,
+    url,
+    final_url: finalUrl,
+    parse_type: parseType,
+    items_count: parsedItems.length,
+    sample_items: buildPreviewItems(sampleItems),
+    feed_candidates: feedCandidates,
+    diagnostics,
+  };
+}
+
+async function buildSearchPreviewResponse(
+  source: SourceLike,
+  query: string,
+  resolvedVia: NonNullable<SourceDiagnostics["resolved_via"]>,
+  limit: number,
+) {
+  const url = buildGoogleNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR");
+  const raw = await fetchTextSmart(url);
+  const parsed = parseSourceItems(raw.text, raw.finalUrl || url);
+  const searchSource = { ...source, source_kind: "google_news" as SourceKind, query, url };
+  const filtered = filterItemsForSource(parsed.items, searchSource, parsed.parseType, limit);
+  if (filtered.items.length > 0) {
+    return buildPreviewResponse(
+      true,
+      url,
+      raw.finalUrl,
+      parsed.parseType,
+      parsed.items,
+      filtered.items,
+      [],
+      markDiagnostics(filtered.diagnostics, resolvedVia, query),
+    );
+  }
+
+  const relaxed = relaxedSearchPreviewItems(parsed.items, searchSource, parsed.parseType, limit);
+  if (relaxed.items.length > 0) {
+    return buildPreviewResponse(
+      true,
+      url,
+      raw.finalUrl,
+      parsed.parseType,
+      parsed.items,
+      relaxed.items,
+      [],
+      markDiagnostics(relaxed.diagnostics, resolvedVia, query),
+    );
+  }
+
+  return buildPreviewResponse(
+    false,
+    url,
+    raw.finalUrl,
+    parsed.parseType,
+    parsed.items,
+    [],
+    [],
+    markDiagnostics(filtered.diagnostics, resolvedVia, query),
+  );
+}
+
+function buildDomainSearchQuery(source: SourceLike, sourceUrl: string): string | null {
+  try {
+    const host = new URL(sourceUrl).hostname.replace(/^www\./i, "");
+    const rawTopic = extractLegacyQuery(source) || String(source.niche || source.name || "").replace(/^(RSS|URL):\s*/i, "").split("|")[0].trim();
+    const topic = /^(rss|url|site|feed)$/i.test(rawTopic) ? "" : rawTopic;
+    return [topic, `site:${host}`].filter(Boolean).join(" ").trim();
+  } catch {
+    return null;
+  }
+}
+
 export async function previewSource(source: SourceLike, limit = 5) {
   const url = buildSourceFetchUrl(source);
   const raw = await fetchTextSmart(url);
@@ -803,6 +1017,45 @@ export async function previewSource(source: SourceLike, limit = 5) {
   const feedCandidates = parsed.parseType === "html" || parsed.parseType === "none"
     ? discoverFeedCandidates(raw.text, raw.finalUrl || url)
     : [];
+
+  if (filtered.items.length > 0) {
+    return buildPreviewResponse(
+      true,
+      url,
+      raw.finalUrl,
+      parsed.parseType,
+      parsed.items,
+      filtered.items,
+      feedCandidates,
+      markDiagnostics(filtered.diagnostics, "direct"),
+    );
+  }
+
+  if (isSearchSource(source)) {
+    const firstQuery = buildSearchQueryVariants(source)[0] || buildSearchQuery(source);
+    const relaxed = relaxedSearchPreviewItems(parsed.items, { ...source, url }, parsed.parseType, limit);
+    if (relaxed.items.length > 0) {
+      return buildPreviewResponse(
+        true,
+        url,
+        raw.finalUrl,
+        parsed.parseType,
+        parsed.items,
+        relaxed.items,
+        feedCandidates,
+        markDiagnostics(relaxed.diagnostics, "direct", firstQuery),
+      );
+    }
+
+    for (const query of buildSearchQueryVariants(source).slice(1)) {
+      try {
+        const response = await buildSearchPreviewResponse(source, query, "search_variant", limit);
+        if (response.valid) return response;
+      } catch {
+        // keep trying the next search variation
+      }
+    }
+  }
 
   if (filtered.items.length === 0 && feedCandidates.length > 0) {
     for (const candidate of feedCandidates.slice(0, 5)) {
@@ -818,32 +1071,48 @@ export async function previewSource(source: SourceLike, limit = 5) {
         );
         if (candidateFiltered.items.length === 0) continue;
         candidateFiltered.diagnostics.warnings.push("Usei automaticamente um feed RSS encontrado na página informada.");
-        return {
-          valid: true,
-          url: candidate,
-          final_url: candidateRaw.finalUrl,
-          parse_type: candidateParsed.parseType,
-          items_count: candidateParsed.items.length,
-          sample_items: buildPreviewItems(candidateFiltered.items),
-          feed_candidates: feedCandidates,
-          diagnostics: candidateFiltered.diagnostics,
-        };
+        return buildPreviewResponse(
+          true,
+          candidate,
+          candidateRaw.finalUrl,
+          candidateParsed.parseType,
+          candidateParsed.items,
+          candidateFiltered.items,
+          feedCandidates,
+          markDiagnostics(candidateFiltered.diagnostics, "feed_candidate"),
+        );
       } catch {
         // keep trying the next discovered feed candidate
       }
     }
   }
 
+  if (!isSearchSource(source)) {
+    const domainQuery = buildDomainSearchQuery(source, raw.finalUrl || url);
+    if (domainQuery) {
+      try {
+        const response = await buildSearchPreviewResponse(source, domainQuery, "domain_search", limit);
+        if (response.valid) {
+          response.feed_candidates = feedCandidates;
+          response.diagnostics.warnings.unshift("Usei o Google Notícias como rota alternativa para este site.");
+          return response;
+        }
+      } catch {
+        // keep the original diagnostics when the domain search also fails
+      }
+    }
+  }
+
   const diagnostics = filtered.diagnostics;
   if (feedCandidates.length > 0) diagnostics.warnings.push("Esta página possui feeds RSS candidatos que podem ser mais estáveis.");
-  return {
-    valid: filtered.items.length > 0,
+  return buildPreviewResponse(
+    false,
     url,
-    final_url: raw.finalUrl,
-    parse_type: parsed.parseType,
-    items_count: parsed.items.length,
-    sample_items: buildPreviewItems(filtered.items),
-    feed_candidates: feedCandidates,
-    diagnostics,
-  };
+    raw.finalUrl,
+    parsed.parseType,
+    parsed.items,
+    filtered.items,
+    feedCandidates,
+    markDiagnostics(diagnostics, "direct"),
+  );
 }

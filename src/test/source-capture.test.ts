@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertSafeHttpUrl,
+  buildSearchQueryVariants,
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
   filterItemsForSource,
@@ -85,6 +86,21 @@ describe("source capture utilities", () => {
     expect(decodeURIComponent(url)).toContain('"Neymar" Santos -fake');
   });
 
+  it("builds broader query variants for topic sources", () => {
+    const variants = buildSearchQueryVariants({
+      source_kind: "topic",
+      query: "Fofoca",
+      include_terms: ["Famosos"],
+      exclude_terms: ["BBB"],
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(variants[0]).toContain("Fofoca");
+    expect(variants.some((query) => query.includes("famosos celebridades"))).toBe(true);
+    expect(variants.every((query) => query.includes("-BBB"))).toBe(true);
+  });
+
   it("filters old, excluded and missing-required items for strict RSS sources", () => {
     const freshDate = new Date().toUTCString();
     const result = filterItemsForSource([
@@ -158,6 +174,38 @@ describe("source capture utilities", () => {
     expect(result.sample_items?.[0]?.title).toContain("OpenAI");
   });
 
+  it("previews topic searches with broad examples when strict freshness rejects all items", async () => {
+    const oldDate = new Date(Date.now() - 20 * 24 * 3600000).toUTCString();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      url: "https://news.google.com/rss/search",
+      headers: new Headers({ "content-type": "application/rss+xml; charset=utf-8" }),
+      arrayBuffer: async () => new TextEncoder().encode(`
+        <rss><channel>
+          <item>
+            <title>Celebridade anuncia romance e movimenta famosos</title>
+            <link>https://example.com/famosos/romance</link>
+            <description>Influencer virou assunto entre famosos.</description>
+            <pubDate>${oldDate}</pubDate>
+          </item>
+        </channel></rss>
+      `).buffer,
+    } as Response)));
+
+    const result = await previewSource({
+      source_kind: "topic",
+      query: "Fofoca",
+      niche: "Tema: Fofoca",
+      include_terms: ["Famosos"],
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics.relaxed_preview).toBe(true);
+    expect(result.sample_items?.[0]?.title).toContain("Celebridade");
+  });
+
   it("previews a discovered feed candidate when the site page has no items", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -203,5 +251,58 @@ describe("source capture utilities", () => {
     expect(result.valid).toBe(true);
     expect(result.url).toBe("https://example.com/feed/");
     expect(result.sample_items?.[0]?.title).toContain("feed real");
+  });
+
+  it("falls back to Google News domain search when a site has no usable items", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://example.com/") {
+        return {
+          ok: true,
+          url,
+          headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+          arrayBuffer: async () => new TextEncoder().encode("<html><body>Home sem listagem</body></html>").buffer,
+        } as Response;
+      }
+
+      if (url.startsWith("https://example.com/")) {
+        return {
+          ok: true,
+          url,
+          headers: new Headers({ "content-type": "application/rss+xml; charset=utf-8" }),
+          arrayBuffer: async () => new TextEncoder().encode("<rss><channel></channel></rss>").buffer,
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        url,
+        headers: new Headers({ "content-type": "application/rss+xml; charset=utf-8" }),
+        arrayBuffer: async () => new TextEncoder().encode(`
+          <rss><channel>
+            <item>
+              <title>Example lança notícia importante de tecnologia</title>
+              <link>https://example.com/noticias/tech</link>
+              <description>Notícia de tecnologia publicada hoje.</description>
+              <pubDate>${new Date().toUTCString()}</pubDate>
+            </item>
+          </channel></rss>
+        `).buffer,
+      } as Response;
+    }));
+
+    const result = await previewSource({
+      source_kind: "rss",
+      name: "Example",
+      url: "https://example.com/",
+      niche: "tecnologia",
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.url).toContain("news.google.com/rss/search");
+    expect(result.diagnostics.resolved_via).toBe("domain_search");
+    expect(result.diagnostics.resolved_query).toContain("site:example.com");
   });
 });

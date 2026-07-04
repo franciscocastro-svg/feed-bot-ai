@@ -275,14 +275,19 @@ export default function Sources() {
       };
     }
 
-    const sourceKind = preview?.parse_type === "html" ? "site" : "rss";
     const selectedUrl = preview?.valid && preview.url ? preview.url : form.url.trim();
+    const resolvedQuery = typeof preview?.diagnostics?.resolved_query === "string" ? preview.diagnostics.resolved_query : "";
+    const sourceKind = selectedUrl.includes("news.google.com/rss/search")
+      ? "google_news"
+      : preview?.parse_type === "html"
+        ? "site"
+        : "rss";
     return {
       ...base,
       name: form.name.trim(),
       url: selectedUrl,
       source_kind: sourceKind as SourceKind,
-      query: form.query.trim() || null,
+      query: resolvedQuery || form.query.trim() || null,
       niche: form.niche.trim() ? `RSS: ${form.niche.trim()}` : "",
       source_config: { mode: "rss", original_url: form.url.trim(), preview, feed_candidates: preview?.feed_candidates || [] },
     };
@@ -597,6 +602,12 @@ export default function Sources() {
       );
     }
     const diagnostics = result.diagnostics || {};
+    const relaxedPreview = Boolean(diagnostics.relaxed_preview);
+    const routeLabel = diagnostics.resolved_via === "domain_search"
+      ? "google news"
+      : diagnostics.resolved_via === "search_variant"
+        ? "busca extra"
+        : result.parse_type || "sem parser";
     return (
       <div className="space-y-3">
         <div className={`rounded-lg border p-3 ${result.valid ? "border-green-500/30 bg-green-500/5" : "border-destructive/30 bg-destructive/5"}`}>
@@ -606,9 +617,9 @@ export default function Sources() {
           </div>
           <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
             <span>{Number(diagnostics.items_found || result.items_count || 0)} encontrados</span>
-            <span>{Number(diagnostics.items_after_freshness || 0)} recentes</span>
-            <span>{Number(diagnostics.items_after_relevance || 0)} relevantes</span>
-            <span>{result.parse_type || "sem parser"}</span>
+            <span>{Number(diagnostics.items_after_freshness || 0)} {relaxedPreview ? "exemplos" : "recentes"}</span>
+            <span>{Number(diagnostics.items_after_relevance || 0)} {relaxedPreview ? "válidos" : "relevantes"}</span>
+            <span>{routeLabel}</span>
           </div>
           {diagnostics.warnings?.[0] && <p className="text-xs text-muted-foreground mt-2">{diagnostics.warnings[0]}</p>}
         </div>
