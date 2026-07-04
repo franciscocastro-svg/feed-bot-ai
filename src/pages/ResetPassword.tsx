@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const schema = z.object({
@@ -41,10 +41,49 @@ function clearRecoveryParams() {
   window.history.replaceState(null, document.title, window.location.pathname);
 }
 
+type PasswordInputProps = {
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  autoComplete: string;
+};
+
+function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: PasswordInputProps) {
+  const label = visible ? "Ocultar senha" : "Mostrar senha";
+  const Icon = visible ? EyeOff : Eye;
+
+  return (
+    <div className="relative">
+      <Input
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        maxLength={72}
+        autoComplete={autoComplete}
+        className="pr-11"
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={label}
+        aria-pressed={visible}
+        title={label}
+        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export default function ResetPassword() {
   const nav = useNavigate();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<RecoveryStatus>("validating");
   const [linkError, setLinkError] = useState("");
@@ -163,11 +202,23 @@ export default function ResetPassword() {
           <form onSubmit={handle} className="space-y-4">
             <div className="space-y-2">
               <Label>Nova senha</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={72} />
+              <PasswordInput
+                value={password}
+                onChange={setPassword}
+                visible={showPassword}
+                onToggle={() => setShowPassword((value) => !value)}
+                autoComplete="new-password"
+              />
             </div>
             <div className="space-y-2">
               <Label>Confirmar senha</Label>
-              <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required maxLength={72} />
+              <PasswordInput
+                value={confirm}
+                onChange={setConfirm}
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((value) => !value)}
+                autoComplete="new-password"
+              />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar nova senha"}
