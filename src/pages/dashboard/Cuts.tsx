@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2 } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
@@ -40,6 +40,10 @@ type VideoCutJob = {
   user_id: string;
   instagram_account_id: string;
   youtube_url: string;
+  source_kind?: string | null;
+  source_title?: string | null;
+  source_video_url?: string | null;
+  source_file_name?: string | null;
   status: string;
   progress?: number | null;
   created_at: string;
@@ -75,7 +79,9 @@ type SupabaseFlex = {
 
 const db = supabase as unknown as SupabaseFlex;
 const JOB_REFRESH_MS = 15000;
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+type InputMode = "youtube" | "upload";
 
 function nextLocalDateTime(minutes = 30) {
   const date = new Date(Date.now() + minutes * 60 * 1000);
@@ -110,6 +116,15 @@ function hashtagsToText(value?: string[] | string | null) {
   return splitHashtags(value).join(" ");
 }
 
+function humanVideoCutError(message?: string | null) {
+  const text = String(message || "").trim();
+  if (!text) return "";
+  if (/sign in to confirm|not a bot|precondition check failed|yt-dlp|youtube said|unable to download api page/i.test(text)) {
+    return "O YouTube bloqueou o acesso automático a esse vídeo. Envie o MP4 autorizado para gerar os cortes sem depender do YouTube.";
+  }
+  return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+}
+
 export default function Cuts() {
   const { user } = useAuth();
   const { usage, refetch: refetchUsage } = usePlanUsage();
@@ -117,7 +132,9 @@ export default function Cuts() {
   const [jobs, setJobs] = useState<VideoCutJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>("youtube");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [accountId, setAccountId] = useState("");
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
@@ -164,25 +181,63 @@ export default function Cuts() {
     if (requestedClips > bounds.maxRequest) setRequestedClips(Math.max(1, bounds.maxRequest || 1));
   }, [bounds.maxRequest, requestedClips]);
 
+  const uploadVideoFile = async () => {
+    if (!user) throw new Error("Sessão expirada.");
+    if (!videoFile) throw new Error("Escolha um arquivo MP4.");
+    const isMp4 = videoFile.type === "video/mp4" || /\.mp4$/i.test(videoFile.name);
+    if (!isMp4) throw new Error("Envie um arquivo MP4.");
+    if (videoFile.size > MAX_UPLOAD_BYTES) throw new Error("O arquivo precisa ter até 1 GB para este beta.");
+
+    const safeName = videoFile.name.replace(/[^a-z0-9._-]+/gi, "-").slice(-120);
+    const path = `${user.id}/cuts/uploads/${Date.now()}-${safeName || "video.mp4"}`;
+    const { error: uploadError } = await supabase.storage.from("post-images").upload(path, videoFile, {
+      contentType: "video/mp4",
+      upsert: false,
+    });
+    if (uploadError) throw new Error(uploadError.message || "Não foi possível enviar o vídeo.");
+    const { data } = supabase.storage.from("post-images").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
   const createJob = async () => {
-    if (!isSupportedYoutubeUrl(youtubeUrl)) return toast.error("Cole um link público válido do YouTube.");
+    if (inputMode === "youtube" && !isSupportedYoutubeUrl(youtubeUrl)) return toast.error("Cole um link público válido do YouTube.");
+    if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
     if (!accountId) return toast.error("Escolha uma conta do Instagram.");
     if (!rightsConfirmed) return toast.error("Confirme que você tem direito/autorização sobre o vídeo.");
     if (bounds.maxRequest <= 0) return toast.error("Seu limite de Cortes IA para hoje acabou.");
 
     setCreating(true);
-    const { error } = await db.rpc("create_video_cut_job", {
-      _instagram_account_id: accountId,
-      _youtube_url: youtubeUrl.trim(),
-      _requested_clips: Math.min(requestedClips, bounds.maxRequest),
-      _rights_confirmed: rightsConfirmed,
-    });
-    setCreating(false);
-    if (error) return toast.error(error.message || "Não foi possível criar o job.");
-    toast.success("Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
-    setYoutubeUrl("");
-    setRightsConfirmed(false);
-    await Promise.all([load(), refetchUsage()]);
+    try {
+      const requestClips = Math.min(requestedClips, bounds.maxRequest);
+      if (inputMode === "upload") {
+        const videoUrl = await uploadVideoFile();
+        const { error } = await db.rpc("create_video_cut_upload_job", {
+          _instagram_account_id: accountId,
+          _video_url: videoUrl,
+          _requested_clips: requestClips,
+          _rights_confirmed: rightsConfirmed,
+          _source_title: videoFile?.name || "Vídeo enviado",
+        });
+        if (error) throw new Error(error.message || "Não foi possível criar o job.");
+      } else {
+        const { error } = await db.rpc("create_video_cut_job", {
+          _instagram_account_id: accountId,
+          _youtube_url: youtubeUrl.trim(),
+          _requested_clips: requestClips,
+          _rights_confirmed: rightsConfirmed,
+        });
+        if (error) throw new Error(error.message || "Não foi possível criar o job.");
+      }
+      toast.success("Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
+      setYoutubeUrl("");
+      setVideoFile(null);
+      setRightsConfirmed(false);
+      await Promise.all([load(), refetchUsage()]);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível criar o job.");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const ensureNewsItemForClip = async (clip: VideoCutClip, job: VideoCutJob) => {
@@ -309,7 +364,7 @@ export default function Cuts() {
           </div>
           <h1 className="text-4xl font-bold">Cortes IA</h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            Cole um link autorizado do YouTube, gere até 5 cortes por vídeo e revise tudo antes de agendar no Instagram.
+            Cole um link autorizado do YouTube ou envie um MP4, gere até 5 cortes por vídeo e revise tudo antes de agendar no Instagram.
           </p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
@@ -324,10 +379,42 @@ export default function Cuts() {
             <h2 className="font-semibold text-lg">Criar novo corte</h2>
             <p className="text-sm text-muted-foreground">O resultado entra como rascunho, sem publicação automática.</p>
           </div>
+          <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
+            <button
+              type="button"
+              onClick={() => setInputMode("youtube")}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Link do YouTube
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode("upload")}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Enviar MP4
+            </button>
+          </div>
           <div className="grid md:grid-cols-[1fr_220px] gap-3">
             <div className="space-y-2">
-              <Label>Link do YouTube</Label>
-              <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+              {inputMode === "youtube" ? (
+                <>
+                  <Label>Link do YouTube</Label>
+                  <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                </>
+              ) : (
+                <>
+                  <Label>Arquivo MP4 autorizado</Label>
+                  <Input
+                    type="file"
+                    accept="video/mp4,.mp4"
+                    onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use quando o YouTube bloquear o link. Limite beta: até 1 GB.
+                  </p>
+                </>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Conta Instagram</Label>
@@ -360,7 +447,7 @@ export default function Cuts() {
             <span>Confirmo que tenho direito/autorização para usar este vídeo e gerar cortes para publicação.</span>
           </label>
           <Button onClick={createJob} disabled={creating || bounds.maxRequest <= 0} className="w-full md:w-auto">
-            {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Scissors className="h-4 w-4 mr-2" />}
+            {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : inputMode === "upload" ? <Upload className="h-4 w-4 mr-2" /> : <Scissors className="h-4 w-4 mr-2" />}
             Gerar cortes para revisão
           </Button>
         </Card>
@@ -369,7 +456,7 @@ export default function Cuts() {
           <h2 className="font-semibold text-lg">Como funciona</h2>
           <div className="space-y-3 text-sm text-muted-foreground">
             <p><span className="text-foreground font-medium">1.</span> A IA encontra trechos com gancho, contexto e potencial.</p>
-            <p><span className="text-foreground font-medium">2.</span> O worker gera MP4 vertical com template/identidade da conta.</p>
+            <p><span className="text-foreground font-medium">2.</span> Se o YouTube bloquear, envie o MP4 autorizado e o worker processa pelo arquivo.</p>
             <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
           </div>
         </Card>
@@ -394,11 +481,13 @@ export default function Cuts() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
-                  <a className="text-sm text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
-                    YouTube <ExternalLink className="h-3 w-3" />
+                  <a className="text-sm text-primary inline-flex items-center gap-1" href={job.source_video_url || job.youtube_url} target="_blank" rel="noreferrer">
+                    {job.source_kind === "upload" ? "MP4 enviado" : "YouTube"} <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
-                <p className="text-sm text-muted-foreground mt-2 truncate">{job.youtube_url}</p>
+                <p className="text-sm text-muted-foreground mt-2 truncate">
+                  {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
+                </p>
               </div>
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Clock className="h-4 w-4" />
@@ -408,8 +497,8 @@ export default function Cuts() {
             <Progress value={job.progress || 0} />
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {job.error_message}
-                {job.fallback_required && <p className="mt-1 text-muted-foreground">Fallback sugerido: envie o MP4 autorizado do vídeo para uma próxima etapa do beta.</p>}
+                {humanVideoCutError(job.error_message)}
+                {job.fallback_required && <p className="mt-1 text-muted-foreground">Crie um novo corte usando a opção Enviar MP4.</p>}
               </div>
             )}
 

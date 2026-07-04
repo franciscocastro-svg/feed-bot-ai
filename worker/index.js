@@ -1000,13 +1000,13 @@ async function probeYoutubeMetadata(youtubeUrl) {
   };
 }
 
-async function analyzeYoutubeForCuts(job, metadata) {
+async function analyzeYoutubeForCuts(job, metadata, videoUri = job.youtube_url) {
   if (!GEMINI_API_KEY) {
     console.warn(`[cuts:${job.id}] GEMINI_API_KEY ausente; usando sugestões fallback.`);
     return fallbackClipSuggestions(job, metadata);
   }
 
-  const prompt = `Você é editor de Reels para Instagram. Analise este vídeo público autorizado e escolha até ${Math.min(5, job.requested_clips || 1)} melhores cortes.
+  const prompt = `Você é editor de Reels para Instagram. Analise este vídeo autorizado e escolha até ${Math.min(5, job.requested_clips || 1)} melhores cortes.
 
 Regras:
 - Retorne apenas JSON válido, sem markdown.
@@ -1030,7 +1030,7 @@ Formato:
           model: GEMINI_VIDEO_MODEL,
           input: [
             { type: "text", text: prompt },
-            { type: "video", uri: job.youtube_url },
+            { type: "video", uri: videoUri },
           ],
         }),
         signal: AbortSignal.timeout(120000),
@@ -1062,6 +1062,44 @@ Formato:
   } catch (err) {
     console.warn(`[cuts:${job.id}] Falha na análise Gemini; usando fallback:`, err?.message || err);
     return fallbackClipSuggestions(job, metadata);
+  }
+}
+
+async function probeLocalVideoMetadata(videoPath, fallbackTitle = "Vídeo enviado") {
+  if (!(await commandExists("ffprobe"))) {
+    console.warn("[cuts] ffprobe não está instalado; usando duração estimada para o MP4 enviado.");
+    return {
+      duration_seconds: 180,
+      title: cleanCutText(fallbackTitle, "Vídeo enviado"),
+      webpage_url: videoPath,
+    };
+  }
+
+  const { stdout } = await execAsync(
+    `ffprobe -v error -show_entries format=duration -of json ${shellQuote(videoPath)}`,
+    { maxBuffer: 2 * 1024 * 1024 },
+  );
+  const data = parseJsonFromText(stdout) || {};
+  const duration = Number(data?.format?.duration || 0);
+  return {
+    duration_seconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 180,
+    title: cleanCutText(fallbackTitle, "Vídeo enviado"),
+    webpage_url: videoPath,
+  };
+}
+
+async function downloadUploadedVideo(videoUrl, outputPath) {
+  if (!videoUrl) throw new Error("URL do MP4 enviado não encontrada.");
+  if (await commandExists("curl")) {
+    await execAsync(
+      `curl -L --fail --retry 3 --connect-timeout 20 --max-time 900 -o ${shellQuote(outputPath)} ${shellQuote(videoUrl)}`,
+      { maxBuffer: 10 * 1024 * 1024 },
+    );
+  } else {
+    await downloadFile(videoUrl, outputPath);
+  }
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    throw new Error("MP4 enviado não foi baixado ou está vazio.");
   }
 }
 
@@ -1219,10 +1257,16 @@ async function failVideoCutJob(job, message, fallbackRequired = false, generated
   await finishVideoCutUsage(job.id, generatedCount);
 }
 
+function shouldSuggestUploadFallback(job, message) {
+  if (job?.source_kind === "upload") return false;
+  return /youtube|yt-dlp|baixar|download|sign in to confirm|not a bot|precondition/i.test(String(message || ""));
+}
+
 async function processVideoCutJob(job) {
   const tempDir = path.join(TEMP_DIR, `cut_${job.id}`);
   const sourcePath = path.join(tempDir, "source.mp4");
   let generatedCount = 0;
+  const isUploadJob = job.source_kind === "upload";
 
   try {
     await fs.promises.mkdir(tempDir, { recursive: true });
@@ -1235,7 +1279,17 @@ async function processVideoCutJob(job) {
       .update({ status: "analyzing", progress: 10, updated_at: new Date().toISOString() })
       .eq("id", job.id);
 
-    const metadata = await probeYoutubeMetadata(job.youtube_url);
+    let metadata;
+    if (isUploadJob) {
+      await supabase.from("video_cut_jobs")
+        .update({ progress: 15, updated_at: new Date().toISOString() })
+        .eq("id", job.id);
+      await downloadUploadedVideo(job.source_video_url || job.youtube_url, sourcePath);
+      metadata = await probeLocalVideoMetadata(sourcePath, job.source_title || job.source_file_name || "Vídeo enviado");
+    } else {
+      metadata = await probeYoutubeMetadata(job.youtube_url);
+    }
+
     const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
     const maxMinutes = Math.max(1, Number(limits?.max_cut_video_minutes || 60));
     if (metadata.duration_seconds > maxMinutes * 60) {
@@ -1246,27 +1300,30 @@ async function processVideoCutJob(job) {
       .update({
         source_title: metadata.title,
         duration_seconds: metadata.duration_seconds,
+        source_video_url: isUploadJob ? (job.source_video_url || job.youtube_url) : job.source_video_url,
         progress: 25,
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
 
-    const suggestions = await analyzeYoutubeForCuts(job, metadata);
+    const suggestions = await analyzeYoutubeForCuts(job, metadata, isUploadJob ? (job.source_video_url || job.youtube_url) : job.youtube_url);
 
     await supabase.from("video_cut_jobs")
       .update({ status: "processing", progress: 40, updated_at: new Date().toISOString() })
       .eq("id", job.id);
 
-    try {
-      await downloadYoutubeVideo(job.youtube_url, sourcePath);
-    } catch (err) {
-      await failVideoCutJob(
-        job,
-        `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como fallback. Detalhe: ${err?.message || err}`,
-        true,
-        0,
-      );
-      return;
+    if (!isUploadJob) {
+      try {
+        await downloadYoutubeVideo(job.youtube_url, sourcePath);
+      } catch (err) {
+        await failVideoCutJob(
+          job,
+          `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como fallback. Detalhe: ${err?.message || err}`,
+          true,
+          0,
+        );
+        return;
+      }
     }
 
     const settings = await loadEffectivePostSettings({
@@ -1325,7 +1382,7 @@ async function processVideoCutJob(job) {
   } catch (err) {
     const message = err?.message || String(err);
     console.error(`[cuts:${job.id}] Falha no processamento:`, message);
-    await failVideoCutJob(job, message, /youtube|yt-dlp|baixar/i.test(message), generatedCount);
+    await failVideoCutJob(job, message, shouldSuggestUploadFallback(job, message), generatedCount);
   } finally {
     try { await fs.promises.rm(tempDir, { recursive: true, force: true }); } catch {}
   }
