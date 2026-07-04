@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Sparkles, Newspaper, Instagram } from "lucide-react";
+import { Eye, EyeOff, Loader2, Sparkles, Newspaper, Instagram } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { trackMetaEvent } from "@/lib/metaPixel";
 
@@ -25,13 +25,57 @@ const signupSchema = schema.extend({
   city: z.string().trim().min(2, "Informe a cidade").max(100),
   state: z.string().trim().min(2, "Informe o estado").max(100),
   country: z.string().trim().min(2, "Informe o país").max(100),
+  confirmPassword: z.string().min(6, "Confirme sua senha").max(72),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
+
+type PasswordInputProps = {
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  autoComplete: string;
+};
+
+function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: PasswordInputProps) {
+  const label = visible ? "Ocultar senha" : "Mostrar senha";
+  const Icon = visible ? EyeOff : Eye;
+
+  return (
+    <div className="relative">
+      <Input
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        required
+        maxLength={72}
+        autoComplete={autoComplete}
+        className="pr-11"
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={label}
+        aria-pressed={visible}
+        title={label}
+        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
 
 export default function Auth() {
   const nav = useNavigate();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [city, setCity] = useState("");
@@ -52,7 +96,7 @@ export default function Auth() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = signupSchema.safeParse({ email, password, name, whatsapp, city, state: stateUf, country });
+    const parsed = signupSchema.safeParse({ email, password, confirmPassword, name, whatsapp, city, state: stateUf, country });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     setLoading(true);
     const { error } = await supabase.auth.signUp({
@@ -147,7 +191,13 @@ export default function Auth() {
                     <Label>Senha</Label>
                     <Link to="/forgot-password" className="text-xs text-primary hover:underline">Esqueci minha senha</Link>
                   </div>
-                  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={72} />
+                  <PasswordInput
+                    value={password}
+                    onChange={setPassword}
+                    visible={showPassword}
+                    onToggle={() => setShowPassword(value => !value)}
+                    autoComplete="current-password"
+                  />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}</Button>
               </form>
@@ -162,7 +212,26 @@ export default function Auth() {
                   <div className="space-y-2"><Label>Estado</Label><Input value={stateUf} onChange={e => setStateUf(e.target.value)} required maxLength={100} /></div>
                 </div>
                 <div className="space-y-2"><Label>País</Label><Input value={country} onChange={e => setCountry(e.target.value)} required maxLength={100} /></div>
-                <div className="space-y-2"><Label>Senha</Label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={72} /></div>
+                <div className="space-y-2">
+                  <Label>Senha</Label>
+                  <PasswordInput
+                    value={password}
+                    onChange={setPassword}
+                    visible={showPassword}
+                    onToggle={() => setShowPassword(value => !value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Confirmar senha</Label>
+                  <PasswordInput
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    visible={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword(value => !value)}
+                    autoComplete="new-password"
+                  />
+                </div>
                 <Button type="submit" className="w-full" disabled={loading}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta"}</Button>
               </form>
             </TabsContent>
