@@ -68,6 +68,7 @@ type SupabaseQuery<T = unknown> = PromiseLike<SupabaseResult<T>> & {
   limit: (count: number) => SupabaseQuery<T>;
   insert: (values: Record<string, unknown>) => SupabaseQuery<T>;
   update: (values: Record<string, unknown>) => SupabaseQuery<T>;
+  delete: () => SupabaseQuery<T>;
   upsert: (values: Record<string, unknown>, options?: Record<string, unknown>) => SupabaseQuery<T>;
   single: () => SupabaseQuery<T>;
 };
@@ -123,6 +124,10 @@ function humanVideoCutError(message?: string | null) {
     return "O YouTube bloqueou o acesso automático a esse vídeo. Envie o MP4 autorizado para gerar os cortes sem depender do YouTube.";
   }
   return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+}
+
+function canDeleteJob(job: VideoCutJob) {
+  return ["failed", "cancelled"].includes(job.status);
 }
 
 export default function Cuts() {
@@ -292,6 +297,17 @@ export default function Cuts() {
     const { error } = await db.from("video_cut_clips").update({ status: "discarded" }).eq("id", clip.id);
     if (error) return toast.error(error.message);
     toast.success("Corte descartado.");
+    await load();
+  };
+
+  const deleteJob = async (job: VideoCutJob) => {
+    if (!canDeleteJob(job)) return toast.error("Só é possível excluir trabalhos que falharam ou foram cancelados.");
+    const confirmed = window.confirm("Excluir este trabalho com erro? Essa ação não apaga os outros trabalhos.");
+    if (!confirmed) return;
+
+    const { error } = await db.from("video_cut_jobs").delete().eq("id", job.id);
+    if (error) return toast.error(error.message || "Não foi possível excluir o trabalho.");
+    toast.success("Trabalho excluído.");
     await load();
   };
 
@@ -489,9 +505,16 @@ export default function Cuts() {
                   {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
                 </p>
               </div>
-              <div className="text-sm text-muted-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                </div>
+                {canDeleteJob(job) && (
+                  <Button size="sm" variant="outline" onClick={() => deleteJob(job)}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Excluir
+                  </Button>
+                )}
               </div>
             </div>
             <Progress value={job.progress || 0} />
