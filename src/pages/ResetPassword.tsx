@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SEO } from "@/components/SEO";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,21 +16,112 @@ const schema = z.object({
   confirm: z.string(),
 }).refine((d) => d.password === d.confirm, { message: "As senhas não coincidem", path: ["confirm"] });
 
+type RecoveryStatus = "validating" | "ready" | "invalid";
+
+const INVALID_LINK_MESSAGE =
+  "Este link de recuperação está inválido ou expirou. Solicite um novo link para definir sua senha.";
+
+function getRecoveryParams() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const hashParams = new URLSearchParams(hash);
+
+  return {
+    code: searchParams.get("code") || hashParams.get("code"),
+    accessToken: searchParams.get("access_token") || hashParams.get("access_token"),
+    refreshToken: searchParams.get("refresh_token") || hashParams.get("refresh_token"),
+    error: searchParams.get("error_description")
+      || hashParams.get("error_description")
+      || searchParams.get("error")
+      || hashParams.get("error"),
+  };
+}
+
+function clearRecoveryParams() {
+  window.history.replaceState(null, document.title, window.location.pathname);
+}
+
 export default function ResetPassword() {
   const nav = useNavigate();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<RecoveryStatus>("validating");
+  const [linkError, setLinkError] = useState("");
 
   useEffect(() => {
-    // Supabase coloca os tokens no hash; o client trata via onAuthStateChange
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") setReady(true);
+    let active = true;
+
+    const markReady = () => {
+      if (!active) return;
+      setLinkError("");
+      setStatus("ready");
+    };
+
+    const markInvalid = (message = INVALID_LINK_MESSAGE) => {
+      if (!active) return;
+      setLinkError(message);
+      setStatus("invalid");
+    };
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        markReady();
+      }
     });
-    // fallback: se já houver sessão de recovery
-    supabase.auth.getSession().then(({ data }) => { if (data.session) setReady(true); });
-    return () => sub.subscription.unsubscribe();
+
+    const validateRecoveryLink = async () => {
+      const params = getRecoveryParams();
+
+      if (params.error) {
+        markInvalid(params.error);
+        return;
+      }
+
+      if (params.accessToken && params.refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: params.accessToken,
+          refresh_token: params.refreshToken,
+        });
+
+        if (error) {
+          markInvalid(error.message);
+          return;
+        }
+
+        clearRecoveryParams();
+        markReady();
+        return;
+      }
+
+      if (params.code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+
+        if (error) {
+          markInvalid(error.message);
+          return;
+        }
+
+        clearRecoveryParams();
+        markReady();
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        markReady();
+        return;
+      }
+
+      markInvalid();
+    };
+
+    validateRecoveryLink();
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const handle = async (e: React.FormEvent) => {
@@ -59,8 +150,15 @@ export default function ResetPassword() {
         </div>
         <h1 className="font-display text-2xl font-bold mb-2">Nova senha</h1>
         <p className="text-sm text-muted-foreground mb-6">Defina uma nova senha para acessar sua conta.</p>
-        {!ready ? (
+        {status === "validating" ? (
           <p className="text-sm text-muted-foreground">Validando link…</p>
+        ) : status === "invalid" ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{linkError}</p>
+            <Button className="w-full" asChild>
+              <Link to="/forgot-password">Solicitar novo link</Link>
+            </Button>
+          </div>
         ) : (
           <form onSubmit={handle} className="space-y-4">
             <div className="space-y-2">
