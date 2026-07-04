@@ -136,4 +136,51 @@ describe("source capture utilities", () => {
     expect(result.valid).toBe(true);
     expect(result.sample_items?.[0]?.title).toContain("OpenAI");
   });
+
+  it("previews a discovered feed candidate when the site page has no items", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://example.com/") {
+        return {
+          ok: true,
+          url,
+          headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+          arrayBuffer: async () => new TextEncoder().encode(`
+            <html>
+              <head>
+                <link rel="alternate" type="application/rss+xml" href="/feed/" />
+              </head>
+              <body><main>Bem-vindo</main></body>
+            </html>
+          `).buffer,
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        url: "https://example.com/feed/",
+        headers: new Headers({ "content-type": "application/rss+xml; charset=utf-8" }),
+        arrayBuffer: async () => new TextEncoder().encode(`
+          <rss><channel>
+            <item>
+              <title>Notícia recente encontrada no feed real</title>
+              <link>https://example.com/noticias/feed-real</link>
+              <description>Conteúdo de notícias encontrado no RSS.</description>
+              <pubDate>${new Date().toUTCString()}</pubDate>
+            </item>
+          </channel></rss>
+        `).buffer,
+      } as Response;
+    }));
+
+    const result = await previewSource({
+      source_kind: "rss",
+      url: "https://example.com/",
+      niche: "notícias",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.url).toBe("https://example.com/feed/");
+    expect(result.sample_items?.[0]?.title).toContain("feed real");
+  });
 });

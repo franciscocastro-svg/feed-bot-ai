@@ -778,6 +778,37 @@ export async function previewSource(source: SourceLike, limit = 5) {
   const feedCandidates = parsed.parseType === "html" || parsed.parseType === "none"
     ? discoverFeedCandidates(raw.text, raw.finalUrl || url)
     : [];
+
+  if (filtered.items.length === 0 && feedCandidates.length > 0) {
+    for (const candidate of feedCandidates.slice(0, 5)) {
+      try {
+        const candidateRaw = await fetchTextSmart(candidate);
+        const candidateParsed = parseSourceItems(candidateRaw.text, candidateRaw.finalUrl || candidate);
+        if (candidateParsed.parseType === "html" || candidateParsed.items.length === 0) continue;
+        const candidateFiltered = filterItemsForSource(
+          candidateParsed.items,
+          { ...source, url: candidate },
+          candidateParsed.parseType,
+          limit,
+        );
+        if (candidateFiltered.items.length === 0) continue;
+        candidateFiltered.diagnostics.warnings.push("Usei automaticamente um feed RSS encontrado na página informada.");
+        return {
+          valid: true,
+          url: candidate,
+          final_url: candidateRaw.finalUrl,
+          parse_type: candidateParsed.parseType,
+          items_count: candidateParsed.items.length,
+          sample_items: buildPreviewItems(candidateFiltered.items),
+          feed_candidates: feedCandidates,
+          diagnostics: candidateFiltered.diagnostics,
+        };
+      } catch {
+        // keep trying the next discovered feed candidate
+      }
+    }
+  }
+
   const diagnostics = filtered.diagnostics;
   if (feedCandidates.length > 0) diagnostics.warnings.push("Esta página possui feeds RSS candidatos que podem ser mais estáveis.");
   return {

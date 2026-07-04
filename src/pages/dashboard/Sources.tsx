@@ -276,14 +276,15 @@ export default function Sources() {
     }
 
     const sourceKind = preview?.parse_type === "html" ? "site" : "rss";
+    const selectedUrl = preview?.valid && preview.url ? preview.url : form.url.trim();
     return {
       ...base,
       name: form.name.trim(),
-      url: form.url.trim(),
+      url: selectedUrl,
       source_kind: sourceKind as SourceKind,
       query: form.query.trim() || null,
       niche: form.niche.trim() ? `RSS: ${form.niche.trim()}` : "",
-      source_config: { mode: "rss", preview, feed_candidates: preview?.feed_candidates || [] },
+      source_config: { mode: "rss", original_url: form.url.trim(), preview, feed_candidates: preview?.feed_candidates || [] },
     };
   };
 
