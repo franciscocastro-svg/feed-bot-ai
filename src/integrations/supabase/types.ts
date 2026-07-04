@@ -727,80 +727,6 @@ export type Database = {
         }
         Relationships: []
       }
-      source_fetch_runs: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          diagnostics: Json
-          duration_ms: number
-          error_message: string | null
-          id: string
-          items_after_freshness: number
-          items_after_relevance: number
-          items_created: number
-          items_duplicates: number
-          items_found: number
-          items_without_image: number
-          sample_items: Json
-          source_id: string | null
-          source_kind: Database["public"]["Enums"]["source_kind"]
-          source_name: string | null
-          started_at: string
-          status: string
-          user_id: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          diagnostics?: Json
-          duration_ms?: number
-          error_message?: string | null
-          id?: string
-          items_after_freshness?: number
-          items_after_relevance?: number
-          items_created?: number
-          items_duplicates?: number
-          items_found?: number
-          items_without_image?: number
-          sample_items?: Json
-          source_id?: string | null
-          source_kind?: Database["public"]["Enums"]["source_kind"]
-          source_name?: string | null
-          started_at?: string
-          status?: string
-          user_id: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          diagnostics?: Json
-          duration_ms?: number
-          error_message?: string | null
-          id?: string
-          items_after_freshness?: number
-          items_after_relevance?: number
-          items_created?: number
-          items_duplicates?: number
-          items_found?: number
-          items_without_image?: number
-          sample_items?: Json
-          source_id?: string | null
-          source_kind?: Database["public"]["Enums"]["source_kind"]
-          source_name?: string | null
-          started_at?: string
-          status?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "source_fetch_runs_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "news_sources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       news_items: {
         Row: {
           caption: string | null
@@ -950,6 +876,8 @@ export type Database = {
           exclude_terms: string[]
           fetch_interval_minutes: number
           id: string
+          include_terms: string[]
+          language: string
           last_error: string | null
           last_error_at: string | null
           last_fetched_at: string | null
@@ -958,8 +886,6 @@ export type Database = {
           last_new_item_at: string | null
           last_run_summary: Json
           last_success_at: string | null
-          include_terms: string[]
-          language: string
           name: string
           niche: string | null
           quality_score: number
@@ -981,6 +907,8 @@ export type Database = {
           exclude_terms?: string[]
           fetch_interval_minutes?: number
           id?: string
+          include_terms?: string[]
+          language?: string
           last_error?: string | null
           last_error_at?: string | null
           last_fetched_at?: string | null
@@ -989,8 +917,6 @@ export type Database = {
           last_new_item_at?: string | null
           last_run_summary?: Json
           last_success_at?: string | null
-          include_terms?: string[]
-          language?: string
           name: string
           niche?: string | null
           quality_score?: number
@@ -1012,6 +938,8 @@ export type Database = {
           exclude_terms?: string[]
           fetch_interval_minutes?: number
           id?: string
+          include_terms?: string[]
+          language?: string
           last_error?: string | null
           last_error_at?: string | null
           last_fetched_at?: string | null
@@ -1020,8 +948,6 @@ export type Database = {
           last_new_item_at?: string | null
           last_run_summary?: Json
           last_success_at?: string | null
-          include_terms?: string[]
-          language?: string
           name?: string
           niche?: string | null
           quality_score?: number
@@ -1399,6 +1325,80 @@ export type Database = {
             columns: ["news_item_id"]
             isOneToOne: false
             referencedRelation: "news_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_fetch_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          diagnostics: Json
+          duration_ms: number
+          error_message: string | null
+          id: string
+          items_after_freshness: number
+          items_after_relevance: number
+          items_created: number
+          items_duplicates: number
+          items_found: number
+          items_without_image: number
+          sample_items: Json
+          source_id: string | null
+          source_kind: Database["public"]["Enums"]["source_kind"]
+          source_name: string | null
+          started_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          diagnostics?: Json
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          items_after_freshness?: number
+          items_after_relevance?: number
+          items_created?: number
+          items_duplicates?: number
+          items_found?: number
+          items_without_image?: number
+          sample_items?: Json
+          source_id?: string | null
+          source_kind?: Database["public"]["Enums"]["source_kind"]
+          source_name?: string | null
+          started_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          diagnostics?: Json
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          items_after_freshness?: number
+          items_after_relevance?: number
+          items_created?: number
+          items_duplicates?: number
+          items_found?: number
+          items_without_image?: number
+          sample_items?: Json
+          source_id?: string | null
+          source_kind?: Database["public"]["Enums"]["source_kind"]
+          source_name?: string | null
+          started_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_fetch_runs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "news_sources"
             referencedColumns: ["id"]
           },
         ]
