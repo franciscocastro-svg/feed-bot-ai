@@ -425,7 +425,7 @@ const PROFILES: Record<string, RelevanceProfile> = {
     maxAgeH: 12,
   },
   fofoca: {
-    hot: ["famoso", "famosa", "celebridade", "fofoca", "polêmica", "polemica", "viral", "flagra", "romance", "namoro", "separação", "separacao", "bbb", "reality", "novela"],
+    hot: ["famoso", "famosa", "celebridade", "influencer", "fofoca", "polêmica", "polemica", "viral", "flagra", "romance", "namoro", "separação", "separacao", "bbb", "reality", "novela"],
     noise: ["bitcoin", "selic", "ibovespa", "banco central"],
     minScore: 1,
     maxAgeH: 24,
@@ -471,6 +471,17 @@ function getProfile(source: SourceLike): RelevanceProfile {
   return PROFILES.geral;
 }
 
+function isSearchSource(source: SourceLike): boolean {
+  const kind = inferSourceKind(source);
+  return kind === "person" || kind === "topic" || kind === "google_news";
+}
+
+function freshnessWindowHours(source: SourceLike, profile: RelevanceProfile): number {
+  const configured = Number(source.source_config?.max_age_hours);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return isSearchSource(source) ? Math.max(profile.maxAgeH, 168) : profile.maxAgeH;
+}
+
 function relevanceScore(item: ParsedSourceItem, profile: RelevanceProfile): number {
   const text = normalizedText(`${item.title} ${item.description || ""}`);
   let score = 0;
@@ -500,12 +511,15 @@ export function filterItemsForSource(
   const profile = getProfile(source);
   const includeTerms = normalizeTerms(source.include_terms).map(normalizedText);
   const excludeTerms = normalizeTerms(source.exclude_terms).map(normalizedText);
+  const searchSource = isSearchSource(source);
+  const maxAgeH = freshnessWindowHours(source, profile);
+  const minScore = searchSource ? Math.min(profile.minScore, 0) : profile.minScore;
   diagnostics.items_found = items.length;
 
   const fresh = items.filter((item) => {
     if (!item.pubDate) return true;
     const ageH = (Date.now() - new Date(item.pubDate).getTime()) / 3600000;
-    const keep = Number.isNaN(ageH) || ageH <= profile.maxAgeH;
+    const keep = Number.isNaN(ageH) || ageH <= maxAgeH;
     if (!keep) diagnostics.filtered_old++;
     return keep;
   });
@@ -518,12 +532,13 @@ export function filterItemsForSource(
       diagnostics.filtered_excluded_terms++;
       continue;
     }
-    if (includeTerms.length > 0 && !includeTerms.some((term) => term && text.includes(term))) {
+    const matchesFocusTerm = includeTerms.some((term) => term && text.includes(term));
+    if (!searchSource && includeTerms.length > 0 && !matchesFocusTerm) {
       diagnostics.filtered_missing_required_terms++;
       continue;
     }
-    const score = relevanceScore(item, profile);
-    if (score < profile.minScore) {
+    const score = relevanceScore(item, profile) + (matchesFocusTerm ? 3 : 0);
+    if (score < minScore) {
       diagnostics.filtered_low_score++;
       continue;
     }
@@ -533,7 +548,17 @@ export function filterItemsForSource(
   const sorted = relevant.sort((a, b) => (b._score || 0) - (a._score || 0)).slice(0, limit);
   diagnostics.items_after_relevance = sorted.length;
   if (items.length === 0) diagnostics.warnings.push("Nenhum item encontrado no feed ou na página.");
-  if (items.length > 0 && sorted.length === 0) diagnostics.warnings.push("A fonte respondeu, mas todos os itens foram filtrados por data ou relevância.");
+  if (items.length > 0 && sorted.length === 0) {
+    if (diagnostics.items_after_freshness === 0) {
+      diagnostics.warnings.push(`A fonte respondeu, mas os itens estavam fora da janela de data (${Math.round(maxAgeH / 24)} dias).`);
+    } else if (diagnostics.filtered_missing_required_terms > 0) {
+      diagnostics.warnings.push("A fonte respondeu, mas os itens não continham os termos obrigatórios.");
+    } else if (diagnostics.filtered_excluded_terms > 0) {
+      diagnostics.warnings.push("A fonte respondeu, mas os itens foram bloqueados pelos termos proibidos.");
+    } else {
+      diagnostics.warnings.push("A fonte respondeu, mas todos os itens foram filtrados por relevância.");
+    }
+  }
   return { items: sorted, diagnostics };
 }
 

@@ -85,7 +85,7 @@ describe("source capture utilities", () => {
     expect(decodeURIComponent(url)).toContain('"Neymar" Santos -fake');
   });
 
-  it("filters old, excluded and missing-required items", () => {
+  it("filters old, excluded and missing-required items for strict RSS sources", () => {
     const freshDate = new Date().toUTCString();
     const result = filterItemsForSource([
       { title: "Tecnologia brasileira avança em IA", link: "https://example.com/a", description: "startup", pubDate: freshDate },
@@ -93,7 +93,7 @@ describe("source capture utilities", () => {
       { title: "Tecnologia com termo bloqueado", link: "https://example.com/c", description: "fake", pubDate: freshDate },
       { title: "Outro assunto sem termo", link: "https://example.com/d", description: "geral", pubDate: freshDate },
     ], {
-      source_kind: "topic",
+      source_kind: "rss",
       niche: "tecnologia",
       include_terms: ["IA"],
       exclude_terms: ["fake"],
@@ -103,6 +103,27 @@ describe("source capture utilities", () => {
     expect(result.diagnostics.filtered_old).toBe(1);
     expect(result.diagnostics.filtered_excluded_terms).toBe(1);
     expect(result.diagnostics.filtered_missing_required_terms).toBe(1);
+  });
+
+  it("keeps topic search results for a wider window and treats include terms as focus", () => {
+    const threeDaysAgo = new Date(Date.now() - 72 * 3600000).toUTCString();
+    const result = filterItemsForSource([
+      {
+        title: "Celebridade anuncia novidade e movimenta as redes",
+        link: "https://example.com/celebridade",
+        description: "Influencer viralizou com a novidade.",
+        pubDate: threeDaysAgo,
+      },
+    ], {
+      source_kind: "topic",
+      query: "Fofoca",
+      niche: "Tema: Fofoca",
+      include_terms: ["Famosos"],
+    }, "rss", 5);
+
+    expect(result.items).toHaveLength(1);
+    expect(result.diagnostics.items_after_freshness).toBe(1);
+    expect(result.diagnostics.filtered_missing_required_terms).toBe(0);
   });
 
   it("canonicalizes article URLs", () => {

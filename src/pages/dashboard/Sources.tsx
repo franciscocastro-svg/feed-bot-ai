@@ -686,7 +686,7 @@ export default function Sources() {
         <>
           <div><Label>Nome da pessoa</Label><Input value={smartInput} onChange={(e) => { setPreview(null); setSmartInput(e.target.value); }} placeholder="Virginia Fonseca, Neymar, Lula..." /></div>
           <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="opcional" /></div>
-          <div><Label>Apelidos ou termos obrigatórios</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: nome artístico, clube, partido" /></div>
+          <div><Label>Apelidos ou termos de foco</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: nome artístico, clube, partido" /></div>
           <div><Label>Termos para bloquear</Label><Input value={form.exclude_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, exclude_terms_text: e.target.value }); }} placeholder="ex: homônimo, assunto indesejado" /></div>
         </>
       )}
@@ -695,7 +695,7 @@ export default function Sources() {
         <>
           <div><Label>Tema ou palavra-chave</Label><Input value={smartInput} onChange={(e) => { setPreview(null); setSmartInput(e.target.value); }} placeholder="mercado financeiro, fofoca, futebol..." /></div>
           <div><Label>Apelido da fonte</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="opcional" /></div>
-          <div><Label>Termos obrigatórios</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: Brasil, Instagram, clube" /></div>
+          <div><Label>Termos de foco</Label><Input value={form.include_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, include_terms_text: e.target.value }); }} placeholder="ex: famosos, novela, influencer" /></div>
           <div><Label>Termos para bloquear</Label><Input value={form.exclude_terms_text} onChange={(e) => { setPreview(null); setForm({ ...form, exclude_terms_text: e.target.value }); }} placeholder="ex: política, BBB, cripto" /></div>
         </>
       )}
