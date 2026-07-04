@@ -969,6 +969,9 @@ export type Database = {
           created_at: string
           display_name: string
           is_negotiable: boolean
+          max_cut_video_minutes: number
+          max_cuts_per_day: number
+          max_cuts_per_job: number
           max_ig_accounts: number
           max_images_per_month: number
           max_posts_per_day: number
@@ -988,6 +991,9 @@ export type Database = {
           created_at?: string
           display_name: string
           is_negotiable?: boolean
+          max_cut_video_minutes?: number
+          max_cuts_per_day?: number
+          max_cuts_per_job?: number
           max_ig_accounts: number
           max_images_per_month: number
           max_posts_per_day: number
@@ -1007,6 +1013,9 @@ export type Database = {
           created_at?: string
           display_name?: string
           is_negotiable?: boolean
+          max_cut_video_minutes?: number
+          max_cuts_per_day?: number
+          max_cuts_per_job?: number
           max_ig_accounts?: number
           max_images_per_month?: number
           max_posts_per_day?: number
@@ -1757,6 +1766,223 @@ export type Database = {
         }
         Relationships: []
       }
+      video_cut_clips: {
+        Row: {
+          caption: string | null
+          clip_index: number
+          created_at: string
+          duration_seconds: number
+          end_seconds: number
+          error_message: string | null
+          hashtags: string[]
+          hook: string | null
+          id: string
+          instagram_account_id: string
+          job_id: string
+          news_item_id: string | null
+          reason: string | null
+          scheduled_post_id: string | null
+          score: number
+          start_seconds: number
+          status: string
+          thumbnail_url: string | null
+          title: string | null
+          updated_at: string
+          user_id: string
+          video_url: string | null
+        }
+        Insert: {
+          caption?: string | null
+          clip_index: number
+          created_at?: string
+          duration_seconds?: number
+          end_seconds?: number
+          error_message?: string | null
+          hashtags?: string[]
+          hook?: string | null
+          id?: string
+          instagram_account_id: string
+          job_id: string
+          news_item_id?: string | null
+          reason?: string | null
+          scheduled_post_id?: string | null
+          score?: number
+          start_seconds?: number
+          status?: string
+          thumbnail_url?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id: string
+          video_url?: string | null
+        }
+        Update: {
+          caption?: string | null
+          clip_index?: number
+          created_at?: string
+          duration_seconds?: number
+          end_seconds?: number
+          error_message?: string | null
+          hashtags?: string[]
+          hook?: string | null
+          id?: string
+          instagram_account_id?: string
+          job_id?: string
+          news_item_id?: string | null
+          reason?: string | null
+          scheduled_post_id?: string | null
+          score?: number
+          start_seconds?: number
+          status?: string
+          thumbnail_url?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_cut_clips_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_cut_clips_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "video_cut_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_cut_clips_news_item_id_fkey"
+            columns: ["news_item_id"]
+            isOneToOne: false
+            referencedRelation: "news_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_cut_clips_scheduled_post_id_fkey"
+            columns: ["scheduled_post_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_cut_jobs: {
+        Row: {
+          analysis: Json
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          generated_clips: number
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          progress: number
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          source_kind: string
+          source_title: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+        }
+        Insert: {
+          analysis?: Json
+          attempts?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          error_message?: string | null
+          fallback_required?: boolean
+          generated_clips?: number
+          id?: string
+          instagram_account_id: string
+          max_attempts?: number
+          progress?: number
+          requested_clips?: number
+          reserved_clips?: number
+          rights_confirmed?: boolean
+          source_kind?: string
+          source_title?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+          youtube_url: string
+        }
+        Update: {
+          analysis?: Json
+          attempts?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          error_message?: string | null
+          fallback_required?: boolean
+          generated_clips?: number
+          id?: string
+          instagram_account_id?: string
+          max_attempts?: number
+          progress?: number
+          requested_clips?: number
+          reserved_clips?: number
+          rights_confirmed?: boolean
+          source_kind?: string
+          source_title?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+          youtube_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_cut_jobs_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_cut_usage_daily: {
+        Row: {
+          reserved_count: number
+          updated_at: string
+          usage_date: string
+          used_count: number
+          user_id: string
+        }
+        Insert: {
+          reserved_count?: number
+          updated_at?: string
+          usage_date?: string
+          used_count?: number
+          user_id: string
+        }
+        Update: {
+          reserved_count?: number
+          updated_at?: string
+          usage_date?: string
+          used_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       admin_ai_usage_daily: {
@@ -1858,6 +2084,81 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_video_cut_jobs: {
+        Args: { _limit?: number; _worker: string }
+        Returns: {
+          analysis: Json
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          generated_clips: number
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          progress: number
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          source_kind: string
+          source_title: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      create_video_cut_job: {
+        Args: {
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _youtube_url: string
+        }
+        Returns: {
+          analysis: Json
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          generated_clips: number
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          progress: number
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          source_kind: string
+          source_title: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -1871,15 +2172,24 @@ export type Database = {
         Args: { _scheduled_post_id: string }
         Returns: undefined
       }
+      finalize_video_cut_job_usage: {
+        Args: { _generated_count?: number; _job_id: string }
+        Returns: undefined
+      }
       get_current_usage: {
         Args: { _user_id: string }
         Returns: {
           auto_publish_enabled: boolean
+          cuts_limit: number
+          cuts_reserved_today: number
+          cuts_used_today: number
           display_name: string
           ig_accounts_limit: number
           ig_accounts_used: number
           images_limit: number
           images_used: number
+          max_cut_video_minutes: number
+          max_cuts_per_job: number
           plan: string
           posts_per_day_limit: number
           posts_today: number
@@ -1938,6 +2248,9 @@ export type Database = {
           created_at: string
           display_name: string
           is_negotiable: boolean
+          max_cut_video_minutes: number
+          max_cuts_per_day: number
+          max_cuts_per_job: number
           max_ig_accounts: number
           max_images_per_month: number
           max_posts_per_day: number
@@ -1958,6 +2271,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      get_video_cut_usage: {
+        Args: { _user_id: string }
+        Returns: {
+          display_name: string
+          max_cut_video_minutes: number
+          max_cuts_per_day: number
+          max_cuts_per_job: number
+          plan: string
+          reserved_today: number
+          used_today: number
+        }[]
       }
       has_role: {
         Args: {
