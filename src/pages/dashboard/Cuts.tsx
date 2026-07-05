@@ -305,8 +305,9 @@ export default function Cuts() {
     const confirmed = window.confirm("Excluir este trabalho com erro? Essa ação não apaga os outros trabalhos.");
     if (!confirmed) return;
 
-    const { error } = await db.from("video_cut_jobs").delete().eq("id", job.id);
+    const { data, error } = await db.rpc<boolean>("delete_video_cut_job", { _job_id: job.id });
     if (error) return toast.error(error.message || "Não foi possível excluir o trabalho.");
+    if (!data) return toast.error("Não consegui confirmar a exclusão. Atualize a página e tente novamente.");
     toast.success("Trabalho excluído.");
     await load();
   };
