@@ -72,6 +72,21 @@ function normalizeDuplicateTitle(value?: string | null): string {
     .trim();
 }
 
+function duplicateTitleKey(value?: string | null): string | null {
+  const key = normalizeDuplicateTitle(value);
+  return key.length >= 18 ? key : null;
+}
+
+function duplicateUrlKey(canonicalUrl?: string | null, articleUrl?: string | null): string | null {
+  const key = String(canonicalUrl || articleUrl || "").trim();
+  return key.length > 0 ? key : null;
+}
+
+function isUniqueViolation(error: any): boolean {
+  const text = `${error?.code || ""} ${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return text.includes("23505") || text.includes("duplicate key") || text.includes("idx_news_items_unique_active_");
+}
+
 async function insertRun(
   supabase: any,
   source: any,
@@ -104,38 +119,67 @@ async function insertRun(
 }
 
 async function findDuplicate(supabase: any, userId: string, igId: string | null, canonicalUrl: string, articleUrl: string, title?: string | null) {
-  const byCanonical = supabase
-    .from("news_items")
-    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title")
-    .eq("user_id", userId)
-    .eq("original_canonical_url", canonicalUrl)
-    .limit(1);
-  const canonical = await (igId ? byCanonical.eq("instagram_account_id", igId) : byCanonical.is("instagram_account_id", null)).maybeSingle();
-  if (canonical.data) return canonical.data;
+  const selectCols = "id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title, dedupe_url_key, dedupe_title_key";
+  const urlKey = duplicateUrlKey(canonicalUrl, articleUrl);
+  const titleKey = duplicateTitleKey(title);
 
-  const byOriginal = supabase
-    .from("news_items")
-    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title")
-    .eq("user_id", userId)
-    .eq("original_url", articleUrl)
-    .limit(1);
-  const original = await (igId ? byOriginal.eq("instagram_account_id", igId) : byOriginal.is("instagram_account_id", null)).maybeSingle();
-  if (original.data) return original.data;
+  if (urlKey) {
+    const byUrlKey = supabase
+      .from("news_items")
+      .select(selectCols)
+      .eq("user_id", userId)
+      .eq("dedupe_url_key", urlKey)
+      .limit(1);
+    const urlMatch = await (igId ? byUrlKey.eq("instagram_account_id", igId) : byUrlKey.is("instagram_account_id", null)).maybeSingle();
+    if (urlMatch.data) return urlMatch.data;
+  }
 
-  const titleKey = normalizeDuplicateTitle(title);
-  if (titleKey.length < 18) return null;
+  if (canonicalUrl) {
+    const byCanonical = supabase
+      .from("news_items")
+      .select(selectCols)
+      .eq("user_id", userId)
+      .eq("original_canonical_url", canonicalUrl)
+      .limit(1);
+    const canonical = await (igId ? byCanonical.eq("instagram_account_id", igId) : byCanonical.is("instagram_account_id", null)).maybeSingle();
+    if (canonical.data) return canonical.data;
+  }
+
+  if (articleUrl) {
+    const byOriginal = supabase
+      .from("news_items")
+      .select(selectCols)
+      .eq("user_id", userId)
+      .eq("original_url", articleUrl)
+      .limit(1);
+    const original = await (igId ? byOriginal.eq("instagram_account_id", igId) : byOriginal.is("instagram_account_id", null)).maybeSingle();
+    if (original.data) return original.data;
+  }
+
+  if (!titleKey) return null;
   const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const byTitleKey = supabase
+    .from("news_items")
+    .select(`${selectCols}, created_at`)
+    .eq("user_id", userId)
+    .eq("dedupe_title_key", titleKey)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const titleMatch = await (igId ? byTitleKey.eq("instagram_account_id", igId) : byTitleKey.is("instagram_account_id", null)).maybeSingle();
+  if (titleMatch.data) return titleMatch.data;
+
   const byTitle = supabase
     .from("news_items")
-    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title, created_at")
+    .select(`${selectCols}, created_at`)
     .eq("user_id", userId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(100);
   const recent = await (igId ? byTitle.eq("instagram_account_id", igId) : byTitle.is("instagram_account_id", null));
   return (recent.data || []).find((row: any) => {
-    const rowTitle = normalizeDuplicateTitle(row.original_title || row.rewritten_title);
-    return rowTitle.length >= 18 && rowTitle === titleKey;
+    const rowTitle = duplicateTitleKey(row.original_title || row.rewritten_title);
+    return rowTitle && rowTitle === titleKey;
   }) || null;
 }
 
@@ -260,6 +304,8 @@ Deno.serve(async (req) => {
           if (!img) diagnostics.items_without_image++;
 
           for (const igId of targetIgs) {
+            const dedupeUrl = duplicateUrlKey(canonicalUrl, articleUrl);
+            const dedupeTitle = duplicateTitleKey(item.title);
             const duplicate = await findDuplicate(supabase, userId, igId, canonicalUrl, articleUrl, item.title);
             if (duplicate) {
               diagnostics.items_duplicates++;
@@ -279,6 +325,8 @@ Deno.serve(async (req) => {
               original_content: item.description,
               original_url: articleUrl,
               original_canonical_url: canonicalUrl,
+              dedupe_url_key: dedupeUrl,
+              dedupe_title_key: dedupeTitle,
               original_image_url: img || null,
               published_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
               niche: source.niche,
@@ -287,6 +335,8 @@ Deno.serve(async (req) => {
             if (!error) {
               totalNew++;
               diagnostics.items_created++;
+            } else if (isUniqueViolation(error)) {
+              diagnostics.items_duplicates++;
             } else {
               diagnostics.warnings.push(`Falha ao criar item: ${error.message}`);
             }
