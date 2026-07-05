@@ -71,6 +71,7 @@ type SupabaseQuery<T = unknown> = PromiseLike<SupabaseResult<T>> & {
   delete: () => SupabaseQuery<T>;
   upsert: (values: Record<string, unknown>, options?: Record<string, unknown>) => SupabaseQuery<T>;
   single: () => SupabaseQuery<T>;
+  maybeSingle: () => SupabaseQuery<T>;
 };
 
 type SupabaseFlex = {
@@ -300,16 +301,35 @@ export default function Cuts() {
     await load();
   };
 
+  const deleteJobDirectly = async (job: VideoCutJob) => {
+    const { data, error } = await db
+      .from<{ id: string }>("video_cut_jobs")
+      .delete()
+      .eq("id", job.id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message || "Não foi possível excluir o trabalho.");
+    return Boolean(data?.id);
+  };
+
   const deleteJob = async (job: VideoCutJob) => {
     if (!canDeleteJob(job)) return toast.error("Só é possível excluir trabalhos que falharam ou foram cancelados.");
     const confirmed = window.confirm("Excluir este trabalho com erro? Essa ação não apaga os outros trabalhos.");
     if (!confirmed) return;
 
-    const { data, error } = await db.rpc<boolean>("delete_video_cut_job", { _job_id: job.id });
-    if (error) return toast.error(error.message || "Não foi possível excluir o trabalho.");
-    if (!data) return toast.error("Não consegui confirmar a exclusão. Atualize a página e tente novamente.");
-    toast.success("Trabalho excluído.");
-    await load();
+    try {
+      const { data, error } = await db.rpc<boolean>("delete_video_cut_job", { _job_id: job.id });
+      const missingRpc = /delete_video_cut_job|schema cache|could not find the function/i.test(error?.message || "");
+      const deleted = error && missingRpc ? await deleteJobDirectly(job) : data === true;
+
+      if (error && !missingRpc) throw new Error(error.message || "Não foi possível excluir o trabalho.");
+      if (!deleted) return toast.error("Não consegui confirmar a exclusão. Atualize a página e tente novamente.");
+
+      toast.success("Trabalho excluído.");
+      await load();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir o trabalho.");
+    }
   };
 
   const saveClipEdit = async () => {
