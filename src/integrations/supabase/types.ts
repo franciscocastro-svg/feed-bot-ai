@@ -735,6 +735,8 @@ export type Database = {
           content_format: string | null
           content_type: string
           created_at: string
+          dedupe_title_key: string | null
+          dedupe_url_key: string | null
           editorial_ready: boolean
           error_message: string | null
           generated_cover_url: string | null
@@ -771,6 +773,8 @@ export type Database = {
           content_format?: string | null
           content_type?: string
           created_at?: string
+          dedupe_title_key?: string | null
+          dedupe_url_key?: string | null
           editorial_ready?: boolean
           error_message?: string | null
           generated_cover_url?: string | null
@@ -807,6 +811,8 @@ export type Database = {
           content_format?: string | null
           content_type?: string
           created_at?: string
+          dedupe_title_key?: string | null
+          dedupe_url_key?: string | null
           editorial_ready?: boolean
           error_message?: string | null
           generated_cover_url?: string | null
