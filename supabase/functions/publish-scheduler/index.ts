@@ -38,30 +38,94 @@ function normalizeDuplicateTitle(value?: string | null): string {
     .trim();
 }
 
-async function findRecentDuplicatePublishedPost(supabase: any, userId: string, accountId: string, postId: string, news: any) {
-  const since = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+function joinedNews(row: any) {
+  return Array.isArray(row?.news_items) ? row.news_items[0] : row?.news_items;
+}
+
+function duplicateKeysForNews(news: any): string[] {
+  const keys = new Set<string>();
+  const url = news?.original_canonical_url || news?.original_url;
+  if (url) keys.add(`url:${url}`);
+  const title = normalizeDuplicateTitle(news?.rewritten_title || news?.original_title);
+  if (title.length >= 18) keys.add(`title:${title}`);
+  return Array.from(keys);
+}
+
+function sameNewsFingerprint(news: any, row: any): boolean {
+  const rowNews = joinedNews(row);
+  if (!rowNews || !news) return false;
+  if (row.news_item_id === news.id || rowNews.id === news.id) return true;
+  const itemUrl = news.original_canonical_url || news.original_url;
+  const rowUrl = rowNews.original_canonical_url || rowNews.original_url;
+  if (itemUrl && rowUrl && itemUrl === rowUrl) return true;
+  const itemTitle = normalizeDuplicateTitle(news.rewritten_title || news.original_title);
+  const rowTitle = normalizeDuplicateTitle(rowNews.rewritten_title || rowNews.original_title);
+  return itemTitle.length >= 18 && rowTitle.length >= 18 && itemTitle === rowTitle;
+}
+
+function postSortTime(row: any): number {
+  return new Date(row?.scheduled_for || row?.created_at || row?.updated_at || 0).getTime();
+}
+
+async function findRecentDuplicatePostConflict(supabase: any, userId: string, accountId: string, currentPost: any, news: any) {
+  const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from("scheduled_posts")
-    .select("id, news_item_id, posted_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
+    .select("id, status, news_item_id, scheduled_for, posted_at, created_at, updated_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
     .eq("user_id", userId)
     .eq("instagram_account_id", accountId)
-    .eq("status", "posted")
-    .neq("id", postId)
-    .gte("posted_at", since)
-    .order("posted_at", { ascending: false })
-    .limit(25);
+    .in("status", ["posted", ...ACTIVE_QUEUE_STATUSES])
+    .neq("id", currentPost.id)
+    .gte("updated_at", since)
+    .order("updated_at", { ascending: false })
+    .limit(100);
 
-  const itemUrl = news?.original_canonical_url || news?.original_url;
-  const itemTitle = normalizeDuplicateTitle(news?.rewritten_title || news?.original_title);
+  const currentTime = postSortTime(currentPost);
   return (data || []).find((row: any) => {
-    const rowNews = Array.isArray(row.news_items) ? row.news_items[0] : row.news_items;
-    if (!rowNews) return false;
-    if (row.news_item_id === news?.id || rowNews.id === news?.id) return true;
-    const rowUrl = rowNews.original_canonical_url || rowNews.original_url;
-    if (itemUrl && rowUrl && itemUrl === rowUrl) return true;
-    const rowTitle = normalizeDuplicateTitle(rowNews.rewritten_title || rowNews.original_title);
-    return itemTitle.length >= 18 && rowTitle.length >= 18 && itemTitle === rowTitle;
+    if (!sameNewsFingerprint(news, row)) return false;
+    if (row.status === "posted") return true;
+    const otherTime = postSortTime(row);
+    return !Number.isFinite(currentTime) || !Number.isFinite(otherTime) || otherTime <= currentTime;
+  }) || null;
+}
+
+async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
+  const { data } = await supabase
+    .from("scheduled_posts")
+    .select("id, status, news_item_id, instagram_account_id, scheduled_for, created_at, updated_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
+    .eq("user_id", userId)
+    .in("status", ACTIVE_QUEUE_STATUSES)
+    .not("instagram_account_id", "is", null)
+    .order("scheduled_for", { ascending: true })
+    .limit(500);
+
+  const keepByKey = new Map<string, any>();
+  const cancelIds = new Set<string>();
+  const rows = ((data || []) as any[]).sort((a, b) => {
+    const statusRank = (value: string) => value === "posting" ? 0 : value === "awaiting_container" ? 1 : 2;
+    const byStatus = statusRank(a.status) - statusRank(b.status);
+    if (byStatus !== 0) return byStatus;
+    return postSortTime(a) - postSortTime(b);
   });
+
+  for (const row of rows) {
+    const rowNews = joinedNews(row);
+    const keys = duplicateKeysForNews(rowNews).map((key) => `${row.instagram_account_id}:${key}`);
+    if (!keys.length) continue;
+    const existing = keys.map((key) => keepByKey.get(key)).find(Boolean);
+    if (existing) {
+      cancelIds.add(row.id);
+      continue;
+    }
+    keys.forEach((key) => keepByKey.set(key, row));
+  }
+
+  if (!cancelIds.size) return 0;
+  await supabase.from("scheduled_posts").update({
+    status: "cancelled",
+    error_message: "Cancelado automaticamente: duplicado ativo da mesma notícia para esta conta",
+  }).in("id", Array.from(cancelIds)).in("status", ACTIVE_QUEUE_STATUSES);
+  return cancelIds.size;
 }
 
 // =============================================================
@@ -489,6 +553,8 @@ Deno.serve(async (req) => {
       }).in("id", expiringIds);
     }
 
+    const duplicateQueueCancelled = await cancelDuplicateActiveQueue(supabase, userId!);
+
     let awaitingChecked = 0;
     let awaitingRecovered = 0;
     let awaitingQuery = supabase.from("scheduled_posts")
@@ -592,6 +658,21 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        const duplicateConflict = await findRecentDuplicatePostConflict(supabase, userId!, acc.id, p, news);
+        if (duplicateConflict) {
+          const message = "Duplicada: notícia igual já está em envio ou foi publicada para esta conta nas últimas 72h";
+          await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: message, container_last_checked_at: nowIso }).eq("id", p.id);
+          if (news?.id) await supabase.from("news_items").update({ status: "rejected", error_message: message }).eq("id", news.id);
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_duplicate_blocked",
+            entity_type: "scheduled_post",
+            entity_id: p.id,
+            details: { account_id: acc.id, duplicate_post_id: duplicateConflict.id, duplicate_news_item_id: duplicateConflict.news_item_id, path: "awaiting_container" },
+          });
+          continue;
+        }
+
         try {
           const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
           const mediaId = await publishContainer(acc.ig_user_id, p.ig_creation_id, acc.access_token, usageCtx);
@@ -677,13 +758,13 @@ Deno.serve(async (req) => {
     }
 
     if (processed > 0) {
-      return new Response(JSON.stringify({ processed, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered }), {
+      return new Response(JSON.stringify({ processed, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, duplicate_queue_cancelled: duplicateQueueCancelled }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (!hasDailyCapacity) {
-      return new Response(JSON.stringify({ processed: 0, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, reason: "daily limit reached" }), {
+      return new Response(JSON.stringify({ processed: 0, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, duplicate_queue_cancelled: duplicateQueueCancelled, reason: "daily limit reached" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -932,9 +1013,9 @@ Deno.serve(async (req) => {
           }
         }
 
-        const duplicatePublished = await findRecentDuplicatePublishedPost(supabase, userId!, acc.id, p.id, news);
-        if (duplicatePublished) {
-          const message = "Duplicada: notícia igual já foi publicada para esta conta nas últimas 36h";
+        const duplicateConflict = await findRecentDuplicatePostConflict(supabase, userId!, acc.id, p, news);
+        if (duplicateConflict) {
+          const message = "Duplicada: notícia igual já está em envio ou foi publicada para esta conta nas últimas 72h";
           await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: message }).eq("id", p.id);
           if (news?.id) {
             await supabase.from("news_items").update({ status: "rejected", error_message: message }).eq("id", news.id);
@@ -944,7 +1025,7 @@ Deno.serve(async (req) => {
             action: "publish_duplicate_blocked",
             entity_type: "scheduled_post",
             entity_id: p.id,
-            details: { account_id: acc.id, duplicate_post_id: duplicatePublished.id, duplicate_news_item_id: duplicatePublished.news_item_id },
+            details: { account_id: acc.id, duplicate_post_id: duplicateConflict.id, duplicate_news_item_id: duplicateConflict.news_item_id, path: "scheduled" },
           });
           continue;
         }

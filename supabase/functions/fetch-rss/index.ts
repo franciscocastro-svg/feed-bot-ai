@@ -61,6 +61,17 @@ function runSummary(diagnostics: SourceDiagnostics, extra: Record<string, unknow
   return { ...diagnostics, ...extra, completed_at: new Date().toISOString() };
 }
 
+function normalizeDuplicateTitle(value?: string | null): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function insertRun(
   supabase: any,
   source: any,
@@ -92,10 +103,10 @@ async function insertRun(
   });
 }
 
-async function findDuplicate(supabase: any, userId: string, igId: string | null, canonicalUrl: string, articleUrl: string) {
+async function findDuplicate(supabase: any, userId: string, igId: string | null, canonicalUrl: string, articleUrl: string, title?: string | null) {
   const byCanonical = supabase
     .from("news_items")
-    .select("id, original_image_url, original_url, original_canonical_url")
+    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title")
     .eq("user_id", userId)
     .eq("original_canonical_url", canonicalUrl)
     .limit(1);
@@ -104,12 +115,28 @@ async function findDuplicate(supabase: any, userId: string, igId: string | null,
 
   const byOriginal = supabase
     .from("news_items")
-    .select("id, original_image_url, original_url, original_canonical_url")
+    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title")
     .eq("user_id", userId)
     .eq("original_url", articleUrl)
     .limit(1);
   const original = await (igId ? byOriginal.eq("instagram_account_id", igId) : byOriginal.is("instagram_account_id", null)).maybeSingle();
-  return original.data || null;
+  if (original.data) return original.data;
+
+  const titleKey = normalizeDuplicateTitle(title);
+  if (titleKey.length < 18) return null;
+  const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const byTitle = supabase
+    .from("news_items")
+    .select("id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title, created_at")
+    .eq("user_id", userId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  const recent = await (igId ? byTitle.eq("instagram_account_id", igId) : byTitle.is("instagram_account_id", null));
+  return (recent.data || []).find((row: any) => {
+    const rowTitle = normalizeDuplicateTitle(row.original_title || row.rewritten_title);
+    return rowTitle.length >= 18 && rowTitle === titleKey;
+  }) || null;
 }
 
 async function authContext(req: Request, body: any) {
@@ -233,7 +260,7 @@ Deno.serve(async (req) => {
           if (!img) diagnostics.items_without_image++;
 
           for (const igId of targetIgs) {
-            const duplicate = await findDuplicate(supabase, userId, igId, canonicalUrl, articleUrl);
+            const duplicate = await findDuplicate(supabase, userId, igId, canonicalUrl, articleUrl, item.title);
             if (duplicate) {
               diagnostics.items_duplicates++;
               const updates: Record<string, string> = {};
