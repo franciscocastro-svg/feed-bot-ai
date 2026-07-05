@@ -59,6 +59,32 @@ function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
   return active[0];
 }
 
+function normalizeDuplicateTitle(value?: string | null): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sameScheduledFingerprint(item: any, row: any, targetIg: string): boolean {
+  if (!row || row.instagram_account_id !== targetIg) return false;
+  const rowNews = Array.isArray(row.news_items) ? row.news_items[0] : row.news_items;
+  if (!rowNews) return false;
+  if (row.news_item_id === item.id || rowNews.id === item.id) return true;
+
+  const itemUrl = item.original_canonical_url || item.original_url;
+  const rowUrl = rowNews.original_canonical_url || rowNews.original_url;
+  if (itemUrl && rowUrl && itemUrl === rowUrl) return true;
+
+  const itemTitle = normalizeDuplicateTitle(item.rewritten_title || item.original_title);
+  const rowTitle = normalizeDuplicateTitle(rowNews.rewritten_title || rowNews.original_title);
+  return itemTitle.length >= 18 && rowTitle.length >= 18 && itemTitle === rowTitle;
+}
+
 async function waitForProcessedNews(supabase: any, userId: string, newsItemId: string, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -473,7 +499,7 @@ Deno.serve(async (req) => {
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase
           .from("news_items")
-          .select("id, rewritten_title, rewritten_summary, original_title, original_content, instagram_account_id")
+          .select("id, rewritten_title, rewritten_summary, original_title, original_content, original_url, original_canonical_url, instagram_account_id")
           .eq("user_id", userId)
           .eq("status", "processed");
 
@@ -482,6 +508,15 @@ Deno.serve(async (req) => {
           .select("scheduled_for, news_item_id, media_type, instagram_account_id")
           .eq("user_id", userId)
           .in("status", PUBLISH_ACTIVE_STATUSES);
+
+        const duplicateLookbackIso = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+        const { data: recentScheduledForDupes } = await supabase
+          .from("scheduled_posts")
+          .select("id, status, news_item_id, instagram_account_id, scheduled_for, posted_at, updated_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
+          .eq("user_id", userId)
+          .in("status", [...PUBLISH_ACTIVE_STATUSES, "posted"])
+          .gte("updated_at", duplicateLookbackIso);
+        const dupeRows: any[] = recentScheduledForDupes || [];
 
         const alreadyScheduledNews = new Set((existingScheduled || []).map((s) => s.news_item_id));
         const allTaken = (existingScheduled || []).map((s) => new Date(s.scheduled_for));
@@ -600,6 +635,14 @@ Deno.serve(async (req) => {
             const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
               ? it.instagram_account_id
               : fallbackAccountId;
+            const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg));
+            if (duplicateRow) {
+              await supabase.from("news_items").update({
+                status: "rejected",
+                error_message: "Duplicada: notícia igual já foi agendada ou publicada para esta conta",
+              }).eq("id", it.id).eq("user_id", userId);
+              continue;
+            }
             // ONE-AT-A-TIME: se essa conta já tem post pendente, não enfileira outro
             if (igWithPending.has(targetIg)) continue;
             const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
@@ -622,6 +665,17 @@ Deno.serve(async (req) => {
               allTaken.push(slot);
               remainingDailyCap--;
               igWithPending.add(targetIg); // bloqueia outras na mesma rodada
+              dupeRows.push({
+                news_item_id: it.id,
+                instagram_account_id: targetIg,
+                news_items: {
+                  id: it.id,
+                  original_url: it.original_url,
+                  original_canonical_url: it.original_canonical_url,
+                  original_title: it.original_title,
+                  rewritten_title: it.rewritten_title,
+                },
+              });
             }
           }
         }

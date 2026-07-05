@@ -27,6 +27,43 @@ function isManagedReelVideoUrl(url?: string | null, userId?: string | null, item
   return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
 }
 
+function normalizeDuplicateTitle(value?: string | null): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function findRecentDuplicatePublishedPost(supabase: any, userId: string, accountId: string, postId: string, news: any) {
+  const since = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+  const { data } = await supabase
+    .from("scheduled_posts")
+    .select("id, news_item_id, posted_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
+    .eq("user_id", userId)
+    .eq("instagram_account_id", accountId)
+    .eq("status", "posted")
+    .neq("id", postId)
+    .gte("posted_at", since)
+    .order("posted_at", { ascending: false })
+    .limit(25);
+
+  const itemUrl = news?.original_canonical_url || news?.original_url;
+  const itemTitle = normalizeDuplicateTitle(news?.rewritten_title || news?.original_title);
+  return (data || []).find((row: any) => {
+    const rowNews = Array.isArray(row.news_items) ? row.news_items[0] : row.news_items;
+    if (!rowNews) return false;
+    if (row.news_item_id === news?.id || rowNews.id === news?.id) return true;
+    const rowUrl = rowNews.original_canonical_url || rowNews.original_url;
+    if (itemUrl && rowUrl && itemUrl === rowUrl) return true;
+    const rowTitle = normalizeDuplicateTitle(rowNews.rewritten_title || rowNews.original_title);
+    return itemTitle.length >= 18 && rowTitle.length >= 18 && itemTitle === rowTitle;
+  });
+}
+
 // =============================================================
 // Captura headers de quota da Meta Graph API.
 // X-App-Usage: { call_count, total_time, total_cputime } (0-100 cada)
@@ -893,6 +930,23 @@ Deno.serve(async (req) => {
             });
             continue;
           }
+        }
+
+        const duplicatePublished = await findRecentDuplicatePublishedPost(supabase, userId!, acc.id, p.id, news);
+        if (duplicatePublished) {
+          const message = "Duplicada: notícia igual já foi publicada para esta conta nas últimas 36h";
+          await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: message }).eq("id", p.id);
+          if (news?.id) {
+            await supabase.from("news_items").update({ status: "rejected", error_message: message }).eq("id", news.id);
+          }
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_duplicate_blocked",
+            entity_type: "scheduled_post",
+            entity_id: p.id,
+            details: { account_id: acc.id, duplicate_post_id: duplicatePublished.id, duplicate_news_item_id: duplicatePublished.news_item_id },
+          });
+          continue;
         }
 
         // === AUTO-FREIO ANTES DE BATER 100% NO LIMITE DA META ===
