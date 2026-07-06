@@ -343,15 +343,33 @@ Deno.serve(async (req) => {
         }
         userSummary.steps.expired = staleIds.length;
 
-        // 2) processar pendentes — UMA POR VEZ por execução do autopilot.
-        // Se já existe algo agendado/publicando, não prepara outra notícia.
-        // O autopiloto só volta a carregar conteúdo novo depois que a atual
-        // sair da fila, preservando o fluxo antigo: pegar -> carregar -> postar.
-        const { count: activeQueueCount } = await supabase
+        // 2) processar pendentes — uma por Instagram livre por execução do autopilot.
+        // Mantém o fluxo seguro "pegar -> carregar -> postar", mas sem travar
+        // clientes com múltiplas contas quando uma conta já tem fila e outra não.
+        const { data: activeQueueRows, count: activeQueueCount } = await supabase
           .from("scheduled_posts")
-          .select("id", { count: "exact", head: true })
+          .select("id, instagram_account_id", { count: "exact" })
           .eq("user_id", userId)
           .in("status", PUBLISH_ACTIVE_STATUSES);
+        const activeQueueIgIds = new Set<string>(
+          (activeQueueRows || [])
+            .map((s: any) => s.instagram_account_id)
+            .filter(Boolean),
+        );
+
+        // pega TODAS as contas IG ativas (notícia carrega seu próprio IG; legado usa a 1ª)
+        const { data: igAccs } = await supabase
+          .from("instagram_accounts")
+          .select("id, username")
+          .eq("user_id", userId)
+          .eq("active", true);
+        const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
+        const fallbackAccountId = igAccs?.[0]?.id;
+        userSummary.steps.active_instagram_accounts = (igAccs || []).map((a: any) => ({
+          id: a.id,
+          username: a.username,
+          has_queue: activeQueueIgIds.has(a.id),
+        }));
 
         // 2.1) Conteúdo perene por Pautas: quando ativado, gera no máximo
         // uma pauta por rodada e só se a conta estiver livre. Assim o fluxo
@@ -410,7 +428,7 @@ Deno.serve(async (req) => {
           : cutoffIso;
         const { data: pendingAll } = await supabase
           .from("news_items")
-          .select("id, original_title, original_content, original_image_url, published_at")
+          .select("id, instagram_account_id, original_title, original_content, original_image_url, published_at")
           .eq("user_id", userId)
           .eq("status", "pending")
           .gte("published_at", sinceIso)
@@ -420,7 +438,8 @@ Deno.serve(async (req) => {
         // ranking de engajamento: recência + imagem + palavras virais + corpo
         const VIRAL = /\b(urgente|exclusivo|bombou|chocante|polêmica|polemica|escândalo|escandalo|revela|revelad[oa]|surpreende|surpreendente|inédit[oa]|inedit[oa]|recorde|histórico|historico|morre|morreu|morte|prisão|prisao|preso|presa|vaza|vazou|confirma|confirmad[oa]|anuncia|anunciad[oa]|novo|nova|primeira vez|nunca visto|impressionante|viral)\b/gi;
         const now2 = Date.now();
-        const ranked = (pendingAll || []).map((n: any) => {
+        type RankedNews = { id: string; instagram_account_id: string | null; score: number };
+        const ranked: RankedNews[] = (pendingAll || []).map((n: any) => {
           const ageH = n.published_at ? (now2 - new Date(n.published_at).getTime()) / 3.6e6 : 999;
           const recency = Math.max(0, 100 - ageH * 6);
           const titleLen = (n.original_title?.length || 0);
@@ -429,15 +448,18 @@ Deno.serve(async (req) => {
           const bodyScore = Math.min(20, ((n.original_content?.length || 0) / 200));
           const viralMatches = ((n.original_title || "") + " " + (n.original_content || "")).match(VIRAL)?.length || 0;
           const viralScore = Math.min(40, viralMatches * 10);
-          return { id: n.id, score: recency + titleScore + hasImage + bodyScore + viralScore };
+          return {
+            id: n.id,
+            instagram_account_id: n.instagram_account_id || null,
+            score: recency + titleScore + hasImage + bodyScore + viralScore,
+          };
         }).sort((a, b) => b.score - a.score);
 
-        // ⚠️ ONE-AT-A-TIME: pega apenas a melhor notícia desta rodada.
-        // Antes de pegar mais, verifica se há alguma notícia ainda em
+        // Antes de pegar mais, verifica se há notícia ainda em
         // "processing" (sendo trabalhada nos últimos 15 min) — se houver,
-        // pula esta rodada. Notícias presas há >15 min são reenfileiradas
+        // pula apenas a conta correspondente. Notícias presas há >15 min são reenfileiradas
         // com limite de tentativas. Assim uma falha transitória do process-news
-        // não descarta conteúdo bom nem trava a conta o dia inteiro.
+        // não descarta conteúdo bom nem trava uma conta o dia inteiro.
         const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: stuckProcessing } = await supabase
           .from("news_items")
@@ -469,14 +491,37 @@ Deno.serve(async (req) => {
               .eq("user_id", userId);
           }
         }
-        const { count: inFlight } = await supabase
+        const { data: inFlightRows, count: inFlight } = await supabase
           .from("news_items")
-          .select("id", { count: "exact", head: true })
+          .select("id, instagram_account_id", { count: "exact" })
           .eq("user_id", userId)
           .eq("status", "processing")
           .gte("updated_at", stuckCutoff);
-        const shouldLoadNextNews = !(activeQueueCount && activeQueueCount > 0) && !(inFlight && inFlight > 0);
-        const pending = shouldLoadNextNews ? ranked.slice(0, 1) : [];
+        const inFlightIgIds = new Set<string>(
+          (inFlightRows || [])
+            .map((n: any) => {
+              if (n.instagram_account_id && validIgIds.has(n.instagram_account_id)) return n.instagram_account_id;
+              return fallbackAccountId;
+            })
+            .filter(Boolean),
+        );
+
+        const pickedIgIds = new Set<string>();
+        const pending: RankedNews[] = [];
+        const maxPerRun = Math.max(1, Math.min(3, validIgIds.size || 1));
+        for (const item of ranked) {
+          const targetIg = item.instagram_account_id && validIgIds.has(item.instagram_account_id)
+            ? item.instagram_account_id
+            : fallbackAccountId;
+          if (!targetIg) continue;
+          if (activeQueueIgIds.has(targetIg)) continue;
+          if (inFlightIgIds.has(targetIg)) continue;
+          if (pickedIgIds.has(targetIg)) continue;
+
+          pending.push(item);
+          pickedIgIds.add(targetIg);
+          if (pending.length >= maxPerRun) break;
+        }
 
         const results = await Promise.all(pending.map(async (it) => {
           const r = await callFn("process-news", {
@@ -493,7 +538,13 @@ Deno.serve(async (req) => {
         const processed = results.filter((x): x is string => !!x);
         userSummary.steps.processed = processed.length;
         userSummary.steps.active_queue = activeQueueCount || 0;
+        userSummary.steps.active_queue_accounts = Array.from(activeQueueIgIds);
         userSummary.steps.in_flight = inFlight || 0;
+        userSummary.steps.in_flight_accounts = Array.from(inFlightIgIds);
+        userSummary.steps.pending_selected = pending.map((p) => ({
+          id: p.id,
+          instagram_account_id: p.instagram_account_id,
+        }));
         userSummary.steps.requeued_stuck_processing = (stuckProcessing || []).length;
 
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
@@ -616,15 +667,6 @@ Deno.serve(async (req) => {
         let remainingDailyCap = masterDailyCap < 0
           ? Number.POSITIVE_INFINITY
           : Math.max(0, masterDailyCap - scheduledTodayCount);
-
-        // pega TODAS as contas IG ativas (notícia carrega seu próprio IG; legado usa a 1ª)
-        const { data: igAccs } = await supabase
-          .from("instagram_accounts")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("active", true);
-        const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
-        const fallbackAccountId = igAccs?.[0]?.id;
 
         const scheduledNow: { id: string; channel: string }[] = [];
         if (fallbackAccountId) {
