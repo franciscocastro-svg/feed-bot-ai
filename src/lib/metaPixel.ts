@@ -1,4 +1,4 @@
-const DEFAULT_META_PIXEL_ID = "1338344821041961";
+const DEFAULT_META_PIXEL_ID = "802276099545966";
 const META_PIXEL_SCRIPT_ID = "fluxifeed-meta-pixel";
 
 type MetaPixelFn = {
