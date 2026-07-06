@@ -51,6 +51,19 @@ const NEWS_LIST_COLUMNS = [
   "content_format",
 ].join(",");
 
+function friendlyDatabaseMessage(error: unknown) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const message = typeof record.message === "string" ? record.message : "";
+  const text = `${record.code || ""} ${message} ${record.details || ""}`.toLowerCase();
+  if (text.includes("duplicate_news_item_url") || text.includes("duplicate_news_item_title") || text.includes("idx_news_items_unique_active_")) {
+    return "Essa notícia já existe para este Instagram. O sistema bloqueou a duplicidade.";
+  }
+  if (text.includes("idx_scheduled_posts_unique_active_news_per_ig") || text.includes("duplicate key")) {
+    return "Essa publicação já está agendada para este Instagram.";
+  }
+  return message || "Não foi possível concluir a ação.";
+}
+
 function feedPreviewUrl(item: any) {
   return item?.generated_image_url || item?.generated_cover_url || "";
 }
@@ -119,6 +132,7 @@ export default function News() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newsLimit, setNewsLimit] = useState(NEWS_PAGE_SIZE);
 
@@ -138,11 +152,21 @@ export default function News() {
 
   const sources = useMemo(() => Array.from(new Set(items.map(i => i.source_name).filter(Boolean))), [items]);
 
+  const accountName = (accountId?: string | null) => {
+    if (!accountId) return "sem conta definida";
+    const account = igAccounts.find((ig) => ig.id === accountId);
+    return account ? `@${account.username}` : "conta não encontrada";
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter(i => {
       if (statusFilter !== "all" && i.status !== statusFilter) return false;
       if (sourceFilter !== "all" && i.source_name !== sourceFilter) return false;
+      if (accountFilter !== "all") {
+        if (accountFilter === "none" && i.instagram_account_id) return false;
+        if (accountFilter !== "none" && i.instagram_account_id !== accountFilter) return false;
+      }
       if (q) {
         const t = (i.rewritten_title || i.original_title || "").toLowerCase();
         const c = (i.caption || "").toLowerCase();
@@ -150,7 +174,7 @@ export default function News() {
       }
       return true;
     });
-  }, [items, search, statusFilter, sourceFilter]);
+  }, [items, search, statusFilter, sourceFilter, accountFilter]);
 
   const setLoad = (id: string, v: boolean) => setLoading(p => ({ ...p, [id]: v }));
 
@@ -198,7 +222,8 @@ export default function News() {
   };
 
   const reject = async (id: string) => {
-    await supabase.from("news_items").update({ status: "rejected" }).eq("id", id);
+    const { error } = await supabase.from("news_items").update({ status: "rejected" }).eq("id", id);
+    if (error) return toast.error(error.message);
     load();
   };
   const approve = async (item: any, mediaType: MediaType) => {
@@ -270,8 +295,8 @@ export default function News() {
       const label = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
       toast.success(`${label} agendado para ${new Date(slot).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`);
       load();
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao agendar");
+    } catch (e: unknown) {
+      toast.error(friendlyDatabaseMessage(e) || "Erro ao agendar");
     } finally {
       setLoad(item.id, false);
     }
@@ -279,18 +304,20 @@ export default function News() {
 
   const remove = async (ids: string[]) => {
     if (!confirm(`Excluir ${ids.length} notícia(s)?`)) return;
-    await supabase.from("news_items").delete().in("id", ids);
+    const { error } = await supabase.from("news_items").delete().in("id", ids);
+    if (error) return toast.error(error.message);
     toast.success("Excluídas");
     load();
   };
 
   const saveEdit = async () => {
     if (!editing) return;
-    await supabase.from("news_items").update({
+    const { error } = await supabase.from("news_items").update({
       rewritten_title: editing.rewritten_title,
       caption: editing.caption,
       hashtags: editing.hashtags,
     }).eq("id", editing.id);
+    if (error) return toast.error(friendlyDatabaseMessage(error));
     toast.success("Salvo");
     setEditing(null);
     load();
@@ -309,7 +336,8 @@ export default function News() {
   const bulkReject = async () => {
     const ids = Array.from(selected);
     if (!confirm(`Rejeitar ${ids.length} notícia(s)?`)) return;
-    await supabase.from("news_items").update({ status: "rejected" }).in("id", ids);
+    const { error } = await supabase.from("news_items").update({ status: "rejected" }).in("id", ids);
+    if (error) return toast.error(error.message);
     toast.success("Rejeitadas");
     load();
   };
@@ -355,6 +383,14 @@ export default function News() {
             <SelectContent>
               <SelectItem value="all">Todas as fontes</SelectItem>
               {sources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={accountFilter} onValueChange={setAccountFilter}>
+            <SelectTrigger className="flex-1 md:w-[190px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos Instagrams</SelectItem>
+              <SelectItem value="none">Sem conta definida</SelectItem>
+              {igAccounts.map(account => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -403,7 +439,7 @@ export default function News() {
                     <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{n.status}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2 break-words">
-                    {n.source_name} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    {n.source_name} · {accountName(n.instagram_account_id)} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                     {!String(n.original_url || "").startsWith("manual://") && (
                       <a href={n.original_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 ml-1 hover:text-primary"><ExternalLink className="h-3 w-3" />original</a>
                     )}
@@ -586,9 +622,9 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
       uploadedPath = null;
       toast.success(processNow ? "Matéria criada. Iniciando processamento..." : "Matéria salva como pendente.");
       await onCreated(data, processNow);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (uploadedPath) await supabase.storage.from("post-images").remove([uploadedPath]);
-      toast.error(error?.message || "Não foi possível criar a matéria.");
+      toast.error(friendlyDatabaseMessage(error) || "Não foi possível criar a matéria.");
     } finally {
       setBusy(false);
     }
@@ -709,8 +745,8 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
       const label = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
       toast.success(`Agendado como ${label}`);
       onClose();
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao agendar");
+    } catch (e: unknown) {
+      toast.error(friendlyDatabaseMessage(e) || "Erro ao agendar");
     } finally {
       setBusy(false);
     }

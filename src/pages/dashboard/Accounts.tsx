@@ -203,9 +203,19 @@ export default function Accounts() {
                     {refreshing === a.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                     {/^IG/i.test(String(a.access_token || "")) ? "Renovar token" : "Tornar permanente"}
                   </Button>
-                  <Switch checked={a.active} onCheckedChange={async v => { await supabase.from("instagram_accounts").update({ active: v }).eq("id", a.id); load(); }} />
+                  <Switch checked={a.active} onCheckedChange={async v => {
+                    const { error } = await supabase.from("instagram_accounts").update({ active: v }).eq("id", a.id);
+                    if (error) return toast.error(error.message);
+                    load();
+                  }} />
                   <Button variant="ghost" size="icon" onClick={() => openEdit(a)}><Pencil className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" onClick={async () => { await supabase.from("instagram_accounts").delete().eq("id", a.id); load(); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button variant="ghost" size="icon" onClick={async () => {
+                    if (!confirm(`Remover @${a.username}?`)) return;
+                    const { error } = await supabase.from("instagram_accounts").delete().eq("id", a.id);
+                    if (error) return toast.error(error.message);
+                    toast.success("Conta removida");
+                    load();
+                  }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </div>
               {r && (

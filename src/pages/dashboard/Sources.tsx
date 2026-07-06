@@ -68,6 +68,16 @@ type DiscoverCandidate = {
   quality_score?: number;
 };
 
+const duplicateSourceMessage = (error: unknown) => {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const message = typeof record.message === "string" ? record.message : "";
+  const text = `${record.code || ""} ${message} ${record.details || ""}`.toLowerCase();
+  if (text.includes("idx_news_sources_unique_active_fingerprint") || text.includes("duplicate key")) {
+    return "Essa fonte já existe ativa nesta conta. Edite a fonte existente e marque os Instagrams que devem receber esse conteúdo.";
+  }
+  return message || "Não foi possível salvar a fonte.";
+};
+
 const sourceModeOptions: Array<{ value: SourceMode; label: string; description: string; icon: any }> = [
   { value: "rss", label: "RSS/Site", description: "Feed ou página de notícias", icon: Rss },
   { value: "person", label: "Pessoa", description: "Famoso, atleta, político, artista", icon: UserRound },
@@ -333,11 +343,13 @@ export default function Sources() {
   };
 
   const syncLinks = async (sourceId: string, userId: string, igIds: string[]) => {
-    await supabase.from("news_source_instagram_accounts").delete().eq("source_id", sourceId);
+    const { error: deleteError } = await supabase.from("news_source_instagram_accounts").delete().eq("source_id", sourceId);
+    if (deleteError) throw deleteError;
     if (igIds.length > 0) {
-      await supabase.from("news_source_instagram_accounts").insert(
+      const { error: insertError } = await supabase.from("news_source_instagram_accounts").insert(
         igIds.map((ig) => ({ source_id: sourceId, instagram_account_id: ig, user_id: userId })),
       );
+      if (insertError) throw insertError;
     }
   };
 
@@ -377,9 +389,14 @@ export default function Sources() {
       }).eq("id", editingId);
       if (error) {
         setSaving(false);
-        return toast.error(error.message);
+        return toast.error(duplicateSourceMessage(error));
       }
-      await syncLinks(editingId, user.id, form.ig_ids);
+      try {
+        await syncLinks(editingId, user.id, form.ig_ids);
+      } catch (error: unknown) {
+        setSaving(false);
+        return toast.error(error instanceof Error ? error.message : "Não foi possível atualizar os Instagrams da fonte.");
+      }
       toast.success("Fonte atualizada");
     } else {
       const { data: check } = await supabase.rpc("can_create_resource", {
@@ -413,9 +430,15 @@ export default function Sources() {
       }).select("id").single();
       if (error) {
         setSaving(false);
-        return toast.error(error.message);
+        return toast.error(duplicateSourceMessage(error));
       }
-      await syncLinks(inserted.id, user.id, form.ig_ids);
+      try {
+        await syncLinks(inserted.id, user.id, form.ig_ids);
+      } catch (error: unknown) {
+        await supabase.from("news_sources").delete().eq("id", inserted.id);
+        setSaving(false);
+        return toast.error(error instanceof Error ? error.message : "Não foi possível vincular os Instagrams à fonte.");
+      }
       toast.success("Fonte adicionada");
     }
 
@@ -450,12 +473,16 @@ export default function Sources() {
   useEffect(() => { load(); }, []);
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from("news_sources").update({ active }).eq("id", id);
+    const { error } = await supabase.from("news_sources").update({ active }).eq("id", id);
+    if (error) return toast.error(active ? duplicateSourceMessage(error) : error.message);
     load();
   };
 
   const remove = async (id: string) => {
-    await supabase.from("news_sources").delete().eq("id", id);
+    const { error: linkError } = await supabase.from("news_source_instagram_accounts").delete().eq("source_id", id);
+    if (linkError) return toast.error(linkError.message);
+    const { error } = await supabase.from("news_sources").delete().eq("id", id);
+    if (error) return toast.error(error.message);
     toast.success("Removida");
     setConfirmDelete(null);
     load();
@@ -553,8 +580,11 @@ export default function Sources() {
     });
     setDiscoverSaving(false);
     if (error) return toast.error(error.message);
-    if (!data?.inserted) toast.warning("Nenhuma fonte nova foi adicionada. Talvez elas já existam.");
-    else toast.success(`${data.inserted} fontes adicionadas`);
+    const inserted = Number(data?.inserted || 0);
+    const linked = Number(data?.linked_existing || 0);
+    if (!inserted && linked) toast.success(`${linked} fonte(s) já existiam e foram vinculadas aos Instagrams escolhidos`);
+    else if (!inserted) toast.warning("Nenhuma fonte nova foi adicionada. Talvez elas já existam.");
+    else toast.success(`${inserted} fontes adicionadas${linked ? ` e ${linked} já existentes vinculadas` : ""}`);
     setDiscoverOpen(false);
     setDiscoverNiche("");
     setDiscoverIgIds([]);
@@ -573,6 +603,16 @@ export default function Sources() {
     }
     return (
       <div className="space-y-2 border rounded-md p-3 max-h-48 overflow-y-auto">
+        {igAccounts.length > 1 && (
+          <div className="flex gap-2 pb-2 border-b">
+            <Button type="button" size="sm" variant="outline" onClick={() => onChange(igAccounts.map((ig) => ig.id))} className="h-8">
+              Marcar todos
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => onChange([])} className="h-8">
+              Limpar
+            </Button>
+          </div>
+        )}
         {igAccounts.map((ig) => {
           const checked = selected.includes(ig.id);
           return (

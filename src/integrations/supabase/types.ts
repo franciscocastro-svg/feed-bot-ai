@@ -743,6 +743,8 @@ export type Database = {
           generated_image_url: string | null
           generated_reel_cover_url: string | null
           generated_video_url: string | null
+          dedupe_title_key: string | null
+          dedupe_url_key: string | null
           hashtags: string[] | null
           id: string
           image_style: Database["public"]["Enums"]["image_style"] | null
@@ -781,6 +783,8 @@ export type Database = {
           generated_image_url?: string | null
           generated_reel_cover_url?: string | null
           generated_video_url?: string | null
+          dedupe_title_key?: string | null
+          dedupe_url_key?: string | null
           hashtags?: string[] | null
           id?: string
           image_style?: Database["public"]["Enums"]["image_style"] | null
@@ -819,6 +823,8 @@ export type Database = {
           generated_image_url?: string | null
           generated_reel_cover_url?: string | null
           generated_video_url?: string | null
+          dedupe_title_key?: string | null
+          dedupe_url_key?: string | null
           hashtags?: string[] | null
           id?: string
           image_style?: Database["public"]["Enums"]["image_style"] | null
@@ -897,6 +903,7 @@ export type Database = {
           quality_score: number
           query: string | null
           source_config: Json
+          source_fingerprint: string | null
           source_kind: Database["public"]["Enums"]["source_kind"]
           source_language: string
           source_type: Database["public"]["Enums"]["source_type"]
@@ -928,6 +935,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
@@ -959,6 +967,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]

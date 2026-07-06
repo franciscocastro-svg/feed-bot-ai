@@ -7,6 +7,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function isDuplicateSourceError(error: unknown): boolean {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const text = `${record.code || ""} ${record.message || ""} ${record.details || ""}`.toLowerCase();
+  return text.includes("23505") || text.includes("duplicate key") || text.includes("idx_news_sources_unique_active_fingerprint");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -30,7 +36,7 @@ Deno.serve(async (req) => {
     if (!niche || typeof niche !== "string") {
       return new Response(JSON.stringify({ error: "niche required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const targetIgIds: string[] = Array.isArray(ig_ids) ? ig_ids.filter((x: any) => typeof x === "string") : [];
+    const targetIgIds: string[] = Array.isArray(ig_ids) ? ig_ids.filter((x: unknown): x is string => typeof x === "string") : [];
 
     // Catálogo de fallback de feeds RSS brasileiros conhecidos (usado se IA estiver sem créditos)
     const FALLBACK_FEEDS: Record<string, { name: string; url: string }[]> = {
@@ -176,16 +182,21 @@ Deno.serve(async (req) => {
     // insere apenas os que não existem ainda
     const { data: existing } = await supabase
       .from("news_sources")
-      .select("url")
+      .select("id, url")
       .eq("user_id", user.id);
-    const existingUrls = new Set((existing || []).map((e: any) => e.url));
+    const existingByUrl = new Map<string, string>(
+      (existing || []).map((e: { url: string; id: string }) => [e.url, e.id])
+    );
     const selectedUrls = Array.isArray(selected_feeds) && selected_feeds.length > 0
-      ? new Set(selected_feeds.map((s: any) => typeof s === "string" ? s : s?.url).filter(Boolean))
+      ? new Set<string>(
+        selected_feeds
+          .map((s: string | { url?: string }) => typeof s === "string" ? s : s?.url)
+          .filter((url: unknown): url is string => typeof url === "string" && url.length > 0)
+      )
       : null;
 
     const toInsert = valid
       .filter((s) => !selectedUrls || selectedUrls.has(s.url))
-      .filter((s) => !existingUrls.has(s.url))
       .map((s) => ({
         user_id: user.id,
         name: s.name,
@@ -199,24 +210,39 @@ Deno.serve(async (req) => {
       }));
 
     let inserted = 0;
-    if (toInsert.length > 0) {
-      const { data: insertedRows, error } = await supabase
-        .from("news_sources")
-        .insert(toInsert)
-        .select("id");
-      if (!error) {
-        inserted = insertedRows?.length || 0;
-        // Vincula cada nova fonte aos IGs selecionados
-        if (targetIgIds.length > 0 && insertedRows && insertedRows.length > 0) {
-          const links = insertedRows.flatMap((row: any) =>
-            targetIgIds.map(igId => ({
-              source_id: row.id,
-              instagram_account_id: igId,
-              user_id: user.id,
-            }))
-          );
-          await supabase.from("news_source_instagram_accounts").insert(links);
+    let linkedExisting = 0;
+    let skippedDuplicates = 0;
+    for (const row of toInsert) {
+      let sourceId = existingByUrl.get(row.url);
+      if (!sourceId) {
+        const { data: insertedRow, error } = await supabase
+          .from("news_sources")
+          .insert(row)
+          .select("id")
+          .single();
+        if (error) {
+          if (isDuplicateSourceError(error)) {
+            skippedDuplicates++;
+            continue;
+          }
+          throw error;
         }
+        sourceId = insertedRow?.id;
+        inserted++;
+      } else {
+        linkedExisting++;
+      }
+
+      if (sourceId && targetIgIds.length > 0) {
+        const links = targetIgIds.map(igId => ({
+          source_id: sourceId,
+          instagram_account_id: igId,
+          user_id: user.id,
+        }));
+        const { error: linkError } = await supabase.from("news_source_instagram_accounts").upsert(links, {
+          onConflict: "source_id,instagram_account_id",
+        });
+        if (linkError) throw linkError;
       }
     }
 
@@ -225,6 +251,8 @@ Deno.serve(async (req) => {
         suggested: suggestions.length,
         valid: valid.length,
         inserted,
+        linked_existing: linkedExisting,
+        skipped_duplicates: skippedDuplicates,
         feeds: validated,
         usedFallback,
         preview_only: false,
