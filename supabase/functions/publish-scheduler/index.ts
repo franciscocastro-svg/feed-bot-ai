@@ -17,6 +17,8 @@ const DEFAULT_USAGE_PAUSE_THRESHOLD = 80; // %
 const GRAPH_VERSION = "v21.0";
 const AWAITING_CONTAINER_TTL_MINUTES = 120;
 const ACTIVE_QUEUE_STATUSES = ["scheduled", "posting", "awaiting_container"];
+const INSTAGRAM_CAPTION_LIMIT = 2200;
+const MIN_PUBLISH_CAPTION_CHARS = 40;
 
 function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
   if (!url || !userId || !itemId) return false;
@@ -227,6 +229,84 @@ function isTransientMediaError(message: string): boolean {
 
 function isAppRateLimitMessage(message: string): boolean {
   return /application request limit reached|código 4\b|\/2207051/i.test(message);
+}
+
+function normalizePublishCaption(value?: string | null): string {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function smartTrimCaption(value: string, limit = INSTAGRAM_CAPTION_LIMIT): string {
+  const clean = normalizePublishCaption(value);
+  if (clean.length <= limit) return clean;
+  const cut = clean.slice(0, Math.max(0, limit - 1));
+  const breakAt = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return (breakAt > 700 ? cut.slice(0, breakAt + 1) : cut).trim();
+}
+
+function buildHashtagsLine(value: unknown): string {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,\s]+/)
+      : [];
+  const tags = Array.from(new Set(
+    raw
+      .map((item) => String(item || "").replace(/^#/, "").trim().toLowerCase())
+      .filter((item) => item.length >= 3)
+      .slice(0, 15),
+  ));
+  return tags.length ? tags.map((tag) => `#${tag}`).join(" ") : "";
+}
+
+function buildSafePublishCaption(news: any, mediaType: "feed" | "reel" | "story"): { caption: string; usedFallback: boolean } {
+  if (mediaType === "story") return { caption: "", usedFallback: false };
+
+  const preferred = mediaType === "reel"
+    ? news?.reel_caption || news?.caption || ""
+    : news?.caption || news?.reel_caption || "";
+  const cleanPreferred = normalizePublishCaption(preferred);
+  const hashtagsLine = buildHashtagsLine(news?.hashtags);
+  const hasHashtags = /(^|\s)#\w+/u.test(cleanPreferred);
+
+  if (cleanPreferred.length >= MIN_PUBLISH_CAPTION_CHARS) {
+    const withTags = hashtagsLine && !hasHashtags
+      ? `${cleanPreferred}\n\n${hashtagsLine}`
+      : cleanPreferred;
+    return { caption: smartTrimCaption(withTags), usedFallback: false };
+  }
+
+  const title = normalizePublishCaption(news?.rewritten_title || news?.original_title || "Notícia importante");
+  const summary = normalizePublishCaption(news?.rewritten_summary || "");
+  const content = normalizePublishCaption(news?.original_content || "");
+  const context = summary || content;
+  const extraContext = summary && content && !content.toLowerCase().includes(summary.toLowerCase())
+    ? content
+    : "";
+
+  const blocks = [
+    cleanPreferred,
+    title ? `🚨 ${title}` : "",
+    context,
+    extraContext,
+    "💬 O que você achou dessa notícia?",
+    hashtagsLine,
+  ].filter(Boolean);
+
+  const fallback = blocks.length
+    ? blocks.join("\n\n")
+    : "🚨 Notícia importante\n\n💬 O que você achou dessa notícia?";
+
+  return { caption: smartTrimCaption(fallback), usedFallback: true };
 }
 
 // Quando recebemos 4/2207051 num post de Feed, a Meta às vezes JÁ publicou
@@ -1112,14 +1192,31 @@ Deno.serve(async (req) => {
           });
           continue;
         }
-        const captionToUse = mediaType === "reel"
-          ? news.reel_caption || news.caption || news.rewritten_title || ""
-          : news.caption || news.rewritten_title || "";
+        const safeCaption = buildSafePublishCaption(news, mediaType);
+        const captionToUse = safeCaption.caption;
+        if (safeCaption.usedFallback && news?.id) {
+          const captionPatch = mediaType === "reel"
+            ? { reel_caption: captionToUse, caption: news.caption || captionToUse }
+            : { caption: captionToUse };
+          await supabase.from("news_items").update(captionPatch).eq("id", news.id);
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_caption_fallback",
+            entity_type: "news_item",
+            entity_id: news.id,
+            details: {
+              scheduled_post_id: p.id,
+              media_type: mediaType,
+              account_id: acc.id,
+              caption_length: captionToUse.length,
+            },
+          });
+        }
         const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
         const mediaId = await publishToInstagram(acc.ig_user_id, acc.access_token, mediaUrl, captionToUse, mediaType, isVideo, usageCtx);
         await supabase.from("scheduled_posts").update({ status: "posted", posted_at: new Date().toISOString(), ig_media_id: mediaId, error_message: null }).eq("id", p.id);
         await supabase.from("news_items").update({ status: "posted" }).eq("id", news.id);
-        await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_instagram", entity_type: "scheduled_post", entity_id: p.id, details: { media_id: mediaId } });
+        await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_instagram", entity_type: "scheduled_post", entity_id: p.id, details: { media_id: mediaId, caption_length: captionToUse.length } });
         processed++;
       } catch (e) {
         const rawMsg = e instanceof Error ? e.message : "unknown";
@@ -1167,7 +1264,7 @@ Deno.serve(async (req) => {
           // post existe no perfil — se sim, marca como publicado.
           if (p.media_type === "feed") {
             try {
-              const captionToCheck = (news as any)?.caption || (news as any)?.rewritten_title || "";
+              const captionToCheck = buildSafePublishCaption(news, "feed").caption;
               const ghostId = await findRecentlyPublishedMediaId(acc.ig_user_id, acc.access_token, captionToCheck);
               if (ghostId) {
                 await supabase.from("scheduled_posts").update({
