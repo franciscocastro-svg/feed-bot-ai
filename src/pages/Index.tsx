@@ -32,7 +32,7 @@ const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean 
 };
 const INSTAGRAM_URL = "https://www.instagram.com/fluxifeed?utm_source=qr&igsh=MXVkbHIxa3FwMWJ3YQ==";
 const WHATSAPP_CONTACT_URL =
-  "https://api.whatsapp.com/send?phone=5547996080134&text=Ol%C3%A1%21%20Quero%20saber%20mais%20sobre%20o%20Flux%20%26%20Feed.";
+  "https://api.whatsapp.com/send?phone=5561999052691&text=Ol%C3%A1%21%20Quero%20saber%20mais%20sobre%20o%20Flux%20%26%20Feed.";
 
 type LandingPlan = {
   plan: string;

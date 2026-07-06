@@ -80,7 +80,7 @@ export default function Privacy() {
           <div>
             <h2 className="text-2xl font-semibold mb-2">11. Encarregado (DPO)</h2>
             <p>
-              Para exercer seus direitos ou tirar dúvidas: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou <a className="text-primary underline" href="https://wa.me/5547996080134">WhatsApp +55 47 99608-0134</a>.
+              Para exercer seus direitos ou tirar dúvidas: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou <a className="text-primary underline" href="https://wa.me/5561999052691">WhatsApp (61) 99905-2691</a>.
             </p>
           </div>
         </section>

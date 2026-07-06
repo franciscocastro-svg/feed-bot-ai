@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { trackMetaEvent } from "@/lib/metaPixel";
 
-const WHATSAPP_BUSINESS = "5547996080134";
+const WHATSAPP_BUSINESS = "5561999052691";
 type PlanLimit = Database["public"]["Tables"]["plan_limits"]["Row"];
 
 // Maps internal plan key -> Stripe price lookup_key
