@@ -2308,6 +2308,8 @@ export type Database = {
         }
         Returns: number
       }
+      normalize_dedupe_text: { Args: { _value: string }; Returns: string }
+      normalize_dedupe_url: { Args: { _value: string }; Returns: string }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
@@ -2325,6 +2327,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user"
