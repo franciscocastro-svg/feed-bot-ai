@@ -106,12 +106,16 @@ Deno.serve(async (req) => {
     const shortToken = shortData.access_token as string;
     const igUserId = String(shortData.user_id ?? '');
 
-    // 3. Exchange short -> long-lived (60 days)
-    const longUrl = new URL('https://graph.instagram.com/access_token');
-    longUrl.searchParams.set('grant_type', 'ig_exchange_token');
-    longUrl.searchParams.set('client_secret', APP_SECRET);
-    longUrl.searchParams.set('access_token', shortToken);
-    const longRes = await fetch(longUrl.toString());
+    // 3. Exchange short -> long-lived (60 days) — Meta requires POST on graph.instagram.com
+    const longForm = new URLSearchParams();
+    longForm.set('grant_type', 'ig_exchange_token');
+    longForm.set('client_secret', APP_SECRET);
+    longForm.set('access_token', shortToken);
+    const longRes = await fetch('https://graph.instagram.com/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: longForm.toString(),
+    });
     const longData = await longRes.json();
     if (!longRes.ok || !longData.access_token) {
       console.error('long token error', longData);
