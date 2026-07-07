@@ -7,6 +7,7 @@ import {
   filterItemsForSource,
   parseAtomItems,
   parseHtmlListing,
+  pickLeastLoadedInstagram,
   parseRssItems,
   previewSource,
 } from "../../supabase/functions/_shared/source-capture.ts";
@@ -145,6 +146,17 @@ describe("source capture utilities", () => {
   it("canonicalizes article URLs", () => {
     expect(canonicalizeArticleUrl("https://Example.com/news/story/?utm_source=x&fbclid=abc&id=1#top"))
       .toBe("https://example.com/news/story?id=1");
+  });
+
+  it("prioritizes the Instagram account with the smallest active queue", () => {
+    const firstPick = pickLeastLoadedInstagram(["ig-a", "ig-b", "ig-c"], {
+      "ig-a": 4,
+      "ig-b": 0,
+      "ig-c": 2,
+    });
+
+    expect(firstPick).toBe("ig-b");
+    expect(pickLeastLoadedInstagram([], {})).toBeNull();
   });
 
   it("previews a source without database writes", async () => {

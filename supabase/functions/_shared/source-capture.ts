@@ -33,6 +33,7 @@ export type SourceDiagnostics = {
   items_duplicates: number;
   items_without_image: number;
   items_created: number;
+  items_distributed?: number;
   filtered_old: number;
   filtered_low_score: number;
   filtered_excluded_terms: number;
@@ -52,12 +53,20 @@ export function createDiagnostics(parseType: SourceDiagnostics["parse_type"] = "
     items_duplicates: 0,
     items_without_image: 0,
     items_created: 0,
+    items_distributed: 0,
     filtered_old: 0,
     filtered_low_score: 0,
     filtered_excluded_terms: 0,
     filtered_missing_required_terms: 0,
     warnings: [],
   };
+}
+
+export function pickLeastLoadedInstagram(candidates: string[], loadByInstagram: Record<string, number>): string | null {
+  if (candidates.length === 0) return null;
+  return candidates.reduce((selected, id) =>
+    (loadByInstagram[id] || 0) < (loadByInstagram[selected] || 0) ? id : selected
+  , candidates[0]);
 }
 
 export function isPrivateHostname(hostname: string): boolean {

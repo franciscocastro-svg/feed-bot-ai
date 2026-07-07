@@ -10,6 +10,7 @@ import {
   isLikelyLogo,
   normalizeTerms,
   parseSourceItems,
+  pickLeastLoadedInstagram,
   previewSource,
   resolveArticleUrl,
   type ParsedSourceItem,
@@ -21,6 +22,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
+const ACTIVE_NEWS_STATUSES = ["pending", "processing", "processed", "approved", "scheduled"];
+const ACTIVE_SCHEDULE_STATUSES = ["scheduled", "posting", "awaiting_container"];
+
 function emptyDiagnostics(message?: string): SourceDiagnostics {
   return {
     parse_type: "none",
@@ -30,6 +34,7 @@ function emptyDiagnostics(message?: string): SourceDiagnostics {
     items_duplicates: 0,
     items_without_image: 0,
     items_created: 0,
+    items_distributed: 0,
     filtered_old: 0,
     filtered_low_score: 0,
     filtered_excluded_terms: 0,
@@ -87,6 +92,59 @@ function isUniqueViolation(error: any): boolean {
   return text.includes("23505") || text.includes("duplicate key") || text.includes("idx_news_items_unique_active_");
 }
 
+function uniqueIgIds(ids: (string | null)[]): (string | null)[] {
+  const seen = new Set<string>();
+  const result: (string | null)[] = [];
+  for (const id of ids) {
+    const key = id || "__none__";
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(id);
+  }
+  return result;
+}
+
+async function createInstagramDistributor(supabase: any, userId: string, targetIgs: (string | null)[]) {
+  const uniqueTargets = uniqueIgIds(targetIgs);
+  const concreteIgs = uniqueTargets.filter((id): id is string => !!id);
+  const load = new Map<string, number>();
+  concreteIgs.forEach((id) => load.set(id, 0));
+
+  if (concreteIgs.length > 0) {
+    const [{ data: queuedRows }, { data: activeNewsRows }] = await Promise.all([
+      supabase
+        .from("scheduled_posts")
+        .select("instagram_account_id")
+        .eq("user_id", userId)
+        .in("status", ACTIVE_SCHEDULE_STATUSES)
+        .in("instagram_account_id", concreteIgs),
+      supabase
+        .from("news_items")
+        .select("instagram_account_id")
+        .eq("user_id", userId)
+        .in("status", ACTIVE_NEWS_STATUSES)
+        .in("instagram_account_id", concreteIgs),
+    ]);
+
+    for (const row of queuedRows || []) {
+      if (row.instagram_account_id) load.set(row.instagram_account_id, (load.get(row.instagram_account_id) || 0) + 1);
+    }
+    for (const row of activeNewsRows || []) {
+      if (row.instagram_account_id) load.set(row.instagram_account_id, (load.get(row.instagram_account_id) || 0) + 1);
+    }
+  }
+
+  return {
+    load_snapshot: Object.fromEntries(load.entries()),
+    pick(): string | null {
+      if (concreteIgs.length === 0) return uniqueTargets[0] || null;
+      const selected = pickLeastLoadedInstagram(concreteIgs, Object.fromEntries(load.entries())) || concreteIgs[0];
+      load.set(selected, (load.get(selected) || 0) + 1);
+      return selected;
+    },
+  };
+}
+
 async function insertRun(
   supabase: any,
   source: any,
@@ -118,65 +176,75 @@ async function insertRun(
   });
 }
 
-async function findDuplicate(supabase: any, userId: string, igId: string | null, canonicalUrl: string, articleUrl: string, title?: string | null) {
+async function findDuplicate(supabase: any, userId: string, canonicalUrl: string, articleUrl: string, title?: string | null) {
   const selectCols = "id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title, dedupe_url_key, dedupe_title_key";
   const urlKey = duplicateUrlKey(canonicalUrl, articleUrl);
   const titleKey = duplicateTitleKey(title);
+  const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
 
   if (urlKey) {
-    const byUrlKey = supabase
+    const urlMatch = await supabase
       .from("news_items")
       .select(selectCols)
       .eq("user_id", userId)
       .eq("dedupe_url_key", urlKey)
-      .limit(1);
-    const urlMatch = await (igId ? byUrlKey.eq("instagram_account_id", igId) : byUrlKey.is("instagram_account_id", null)).maybeSingle();
+      .not("status", "in", "(rejected,failed)")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (urlMatch.data) return urlMatch.data;
   }
 
   if (canonicalUrl) {
-    const byCanonical = supabase
+    const canonical = await supabase
       .from("news_items")
       .select(selectCols)
       .eq("user_id", userId)
       .eq("original_canonical_url", canonicalUrl)
-      .limit(1);
-    const canonical = await (igId ? byCanonical.eq("instagram_account_id", igId) : byCanonical.is("instagram_account_id", null)).maybeSingle();
+      .not("status", "in", "(rejected,failed)")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (canonical.data) return canonical.data;
   }
 
   if (articleUrl) {
-    const byOriginal = supabase
+    const original = await supabase
       .from("news_items")
       .select(selectCols)
       .eq("user_id", userId)
       .eq("original_url", articleUrl)
-      .limit(1);
-    const original = await (igId ? byOriginal.eq("instagram_account_id", igId) : byOriginal.is("instagram_account_id", null)).maybeSingle();
+      .not("status", "in", "(rejected,failed)")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (original.data) return original.data;
   }
 
   if (!titleKey) return null;
-  const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
-  const byTitleKey = supabase
+  const titleMatch = await supabase
     .from("news_items")
     .select(`${selectCols}, created_at`)
     .eq("user_id", userId)
     .eq("dedupe_title_key", titleKey)
+    .not("status", "in", "(rejected,failed)")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(1);
-  const titleMatch = await (igId ? byTitleKey.eq("instagram_account_id", igId) : byTitleKey.is("instagram_account_id", null)).maybeSingle();
+    .limit(1)
+    .maybeSingle();
   if (titleMatch.data) return titleMatch.data;
 
-  const byTitle = supabase
+  const recent = await supabase
     .from("news_items")
     .select(`${selectCols}, created_at`)
     .eq("user_id", userId)
+    .not("status", "in", "(rejected,failed)")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(100);
-  const recent = await (igId ? byTitle.eq("instagram_account_id", igId) : byTitle.is("instagram_account_id", null));
   return (recent.data || []).find((row: any) => {
     const rowTitle = duplicateTitleKey(row.original_title || row.rewritten_title);
     return rowTitle && rowTitle === titleKey;
@@ -282,7 +350,8 @@ Deno.serve(async (req) => {
           .select("instagram_account_id")
           .eq("source_id", source.id);
         const linkedIgIds: (string | null)[] = (links || []).map((link: any) => link.instagram_account_id);
-        const targetIgs: (string | null)[] = linkedIgIds.length > 0 ? linkedIgIds : [null];
+        const targetIgs: (string | null)[] = linkedIgIds.length > 0 ? uniqueIgIds(linkedIgIds) : [null];
+        const distributor = await createInstagramDistributor(supabase, userId, targetIgs);
 
         fetchUrl = buildSourceFetchUrl(source);
         const raw = await fetchTextSmart(fetchUrl);
@@ -303,43 +372,43 @@ Deno.serve(async (req) => {
           if (img && isLikelyLogo(img)) img = null;
           if (!img) diagnostics.items_without_image++;
 
-          for (const igId of targetIgs) {
-            const dedupeUrl = duplicateUrlKey(canonicalUrl, articleUrl);
-            const dedupeTitle = duplicateTitleKey(item.title);
-            const duplicate = await findDuplicate(supabase, userId, igId, canonicalUrl, articleUrl, item.title);
-            if (duplicate) {
-              diagnostics.items_duplicates++;
-              const updates: Record<string, string> = {};
-              if (img && !duplicate.original_image_url) updates.original_image_url = img;
-              if (!duplicate.original_canonical_url) updates.original_canonical_url = canonicalUrl;
-              if (Object.keys(updates).length > 0) await supabase.from("news_items").update(updates).eq("id", duplicate.id);
-              continue;
-            }
+          const dedupeUrl = duplicateUrlKey(canonicalUrl, articleUrl);
+          const dedupeTitle = duplicateTitleKey(item.title);
+          const duplicate = await findDuplicate(supabase, userId, canonicalUrl, articleUrl, item.title);
+          if (duplicate) {
+            diagnostics.items_duplicates++;
+            const updates: Record<string, string> = {};
+            if (img && !duplicate.original_image_url) updates.original_image_url = img;
+            if (!duplicate.original_canonical_url) updates.original_canonical_url = canonicalUrl;
+            if (Object.keys(updates).length > 0) await supabase.from("news_items").update(updates).eq("id", duplicate.id);
+            continue;
+          }
 
-            const { error } = await supabase.from("news_items").insert({
-              user_id: userId,
-              source_id: source.id,
-              source_name: source.name,
-              instagram_account_id: igId,
-              original_title: item.title,
-              original_content: item.description,
-              original_url: articleUrl,
-              original_canonical_url: canonicalUrl,
-              dedupe_url_key: dedupeUrl,
-              dedupe_title_key: dedupeTitle,
-              original_image_url: img || null,
-              published_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
-              niche: source.niche,
-              status: "pending",
-            });
-            if (!error) {
-              totalNew++;
-              diagnostics.items_created++;
-            } else if (isUniqueViolation(error)) {
-              diagnostics.items_duplicates++;
-            } else {
-              diagnostics.warnings.push(`Falha ao criar item: ${error.message}`);
-            }
+          const igId = distributor.pick();
+          const { error } = await supabase.from("news_items").insert({
+            user_id: userId,
+            source_id: source.id,
+            source_name: source.name,
+            instagram_account_id: igId,
+            original_title: item.title,
+            original_content: item.description,
+            original_url: articleUrl,
+            original_canonical_url: canonicalUrl,
+            dedupe_url_key: dedupeUrl,
+            dedupe_title_key: dedupeTitle,
+            original_image_url: img || null,
+            published_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+            niche: source.niche,
+            status: "pending",
+          });
+          if (!error) {
+            totalNew++;
+            diagnostics.items_created++;
+            diagnostics.items_distributed = (diagnostics.items_distributed || 0) + (igId ? 1 : 0);
+          } else if (isUniqueViolation(error)) {
+            diagnostics.items_duplicates++;
+          } else {
+            diagnostics.warnings.push(`Falha ao criar item: ${error.message}`);
           }
         }
 
@@ -347,6 +416,8 @@ Deno.serve(async (req) => {
         const summary = runSummary(diagnostics, {
           fetch_url: fetchUrl,
           source_kind: inferSourceKind(source),
+          linked_instagram_accounts: targetIgs.filter(Boolean).length,
+          distribution_load: distributor.load_snapshot,
           sample_items: sampleItems(selectedItems),
         });
         await supabase.from("news_sources").update({

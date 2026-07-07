@@ -69,13 +69,12 @@ function postSortTime(row: any): number {
   return new Date(row?.scheduled_for || row?.created_at || row?.updated_at || 0).getTime();
 }
 
-async function findRecentDuplicatePostConflict(supabase: any, userId: string, accountId: string, currentPost: any, news: any) {
+async function findRecentDuplicatePostConflict(supabase: any, userId: string, _accountId: string, currentPost: any, news: any) {
   const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from("scheduled_posts")
     .select("id, status, news_item_id, scheduled_for, posted_at, created_at, updated_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
     .eq("user_id", userId)
-    .eq("instagram_account_id", accountId)
     .in("status", ["posted", ...ACTIVE_QUEUE_STATUSES])
     .neq("id", currentPost.id)
     .gte("updated_at", since)
@@ -112,7 +111,7 @@ async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
 
   for (const row of rows) {
     const rowNews = joinedNews(row);
-    const keys = duplicateKeysForNews(rowNews).map((key) => `${row.instagram_account_id}:${key}`);
+    const keys = duplicateKeysForNews(rowNews);
     if (!keys.length) continue;
     const existing = keys.map((key) => keepByKey.get(key)).find(Boolean);
     if (existing) {
@@ -125,7 +124,7 @@ async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
   if (!cancelIds.size) return 0;
   await supabase.from("scheduled_posts").update({
     status: "cancelled",
-    error_message: "Cancelado automaticamente: duplicado ativo da mesma notícia para esta conta",
+    error_message: "Cancelado automaticamente: duplicado ativo da mesma notícia em outra conta do cliente",
   }).in("id", Array.from(cancelIds)).in("status", ACTIVE_QUEUE_STATUSES);
   return cancelIds.size;
 }
@@ -740,7 +739,7 @@ Deno.serve(async (req) => {
 
         const duplicateConflict = await findRecentDuplicatePostConflict(supabase, userId!, acc.id, p, news);
         if (duplicateConflict) {
-          const message = "Duplicada: notícia igual já está em envio ou foi publicada para esta conta nas últimas 72h";
+          const message = "Duplicada: notícia igual já está em envio ou foi publicada para outra conta deste cliente nas últimas 72h";
           await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: message, container_last_checked_at: nowIso }).eq("id", p.id);
           if (news?.id) await supabase.from("news_items").update({ status: "rejected", error_message: message }).eq("id", news.id);
           await supabase.from("activity_logs").insert({
@@ -1095,7 +1094,7 @@ Deno.serve(async (req) => {
 
         const duplicateConflict = await findRecentDuplicatePostConflict(supabase, userId!, acc.id, p, news);
         if (duplicateConflict) {
-          const message = "Duplicada: notícia igual já está em envio ou foi publicada para esta conta nas últimas 72h";
+          const message = "Duplicada: notícia igual já está em envio ou foi publicada para outra conta deste cliente nas últimas 72h";
           await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: message }).eq("id", p.id);
           if (news?.id) {
             await supabase.from("news_items").update({ status: "rejected", error_message: message }).eq("id", news.id);

@@ -11,6 +11,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
 const PUBLISH_ACTIVE_STATUSES = ["scheduled", "posting", "awaiting_container"];
+const DUPLICATE_LOOKBACK_HOURS = 72;
 
 async function callFn(name: string, body: Record<string, unknown>) {
   const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET") || "";
@@ -70,8 +71,9 @@ function normalizeDuplicateTitle(value?: string | null): string {
     .trim();
 }
 
-function sameScheduledFingerprint(item: any, row: any, targetIg: string): boolean {
-  if (!row || row.instagram_account_id !== targetIg) return false;
+function sameScheduledFingerprint(item: any, row: any, targetIg?: string, globalUserScope = false): boolean {
+  if (!row) return false;
+  if (!globalUserScope && row.instagram_account_id !== targetIg) return false;
   const rowNews = Array.isArray(row.news_items) ? row.news_items[0] : row.news_items;
   if (!rowNews) return false;
   if (row.news_item_id === item.id || rowNews.id === item.id) return true;
@@ -428,7 +430,7 @@ Deno.serve(async (req) => {
           : cutoffIso;
         const { data: pendingAll } = await supabase
           .from("news_items")
-          .select("id, instagram_account_id, original_title, original_content, original_image_url, published_at")
+          .select("id, instagram_account_id, original_title, original_content, original_image_url, original_url, original_canonical_url, published_at")
           .eq("user_id", userId)
           .eq("status", "pending")
           .gte("published_at", sinceIso)
@@ -438,7 +440,7 @@ Deno.serve(async (req) => {
         // ranking de engajamento: recência + imagem + palavras virais + corpo
         const VIRAL = /\b(urgente|exclusivo|bombou|chocante|polêmica|polemica|escândalo|escandalo|revela|revelad[oa]|surpreende|surpreendente|inédit[oa]|inedit[oa]|recorde|histórico|historico|morre|morreu|morte|prisão|prisao|preso|presa|vaza|vazou|confirma|confirmad[oa]|anuncia|anunciad[oa]|novo|nova|primeira vez|nunca visto|impressionante|viral)\b/gi;
         const now2 = Date.now();
-        type RankedNews = { id: string; instagram_account_id: string | null; score: number };
+        type RankedNews = { id: string; instagram_account_id: string | null; score: number; fingerprint: string | null };
         const ranked: RankedNews[] = (pendingAll || []).map((n: any) => {
           const ageH = n.published_at ? (now2 - new Date(n.published_at).getTime()) / 3.6e6 : 999;
           const recency = Math.max(0, 100 - ageH * 6);
@@ -452,6 +454,7 @@ Deno.serve(async (req) => {
             id: n.id,
             instagram_account_id: n.instagram_account_id || null,
             score: recency + titleScore + hasImage + bodyScore + viralScore,
+            fingerprint: n.original_canonical_url || n.original_url || normalizeDuplicateTitle(n.original_title),
           };
         }).sort((a, b) => b.score - a.score);
 
@@ -507,6 +510,7 @@ Deno.serve(async (req) => {
         );
 
         const pickedIgIds = new Set<string>();
+        const pickedFingerprints = new Set<string>();
         const pending: RankedNews[] = [];
         const maxPerRun = Math.max(1, Math.min(3, validIgIds.size || 1));
         for (const item of ranked) {
@@ -517,9 +521,11 @@ Deno.serve(async (req) => {
           if (activeQueueIgIds.has(targetIg)) continue;
           if (inFlightIgIds.has(targetIg)) continue;
           if (pickedIgIds.has(targetIg)) continue;
+          if (item.fingerprint && pickedFingerprints.has(item.fingerprint)) continue;
 
           pending.push(item);
           pickedIgIds.add(targetIg);
+          if (item.fingerprint) pickedFingerprints.add(item.fingerprint);
           if (pending.length >= maxPerRun) break;
         }
 
@@ -560,7 +566,7 @@ Deno.serve(async (req) => {
           .eq("user_id", userId)
           .in("status", PUBLISH_ACTIVE_STATUSES);
 
-        const duplicateLookbackIso = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+        const duplicateLookbackIso = new Date(Date.now() - DUPLICATE_LOOKBACK_HOURS * 3600 * 1000).toISOString();
         const { data: recentScheduledForDupes } = await supabase
           .from("scheduled_posts")
           .select("id, status, news_item_id, instagram_account_id, scheduled_for, posted_at, updated_at, news_items(id, original_url, original_canonical_url, original_title, rewritten_title)")
@@ -677,11 +683,11 @@ Deno.serve(async (req) => {
             const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
               ? it.instagram_account_id
               : fallbackAccountId;
-            const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg));
+            const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg, true));
             if (duplicateRow) {
               await supabase.from("news_items").update({
                 status: "rejected",
-                error_message: "Duplicada: notícia igual já foi agendada ou publicada para esta conta",
+                error_message: "Duplicada: notícia igual já foi agendada ou publicada para outra conta deste cliente",
               }).eq("id", it.id).eq("user_id", userId);
               continue;
             }

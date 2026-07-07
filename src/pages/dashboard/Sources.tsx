@@ -1034,7 +1034,7 @@ export default function Sources() {
                       <p className={`text-xs mt-1 ${health.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
                         {health.status === "error"
                           ? `Erro: ${s.last_error || "não identificado"}`
-                          : `${Number(summary.items_found ?? s.last_items_found ?? 0)} encontrados · ${Number(summary.items_after_relevance ?? 0)} relevantes · ${Number(summary.items_duplicates ?? 0)} duplicados · ${Number(s.last_items_created || 0)} novos`}
+                          : `${Number(summary.items_found ?? s.last_items_found ?? 0)} encontrados · ${Number(summary.items_after_relevance ?? 0)} relevantes · ${Number(summary.items_distributed ?? s.last_items_created ?? 0)} distribuídos · ${Number(summary.items_duplicates ?? 0)} duplicados · ${Number(s.last_items_created || 0)} novos`}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1 mt-2">
