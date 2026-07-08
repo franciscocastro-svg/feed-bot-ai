@@ -29,6 +29,26 @@ function htmlRedirect(target: string, message: string) {
   );
 }
 
+function isAuthorizationCodeAlreadyUsed(data: any): boolean {
+  const message = String(data?.error_message || data?.error?.message || '').toLowerCase();
+  return message.includes('authorization code has been used');
+}
+
+async function findRecentlyConnectedAccount(admin: any, userId: string, stateTimestamp: string) {
+  const stateMs = Number(stateTimestamp);
+  const sinceMs = Number.isFinite(stateMs) ? Math.max(stateMs - 30_000, Date.now() - 5 * 60_000) : Date.now() - 5 * 60_000;
+  const since = new Date(sinceMs).toISOString();
+  const { data } = await admin
+    .from('instagram_accounts')
+    .select('username, created_at, updated_at')
+    .eq('user_id', userId)
+    .gte('updated_at', since)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
 async function canInsertInstagramAccount(admin: any, userId: string): Promise<boolean> {
   const { count } = await admin
     .from('instagram_accounts')
@@ -85,6 +105,7 @@ Deno.serve(async (req) => {
     const expected = await hmac(`${userId}.${ts}`, APP_SECRET);
     if (sig !== expected) throw new Error('state_signature_mismatch');
     if (Date.now() - parseInt(ts, 10) > STATE_MAX_AGE_MS) throw new Error('state_expired');
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     // 2. Exchange code -> short-lived access token
     const form = new FormData();
@@ -101,6 +122,13 @@ Deno.serve(async (req) => {
     const shortData = await shortRes.json();
     if (!shortRes.ok || !shortData.access_token) {
       console.error('short token error', shortData);
+      if (isAuthorizationCodeAlreadyUsed(shortData)) {
+        const recent = await findRecentlyConnectedAccount(admin, userId, ts);
+        if (recent?.username) {
+          return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=connected&u=${encodeURIComponent(recent.username)}`, `Conta @${recent.username} conectada!`);
+        }
+        throw new Error('authorization_code_already_used');
+      }
       throw new Error(`short_token_failed: ${JSON.stringify(shortData)}`);
     }
     const shortToken = shortData.access_token as string;
@@ -115,6 +143,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: longForm.toString(),
+    });
     });
     const longData = await longRes.json();
     if (!longRes.ok || !longData.access_token) {
@@ -132,7 +161,6 @@ Deno.serve(async (req) => {
     const finalIgUserId = String(me.user_id ?? me.id ?? igUserId);
 
     // 5. Upsert into instagram_accounts
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: existing } = await admin
       .from('instagram_accounts')
       .select('id')

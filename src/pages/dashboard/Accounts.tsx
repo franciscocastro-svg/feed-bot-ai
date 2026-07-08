@@ -22,6 +22,23 @@ const Check = ({ ok, label }: { ok: boolean; label: string }) => (
   </li>
 );
 
+function friendlyInstagramConnectError(reason: string | null): string {
+  const text = reason || "erro desconhecido";
+  if (/authorization_code_already_used|authorization code has been used/i.test(text)) {
+    return "Esse link de autorização do Instagram já foi usado. Clique em Conectar com Instagram novamente e conclua em uma nova tentativa.";
+  }
+  if (/state_expired/i.test(text)) {
+    return "A autorização expirou. Clique em Conectar com Instagram novamente.";
+  }
+  if (/account_limit_reached/i.test(text)) {
+    return "Limite de contas Instagram atingido para este plano.";
+  }
+  if (/long_token_failed/i.test(text)) {
+    return "O Instagram autorizou, mas falhou ao gerar o token de longa duração. Tente conectar novamente.";
+  }
+  return text;
+}
+
 export default function Accounts() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -47,7 +64,7 @@ export default function Accounts() {
       url.searchParams.delete("ig"); url.searchParams.delete("u");
       window.history.replaceState({}, "", url.pathname);
     } else if (ig === "error") {
-      toast.error(`Falha ao conectar: ${url.searchParams.get("reason") || "erro desconhecido"}`);
+      toast.error(`Falha ao conectar: ${friendlyInstagramConnectError(url.searchParams.get("reason"))}`);
       url.searchParams.delete("ig"); url.searchParams.delete("reason");
       window.history.replaceState({}, "", url.pathname);
     }
