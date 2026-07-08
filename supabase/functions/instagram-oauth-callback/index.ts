@@ -144,7 +144,6 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: longForm.toString(),
     });
-    });
     const longData = await longRes.json();
     if (!longRes.ok || !longData.access_token) {
       console.error('long token error', longData);
