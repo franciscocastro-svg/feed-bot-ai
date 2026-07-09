@@ -1368,6 +1368,7 @@ async function processVideoCutJob(job) {
           end_seconds: suggestion.end_seconds,
           duration_seconds: suggestion.duration_seconds,
           status: "rendering",
+          format: job.format || "reels",
         })
         .select("*")
         .single();
