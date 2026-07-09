@@ -144,6 +144,7 @@ export default function Cuts() {
   const [accountId, setAccountId] = useState("");
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [format, setFormat] = useState<"reels" | "feed_square" | "feed_portrait">("reels");
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
   const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
