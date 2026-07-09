@@ -128,7 +128,11 @@ function humanVideoCutError(message?: string | null) {
 }
 
 function canDeleteJob(job: VideoCutJob) {
-  return ["failed", "cancelled"].includes(job.status);
+  return ["failed", "cancelled", "ready", "discarded"].includes(job.status);
+}
+
+function isJobActive(job: VideoCutJob) {
+  return !["failed", "cancelled", "ready", "discarded"].includes(job.status);
 }
 
 export default function Cuts() {
@@ -599,7 +603,7 @@ export default function Cuts() {
                 )}
               </div>
             </div>
-            <Progress value={job.progress || 0} />
+            {isJobActive(job) && <Progress value={job.progress || 0} />}
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
