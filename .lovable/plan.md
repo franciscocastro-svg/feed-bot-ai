@@ -1,86 +1,114 @@
-# Plano — Cortes IA (3 fases)
+# Cortes IA — Legenda animada, edição inteligente e auto-postagem
 
-Feature já está 90% construída (UI + DB + worker VPS). Nunca rodou em produção — zero jobs criados. Plano é destravar, depois evoluir.
-
----
-
-## 📦 Fase 1 — Fazer funcionar de ponta a ponta (infra + destravar)
-
-**Objetivo:** um cliente cola link do YouTube (ou envia MP4), recebe cortes prontos pra revisar.
-
-1. **Confirmar worker VPS ativo**
-   - Rodar `pm2 status feed-bot-worker` no VPS.
-   - Se caiu: `pm2 restart feed-bot-worker`.
-   - Confirmar `ffmpeg -version`, `ffprobe -version`, `yt-dlp --version`.
-
-2. **Atualizar yt-dlp** (crítico — YouTube bloqueia versões antigas com "sign in to confirm you're not a bot")
-   - `yt-dlp -U` ou reinstalar via pip.
-   - Adicionar cron semanal pra atualizar sozinho.
-
-3. **Validar `GEMINI_API_KEY` no worker** — a chave que o worker usa pra escolher os cortes precisa estar no `.env` do VPS e ser válida (a do process-news está funcionando, então provavelmente é a mesma).
-
-4. **Testar 2 jobs reais** (eu monitoro pelo banco):
-   - Um vídeo público de 5min do YouTube.
-   - Um MP4 curto via upload.
-   - Verificar se `video_cut_clips` populam com `video_url` e `thumbnail_url`.
-
-5. **Liberar rota `/dashboard/cuts` pra beta-testers** — hoje é admin-only (`ADMIN_ONLY_PATHS`). Adicionar 2-3 user_ids no `BETA_USER_IDS` de `src/config/featureFlags.ts`.
-
-6. **Tratar erro "YouTube bloqueou"** — melhorar mensagem no UI e sugerir upload direto do MP4 como fallback (já existe parcialmente).
-
-**Entrega:** Cortes IA gerando clipes reais pra beta-testers.
+Ordem: **Pacote A → C → B** (visual impact primeiro, depois automação, depois polimento).
 
 ---
 
-## 🎬 Fase 2 — Qualidade dos cortes (o vídeo entregue fica bom)
+## Pacote A — Legenda animada estilo TikTok
 
-**Objetivo:** o corte entregue parece feito por editor humano, não por bot.
+**Objetivo:** cada corte sai com legenda palavra-por-palavra queimada, destacando a palavra falada no momento.
 
-1. **Crop vertical 9:16 automático** — hoje ffmpeg só corta no tempo, mantém formato original. Adicionar `crop=ih*9/16:ih` + smart-crop pra centralizar rosto/ação (via ffmpeg `cropdetect` ou análise Gemini de bounding box).
+1. **Transcrição via Whisper (Groq)**
+   - Nova secret `GROQ_API_KEY` no worker (Groq roda `whisper-large-v3` a ~$0.02/hora — 3x mais barato que OpenAI).
+   - Worker chama Groq **depois** do ffmpeg cortar o trecho (transcreve só o clip, não o vídeo inteiro).
+   - Resposta com `word-level timestamps` (formato `verbose_json`).
 
-2. **Legendas queimadas no vídeo (subtitles)** — usar Whisper (ou Groq/Gemini transcription) pra transcrever o áudio do corte e queimar legendas estilizadas com ffmpeg `subtitles` filter. Diferencial vs concorrência.
+2. **Renderização da legenda no ffmpeg**
+   - Gerar arquivo `.ass` (Advanced SubStation) com uma linha por palavra, cada uma com fade-in/highlight no timestamp exato.
+   - Filtro `ass=legenda.ass` no ffmpeg junto do overlay atual.
+   - 3 templates de estilo salvos em `worker/subtitleStyles.js`:
+     - **Classic**: branco + contorno preto grosso
+     - **Neon**: amarelo brilhante, palavra ativa em vermelho
+     - **Karaokê**: branco → verde progressivo
 
-3. **Thumbnail com template da marca** — hoje thumbnail é frame cru. Compor 9:16 com template do cliente (mesma lógica do `composeStoryCanvas`), logo, gancho.
+3. **UI (Cuts.tsx)**
+   - Dropdown "Estilo da legenda" (Nenhum / Classic / Neon / Karaokê) no painel de criação.
+   - Nova coluna `subtitle_style` em `video_cut_jobs` e `video_cut_clips` (default `classic`).
 
-4. **Legenda/hashtags no tom da marca** — prompt do Gemini hoje é genérico. Injetar `brand_name`, `ai_tone`, `default_niche` da `user_settings` no prompt de análise.
-
-5. **Áudio original preservado com boost** — normalizar volume (`ffmpeg loudnorm`) pra corte não sair mudo/estourado.
-
-**Entrega:** cortes prontos pra publicar sem edição manual.
-
----
-
-## 🧠 Fase 3 — IA de seleção mais inteligente
-
-**Objetivo:** escolher os *melhores* momentos, não apenas trechos válidos.
-
-1. **Score de retenção/gancho** — prompt do Gemini devolve `score` (0-100) por corte baseado em: presença de gancho verbal, mudança de tom, momento emocional. Hoje devolve mas nada usa — expor no UI e ordenar.
-
-2. **Detecção de silêncios/pausas** — ffmpeg `silencedetect` pra cortar entradas/saídas mortas automaticamente (aparo dos 0.5s inicial/final).
-
-3. **Priorizar cortes com fala forte** — analisar transcript + volume RMS pra evitar cortes onde só tem música/silêncio.
-
-4. **Multi-idioma** — detectar idioma do vídeo e gerar legenda no idioma do cliente (usa `translation_enabled` do plano).
-
-5. **Aprender do histórico** — cortes aprovados vs descartados alimentam prompt (few-shot) pra próximas análises daquele cliente.
-
-**Entrega:** taxa de aprovação de cortes > 70% (cliente aprova a maioria dos que a IA sugeriu).
+4. **Posicionamento por formato**
+   - Reels 9:16: legenda centralizada, 60% da altura
+   - Feed 1:1: legenda em baixo, dentro do safe-zone
+   - Feed 4:5: legenda em baixo, safe-zone maior
 
 ---
 
-## 🔧 Detalhes técnicos
+## Pacote C — Auto-postagem no Instagram
 
-- **Arquivos afetados por fase:**
-  - Fase 1: nenhum código no repo (só ops no VPS) + `src/config/featureFlags.ts` (liberar rota).
-  - Fase 2: `worker/index.js` (funções `generateVideoCutClip`, `writeCutOverlayPng`, `analyzeYoutubeForCuts`).
-  - Fase 3: `worker/index.js` (prompt do Gemini, novos steps ffmpeg) + schema `video_cut_clips` (adicionar coluna `score`).
-- **Sem migrations na Fase 1 e 2.** Fase 3 adiciona 1 coluna.
-- **Custo:** Fase 2 adiciona chamadas Whisper/transcrição — ~$0.006/min de vídeo. Cabe no plano pago.
-- **Riscos:** yt-dlp é o ponto mais frágil. Se YouTube apertar de vez, sobra só o fluxo de upload MP4.
+**Objetivo:** corte aprovado (ou auto-aprovado) vira post agendado sem clique.
+
+1. **Nova coluna `auto_publish` em `video_cut_jobs`** (boolean, default false).
+2. **UI**: toggle "Publicar automaticamente sem revisão" na criação do job (só habilita pro plano Pro).
+3. **Geração de caption com IA**
+   - Nova função no worker: `generateCutCaption(clip, userSettings)` usando Gemini.
+   - Injeta `brand_name`, `ai_tone`, `default_niche` do `user_settings`.
+   - Devolve: caption (280 chars) + 8 hashtags relevantes.
+4. **Enfileirar em `scheduled_posts`**
+   - Quando `clip.status = 'ready'` E (`auto_publish = true` OU usuário clicar "Aprovar"):
+     - Trigger no worker (ou edge function `approve-cut`) cria row em `scheduled_posts` com:
+       - `media_type = 'reel'`
+       - `generated_video_url = clip.video_url`
+       - `caption`, `hashtags`
+       - `scheduled_for = now() + 10min` (dá tempo do usuário cancelar)
+5. **Botão "Aprovar e agendar"** no painel de cortes (já existe "Aprovar" — só passar a agendar).
 
 ---
 
-## ⏱️ Ordem sugerida
-Fase 1 primeiro (1-2 dias) pra você já ter clientes usando. Fase 2 e 3 podem rodar em paralelo depois.
+## Pacote B — Edição inteligente
 
-Quer que eu comece pela Fase 1 (rodar o teste ponta a ponta + liberar pra beta)?
+**Objetivo:** o vídeo entregue parece feito por editor humano.
+
+1. **Normalização de áudio**
+   - Adicionar `loudnorm=I=-16:TP=-1.5:LRA=11` no filtro de áudio do ffmpeg.
+   - Zero custo, resultado imediato.
+
+2. **Remoção de silêncios**
+   - `ffmpeg silencedetect` roda antes do corte final, identifica pausas > 0.7s.
+   - Segundo pass com `-filter_complex` remove os trechos silenciosos.
+   - Flag opcional na UI: "Aperto de ritmo" (on/off, default on).
+
+3. **Smart-crop 9:16**
+   - `ffmpeg cropdetect` no clip cortado → detecta região com mais movimento/rosto.
+   - Aplica `crop=ih*9/16:ih:x=<centro_detectado>` em vez de crop cego no centro.
+   - Fallback: se cropdetect falhar, usa centro (comportamento atual).
+
+4. **Zoom sutil (Ken Burns opcional)**
+   - Flag "Efeito de zoom" na UI (default off).
+   - Filtro `zoompan=z='min(zoom+0.0005,1.05)':d=1` — 5% de zoom lento ao longo do corte.
+
+---
+
+## Detalhes técnicos
+
+**Arquivos afetados:**
+- `worker/index.js`: novas funções `transcribeClipGroq()`, `generateAssSubtitles()`, `generateCutCaption()`, `applySilenceRemoval()`, `applySmartCrop()`.
+- `worker/subtitleStyles.js` (novo).
+- `worker/package.json`: nenhuma dep nova (Groq via fetch, .ass é texto puro).
+- `src/pages/dashboard/Cuts.tsx`: dropdowns Estilo/Auto-publicar/Aperto/Zoom.
+- `supabase/migrations/`: 1 migration adicionando `subtitle_style`, `auto_publish`, `smart_crop`, `remove_silences`, `zoom_effect` em `video_cut_jobs` e propagando `subtitle_style` pra `video_cut_clips`.
+- `supabase/functions/approve-cut/` (nova edge function): enfileira em `scheduled_posts` quando corte aprovado.
+
+**Secrets:**
+- `GROQ_API_KEY` — o usuário precisa criar em https://console.groq.com/keys e colar via `add_secret` (será usado tanto pela edge function `approve-cut` quanto propagado pro `.env` do VPS).
+
+**Custo por vídeo de 10min:**
+- Gemini análise: ~$0.02
+- Groq Whisper: ~$0.003 (10min = 0.16h × $0.02)
+- Gemini caption: ~$0.001
+- **Total: ~$0.025/vídeo**
+
+**Ação no VPS depois do deploy:**
+1. `git pull` no `~/feed-bot-worker`
+2. Adicionar `GROQ_API_KEY` no `.env` do VPS
+3. `pm2 restart feed-bot-worker`
+
+**Ordem de implementação neste chat:**
+1. Migration (colunas novas)
+2. `worker/index.js` + `worker/subtitleStyles.js` (Pacote A + B + geração de caption)
+3. Edge function `approve-cut` (Pacote C)
+4. `Cuts.tsx` (todos os controles novos)
+5. Instruções finais pro usuário fazer no VPS
+
+**Riscos:**
+- Groq às vezes tem fila — worker precisa retry com backoff (2 tentativas).
+- `.ass` mal formado quebra ffmpeg — validar timestamps antes de escrever.
+- Auto-publicar sem revisão é feature perigosa: deixar **opt-in explícito** com aviso claro.
