@@ -1654,6 +1654,16 @@ async function processVideoCutJob(job) {
       instagram_account_id: job.instagram_account_id,
     });
 
+    // Retry idempotente: se um processamento anterior deixou clips órfãos,
+    // limpa antes de inserir novos (senão bate no unique(job_id, clip_index)).
+    const { error: cleanupError } = await supabase
+      .from("video_cut_clips")
+      .delete()
+      .eq("job_id", job.id);
+    if (cleanupError) {
+      console.warn(`[cuts:${job.id}] Falha ao limpar clips antigos: ${cleanupError.message}`);
+    }
+
     const total = suggestions.length || 1;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
