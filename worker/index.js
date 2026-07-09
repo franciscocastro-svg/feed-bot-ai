@@ -1112,19 +1112,42 @@ async function downloadYoutubeVideo(youtubeUrl, outputPath) {
     throw new Error("yt-dlp não está instalado no VPS.");
   }
 
-  const command = [
+  // Cookies opcionais para contornar o bloqueio anti-bot do YouTube.
+  // Coloque um cookies.txt exportado do navegador em ~/yt-cookies.txt (ou defina YT_COOKIES_FILE).
+  const cookiesFile = process.env.YT_COOKIES_FILE
+    || (fs.existsSync(path.join(os.homedir(), "yt-cookies.txt")) ? path.join(os.homedir(), "yt-cookies.txt") : null);
+
+  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+  const baseArgs = [
     "yt-dlp",
     "--no-playlist",
+    "--no-warnings",
+    "--geo-bypass",
+    "--user-agent", shellQuote(userAgent),
+    "--extractor-args", shellQuote("youtube:player_client=web_safari,ios,android,web"),
     "-f", shellQuote("bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
     "--merge-output-format", "mp4",
     "-o", shellQuote(outputPath),
-    shellQuote(youtubeUrl),
-  ].join(" ");
-  const { stderr } = await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
-  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
-    throw new Error(`Vídeo original não foi baixado. ${stderr || ""}`.trim());
+  ];
+  if (cookiesFile) baseArgs.push("--cookies", shellQuote(cookiesFile));
+  const command = [...baseArgs, shellQuote(youtubeUrl)].join(" ");
+
+  try {
+    const { stderr } = await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
+    if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+      throw new Error(`Vídeo original não foi baixado. ${stderr || ""}`.trim());
+    }
+  } catch (err) {
+    const msg = String(err?.stderr || err?.message || err || "");
+    // Repropaga com mensagem mais clara pro humanVideoCutError detectar
+    if (/sign in to confirm|not a bot|precondition check failed|unable to download api page|HTTP Error 403|HTTP Error 429/i.test(msg)) {
+      throw new Error(`YouTube bloqueou o download automático (anti-bot). ${msg}`);
+    }
+    throw err;
   }
 }
+
 
 function drawOverlayText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   const lines = wrapText(ctx, cleanCutText(text), maxWidth).slice(0, maxLines);
