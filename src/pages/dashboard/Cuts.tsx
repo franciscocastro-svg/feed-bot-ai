@@ -466,7 +466,7 @@ export default function Cuts() {
               </Select>
             </div>
           </div>
-          <div className="grid md:grid-cols-[180px_1fr] gap-3 items-end">
+          <div className="grid md:grid-cols-[180px_220px_1fr] gap-3 items-end">
             <div className="space-y-2">
               <Label>Quantidade</Label>
               <Input
@@ -476,6 +476,17 @@ export default function Cuts() {
                 value={requestedClips}
                 onChange={(e) => setRequestedClips(Math.max(1, Math.min(Number(e.target.value) || 1, Math.max(1, bounds.maxRequest || 1))))}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Formato</Label>
+              <Select value={format} onValueChange={(v) => setFormat(v as typeof format)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reels">Reels / Stories · 9:16</SelectItem>
+                  <SelectItem value="feed_square">Feed quadrado · 1:1</SelectItem>
+                  <SelectItem value="feed_portrait">Feed vertical · 4:5</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               <p><span className="text-foreground font-medium">{limitText}</span></p>
