@@ -201,7 +201,14 @@ export default function Cuts() {
 
   useEffect(() => {
     if (!user || !hasActiveJobs) return;
-    const interval = setInterval(load, JOB_REFRESH_MS);
+    const interval = setInterval(() => {
+      // Não atualiza enquanto o usuário está assistindo a um vídeo — evita corte na reprodução
+      const playing = Array.from(document.querySelectorAll("video")).some(
+        (v) => !v.paused && !v.ended && v.currentTime > 0
+      );
+      if (playing) return;
+      load();
+    }, JOB_REFRESH_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, hasActiveJobs]);
