@@ -128,7 +128,11 @@ function humanVideoCutError(message?: string | null) {
 }
 
 function canDeleteJob(job: VideoCutJob) {
-  return ["failed", "cancelled"].includes(job.status);
+  return ["failed", "cancelled", "ready", "discarded"].includes(job.status);
+}
+
+function isJobActive(job: VideoCutJob) {
+  return !["failed", "cancelled", "ready", "discarded"].includes(job.status);
 }
 
 export default function Cuts() {
