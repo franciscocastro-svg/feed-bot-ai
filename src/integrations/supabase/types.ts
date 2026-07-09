@@ -2165,6 +2165,47 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_video_cut_upload_job: {
+        Args: {
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _source_title?: string
+          _video_url: string
+        }
+        Returns: {
+          analysis: Json
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          generated_clips: number
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          progress: number
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          source_kind: string
+          source_title: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
