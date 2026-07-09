@@ -1231,6 +1231,87 @@ async function transcribeClipGroq(audioPath) {
   }
 }
 
+// ---- Transcrição via Gemini (áudio nativo, palavra-por-palavra) ----
+// Fallback quando Groq está congestionado. Usa GEMINI_API_KEY já disponível no worker.
+async function transcribeClipGemini(audioPath) {
+  if (!GEMINI_API_KEY) return null;
+  try {
+    return await withTransientRetry("gemini transcribe", async () => {
+      const buffer = await fs.promises.readFile(audioPath);
+      // Inline: limite ~20MB. Nossos clips são curtos (16kHz mono 64kbps ≈ 480KB/min).
+      const audioB64 = buffer.toString("base64");
+      const model = process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-2.5-flash";
+      const prompt = `Transcreva este áudio em português (ou o idioma falado) devolvendo APENAS um array JSON válido, sem markdown, sem comentários, no formato:
+[{"word":"palavra","start":0.12,"end":0.48}, ...]
+Regras:
+- Uma entrada por palavra falada, em ordem.
+- start/end em segundos (float, relativo ao início do áudio).
+- Sem pontuação isolada; anexe pontuação à palavra (ex: "olá,").
+- Se não houver fala, devolva [].`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: "audio/mpeg", data: audioB64 } },
+            ],
+          }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json",
+          },
+        }),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        const err = new Error(`Gemini transcribe ${res.status}: ${body.slice(0, 300)}`);
+        err.status = res.status;
+        throw err;
+      }
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        const match = text.match(/\[[\s\S]*\]/);
+        if (!match) throw new Error("Gemini não devolveu JSON válido");
+        parsed = JSON.parse(match[0]);
+      }
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((w) => ({
+          word: String(w?.word || "").trim(),
+          start: Number(w?.start) || 0,
+          end: Number(w?.end) || 0,
+        }))
+        .filter((w) => w.word && w.end > w.start);
+    }, [2000, 5000]);
+  } catch (err) {
+    console.warn(`[cuts] Transcrição Gemini falhou: ${err?.message || err}`);
+    return null;
+  }
+}
+
+// Wrapper: tenta Gemini primeiro (já temos a key), Groq como fallback.
+async function transcribeClip(audioPath) {
+  const viaGemini = await transcribeClipGemini(audioPath);
+  if (viaGemini && viaGemini.length > 0) {
+    console.log(`[cuts] Transcrição via Gemini: ${viaGemini.length} palavras`);
+    return viaGemini;
+  }
+  const viaGroq = await transcribeClipGroq(audioPath);
+  if (viaGroq && viaGroq.length > 0) {
+    console.log(`[cuts] Transcrição via Groq (fallback): ${viaGroq.length} palavras`);
+    return viaGroq;
+  }
+  return null;
+}
+
 // ---- Detecção de silêncios via ffmpeg silencedetect ----
 async function detectSilences(videoPath, minDuration = 0.7) {
   try {
@@ -1340,7 +1421,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
         `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
         { maxBuffer: 10 * 1024 * 1024 },
       );
-      const words = await transcribeClipGroq(audioPath);
+      const words = await transcribeClip(audioPath);
       if (words && words.length > 0) {
         transcript = words;
         const assContent = buildAssSubtitleFile(words, subtitleStyle, format, { width: outW, height: outH }, workingDuration);
