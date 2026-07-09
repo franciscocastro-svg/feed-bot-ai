@@ -1792,8 +1792,10 @@ export type Database = {
           score: number
           start_seconds: number
           status: string
+          subtitle_style: string
           thumbnail_url: string | null
           title: string | null
+          transcript: Json | null
           updated_at: string
           user_id: string
           video_url: string | null
@@ -1817,8 +1819,10 @@ export type Database = {
           score?: number
           start_seconds?: number
           status?: string
+          subtitle_style?: string
           thumbnail_url?: string | null
           title?: string | null
+          transcript?: Json | null
           updated_at?: string
           user_id: string
           video_url?: string | null
@@ -1842,8 +1846,10 @@ export type Database = {
           score?: number
           start_seconds?: number
           status?: string
+          subtitle_style?: string
           thumbnail_url?: string | null
           title?: string | null
+          transcript?: Json | null
           updated_at?: string
           user_id?: string
           video_url?: string | null
@@ -1883,6 +1889,7 @@ export type Database = {
         Row: {
           analysis: Json
           attempts: number
+          auto_publish: boolean
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -1896,22 +1903,27 @@ export type Database = {
           instagram_account_id: string
           max_attempts: number
           progress: number
+          remove_silences: boolean
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          smart_crop: boolean
           source_file_name: string | null
           source_kind: string
           source_title: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
+          subtitle_style: string
           updated_at: string
           user_id: string
           youtube_url: string
+          zoom_effect: boolean
         }
         Insert: {
           analysis?: Json
           attempts?: number
+          auto_publish?: boolean
           claimed_at?: string | null
           claimed_by?: string | null
           completed_at?: string | null
@@ -1925,22 +1937,27 @@ export type Database = {
           instagram_account_id: string
           max_attempts?: number
           progress?: number
+          remove_silences?: boolean
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
+          smart_crop?: boolean
           source_file_name?: string | null
           source_kind?: string
           source_title?: string | null
           source_video_url?: string | null
           started_at?: string | null
           status?: string
+          subtitle_style?: string
           updated_at?: string
           user_id: string
           youtube_url: string
+          zoom_effect?: boolean
         }
         Update: {
           analysis?: Json
           attempts?: number
+          auto_publish?: boolean
           claimed_at?: string | null
           claimed_by?: string | null
           completed_at?: string | null
@@ -1954,18 +1971,22 @@ export type Database = {
           instagram_account_id?: string
           max_attempts?: number
           progress?: number
+          remove_silences?: boolean
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
+          smart_crop?: boolean
           source_file_name?: string | null
           source_kind?: string
           source_title?: string | null
           source_video_url?: string | null
           started_at?: string | null
           status?: string
+          subtitle_style?: string
           updated_at?: string
           user_id?: string
           youtube_url?: string
+          zoom_effect?: boolean
         }
         Relationships: [
           {
@@ -2107,6 +2128,7 @@ export type Database = {
         Returns: {
           analysis: Json
           attempts: number
+          auto_publish: boolean
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -2120,18 +2142,22 @@ export type Database = {
           instagram_account_id: string
           max_attempts: number
           progress: number
+          remove_silences: boolean
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          smart_crop: boolean
           source_file_name: string | null
           source_kind: string
           source_title: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
+          subtitle_style: string
           updated_at: string
           user_id: string
           youtube_url: string
+          zoom_effect: boolean
         }[]
         SetofOptions: {
           from: "*"
@@ -2151,6 +2177,7 @@ export type Database = {
             Returns: {
               analysis: Json
               attempts: number
+              auto_publish: boolean
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -2164,18 +2191,22 @@ export type Database = {
               instagram_account_id: string
               max_attempts: number
               progress: number
+              remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
+              smart_crop: boolean
               source_file_name: string | null
               source_kind: string
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
+              subtitle_style: string
               updated_at: string
               user_id: string
               youtube_url: string
+              zoom_effect: boolean
             }
             SetofOptions: {
               from: "*"
@@ -2195,6 +2226,7 @@ export type Database = {
             Returns: {
               analysis: Json
               attempts: number
+              auto_publish: boolean
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -2208,18 +2240,76 @@ export type Database = {
               instagram_account_id: string
               max_attempts: number
               progress: number
+              remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
+              smart_crop: boolean
               source_file_name: string | null
               source_kind: string
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
+              subtitle_style: string
               updated_at: string
               user_id: string
               youtube_url: string
+              zoom_effect: boolean
+            }
+            SetofOptions: {
+              from: "*"
+              to: "video_cut_jobs"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              _auto_publish?: boolean
+              _format?: string
+              _instagram_account_id: string
+              _remove_silences?: boolean
+              _requested_clips: number
+              _rights_confirmed: boolean
+              _smart_crop?: boolean
+              _subtitle_style?: string
+              _youtube_url: string
+              _zoom_effect?: boolean
+            }
+            Returns: {
+              analysis: Json
+              attempts: number
+              auto_publish: boolean
+              claimed_at: string | null
+              claimed_by: string | null
+              completed_at: string | null
+              created_at: string
+              duration_seconds: number | null
+              error_message: string | null
+              fallback_required: boolean
+              format: string
+              generated_clips: number
+              id: string
+              instagram_account_id: string
+              max_attempts: number
+              progress: number
+              remove_silences: boolean
+              requested_clips: number
+              reserved_clips: number
+              rights_confirmed: boolean
+              smart_crop: boolean
+              source_file_name: string | null
+              source_kind: string
+              source_title: string | null
+              source_video_url: string | null
+              started_at: string | null
+              status: string
+              subtitle_style: string
+              updated_at: string
+              user_id: string
+              youtube_url: string
+              zoom_effect: boolean
             }
             SetofOptions: {
               from: "*"
@@ -2240,6 +2330,7 @@ export type Database = {
             Returns: {
               analysis: Json
               attempts: number
+              auto_publish: boolean
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -2253,18 +2344,22 @@ export type Database = {
               instagram_account_id: string
               max_attempts: number
               progress: number
+              remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
+              smart_crop: boolean
               source_file_name: string | null
               source_kind: string
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
+              subtitle_style: string
               updated_at: string
               user_id: string
               youtube_url: string
+              zoom_effect: boolean
             }
             SetofOptions: {
               from: "*"
@@ -2285,6 +2380,7 @@ export type Database = {
             Returns: {
               analysis: Json
               attempts: number
+              auto_publish: boolean
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -2298,18 +2394,77 @@ export type Database = {
               instagram_account_id: string
               max_attempts: number
               progress: number
+              remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
+              smart_crop: boolean
               source_file_name: string | null
               source_kind: string
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
+              subtitle_style: string
               updated_at: string
               user_id: string
               youtube_url: string
+              zoom_effect: boolean
+            }
+            SetofOptions: {
+              from: "*"
+              to: "video_cut_jobs"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              _auto_publish?: boolean
+              _format?: string
+              _instagram_account_id: string
+              _remove_silences?: boolean
+              _requested_clips: number
+              _rights_confirmed: boolean
+              _smart_crop?: boolean
+              _source_title?: string
+              _subtitle_style?: string
+              _video_url: string
+              _zoom_effect?: boolean
+            }
+            Returns: {
+              analysis: Json
+              attempts: number
+              auto_publish: boolean
+              claimed_at: string | null
+              claimed_by: string | null
+              completed_at: string | null
+              created_at: string
+              duration_seconds: number | null
+              error_message: string | null
+              fallback_required: boolean
+              format: string
+              generated_clips: number
+              id: string
+              instagram_account_id: string
+              max_attempts: number
+              progress: number
+              remove_silences: boolean
+              requested_clips: number
+              reserved_clips: number
+              rights_confirmed: boolean
+              smart_crop: boolean
+              source_file_name: string | null
+              source_kind: string
+              source_title: string | null
+              source_video_url: string | null
+              started_at: string | null
+              status: string
+              subtitle_style: string
+              updated_at: string
+              user_id: string
+              youtube_url: string
+              zoom_effect: boolean
             }
             SetofOptions: {
               from: "*"

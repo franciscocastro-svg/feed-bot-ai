@@ -145,6 +145,10 @@ export default function Cuts() {
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [format, setFormat] = useState<"reels" | "feed_square" | "feed_portrait">("reels");
+  const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke">("classic");
+  const [autoPublish, setAutoPublish] = useState(false);
+  const [removeSilences, setRemoveSilences] = useState(true);
+  const [zoomEffect, setZoomEffect] = useState(false);
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
   const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
@@ -225,6 +229,10 @@ export default function Cuts() {
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
           _format: format,
+          _subtitle_style: subtitleStyle,
+          _auto_publish: autoPublish,
+          _remove_silences: removeSilences,
+          _zoom_effect: zoomEffect,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       } else {
@@ -234,6 +242,10 @@ export default function Cuts() {
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _format: format,
+          _subtitle_style: subtitleStyle,
+          _auto_publish: autoPublish,
+          _remove_silences: removeSilences,
+          _zoom_effect: zoomEffect,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       }
@@ -488,10 +500,45 @@ export default function Cuts() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Estilo da legenda</Label>
+              <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="classic">Clássica · branco/preto</SelectItem>
+                  <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
+                  <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
+                  <SelectItem value="none">Sem legenda</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               <p><span className="text-foreground font-medium">{limitText}</span></p>
               <p>Máximo por vídeo: {bounds.maxPerJob || 0}. Duração máxima por link: {usage?.max_cut_video_minutes || 60} minutos.</p>
             </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Aperto de ritmo</span>
+                <span className="block text-xs text-muted-foreground">Remove pausas mortas maiores que 0,7s.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Zoom sutil</span>
+                <span className="block text-xs text-muted-foreground">Efeito Ken Burns (+5% ao longo do corte).</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={autoPublish} onCheckedChange={(c) => setAutoPublish(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
+                <span className="block text-xs text-muted-foreground">Agenda para +10min sem revisão manual.</span>
+              </span>
+            </label>
           </div>
           <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
             <Checkbox checked={rightsConfirmed} onCheckedChange={(checked) => setRightsConfirmed(checked === true)} />
