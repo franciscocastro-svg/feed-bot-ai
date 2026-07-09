@@ -1192,32 +1192,195 @@ async function writeCutOverlayPng(clip, settings, outputPath, format = "reels") 
   await fs.promises.writeFile(outputPath, buffer);
 }
 
+// ---- Transcrição via Groq Whisper (palavra-por-palavra) ----
+async function transcribeClipGroq(audioPath) {
+  if (!GROQ_API_KEY) return null;
+  try {
+    return await withTransientRetry("groq transcribe", async () => {
+      const form = new FormData();
+      const buffer = await fs.promises.readFile(audioPath);
+      form.append("file", new Blob([buffer], { type: "audio/mpeg" }), "clip.mp3");
+      form.append("model", GROQ_WHISPER_MODEL);
+      form.append("response_format", "verbose_json");
+      form.append("timestamp_granularities[]", "word");
+      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+        body: form,
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        const err = new Error(`Groq ${res.status}: ${body.slice(0, 300)}`);
+        err.status = res.status;
+        throw err;
+      }
+      const data = await res.json();
+      const words = Array.isArray(data?.words) ? data.words : [];
+      return words
+        .map((w) => ({
+          word: String(w.word || "").trim(),
+          start: Number(w.start) || 0,
+          end: Number(w.end) || 0,
+        }))
+        .filter((w) => w.word && w.end > w.start);
+    }, [2000, 5000]);
+  } catch (err) {
+    console.warn(`[cuts] Transcrição Groq falhou: ${err?.message || err}`);
+    return null;
+  }
+}
+
+// ---- Detecção de silêncios via ffmpeg silencedetect ----
+async function detectSilences(videoPath, minDuration = 0.7) {
+  try {
+    const { stderr } = await execAsync(
+      `ffmpeg -i ${shellQuote(videoPath)} -af silencedetect=noise=-32dB:d=${minDuration} -f null - 2>&1`,
+      { maxBuffer: 10 * 1024 * 1024 },
+    );
+    const output = stderr || "";
+    const silences = [];
+    const startRe = /silence_start:\s*([\d.]+)/g;
+    const endRe = /silence_end:\s*([\d.]+)/g;
+    const starts = [];
+    let m;
+    while ((m = startRe.exec(output))) starts.push(Number(m[1]));
+    const ends = [];
+    while ((m = endRe.exec(output))) ends.push(Number(m[1]));
+    for (let i = 0; i < Math.min(starts.length, ends.length); i += 1) {
+      silences.push({ start: starts[i], end: ends[i] });
+    }
+    return silences;
+  } catch {
+    return [];
+  }
+}
+
+function buildKeepSegments(clipDuration, silences) {
+  // Devolve trechos [start, end] a manter (sem silêncios)
+  const segments = [];
+  let cursor = 0;
+  for (const s of silences) {
+    if (s.start > cursor + 0.1) segments.push({ start: cursor, end: s.start });
+    cursor = Math.max(cursor, s.end);
+  }
+  if (cursor < clipDuration - 0.1) segments.push({ start: cursor, end: clipDuration });
+  return segments.filter((seg) => seg.end - seg.start > 0.2);
+}
+
 async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   const overlayPath = path.join(tempDir, `${clip.id}-overlay.png`);
+  const rawCutPath = path.join(tempDir, `${clip.id}-raw.mp4`);
+  const trimmedPath = path.join(tempDir, `${clip.id}-trimmed.mp4`);
+  const audioPath = path.join(tempDir, `${clip.id}.mp3`);
+  const subtitlePath = path.join(tempDir, `${clip.id}.ass`);
   const outputPath = path.join(tempDir, `${clip.id}.mp4`);
   const thumbPath = path.join(tempDir, `${clip.id}.jpg`);
 
   const format = clip.format || job.format || "reels";
+  const subtitleStyle = clip.subtitle_style || job.subtitle_style || "classic";
+  const wantsSubtitles = subtitleStyle && subtitleStyle !== "none";
+  const wantsSilenceRemoval = job.remove_silences !== false;
+  const wantsZoom = job.zoom_effect === true;
   const { width: outW, height: outH } = getCutFormatDims(format);
 
   await writeCutOverlayPng(clip, settings, overlayPath, format);
 
-  const scaleFilter = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=increase,crop=${outW}:${outH},setsar=1[base];[base][1:v]overlay=0:0:format=auto[v]`;
-
-  const cutCmd = [
+  // === PASS 1: extrai o trecho bruto (só o intervalo, sem edição pesada) ===
+  const pass1Cmd = [
     "ffmpeg -y",
     "-ss", shellQuote(clip.start_seconds),
     "-i", shellQuote(sourcePath),
     "-t", shellQuote(clip.duration_seconds),
+    "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
+    "-c:a aac -b:a 128k",
+    shellQuote(rawCutPath),
+  ].join(" ");
+  await execAsync(pass1Cmd, { maxBuffer: 20 * 1024 * 1024 });
+  if (!fs.existsSync(rawCutPath) || fs.statSync(rawCutPath).size < 1000) {
+    throw new Error("Trecho bruto não foi gerado.");
+  }
+
+  // === PASS 1.5 (opcional): remove silêncios ===
+  let workingPath = rawCutPath;
+  let workingDuration = Number(clip.duration_seconds) || 0;
+  if (wantsSilenceRemoval && workingDuration > 5) {
+    const silences = await detectSilences(rawCutPath, 0.7);
+    const keep = buildKeepSegments(workingDuration, silences);
+    if (silences.length > 0 && keep.length > 0 && keep.length < 20) {
+      const selectV = keep.map((s) => `between(t,${s.start.toFixed(3)},${s.end.toFixed(3)})`).join("+");
+      const selectA = selectV;
+      const filter = `[0:v]select='${selectV}',setpts=N/FRAME_RATE/TB[v];[0:a]aselect='${selectA}',asetpts=N/SR/TB[a]`;
+      try {
+        await execAsync([
+          "ffmpeg -y",
+          "-i", shellQuote(rawCutPath),
+          "-filter_complex", shellQuote(filter),
+          "-map", shellQuote("[v]"),
+          "-map", shellQuote("[a]"),
+          "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
+          "-c:a aac -b:a 128k",
+          shellQuote(trimmedPath),
+        ].join(" "), { maxBuffer: 20 * 1024 * 1024 });
+        if (fs.existsSync(trimmedPath) && fs.statSync(trimmedPath).size > 1000) {
+          workingPath = trimmedPath;
+          workingDuration = keep.reduce((acc, s) => acc + (s.end - s.start), 0);
+        }
+      } catch (err) {
+        console.warn(`[cuts:${clip.id}] Falha na remoção de silêncios (mantendo original):`, err?.message);
+      }
+    }
+  }
+
+  // === Transcrição (extrai áudio e chama Groq) ===
+  let transcript = null;
+  if (wantsSubtitles) {
+    try {
+      await execAsync(
+        `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
+        { maxBuffer: 10 * 1024 * 1024 },
+      );
+      const words = await transcribeClipGroq(audioPath);
+      if (words && words.length > 0) {
+        transcript = words;
+        const assContent = buildAssSubtitleFile(words, subtitleStyle, format, { width: outW, height: outH }, workingDuration);
+        await fs.promises.writeFile(subtitlePath, assContent, "utf8");
+      }
+    } catch (err) {
+      console.warn(`[cuts:${clip.id}] Legenda não gerada:`, err?.message);
+    }
+  }
+
+  // === PASS 2: composição final — crop 9:16 + overlay + subtitles + loudnorm + zoom ===
+  const videoFilters = [];
+  videoFilters.push(`scale=${outW}:${outH}:force_original_aspect_ratio=increase`);
+  videoFilters.push(`crop=${outW}:${outH}`);
+  videoFilters.push("setsar=1");
+  if (wantsZoom) {
+    // Zoom sutil (5%) ao longo do clip
+    videoFilters.push(`zoompan=z='min(zoom+0.0006,1.05)':d=1:s=${outW}x${outH}:fps=30`);
+  }
+  const videoChain = `[0:v]${videoFilters.join(",")}[base];[base][1:v]overlay=0:0:format=auto[withOverlay]`;
+  const subtitleChain = fs.existsSync(subtitlePath)
+    ? `;[withOverlay]ass=${shellQuote(subtitlePath).replace(/^'|'$/g, "").replace(/:/g, "\\:")}[v]`
+    : ";[withOverlay]copy[v]";
+  // Áudio: loudnorm sempre
+  const audioChain = ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]";
+  const filterComplex = videoChain + subtitleChain + audioChain;
+
+  const pass2Cmd = [
+    "ffmpeg -y",
+    "-i", shellQuote(workingPath),
     "-i", shellQuote(overlayPath),
-    "-filter_complex", shellQuote(scaleFilter),
+    "-filter_complex", shellQuote(filterComplex),
     "-map", shellQuote("[v]"),
-    "-map", "0:a?",
-    "-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p",
+    "-map", shellQuote("[a]"),
+    "-c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p",
     "-c:a aac -b:a 128k -movflags +faststart",
     shellQuote(outputPath),
   ].join(" ");
-  const { stderr } = await execAsync(cutCmd, { maxBuffer: 20 * 1024 * 1024 });
+
+  const { stderr } = await execAsync(pass2Cmd, { maxBuffer: 30 * 1024 * 1024 });
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error(`Corte não foi gerado. ${stderr || ""}`.trim());
   }
@@ -1249,13 +1412,70 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
       status: "draft",
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl,
+      transcript: transcript ? { words: transcript } : null,
       error_message: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", clip.id);
 
-  return { videoUrl, thumbnailUrl };
+  return { videoUrl, thumbnailUrl, transcript };
 }
+
+// ---- Auto-publish: transforma corte pronto em scheduled_post ----
+async function autoPublishClip(job, clip, videoUrl, thumbnailUrl) {
+  try {
+    const title = clip.title || "Corte IA";
+    const caption = clip.caption || clip.hook || title;
+    const hashtags = Array.isArray(clip.hashtags) ? clip.hashtags : [];
+    const newsId = clip.id;
+    const scheduledFor = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // +10min
+
+    const { error: newsErr } = await supabase.from("news_items").upsert({
+      id: newsId,
+      user_id: job.user_id,
+      instagram_account_id: job.instagram_account_id,
+      source_name: "Cortes IA",
+      original_title: title,
+      original_content: clip.reason || clip.hook || caption,
+      original_url: `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
+      original_image_url: thumbnailUrl,
+      published_at: new Date().toISOString(),
+      niche: "video",
+      status: "processed",
+      rewritten_title: title,
+      rewritten_summary: clip.hook || clip.reason || title,
+      caption,
+      reel_caption: caption,
+      hashtags,
+      generated_image_url: thumbnailUrl,
+      generated_cover_url: thumbnailUrl,
+      generated_video_url: videoUrl,
+      content_type: "video_cut",
+      content_format: "reel",
+      editorial_ready: true,
+    }, { onConflict: "id" });
+    if (newsErr) throw newsErr;
+
+    const { data: sp, error: spErr } = await supabase.from("scheduled_posts").insert({
+      user_id: job.user_id,
+      news_item_id: newsId,
+      instagram_account_id: job.instagram_account_id,
+      scheduled_for: scheduledFor,
+      status: "scheduled",
+      media_type: "reel",
+    }).select("id").single();
+    if (spErr) throw spErr;
+
+    await supabase.from("video_cut_clips")
+      .update({ status: "scheduled", scheduled_post_id: sp.id, news_item_id: newsId })
+      .eq("id", clip.id);
+
+    console.log(`[cuts:${clip.id}] Auto-publicado. Agendado para ${scheduledFor}`);
+  } catch (err) {
+    console.error(`[cuts:${clip.id}] Auto-publish falhou:`, err?.message || err);
+  }
+}
+
 
 async function finishVideoCutUsage(jobId, generatedCount) {
   const { error } = await supabase.rpc("finalize_video_cut_job_usage", {
