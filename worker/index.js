@@ -1631,7 +1631,13 @@ async function processVideoCutJob(job) {
     }
 
     await supabase.from("video_cut_jobs")
-      .update({ status: "analyzing", progress: 10, updated_at: new Date().toISOString() })
+      .update({
+        status: "analyzing",
+        progress: 10,
+        error_message: null,
+        fallback_required: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", job.id);
 
     let metadata;
@@ -1667,6 +1673,14 @@ async function processVideoCutJob(job) {
       .update({ status: "processing", progress: 40, updated_at: new Date().toISOString() })
       .eq("id", job.id);
 
+    const { error: staleClipsError } = await supabase.from("video_cut_clips")
+      .delete()
+      .eq("job_id", job.id)
+      .gt("clip_index", suggestions.length);
+    if (staleClipsError) {
+      console.warn(`[cuts:${job.id}] Falha ao limpar cortes antigos:`, staleClipsError.message || staleClipsError);
+    }
+
     if (!isUploadJob) {
       try {
         await downloadYoutubeVideo(job.youtube_url, sourcePath);
@@ -1700,7 +1714,7 @@ async function processVideoCutJob(job) {
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
       const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
-        .insert({
+        .upsert({
           job_id: job.id,
           user_id: job.user_id,
           instagram_account_id: job.instagram_account_id,
@@ -1717,7 +1731,10 @@ async function processVideoCutJob(job) {
           status: "rendering",
           format: job.format || "reels",
           subtitle_style: job.subtitle_style || "classic",
-        })
+          video_url: null,
+          thumbnail_url: null,
+          error_message: null,
+        }, { onConflict: "job_id,clip_index" })
         .select("*")
         .single();
 
