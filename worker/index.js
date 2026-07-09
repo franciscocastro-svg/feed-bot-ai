@@ -1,6 +1,7 @@
 import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
