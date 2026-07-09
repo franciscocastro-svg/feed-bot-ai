@@ -224,6 +224,7 @@ export default function Cuts() {
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
+          _format: format,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       } else {
@@ -232,6 +233,7 @@ export default function Cuts() {
           _youtube_url: youtubeUrl.trim(),
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
+          _format: format,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       }
