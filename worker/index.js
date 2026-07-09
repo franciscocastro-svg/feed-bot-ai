@@ -1149,48 +1149,41 @@ async function writeCutOverlayPng(clip, settings, outputPath, format = "reels") 
 
   ctx.clearRect(0, 0, width, height);
 
-  // gradiente inferior proporcional ao formato
-  const gradStart = format === "feed_square" ? 0.25 : 0.35;
-  const gradient = ctx.createLinearGradient(0, height * gradStart, 0, height);
-  gradient.addColorStop(0, "rgba(0,0,0,0)");
-  gradient.addColorStop(0.58, "rgba(0,0,0,0.68)");
-  gradient.addColorStop(1, "rgba(0,0,0,0.9)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
+  // Overlay mínimo para Cortes: apenas @handle discreto no topo.
+  // Sem barra amarela, sem título grande e sem rodapé "Corte gerado...".
+  // O conteúdo do corte fala por si; as legendas queimadas (ASS) entram em outra etapa.
   const handle = cleanCutText(settings?.brand_handle || settings?.brand_name || "");
   if (handle) {
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.font = "32px InterBold, Inter, Arial";
-    ctx.fillText(handle.startsWith("@") ? handle : `@${handle}`, 70, 110);
+    const label = handle.startsWith("@") ? handle : `@${handle}`;
+    ctx.font = "28px InterBold, Inter, Arial";
+    ctx.textBaseline = "top";
+
+    // Fundo pill semitransparente atrás do handle para legibilidade
+    const paddingX = 18;
+    const paddingY = 10;
+    const metrics = ctx.measureText(label);
+    const pillW = Math.ceil(metrics.width) + paddingX * 2;
+    const pillH = 44;
+    const pillX = 60;
+    const pillY = 60;
+
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    if (typeof ctx.roundRect === "function") {
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 22);
+      ctx.fill();
+    } else {
+      ctx.fillRect(pillX, pillY, pillW, pillH);
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillText(label, pillX + paddingX, pillY + paddingY);
   }
-
-  // safe-zone do texto: mais alto no 1:1 porque a área útil é menor
-  const textBlockOffset = format === "reels" ? 600 : format === "feed_portrait" ? 460 : 360;
-  const titleTop = height - textBlockOffset + 40;
-
-  ctx.fillStyle = "#FFD400";
-  ctx.fillRect(70, titleTop - 40, 82, 8);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "64px InterBold, Inter, Arial";
-  ctx.textBaseline = "top";
-  const titleBottom = drawOverlayText(ctx, clip.title, 70, titleTop, width - 180, 74, 3);
-
-  const hook = cleanCutText(clip.hook);
-  if (hook) {
-    ctx.font = "34px InterBold, Inter, Arial";
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    drawOverlayText(ctx, hook, 70, titleBottom + 34, width - 200, 44, 2);
-  }
-
-  ctx.font = "26px Inter, Arial";
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
-  drawOverlayText(ctx, "Corte gerado para revisão antes de publicar", 70, height - 96, width - 200, 34, 1);
 
   const buffer = await encodeCanvas(canvas, "png");
   await fs.promises.writeFile(outputPath, buffer);
 }
+
 
 // ---- Transcrição via Groq Whisper (palavra-por-palavra) ----
 async function transcribeClipGroq(audioPath) {
