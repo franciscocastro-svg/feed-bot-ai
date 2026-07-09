@@ -178,10 +178,17 @@ export default function Cuts() {
     setAccounts(accountRows || []);
     if (!accountId && accountRows?.[0]?.id) setAccountId(accountRows[0].id);
     if (error) toast.error(error.message || "Não foi possível carregar os cortes.");
-    setJobs(((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
+    const nextJobs = ((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
       ...job,
       video_cut_clips: (job.video_cut_clips || []).slice().sort((a, b) => a.clip_index - b.clip_index),
-    })));
+    }));
+    setJobs((prev) => {
+      // Evita re-render (que recarrega o <video> e interrompe a reprodução) quando nada mudou
+      try {
+        if (JSON.stringify(prev) === JSON.stringify(nextJobs)) return prev;
+      } catch {}
+      return nextJobs;
+    });
     setLoading(false);
   };
 
