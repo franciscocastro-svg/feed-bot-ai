@@ -187,10 +187,17 @@ export default function Cuts() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const hasActiveJobs = useMemo(() => jobs.some(isJobActive), [jobs]);
+
+  useEffect(() => {
+    if (!user || !hasActiveJobs) return;
     const interval = setInterval(load, JOB_REFRESH_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, hasActiveJobs]);
 
   useEffect(() => {
     if (requestedClips > bounds.maxRequest) setRequestedClips(Math.max(1, bounds.maxRequest || 1));
