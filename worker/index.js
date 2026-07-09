@@ -1128,16 +1128,26 @@ function drawOverlayText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   return y + lines.length * lineHeight;
 }
 
-async function writeCutOverlayPng(clip, settings, outputPath) {
-  const width = 1080;
-  const height = 1920;
+function getCutFormatDims(format) {
+  switch (format) {
+    case "feed_square":   return { width: 1080, height: 1080, label: "1:1" };
+    case "feed_portrait": return { width: 1080, height: 1350, label: "4:5" };
+    case "reels":
+    default:              return { width: 1080, height: 1920, label: "9:16" };
+  }
+}
+
+async function writeCutOverlayPng(clip, settings, outputPath, format = "reels") {
+  const { width, height } = getCutFormatDims(format);
   const { createCanvas } = await getCanvasRuntime();
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
   ctx.clearRect(0, 0, width, height);
 
-  const gradient = ctx.createLinearGradient(0, height * 0.35, 0, height);
+  // gradiente inferior proporcional ao formato
+  const gradStart = format === "feed_square" ? 0.25 : 0.35;
+  const gradient = ctx.createLinearGradient(0, height * gradStart, 0, height);
   gradient.addColorStop(0, "rgba(0,0,0,0)");
   gradient.addColorStop(0.58, "rgba(0,0,0,0.68)");
   gradient.addColorStop(1, "rgba(0,0,0,0.9)");
@@ -1151,24 +1161,28 @@ async function writeCutOverlayPng(clip, settings, outputPath) {
     ctx.fillText(handle.startsWith("@") ? handle : `@${handle}`, 70, 110);
   }
 
+  // safe-zone do texto: mais alto no 1:1 porque a área útil é menor
+  const textBlockOffset = format === "reels" ? 600 : format === "feed_portrait" ? 460 : 360;
+  const titleTop = height - textBlockOffset + 40;
+
   ctx.fillStyle = "#FFD400";
-  ctx.fillRect(70, height - 600, 82, 8);
+  ctx.fillRect(70, titleTop - 40, 82, 8);
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "64px InterBold, Inter, Arial";
   ctx.textBaseline = "top";
-  const titleBottom = drawOverlayText(ctx, clip.title, 70, height - 560, 900, 74, 3);
+  const titleBottom = drawOverlayText(ctx, clip.title, 70, titleTop, width - 180, 74, 3);
 
   const hook = cleanCutText(clip.hook);
   if (hook) {
     ctx.font = "34px InterBold, Inter, Arial";
     ctx.fillStyle = "rgba(255,255,255,0.92)";
-    drawOverlayText(ctx, hook, 70, titleBottom + 34, 880, 44, 2);
+    drawOverlayText(ctx, hook, 70, titleBottom + 34, width - 200, 44, 2);
   }
 
   ctx.font = "26px Inter, Arial";
   ctx.fillStyle = "rgba(255,255,255,0.72)";
-  drawOverlayText(ctx, "Corte gerado para revisão antes de publicar", 70, height - 128, 880, 34, 1);
+  drawOverlayText(ctx, "Corte gerado para revisão antes de publicar", 70, height - 96, width - 200, 34, 1);
 
   const buffer = await encodeCanvas(canvas, "png");
   await fs.promises.writeFile(outputPath, buffer);
@@ -1179,7 +1193,12 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   const outputPath = path.join(tempDir, `${clip.id}.mp4`);
   const thumbPath = path.join(tempDir, `${clip.id}.jpg`);
 
-  await writeCutOverlayPng(clip, settings, overlayPath);
+  const format = clip.format || job.format || "reels";
+  const { width: outW, height: outH } = getCutFormatDims(format);
+
+  await writeCutOverlayPng(clip, settings, overlayPath, format);
+
+  const scaleFilter = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=increase,crop=${outW}:${outH},setsar=1[base];[base][1:v]overlay=0:0:format=auto[v]`;
 
   const cutCmd = [
     "ffmpeg -y",
@@ -1187,8 +1206,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     "-i", shellQuote(sourcePath),
     "-t", shellQuote(clip.duration_seconds),
     "-i", shellQuote(overlayPath),
-    "-filter_complex",
-    shellQuote("[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[base];[base][1:v]overlay=0:0:format=auto[v]"),
+    "-filter_complex", shellQuote(scaleFilter),
     "-map", shellQuote("[v]"),
     "-map", "0:a?",
     "-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p",
