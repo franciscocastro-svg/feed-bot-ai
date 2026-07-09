@@ -988,13 +988,27 @@ function fallbackClipSuggestions(job, metadata) {
   });
 }
 
+function buildYtDlpBaseFlags() {
+  const cookiesFile = process.env.YT_COOKIES_FILE
+    || (fs.existsSync(path.join(os.homedir(), "yt-cookies.txt")) ? path.join(os.homedir(), "yt-cookies.txt") : null);
+  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+  const flags = [
+    "--no-warnings",
+    "--geo-bypass",
+    "--user-agent", shellQuote(ua),
+    "--extractor-args", shellQuote("youtube:player_client=web_safari,ios,android,web"),
+  ];
+  if (cookiesFile) flags.push("--cookies", shellQuote(cookiesFile));
+  return flags.join(" ");
+}
+
 async function probeYoutubeMetadata(youtubeUrl) {
   if (!(await commandExists("yt-dlp"))) {
     throw new Error("yt-dlp não está instalado no VPS.");
   }
 
   const { stdout } = await execAsync(
-    `yt-dlp --dump-json --skip-download --no-playlist ${shellQuote(youtubeUrl)}`,
+    `yt-dlp ${buildYtDlpBaseFlags()} --dump-json --skip-download --no-playlist ${shellQuote(youtubeUrl)}`,
     { maxBuffer: 15 * 1024 * 1024 },
   );
   const data = JSON.parse(stdout);
@@ -1004,6 +1018,7 @@ async function probeYoutubeMetadata(youtubeUrl) {
     webpage_url: data.webpage_url || youtubeUrl,
   };
 }
+
 
 async function analyzeYoutubeForCuts(job, metadata, videoUri = job.youtube_url) {
   if (!GEMINI_API_KEY) {
