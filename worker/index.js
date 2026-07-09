@@ -988,9 +988,34 @@ function fallbackClipSuggestions(job, metadata) {
   });
 }
 
+function getYtCookiesFile() {
+  const configured = String(process.env.YT_COOKIES_FILE || "").trim();
+  if (configured) return configured;
+  const fallback = path.join(os.homedir(), "yt-cookies.txt");
+  return fs.existsSync(fallback) ? fallback : null;
+}
+
+function validateYtCookiesFile(cookiesFile) {
+  if (!cookiesFile) return null;
+  try {
+    const stats = fs.statSync(cookiesFile);
+    if (!stats.isFile()) return `arquivo de cookies não é um arquivo válido: ${cookiesFile}`;
+    if (stats.size < 100) return `arquivo de cookies parece vazio/incompleto: ${cookiesFile}`;
+    return null;
+  } catch {
+    return `arquivo de cookies não encontrado no worker: ${cookiesFile}`;
+  }
+}
+
+function buildYtDlpCookieFlags() {
+  const cookiesFile = getYtCookiesFile();
+  const validationError = validateYtCookiesFile(cookiesFile);
+  if (!cookiesFile || validationError) return { flags: [], cookiesFile, validationError };
+  return { flags: ["--cookies", shellQuote(cookiesFile)], cookiesFile, validationError: null };
+}
+
 function buildYtDlpBaseFlags() {
-  const cookiesFile = process.env.YT_COOKIES_FILE
-    || (fs.existsSync(path.join(os.homedir(), "yt-cookies.txt")) ? path.join(os.homedir(), "yt-cookies.txt") : null);
+  const cookieConfig = buildYtDlpCookieFlags();
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
   const flags = [
     "--no-warnings",
@@ -998,13 +1023,18 @@ function buildYtDlpBaseFlags() {
     "--user-agent", shellQuote(ua),
     "--extractor-args", shellQuote("youtube:player_client=web_safari,ios,android,web"),
   ];
-  if (cookiesFile) flags.push("--cookies", shellQuote(cookiesFile));
+  flags.push(...cookieConfig.flags);
   return flags.join(" ");
 }
 
 async function probeYoutubeMetadata(youtubeUrl) {
   if (!(await commandExists("yt-dlp"))) {
     throw new Error("yt-dlp não está instalado no VPS.");
+  }
+
+  const cookieConfig = buildYtDlpCookieFlags();
+  if (cookieConfig.validationError) {
+    throw new Error(`${cookieConfig.validationError}. Reenvie/exporte um cookies.txt válido e reinicie o worker.`);
   }
 
   const { stdout } = await execAsync(
@@ -1128,10 +1158,10 @@ async function downloadYoutubeVideo(youtubeUrl, outputPath) {
     throw new Error("yt-dlp não está instalado no VPS.");
   }
 
-  // Cookies opcionais para contornar o bloqueio anti-bot do YouTube.
-  // Coloque um cookies.txt exportado do navegador em ~/yt-cookies.txt (ou defina YT_COOKIES_FILE).
-  const cookiesFile = process.env.YT_COOKIES_FILE
-    || (fs.existsSync(path.join(os.homedir(), "yt-cookies.txt")) ? path.join(os.homedir(), "yt-cookies.txt") : null);
+  const cookieConfig = buildYtDlpCookieFlags();
+  if (cookieConfig.validationError) {
+    throw new Error(`${cookieConfig.validationError}. Reenvie/exporte um cookies.txt válido e reinicie o worker.`);
+  }
 
   const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -1146,8 +1176,10 @@ async function downloadYoutubeVideo(youtubeUrl, outputPath) {
     "--merge-output-format", "mp4",
     "-o", shellQuote(outputPath),
   ];
-  if (cookiesFile) baseArgs.push("--cookies", shellQuote(cookiesFile));
+  baseArgs.push(...cookieConfig.flags);
   const command = [...baseArgs, shellQuote(youtubeUrl)].join(" ");
+
+  console.log(`[cuts] yt-dlp cookies: ${cookieConfig.cookiesFile ? `usando ${cookieConfig.cookiesFile}` : "não configurado"}`);
 
   try {
     const { stderr } = await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
