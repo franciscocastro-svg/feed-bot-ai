@@ -1421,7 +1421,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
         `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
         { maxBuffer: 10 * 1024 * 1024 },
       );
-      const words = await transcribeClipGroq(audioPath);
+      const words = await transcribeClip(audioPath);
       if (words && words.length > 0) {
         transcript = words;
         const assContent = buildAssSubtitleFile(words, subtitleStyle, format, { width: outW, height: outH }, workingDuration);
