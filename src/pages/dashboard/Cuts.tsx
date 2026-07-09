@@ -145,6 +145,10 @@ export default function Cuts() {
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [format, setFormat] = useState<"reels" | "feed_square" | "feed_portrait">("reels");
+  const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke">("classic");
+  const [autoPublish, setAutoPublish] = useState(false);
+  const [removeSilences, setRemoveSilences] = useState(true);
+  const [zoomEffect, setZoomEffect] = useState(false);
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
   const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
@@ -225,6 +229,10 @@ export default function Cuts() {
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
           _format: format,
+          _subtitle_style: subtitleStyle,
+          _auto_publish: autoPublish,
+          _remove_silences: removeSilences,
+          _zoom_effect: zoomEffect,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       } else {
@@ -234,6 +242,10 @@ export default function Cuts() {
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _format: format,
+          _subtitle_style: subtitleStyle,
+          _auto_publish: autoPublish,
+          _remove_silences: removeSilences,
+          _zoom_effect: zoomEffect,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
       }
