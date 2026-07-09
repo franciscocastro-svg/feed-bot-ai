@@ -603,7 +603,7 @@ export default function Cuts() {
                 )}
               </div>
             </div>
-            <Progress value={job.progress || 0} />
+            {isJobActive(job) && <Progress value={job.progress || 0} />}
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
