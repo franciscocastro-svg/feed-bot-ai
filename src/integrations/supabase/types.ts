@@ -1895,8 +1895,10 @@ export type Database = {
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          source_file_name: string | null
           source_kind: string
           source_title: string | null
+          source_video_url: string | null
           started_at: string | null
           status: string
           updated_at: string
@@ -1921,8 +1923,10 @@ export type Database = {
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
+          source_file_name?: string | null
           source_kind?: string
           source_title?: string | null
+          source_video_url?: string | null
           started_at?: string | null
           status?: string
           updated_at?: string
@@ -1947,8 +1951,10 @@ export type Database = {
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
+          source_file_name?: string | null
           source_kind?: string
           source_title?: string | null
+          source_video_url?: string | null
           started_at?: string | null
           status?: string
           updated_at?: string
@@ -2110,8 +2116,10 @@ export type Database = {
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          source_file_name: string | null
           source_kind: string
           source_title: string | null
+          source_video_url: string | null
           started_at: string | null
           status: string
           updated_at: string
@@ -2150,8 +2158,10 @@ export type Database = {
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          source_file_name: string | null
           source_kind: string
           source_title: string | null
+          source_video_url: string | null
           started_at: string | null
           status: string
           updated_at: string
@@ -2191,8 +2201,10 @@ export type Database = {
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
+          source_file_name: string | null
           source_kind: string
           source_title: string | null
+          source_video_url: string | null
           started_at: string | null
           status: string
           updated_at: string
