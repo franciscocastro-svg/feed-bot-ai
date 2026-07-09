@@ -1593,13 +1593,21 @@ async function processVideoCutJob(job) {
           duration_seconds: suggestion.duration_seconds,
           status: "rendering",
           format: job.format || "reels",
+          subtitle_style: job.subtitle_style || "classic",
         })
         .select("*")
         .single();
 
       if (clipError) throw clipError;
-      await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
+      const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
       generatedCount += 1;
+
+      // Refetch clip com dados atualizados (video_url etc) para auto-publish
+      if (job.auto_publish && videoUrl) {
+        const { data: fullClip } = await supabase
+          .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
+        if (fullClip) await autoPublishClip(job, fullClip, videoUrl, thumbnailUrl);
+      }
 
       await supabase.from("video_cut_jobs")
         .update({
