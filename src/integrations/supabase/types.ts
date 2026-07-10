@@ -1775,14 +1775,18 @@ export type Database = {
       video_cut_clips: {
         Row: {
           caption: string | null
+          clarity_score: number | null
           clip_index: number
           created_at: string
           duration_seconds: number
+          emotion_score: number | null
           end_seconds: number
           error_message: string | null
           format: string
           hashtags: string[]
           hook: string | null
+          hook_score: number | null
+          hook_text: string | null
           id: string
           instagram_account_id: string
           job_id: string
@@ -1792,6 +1796,7 @@ export type Database = {
           score: number
           start_seconds: number
           status: string
+          subtitle_error: boolean
           subtitle_style: string
           thumbnail_url: string | null
           title: string | null
@@ -1799,17 +1804,22 @@ export type Database = {
           updated_at: string
           user_id: string
           video_url: string | null
+          viral_score: number | null
         }
         Insert: {
           caption?: string | null
+          clarity_score?: number | null
           clip_index: number
           created_at?: string
           duration_seconds?: number
+          emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
           format?: string
           hashtags?: string[]
           hook?: string | null
+          hook_score?: number | null
+          hook_text?: string | null
           id?: string
           instagram_account_id: string
           job_id: string
@@ -1819,6 +1829,7 @@ export type Database = {
           score?: number
           start_seconds?: number
           status?: string
+          subtitle_error?: boolean
           subtitle_style?: string
           thumbnail_url?: string | null
           title?: string | null
@@ -1826,17 +1837,22 @@ export type Database = {
           updated_at?: string
           user_id: string
           video_url?: string | null
+          viral_score?: number | null
         }
         Update: {
           caption?: string | null
+          clarity_score?: number | null
           clip_index?: number
           created_at?: string
           duration_seconds?: number
+          emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
           format?: string
           hashtags?: string[]
           hook?: string | null
+          hook_score?: number | null
+          hook_text?: string | null
           id?: string
           instagram_account_id?: string
           job_id?: string
@@ -1846,6 +1862,7 @@ export type Database = {
           score?: number
           start_seconds?: number
           status?: string
+          subtitle_error?: boolean
           subtitle_style?: string
           thumbnail_url?: string | null
           title?: string | null
@@ -1853,6 +1870,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           video_url?: string | null
+          viral_score?: number | null
         }
         Relationships: [
           {
@@ -1898,7 +1916,9 @@ export type Database = {
           error_message: string | null
           fallback_required: boolean
           format: string
+          formats: string[] | null
           generated_clips: number
+          hook_enabled: boolean
           id: string
           instagram_account_id: string
           max_attempts: number
@@ -1932,7 +1952,9 @@ export type Database = {
           error_message?: string | null
           fallback_required?: boolean
           format?: string
+          formats?: string[] | null
           generated_clips?: number
+          hook_enabled?: boolean
           id?: string
           instagram_account_id: string
           max_attempts?: number
@@ -1966,7 +1988,9 @@ export type Database = {
           error_message?: string | null
           fallback_required?: boolean
           format?: string
+          formats?: string[] | null
           generated_clips?: number
+          hook_enabled?: boolean
           id?: string
           instagram_account_id?: string
           max_attempts?: number
@@ -2137,7 +2161,9 @@ export type Database = {
           error_message: string | null
           fallback_required: boolean
           format: string
+          formats: string[] | null
           generated_clips: number
+          hook_enabled: boolean
           id: string
           instagram_account_id: string
           max_attempts: number
@@ -2186,7 +2212,9 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
@@ -2235,7 +2263,9 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
@@ -2289,7 +2319,67 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
+              id: string
+              instagram_account_id: string
+              max_attempts: number
+              progress: number
+              remove_silences: boolean
+              requested_clips: number
+              reserved_clips: number
+              rights_confirmed: boolean
+              smart_crop: boolean
+              source_file_name: string | null
+              source_kind: string
+              source_title: string | null
+              source_video_url: string | null
+              started_at: string | null
+              status: string
+              subtitle_style: string
+              updated_at: string
+              user_id: string
+              youtube_url: string
+              zoom_effect: boolean
+            }
+            SetofOptions: {
+              from: "*"
+              to: "video_cut_jobs"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              _auto_publish?: boolean
+              _format?: string
+              _formats?: string[]
+              _hook_enabled?: boolean
+              _instagram_account_id: string
+              _remove_silences?: boolean
+              _requested_clips: number
+              _rights_confirmed: boolean
+              _smart_crop?: boolean
+              _subtitle_style?: string
+              _youtube_url: string
+              _zoom_effect?: boolean
+            }
+            Returns: {
+              analysis: Json
+              attempts: number
+              auto_publish: boolean
+              claimed_at: string | null
+              claimed_by: string | null
+              completed_at: string | null
+              created_at: string
+              duration_seconds: number | null
+              error_message: string | null
+              fallback_required: boolean
+              format: string
+              formats: string[] | null
+              generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
@@ -2339,7 +2429,9 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
@@ -2389,7 +2481,9 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
@@ -2444,7 +2538,68 @@ export type Database = {
               error_message: string | null
               fallback_required: boolean
               format: string
+              formats: string[] | null
               generated_clips: number
+              hook_enabled: boolean
+              id: string
+              instagram_account_id: string
+              max_attempts: number
+              progress: number
+              remove_silences: boolean
+              requested_clips: number
+              reserved_clips: number
+              rights_confirmed: boolean
+              smart_crop: boolean
+              source_file_name: string | null
+              source_kind: string
+              source_title: string | null
+              source_video_url: string | null
+              started_at: string | null
+              status: string
+              subtitle_style: string
+              updated_at: string
+              user_id: string
+              youtube_url: string
+              zoom_effect: boolean
+            }
+            SetofOptions: {
+              from: "*"
+              to: "video_cut_jobs"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              _auto_publish?: boolean
+              _format?: string
+              _formats?: string[]
+              _hook_enabled?: boolean
+              _instagram_account_id: string
+              _remove_silences?: boolean
+              _requested_clips: number
+              _rights_confirmed: boolean
+              _smart_crop?: boolean
+              _source_title?: string
+              _subtitle_style?: string
+              _video_url: string
+              _zoom_effect?: boolean
+            }
+            Returns: {
+              analysis: Json
+              attempts: number
+              auto_publish: boolean
+              claimed_at: string | null
+              claimed_by: string | null
+              completed_at: string | null
+              created_at: string
+              duration_seconds: number | null
+              error_message: string | null
+              fallback_required: boolean
+              format: string
+              formats: string[] | null
+              generated_clips: number
+              hook_enabled: boolean
               id: string
               instagram_account_id: string
               max_attempts: number
