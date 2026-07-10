@@ -147,7 +147,7 @@ export default function News() {
   };
   useEffect(() => {
     load();
-    supabase.from("instagram_accounts").select("*").eq("active", true).then(({ data }) => setIgAccounts(data || []));
+    supabase.from("instagram_accounts").select("id,username,active,niche,custom_hashtags").eq("active", true).then(({ data }) => setIgAccounts(data || []));
   }, [newsLimit]);
 
   const sources = useMemo(() => Array.from(new Set(items.map(i => i.source_name).filter(Boolean))), [items]);

@@ -6,6 +6,7 @@
 //  - posts > 21d: NÃO refresh (já decantaram)
 // Também respeita auto-freio: se o uso do app na Meta passou do threshold, aborta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getInstagramToken } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +65,7 @@ Deno.serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
     const body = await req.json().catch(() => ({} as any));
     let userId: string | undefined = body?.user_id;
     let supabase;
@@ -80,7 +82,6 @@ Deno.serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
       userId = user.id;
-      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
       const { data: approved } = await adminClient.rpc("is_approved", { _uid: userId });
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: corsHeaders });
     }
@@ -93,9 +94,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const pauseThreshold = (settings as any)?.meta_usage_pause_threshold ?? 80;
 
-    const { data: igAccounts } = await supabase
+    const { data: igAccounts } = await adminClient
       .from("instagram_accounts")
-      .select("id, ig_user_id, access_token")
+      .select("id, ig_user_id")
       .eq("user_id", userId)
       .eq("active", true);
 
@@ -106,7 +107,14 @@ Deno.serve(async (req) => {
     const errors: any[] = [];
 
     for (const acc of igAccounts || []) {
-      if (!acc.ig_user_id || !acc.access_token) continue;
+      if (!acc.ig_user_id) continue;
+      let accessToken: string;
+      try {
+        accessToken = await getInstagramToken(adminClient, acc.id);
+      } catch (error) {
+        errors.push({ account_id: acc.id, error: error instanceof Error ? error.message : String(error) });
+        continue;
+      }
 
       // Verifica último uso desta conta
       const { data: lastUsage } = await supabase
@@ -123,9 +131,9 @@ Deno.serve(async (req) => {
 
       // Snapshot de seguidores (1 chamada — também captura headers)
       try {
-        const graph = graphHost(acc.access_token);
+        const graph = graphHost(accessToken);
         const r = await fetch(
-          `${graph}/v21.0/${acc.ig_user_id}?fields=followers_count,follows_count,media_count&access_token=${acc.access_token}`,
+          `${graph}/v21.0/${acc.ig_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`,
         );
         const d = await r.json();
         if (r.ok) {
@@ -173,7 +181,7 @@ Deno.serve(async (req) => {
 
       for (const p of toFetch) {
         try {
-          const ins = await fetchInsights(p.ig_media_id, acc.access_token);
+          const ins = await fetchInsights(p.ig_media_id, accessToken);
           const reach = pick(ins.data, "reach");
           const likes = pick(ins.data, "likes");
           const comments = pick(ins.data, "comments");

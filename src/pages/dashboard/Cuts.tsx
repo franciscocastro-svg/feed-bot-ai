@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
@@ -52,7 +52,11 @@ type VideoCutJob = {
   source_kind?: string | null;
   source_title?: string | null;
   source_video_url?: string | null;
+  source_storage_bucket?: string | null;
+  source_storage_path?: string | null;
   source_file_name?: string | null;
+  analysis_mode?: string | null;
+  analysis_warning?: string | null;
   status: string;
   progress?: number | null;
   created_at: string;
@@ -66,6 +70,13 @@ type InstagramAccount = {
   id: string;
   username: string;
   active: boolean;
+};
+
+type WorkerHealth = {
+  queue_mode: string;
+  last_seen_at: string;
+  healthy: boolean;
+  version?: string | null;
 };
 
 type SupabaseError = { message?: string } | null;
@@ -162,6 +173,7 @@ export default function Cuts() {
   const [jobs, setJobs] = useState<VideoCutJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [workerHealth, setWorkerHealth] = useState<WorkerHealth[]>([]);
   const [inputMode, setInputMode] = useState<InputMode>("youtube");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -196,17 +208,19 @@ export default function Cuts() {
   const load = async (options: { silent?: boolean } = {}) => {
     if (!user) return;
     if (!options.silent) setLoading(true);
-    const [{ data: accountRows }, { data: jobRows, error }] = await Promise.all([
+    const [{ data: accountRows }, { data: jobRows, error }, healthResult] = await Promise.all([
       supabase.from("instagram_accounts").select("id, username, active").eq("active", true).order("username"),
       db
         .from("video_cut_jobs")
         .select("*, instagram_accounts(username), video_cut_clips(*)")
         .order("created_at", { ascending: false })
         .limit(40),
+      db.rpc<WorkerHealth[]>("get_media_worker_health"),
     ]);
     setAccounts(accountRows || []);
     if (!accountId && accountRows?.[0]?.id) setAccountId(accountRows[0].id);
     if (error) toast.error(error.message || "Não foi possível carregar os cortes.");
+    setWorkerHealth((healthResult.data as WorkerHealth[] | undefined) || []);
     const nextJobs = ((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
       ...job,
       video_cut_clips: (job.video_cut_clips || []).slice().sort((a, b) => a.clip_index - b.clip_index),
@@ -215,7 +229,9 @@ export default function Cuts() {
       // Evita re-render (que recarrega o <video> e interrompe a reprodução) quando nada mudou
       try {
         if (JSON.stringify(prev) === JSON.stringify(nextJobs)) return prev;
-      } catch {}
+      } catch {
+        // A comparação é apenas uma otimização; uma estrutura não serializável pode renderizar normalmente.
+      }
       return nextJobs;
     });
     if (!options.silent) setLoading(false);
@@ -252,13 +268,12 @@ export default function Cuts() {
 
     const safeName = videoFile.name.replace(/[^a-z0-9._-]+/gi, "-").slice(-120);
     const path = `${user.id}/cuts/uploads/${Date.now()}-${safeName || "video.mp4"}`;
-    const { error: uploadError } = await supabase.storage.from("post-images").upload(path, videoFile, {
+    const { error: uploadError } = await supabase.storage.from("video-cut-inputs").upload(path, videoFile, {
       contentType: "video/mp4",
       upsert: false,
     });
     if (uploadError) throw new Error(uploadError.message || "Não foi possível enviar o vídeo.");
-    const { data } = supabase.storage.from("post-images").getPublicUrl(path);
-    return data.publicUrl;
+    return path;
   };
 
   const createJob = async () => {
@@ -269,13 +284,14 @@ export default function Cuts() {
     if (bounds.maxRequest <= 0) return toast.error("Seu limite de Cortes IA para hoje acabou.");
 
     setCreating(true);
+    let uploadedPath: string | null = null;
     try {
       const requestClips = Math.min(requestedClips, bounds.maxRequest);
       if (inputMode === "upload") {
-        const videoUrl = await uploadVideoFile();
-        const { error } = await db.rpc("create_video_cut_upload_job", {
+        uploadedPath = await uploadVideoFile();
+        const { error } = await db.rpc("create_video_cut_upload_job_v2", {
           _instagram_account_id: accountId,
-          _video_url: videoUrl,
+          _storage_path: uploadedPath,
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
@@ -310,6 +326,7 @@ export default function Cuts() {
       setRightsConfirmed(false);
       await Promise.all([load(), refetchUsage()]);
     } catch (error: unknown) {
+      if (uploadedPath) await supabase.storage.from("video-cut-inputs").remove([uploadedPath]);
       toast.error(error instanceof Error ? error.message : "Não foi possível criar o job.");
     } finally {
       setCreating(false);
@@ -330,7 +347,9 @@ export default function Cuts() {
       source_name: "Cortes IA",
       original_title: title,
       original_content: clip.reason || clip.hook || caption,
-      original_url: `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
+      original_url: job.source_kind === "upload"
+        ? `upload://${job.id}/cut-${clip.clip_index}-${clip.id}`
+        : `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
       original_image_url: clip.thumbnail_url,
       published_at: new Date().toISOString(),
       niche: "video",
@@ -460,6 +479,7 @@ export default function Cuts() {
   const limitText = isUnlimited(bounds.limit)
     ? `${bounds.total}/∞ usados ou reservados hoje`
     : `${bounds.total}/${bounds.limit} usados ou reservados hoje`;
+  const cutsWorkerOnline = workerHealth.some((worker) => worker.healthy && (worker.queue_mode.includes("cuts") || worker.queue_mode.includes("all")));
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -479,6 +499,16 @@ export default function Cuts() {
           Atualizar
         </Button>
       </div>
+
+      {workerHealth.length > 0 && !cutsWorkerOnline && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+          <div>
+            <p className="font-medium text-foreground">Processador de Cortes IA indisponível</p>
+            <p className="text-muted-foreground">A fila não respondeu nos últimos 90 segundos. Novos trabalhos ficarão aguardando até o worker voltar.</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4">
         <Card className="p-5 space-y-4">
@@ -653,9 +683,15 @@ export default function Cuts() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
-                  <a className="text-sm text-primary inline-flex items-center gap-1" href={job.source_video_url || job.youtube_url} target="_blank" rel="noreferrer">
-                    {job.source_kind === "upload" ? "MP4 enviado" : "YouTube"} <ExternalLink className="h-3 w-3" />
-                  </a>
+                  {job.source_kind === "upload" ? (
+                    <span className="text-sm text-muted-foreground inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
+                  ) : (
+                    <a className="text-sm text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
+                      YouTube <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                  {job.analysis_mode === "transcript_ai" && <Badge variant="outline">Análise pela fala</Badge>}
+                  {job.analysis_mode === "timeline_fallback" && <Badge variant="secondary">Modo básico</Badge>}
                 </div>
                 <p className="text-sm text-muted-foreground mt-2 truncate">
                   {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
@@ -678,6 +714,11 @@ export default function Cuts() {
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
                 {job.fallback_required && <p className="mt-1 text-muted-foreground">Crie um novo corte usando a opção Enviar MP4.</p>}
+              </div>
+            )}
+            {job.analysis_warning && job.status !== "failed" && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+                {job.analysis_warning}
               </div>
             )}
 

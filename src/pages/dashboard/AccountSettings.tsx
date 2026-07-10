@@ -64,7 +64,7 @@ export default function AccountSettings() {
       if (!user) return;
       setUserId(user.id);
       const [{ data: acc }, { data: override }, { data: eff }] = await Promise.all([
-        supabase.from("instagram_accounts").select("*").eq("id", id).maybeSingle(),
+        supabase.from("instagram_accounts").select("id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status").eq("id", id).maybeSingle(),
         supabase.from("account_settings").select("*").eq("instagram_account_id", id).maybeSingle(),
         supabase.rpc("get_effective_account_settings", { _account_id: id }),
       ]);

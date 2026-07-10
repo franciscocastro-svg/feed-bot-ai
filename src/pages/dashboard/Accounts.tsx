@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { UpgradeModal } from "@/components/UpgradeModal";
 
-const empty = { username: "", ig_user_id: "", page_id: "", access_token: "", niche: "" };
+const empty = { username: "", niche: "" };
+const ACCOUNT_PUBLIC_COLUMNS = "id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status";
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => (
   <li className="flex items-center gap-2">
@@ -51,7 +51,7 @@ export default function Accounts() {
   const [upgrade, setUpgrade] = useState<{ open: boolean; used?: number; limit?: number }>({ open: false });
 
   const load = async () => {
-    const { data } = await supabase.from("instagram_accounts").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("instagram_accounts").select(ACCOUNT_PUBLIC_COLUMNS).order("created_at", { ascending: false });
     setAccounts(data || []);
   };
   useEffect(() => {
@@ -87,34 +87,18 @@ export default function Accounts() {
   };
 
 
-  const openNew = () => { setEditingId(null); setForm(empty); setOpen(true); };
   const openEdit = (a: any) => {
     setEditingId(a.id);
-    setForm({ username: a.username || "", ig_user_id: a.ig_user_id || "", page_id: a.page_id || "", access_token: a.access_token || "", niche: a.niche || "" });
+    setForm({ username: a.username || "", niche: a.niche || "" });
     setOpen(true);
   };
 
   const save = async () => {
     if (!form.username) return toast.error("Username obrigatório");
-    if (editingId) {
-      const { error } = await supabase.from("instagram_accounts").update(form).eq("id", editingId);
-      if (error) return toast.error(error.message);
-      toast.success("Conta atualizada");
-    } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: check } = await supabase.rpc("can_create_resource", {
-        _user_id: user!.id, _resource: "ig_account",
-      });
-      const c = check as any;
-      if (c && !c.allowed) {
-        setOpen(false);
-        setUpgrade({ open: true, used: c.used, limit: c.limit });
-        return;
-      }
-      const { error } = await supabase.from("instagram_accounts").insert({ ...form, user_id: user!.id });
-      if (error) return toast.error(error.message);
-      toast.success("Conta adicionada");
-    }
+    if (!editingId) return toast.error("Conecte novas contas pelo Instagram.");
+    const { error } = await supabase.from("instagram_accounts").update(form).eq("id", editingId);
+    if (error) return toast.error(error.message);
+    toast.success("Conta atualizada");
     setOpen(false); setEditingId(null); setForm(empty);
     load();
   };
@@ -132,8 +116,6 @@ export default function Accounts() {
 
   const refresh = async (account: any) => {
     const id = account.id;
-    const isInstagramOAuth = /^IG/i.test(String(account.access_token || ""));
-    if (!isInstagramOAuth && !confirm("Trocar o token atual pelo Page Access Token permanente da Meta? O token atual será sobrescrito.")) return;
     setRefreshing(id);
     const { data, error } = await supabase.functions.invoke("refresh-ig-token", { body: { account_id: id } });
     setRefreshing(null);
@@ -155,7 +137,6 @@ export default function Accounts() {
             {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Instagram className="h-4 w-4 mr-2" />}
             Conectar com Instagram
           </Button>
-          <Button onClick={openNew} variant="outline"><Plus className="h-4 w-4 mr-2" /> Adicionar manual</Button>
         </div>
       </div>
 
@@ -165,15 +146,12 @@ export default function Accounts() {
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(empty); } }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editingId ? "Editar conta Instagram" : "Adicionar conta Instagram"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Editar conta Instagram</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Use uma conta comercial do Instagram conectada a uma Página do Facebook. Pegue os dados em <a className="underline text-primary" href="https://developers.facebook.com/apps/" target="_blank">developers.facebook.com</a>. Permissões necessárias: <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>.</p>
             <div><Label>Username</Label><Input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="meuperfil" /></div>
-            <div><Label>Instagram Business User ID</Label><Input value={form.ig_user_id} onChange={e => setForm({ ...form, ig_user_id: e.target.value })} /></div>
-            <div><Label>Page ID (Facebook)</Label><Input value={form.page_id} onChange={e => setForm({ ...form, page_id: e.target.value })} /></div>
-            <div><Label>Access Token (longa duração)</Label><Textarea rows={4} value={form.access_token} onChange={e => setForm({ ...form, access_token: e.target.value })} placeholder="EAA..." /></div>
             <div><Label>Nicho</Label><Input value={form.niche} onChange={e => setForm({ ...form, niche: e.target.value })} /></div>
-            <Button onClick={save} className="w-full">{editingId ? "Salvar alterações" : "Salvar"}</Button>
+            <p className="text-xs text-muted-foreground">A credencial da Meta fica protegida no servidor e nunca é exibida no navegador.</p>
+            <Button onClick={save} className="w-full">Salvar alterações</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -203,7 +181,7 @@ export default function Accounts() {
                       {expiringSoon && !expired && <Badge variant="outline" className="text-[10px] h-5 border-warning text-warning"><AlertTriangle className="h-3 w-3 mr-1" /> Expira em {expDays}d</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground break-all">{a.niche || "Sem nicho"} · IG ID: {a.ig_user_id || "—"} · Page: {a.page_id || "—"}</p>
-                    <p className="text-xs text-muted-foreground break-all">Token: {a.access_token ? `${a.access_token.slice(0, 12)}…${a.access_token.slice(-6)}` : "—"} {a.last_verified_at && `· verificado ${new Date(a.last_verified_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}</p>
+                    <p className="text-xs text-muted-foreground break-all">Credencial protegida no servidor {a.last_verified_at && `· verificada ${new Date(a.last_verified_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap md:flex-nowrap shrink-0">
@@ -216,9 +194,9 @@ export default function Accounts() {
                     {verifying === a.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
                     Verificar
                   </Button>
-                  <Button variant="default" size="sm" onClick={() => refresh(a)} disabled={refreshing === a.id} title={/^IG/i.test(String(a.access_token || "")) ? "Renova o token OAuth do Instagram por mais 60 dias" : "Converte o token atual no Page Access Token permanente"}>
+                  <Button variant="default" size="sm" onClick={() => refresh(a)} disabled={refreshing === a.id} title="Renovar a conexão segura com a Meta">
                     {refreshing === a.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    {/^IG/i.test(String(a.access_token || "")) ? "Renovar token" : "Tornar permanente"}
+                    Renovar conexão
                   </Button>
                   <Switch checked={a.active} onCheckedChange={async v => {
                     const { error } = await supabase.from("instagram_accounts").update({ active: v }).eq("id", a.id);

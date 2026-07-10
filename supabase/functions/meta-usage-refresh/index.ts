@@ -3,6 +3,7 @@
 // meta_api_usage. Permite ver o uso atual em tempo real no dashboard sem
 // precisar publicar.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getInstagramToken } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
   const { data: canManageMeta } = await userClient.rpc("admin_has_permission", { _section: "meta" });
   let accountsQuery = admin
     .from("instagram_accounts")
-    .select("id, user_id, username, ig_user_id, access_token, active")
+    .select("id, user_id, username, ig_user_id, active")
     .eq("active", true);
   if (!canManageMeta) accountsQuery = accountsQuery.eq("user_id", userId);
   const { data: accounts, error: aErr } = await accountsQuery;
@@ -87,12 +88,13 @@ Deno.serve(async (req) => {
 
   const results: any[] = [];
   for (const acc of accounts || []) {
-    if (!acc.access_token || !acc.ig_user_id) {
+    if (!acc.ig_user_id) {
       results.push({ id: acc.id, username: acc.username, skipped: "missing token or ig_user_id" });
       continue;
     }
     try {
-      const r = await fetch(`${graphBase(acc.access_token)}/${acc.ig_user_id}?fields=id&access_token=${encodeURIComponent(acc.access_token)}`);
+      const accessToken = await getInstagramToken(admin, acc.id);
+      const r = await fetch(`${graphBase(accessToken)}/${acc.ig_user_id}?fields=id&access_token=${encodeURIComponent(accessToken)}`);
       const snap = parseUsage(r, acc.ig_user_id);
       if (!snap) {
         results.push({ id: acc.id, username: acc.username, ok: r.ok, no_headers: true });

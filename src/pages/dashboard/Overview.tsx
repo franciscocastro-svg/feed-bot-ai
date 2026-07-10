@@ -139,7 +139,7 @@ export default function Overview() {
         supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).gte("posted_at", startYesterday.toISOString()).lt("posted_at", startToday.toISOString()),
         supabase.from("scheduled_posts").select("posted_at, status").gte("posted_at", start7d.toISOString()).not("posted_at", "is", null),
         supabase.from("scheduled_posts").select("id, scheduled_for, media_type, news_items(rewritten_title, original_title, generated_image_url, generated_cover_url)").in("status", ["scheduled", "posting", "awaiting_container"]).order("scheduled_for", { ascending: true }).limit(4),
-        supabase.from("instagram_accounts").select("*"),
+        supabase.from("instagram_accounts").select("id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status"),
         supabase.from("user_settings").select("auto_approve, min_post_interval_minutes, max_posts_per_day, default_media_type, default_feed_template_id, default_reel_template_id, default_story_template_id").maybeSingle(),
         supabase.from("news_sources").select("id", { count: "exact", head: true }).eq("active", true),
         supabase.from("news_sources").select("id", { count: "exact", head: true }),

@@ -5,6 +5,7 @@
 //  3) Se for PAGE token com expires_at definido e <= 7 dias -> re-busca via /me/accounts
 //  4) Atualiza verification_status / token_expires_at / last_verified_at
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getInstagramToken } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,7 +130,8 @@ Deno.serve(async (req) => {
     const results: any[] = [];
     for (const acc of accounts || []) {
       try {
-        results.push(await refreshAccount(supabase, acc));
+        const accessToken = await getInstagramToken(supabase, acc.id);
+        results.push(await refreshAccount(supabase, { ...acc, access_token: accessToken }));
       } catch (e) {
         results.push({ id: acc.id, error: e instanceof Error ? e.message : String(e) });
       }

@@ -2,6 +2,7 @@
 // Para tokens derivados de um long-lived user token, o page token retornado
 // por /me/accounts NÃO expira (Meta/Graph API).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getInstagramToken } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,21 +29,21 @@ Deno.serve(async (req) => {
 
     const { account_id } = await req.json();
     const { data: canManageTokens } = await supabase.rpc("admin_has_permission", { _section: "tokens" });
-    const accountQuery = (canManageTokens ? adminClient : supabase)
+    const accountQuery = adminClient
       .from("instagram_accounts").select("*").eq("id", account_id);
     const { data: acc, error } = canManageTokens
       ? await accountQuery.maybeSingle()
       : await accountQuery.eq("user_id", user.id).maybeSingle();
     if (error || !acc) throw new Error("Conta não encontrada");
-    const dataClient = canManageTokens ? adminClient : supabase;
-    if (!acc.access_token) throw new Error("Conta sem access_token atual");
-    if (isInstagramLoginToken(acc.access_token)) {
+    const dataClient = adminClient;
+    const currentToken = await getInstagramToken(adminClient, account_id);
+    if (isInstagramLoginToken(currentToken)) {
       const refreshUrl = new URL("https://graph.instagram.com/refresh_access_token");
       refreshUrl.searchParams.set("grant_type", "ig_refresh_token");
-      refreshUrl.searchParams.set("access_token", acc.access_token);
+      refreshUrl.searchParams.set("access_token", currentToken);
       const refreshRes = await fetch(refreshUrl.toString());
       const refreshData = await refreshRes.json();
-      const nextToken = refreshRes.ok && refreshData.access_token ? refreshData.access_token : acc.access_token;
+      const nextToken = refreshRes.ok && refreshData.access_token ? refreshData.access_token : currentToken;
       const expiresIn = Number(refreshData.expires_in || 60 * 24 * 3600);
       const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
@@ -75,7 +76,7 @@ Deno.serve(async (req) => {
     if (!acc.page_id) throw new Error("Page ID não configurado");
 
     // 0) Detecta tipo do token atual. Se já for PAGE, não há o que renovar.
-    const dbgCur = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${acc.access_token}&access_token=${acc.access_token}`);
+    const dbgCur = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${currentToken}&access_token=${currentToken}`);
     const dbgCurD = await dbgCur.json();
     const curType = dbgCurD.data?.type; // "USER" | "PAGE"
     const curExpires = dbgCurD.data?.expires_at;
@@ -96,7 +97,7 @@ Deno.serve(async (req) => {
     }
 
     // 1) É User Token → busca o Page Access Token via /me/accounts
-    const r = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${acc.access_token}&limit=200`);
+    const r = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${currentToken}&limit=200`);
     const d = await r.json();
     if (d.error) throw new Error(`Meta: ${d.error.message}`);
     const pages = d.data || [];

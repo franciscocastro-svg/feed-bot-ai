@@ -66,9 +66,10 @@ O PM2 garante que o worker continue rodando mesmo se o terminal fechar ou o proc
    sudo npm install -g pm2
    ```
 
-2. **Inicie o worker com o PM2:**
+2. **Inicie os workers separados com o PM2 (na raiz do projeto):**
    ```bash
-   pm2 start index.js --name feed-bot-worker
+   pm2 startOrReload ecosystem.config.cjs --update-env
+   pm2 save
    ```
 
 3. **Verifique os logs e status:**
@@ -77,7 +78,8 @@ O PM2 garante que o worker continue rodando mesmo se o terminal fechar ou o proc
    pm2 status
 
    # Ver logs em tempo real
-   pm2 logs feed-bot-worker
+   pm2 logs feedbot-cuts
+   pm2 logs feedbot-media
 
    # Configurar para iniciar junto com o VPS se ele reiniciar
    pm2 startup

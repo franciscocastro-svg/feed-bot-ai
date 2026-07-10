@@ -1,5 +1,6 @@
 // Verifies an Instagram access token: scopes, account info, publish permission
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getInstagramToken } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,15 +45,14 @@ Deno.serve(async (req) => {
 
     const { account_id } = await req.json();
     const { data: canManageTokens } = await supabase.rpc("admin_has_permission", { _section: "tokens" });
-    const accountQuery = (canManageTokens ? adminClient : supabase)
+    const accountQuery = adminClient
       .from("instagram_accounts").select("*").eq("id", account_id);
     const { data: acc, error } = canManageTokens
       ? await accountQuery.maybeSingle()
       : await accountQuery.eq("user_id", user.id).maybeSingle();
     if (error || !acc) throw new Error("account not found");
 
-    const token = acc.access_token;
-    if (!token) throw new Error("Conta sem access_token");
+    const token = await getInstagramToken(adminClient, account_id);
 
     const checks: Record<string, any> = {
       token_valid: false,
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
       active: ready ? true : acc.active,
     };
     if (instagramLoginToken) updates.page_id = null;
-    await (canManageTokens ? adminClient : supabase).from("instagram_accounts").update(updates).eq("id", account_id);
+    await adminClient.from("instagram_accounts").update(updates).eq("id", account_id);
 
     return new Response(JSON.stringify({ ok: true, ready, ...checks }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

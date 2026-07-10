@@ -114,6 +114,13 @@ if (fs.existsSync(path.join(__dirname, ".env"))) {
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKER_ID = process.env.WORKER_ID || `vps-${process.pid}`;
+const WORKER_QUEUES = new Set(
+  String(process.env.WORKER_QUEUES || "all")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+);
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.10";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -137,6 +144,31 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const TEMP_DIR = path.join(__dirname, "temp");
 const FONTS_DIR = path.join(__dirname, "fonts");
+
+function queueEnabled(queue) {
+  return WORKER_QUEUES.has("all") || WORKER_QUEUES.has(queue);
+}
+
+async function reportWorkerHealth() {
+  const capabilities = {
+    cuts: queueEnabled("cuts"),
+    media: queueEnabled("media"),
+    ffmpeg: await commandExists("ffmpeg"),
+    ffprobe: await commandExists("ffprobe"),
+    yt_dlp: await commandExists("yt-dlp"),
+    transcription: Boolean(GEMINI_API_KEY || GROQ_API_KEY),
+  };
+  const { error } = await supabase.from("worker_health").upsert({
+    worker_id: WORKER_ID,
+    queue_mode: Array.from(WORKER_QUEUES).sort().join(","),
+    last_seen_at: new Date().toISOString(),
+    version: WORKER_VERSION,
+    capabilities,
+  }, { onConflict: "worker_id" });
+  if (error && !/worker_health|schema cache|does not exist/i.test(error.message || "")) {
+    console.warn("[health] Não foi possível registrar heartbeat:", error.message || error);
+  }
+}
 
 // Garante que as pastas necessárias existam
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -902,6 +934,19 @@ async function commandExists(command) {
   }
 }
 
+async function hasAudioStream(videoPath) {
+  if (!(await commandExists("ffprobe"))) return true;
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 ${shellQuote(videoPath)}`,
+      { maxBuffer: 1024 * 1024 },
+    );
+    return Boolean(String(stdout || "").trim());
+  } catch {
+    return false;
+  }
+}
+
 function parseJsonFromText(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
@@ -1173,6 +1218,11 @@ async function probeLocalVideoMetadata(videoPath, fallbackTitle = "Vídeo enviad
 
 async function downloadUploadedVideo(videoUrl, outputPath) {
   if (!videoUrl) throw new Error("URL do MP4 enviado não encontrada.");
+  const parsed = new URL(videoUrl);
+  const supabaseOrigin = new URL(SUPABASE_URL).origin;
+  if (parsed.origin !== supabaseOrigin || !parsed.pathname.includes("/storage/v1/object/")) {
+    throw new Error("Origem do MP4 enviado não é confiável.");
+  }
   if (await commandExists("curl")) {
     await execAsync(
       `curl -L --fail --retry 3 --connect-timeout 20 --max-time 900 -o ${shellQuote(outputPath)} ${shellQuote(videoUrl)}`,
@@ -1184,6 +1234,24 @@ async function downloadUploadedVideo(videoUrl, outputPath) {
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error("MP4 enviado não foi baixado ou está vazio.");
   }
+}
+
+async function downloadStoredVideo(job, outputPath) {
+  if (job.source_storage_path) {
+    const bucket = job.source_storage_bucket || "video-cut-inputs";
+    if (bucket !== "video-cut-inputs") throw new Error("Bucket de entrada de vídeo inválido.");
+    const expectedPrefix = `${job.user_id}/cuts/uploads/`;
+    if (!job.source_storage_path.startsWith(expectedPrefix) || job.source_storage_path.includes("..")) {
+      throw new Error("Caminho privado do MP4 inválido.");
+    }
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(job.source_storage_path, 900);
+    if (error || !data?.signedUrl) throw new Error(error?.message || "Não foi possível autorizar o download do MP4.");
+    await downloadUploadedVideo(data.signedUrl, outputPath);
+    return;
+  }
+
+  // Compatibility for jobs created before private inputs were introduced.
+  await downloadUploadedVideo(job.source_video_url || job.youtube_url, outputPath);
 }
 
 async function downloadYoutubeVideo(youtubeUrl, outputPath) {
@@ -1409,6 +1477,119 @@ async function transcribeClip(audioPath) {
   return null;
 }
 
+async function transcribeSourceForAnalysis(sourcePath, tempDir) {
+  const segmentDir = path.join(tempDir, "analysis-audio");
+  await fs.promises.mkdir(segmentDir, { recursive: true });
+  const segmentPattern = path.join(segmentDir, "part-%03d.mp3");
+  await execAsync(
+    `ffmpeg -y -i ${shellQuote(sourcePath)} -vn -ac 1 -ar 16000 -b:a 48k -f segment -segment_time 600 -reset_timestamps 1 ${shellQuote(segmentPattern)}`,
+    { maxBuffer: 20 * 1024 * 1024 },
+  );
+
+  const parts = (await fs.promises.readdir(segmentDir))
+    .filter((name) => /^part-\d+\.mp3$/.test(name))
+    .sort();
+  const words = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const segmentWords = await transcribeClip(path.join(segmentDir, parts[index]));
+    if (!segmentWords?.length) continue;
+    const offset = index * 600;
+    words.push(...segmentWords.map((word) => ({
+      ...word,
+      start: Number(word.start || 0) + offset,
+      end: Number(word.end || 0) + offset,
+    })));
+  }
+  return words;
+}
+
+function timedTranscript(words) {
+  const lines = [];
+  for (let index = 0; index < words.length; index += 18) {
+    const group = words.slice(index, index + 18);
+    if (!group.length) continue;
+    lines.push(`[${group[0].start.toFixed(1)}-${group[group.length - 1].end.toFixed(1)}] ${group.map((item) => item.word).join(" ")}`);
+  }
+  return lines.join("\n").slice(0, 120000);
+}
+
+function snapClipToTranscript(clip, words, index, duration) {
+  const normalized = clampClipSuggestion(clip, index, duration);
+  const nearStart = words
+    .filter((word) => Math.abs(word.start - normalized.start_seconds) <= 3)
+    .sort((a, b) => Math.abs(a.start - normalized.start_seconds) - Math.abs(b.start - normalized.start_seconds))[0];
+  const nearEnd = words
+    .filter((word) => Math.abs(word.end - normalized.end_seconds) <= 3)
+    .sort((a, b) => Math.abs(a.end - normalized.end_seconds) - Math.abs(b.end - normalized.end_seconds))[0];
+  return clampClipSuggestion({
+    ...normalized,
+    start_seconds: nearStart?.start ?? normalized.start_seconds,
+    end_seconds: nearEnd?.end ?? normalized.end_seconds,
+  }, index, duration);
+}
+
+async function analyzeTranscriptForCuts(job, metadata, words) {
+  if (!GEMINI_API_KEY || !words?.length) {
+    return {
+      clips: fallbackClipSuggestions(job, metadata),
+      mode: "timeline_fallback",
+      warning: !words?.length ? "Não foi possível transcrever o vídeo completo." : "GEMINI_API_KEY não configurada.",
+    };
+  }
+
+  const wantsHook = job.hook_enabled !== false;
+  const transcript = timedTranscript(words);
+  const requested = Math.min(5, Number(job.requested_clips || 1));
+  const prompt = `Você é um editor de vídeos curtos. Escolha os ${requested} melhores trechos desta TRANSCRIÇÃO COM TIMESTAMPS.
+
+Use somente o que está na transcrição. Priorize começo e fim naturais, gancho forte, emoção, clareza e uma ideia completa. Não comece no meio de frase. Cada corte deve ter entre 15 e 60 segundos. Não invente falas.
+
+Retorne APENAS JSON válido:
+{"clips":[{"start_seconds":12,"end_seconds":42,"title":"Título curto","hook":"Resumo do gancho","hook_text":"${wantsHook ? "OLHA ISSO" : ""}","caption":"Legenda fiel ao trecho","reason":"Motivo da escolha","hook_score":85,"emotion_score":75,"clarity_score":90,"viral_score":84,"score":84,"hashtags":["#reels"]}]}
+
+TRANSCRIÇÃO:
+${transcript}`;
+
+  try {
+    const model = process.env.GEMINI_CUT_ANALYSIS_MODEL || GEMINI_TEXT_MODEL;
+    const response = await withTransientRetry(`Gemini transcript cuts ${job.id}`, async () => {
+      const result = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.15, responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!result.ok) {
+        const body = await result.text().catch(() => "");
+        const error = new Error(`Gemini transcript cuts ${result.status}: ${body.slice(0, 500)}`);
+        error.status = result.status;
+        throw error;
+      }
+      return result;
+    }, [2000, 5000]);
+    const payload = await response.json();
+    const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+    const parsed = parseJsonFromText(text);
+    const clips = Array.isArray(parsed?.clips) ? parsed.clips : [];
+    if (!clips.length) throw new Error("A IA não retornou trechos utilizáveis.");
+    return {
+      clips: clips.slice(0, requested).map((clip, index) => snapClipToTranscript(clip, words, index + 1, metadata.duration_seconds)),
+      mode: "transcript_ai",
+      warning: null,
+    };
+  } catch (error) {
+    console.warn(`[cuts:${job.id}] Análise da transcrição falhou; usando modo básico:`, error?.message || error);
+    return {
+      clips: fallbackClipSuggestions(job, metadata),
+      mode: "timeline_fallback",
+      warning: `Análise inteligente indisponível: ${error?.message || error}`.slice(0, 500),
+    };
+  }
+}
+
 // ---- Detecção de silêncios via ffmpeg silencedetect ----
 async function detectSilences(videoPath, minDuration = 0.7) {
   try {
@@ -1562,8 +1743,11 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   const subtitleChain = fs.existsSync(subtitlePath)
     ? `;[withOverlay]ass=${shellQuote(subtitlePath).replace(/^'|'$/g, "").replace(/:/g, "\\:")}[v]`
     : ";[withOverlay]copy[v]";
-  // Áudio: loudnorm sempre
-  const audioChain = ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]";
+  // Mantém o vídeo renderizável mesmo quando o arquivo original não tem áudio.
+  const sourceHasAudio = await hasAudioStream(workingPath);
+  const audioChain = sourceHasAudio
+    ? ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]"
+    : `;anullsrc=r=48000:cl=stereo,atrim=duration=${Math.max(1, workingDuration)},asetpts=N/SR/TB[a]`;
   const filterComplex = videoChain + subtitleChain + audioChain;
 
   const pass2Cmd = [
@@ -1636,7 +1820,9 @@ async function autoPublishClip(job, clip, videoUrl, thumbnailUrl) {
       source_name: "Cortes IA",
       original_title: title,
       original_content: clip.reason || clip.hook || caption,
-      original_url: `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
+      original_url: job.source_kind === "upload"
+        ? `upload://${job.id}/cut-${clip.clip_index}-${clip.id}`
+        : `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
       original_image_url: thumbnailUrl,
       published_at: new Date().toISOString(),
       niche: "video",
@@ -1731,10 +1917,21 @@ async function processVideoCutJob(job) {
       await supabase.from("video_cut_jobs")
         .update({ progress: 15, updated_at: new Date().toISOString() })
         .eq("id", job.id);
-      await downloadUploadedVideo(job.source_video_url || job.youtube_url, sourcePath);
+      await downloadStoredVideo(job, sourcePath);
       metadata = await probeLocalVideoMetadata(sourcePath, job.source_title || job.source_file_name || "Vídeo enviado");
     } else {
       metadata = await probeYoutubeMetadata(job.youtube_url);
+      try {
+        await downloadYoutubeVideo(job.youtube_url, sourcePath);
+      } catch (err) {
+        await failVideoCutJob(
+          job,
+          `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como alternativa. Detalhe: ${err?.message || err}`,
+          true,
+          0,
+        );
+        return;
+      }
     }
 
     const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
@@ -1747,13 +1944,29 @@ async function processVideoCutJob(job) {
       .update({
         source_title: metadata.title,
         duration_seconds: metadata.duration_seconds,
-        source_video_url: isUploadJob ? (job.source_video_url || job.youtube_url) : job.source_video_url,
+        source_video_url: isUploadJob ? null : job.source_video_url,
         progress: 25,
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
 
-    const suggestions = await analyzeYoutubeForCuts(job, metadata, isUploadJob ? (job.source_video_url || job.youtube_url) : job.youtube_url);
+    let transcriptWords = [];
+    try {
+      transcriptWords = await transcribeSourceForAnalysis(sourcePath, tempDir);
+    } catch (error) {
+      console.warn(`[cuts:${job.id}] Transcrição para análise indisponível:`, error?.message || error);
+    }
+    const analysis = await analyzeTranscriptForCuts(job, metadata, transcriptWords);
+    const suggestions = analysis.clips;
+
+    await supabase.from("video_cut_jobs")
+      .update({
+        analysis_mode: analysis.mode,
+        analysis_warning: analysis.warning,
+        progress: 35,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
 
     await supabase.from("video_cut_jobs")
       .update({ status: "processing", progress: 40, updated_at: new Date().toISOString() })
@@ -1765,20 +1978,6 @@ async function processVideoCutJob(job) {
       .gt("clip_index", suggestions.length);
     if (staleClipsError) {
       console.warn(`[cuts:${job.id}] Falha ao limpar cortes antigos:`, staleClipsError.message || staleClipsError);
-    }
-
-    if (!isUploadJob) {
-      try {
-        await downloadYoutubeVideo(job.youtube_url, sourcePath);
-      } catch (err) {
-        await failVideoCutJob(
-          job,
-          `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como fallback. Detalhe: ${err?.message || err}`,
-          true,
-          0,
-        );
-        return;
-      }
     }
 
     const settings = await loadEffectivePostSettings({
@@ -1875,6 +2074,11 @@ async function processVideoCutJob(job) {
       })
       .eq("id", job.id);
     await finishVideoCutUsage(job.id, generatedCount);
+    if (isUploadJob && job.source_storage_path) {
+      const bucket = job.source_storage_bucket || "video-cut-inputs";
+      const { error: removeError } = await supabase.storage.from(bucket).remove([job.source_storage_path]);
+      if (removeError) console.warn(`[cuts:${job.id}] Não foi possível limpar o MP4 privado:`, removeError.message || removeError);
+    }
     console.log(`[cuts:${job.id}] ${generatedCount} corte(s) pronto(s) para revisão.`);
   } catch (err) {
     const message = err?.message || String(err);
@@ -1989,7 +2193,7 @@ async function processPost(post) {
 
 // Loop principal de polling
 async function main() {
-  console.log("Iniciando Worker de Geração de Mídias...");
+  console.log(`Iniciando worker ${WORKER_ID}. Filas: ${Array.from(WORKER_QUEUES).join(", ")}`);
   
   try {
     await setupFonts();
@@ -1997,42 +2201,51 @@ async function main() {
     console.warn("Aviso: fontes/runtime visual não carregados na inicialização. O worker continua online, mas a geração visual vai falhar até corrigir a dependência.", err?.message || err);
   }
 
+  await reportWorkerHealth();
+  const heartbeatTimer = setInterval(() => {
+    reportWorkerHealth().catch((error) => {
+      console.warn("[health] Heartbeat falhou:", error?.message || error);
+    });
+  }, 30000);
+  heartbeatTimer.unref();
+
   while (true) {
     try {
-      await processQueuedVideoCutJobs();
-      await processQueuedReelJobs();
+      if (queueEnabled("cuts")) await processQueuedVideoCutJobs();
 
-      // Busca posts agendados
-      const { data: pending, error } = await supabase
-        .from("scheduled_posts")
-        .select("id, user_id, media_type, instagram_account_id, news_item_id, news_items(*)")
-        .eq("status", "scheduled")
-        .limit(5);
+      if (queueEnabled("media")) {
+        await processQueuedReelJobs();
 
-      if (error) {
-        console.error("Erro ao buscar posts da fila:", error);
-      } else if (pending && pending.length > 0) {
-        // Filtra posts que precisam de geração de mídia
-        const todo = pending.filter((p) => {
-          const n = p.news_items;
-          if (!n) return false;
-          // Aguarda reescrita de IA terminar
-          if (!n.rewritten_title || !n.rewritten_summary) return false;
-          // Se já está pronto, mas é reel sem vídeo, precisa processar
-          if (n.editorial_ready) {
-            if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id)) return true;
-            return false;
-          }
-          return true;
-        });
+        // Busca posts agendados que ainda precisam de geração de mídia.
+        const { data: pending, error } = await supabase
+          .from("scheduled_posts")
+          .select("id, user_id, media_type, instagram_account_id, news_item_id, news_items(*)")
+          .eq("status", "scheduled")
+          .limit(5);
 
-        if (todo.length > 0) {
-          console.log(`Fila: ${todo.length} posts pendentes encontrados.`);
-          for (const post of todo.slice(0, 1)) {
-            await processPost(post);
+        if (error) {
+          console.error("Erro ao buscar posts da fila:", error);
+        } else if (pending && pending.length > 0) {
+          const todo = pending.filter((p) => {
+            const n = p.news_items;
+            if (!n) return false;
+            if (!n.rewritten_title || !n.rewritten_summary) return false;
+            if (n.editorial_ready) {
+              if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id)) return true;
+              return false;
+            }
+            return true;
+          });
+
+          if (todo.length > 0) {
+            console.log(`Fila: ${todo.length} posts pendentes encontrados.`);
+            for (const post of todo.slice(0, 1)) {
+              await processPost(post);
+            }
           }
         }
       }
+
     } catch (err) {
       console.error("Erro no ciclo do worker:", err);
     }

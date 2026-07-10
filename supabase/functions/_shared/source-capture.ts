@@ -82,6 +82,43 @@ export function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
+function isPrivateIpAddress(address: string): boolean {
+  const ip = address.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isPrivateHostname(ip)) return true;
+  if (/^(0|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])|198\.(?:18|19)|22[4-9]|23\d|24\d|25[0-5])\./.test(ip)) return true;
+  if (ip === "::" || ip.startsWith("::ffff:")) {
+    const mapped = ip.replace(/^::ffff:/, "");
+    return mapped === ip || isPrivateIpAddress(mapped);
+  }
+  return false;
+}
+
+async function assertPublicDns(raw: string): Promise<string> {
+  const safe = assertSafeHttpUrl(raw);
+  const hostname = new URL(safe).hostname.replace(/^\[|\]$/g, "");
+  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) {
+    if (isPrivateIpAddress(hostname)) throw new Error("URL privada/local não permitida");
+    return safe;
+  }
+
+  const runtime = globalThis as typeof globalThis & {
+    Deno?: { resolveDns: (name: string, type: "A" | "AAAA") => Promise<string[]> };
+  };
+  if (!runtime.Deno?.resolveDns) return safe;
+
+  const resolved: string[] = [];
+  for (const type of ["A", "AAAA"] as const) {
+    try {
+      resolved.push(...await runtime.Deno.resolveDns(hostname, type));
+    } catch {
+      // Some public hosts expose only one address family.
+    }
+  }
+  if (resolved.length === 0) throw new Error("Domínio da fonte não pôde ser resolvido");
+  if (resolved.some(isPrivateIpAddress)) throw new Error("Domínio aponta para rede privada/local");
+  return safe;
+}
+
 export function assertSafeHttpUrl(raw: string): string {
   const url = new URL(raw);
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("URL precisa usar http ou https");
@@ -120,19 +157,59 @@ function timeoutSignal(timeoutMs: number): AbortSignal {
   return controller.signal;
 }
 
+async function readResponseBodyLimited(res: Response, maxBytes: number): Promise<Uint8Array> {
+  const declared = Number(res.headers.get("content-length") || 0);
+  if (declared > maxBytes) throw new Error("Resposta da fonte excede o limite de tamanho");
+  if (!res.body?.getReader) {
+    const fallback = new Uint8Array(await res.arrayBuffer());
+    if (fallback.byteLength > maxBytes) throw new Error("Resposta da fonte excede o limite de tamanho");
+    return fallback;
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("Resposta da fonte excede o limite de tamanho");
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return joined;
+}
+
 export async function fetchTextSmart(url: string, timeoutMs = 15000): Promise<{ text: string; finalUrl: string; contentType: string }> {
-  const safeUrl = assertSafeHttpUrl(url);
-  const res = await fetch(safeUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; FluxFeed/1.0)",
-      "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
-      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
-    },
-    redirect: "follow",
-    signal: timeoutSignal(timeoutMs),
-  });
+  let currentUrl = await assertPublicDns(url);
+  let res: Response | null = null;
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount++) {
+    res = await fetch(currentUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; FluxFeed/1.0)",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+      },
+      redirect: "manual",
+      signal: timeoutSignal(timeoutMs),
+    });
+    if (![301, 302, 303, 307, 308].includes(res.status)) break;
+    const location = res.headers.get("location");
+    if (!location) throw new Error("Redirecionamento da fonte sem destino");
+    if (redirectCount === 5) throw new Error("A fonte excedeu o limite de redirecionamentos");
+    currentUrl = await assertPublicDns(new URL(location, currentUrl).toString());
+  }
+  if (!res) throw new Error("Fonte não respondeu");
   if (!res.ok) throw new Error(`Fonte respondeu HTTP ${res.status}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
+  const buf = await readResponseBodyLimited(res, 5 * 1024 * 1024);
   const contentType = res.headers.get("content-type") || "";
   let charset = (contentType.match(/charset=([^;]+)/i)?.[1] || "").trim().toLowerCase();
   if (!charset) {
@@ -143,9 +220,9 @@ export async function fetchTextSmart(url: string, timeoutMs = 15000): Promise<{ 
   if (!charset) charset = "utf-8";
   if (charset === "iso-8859-1" || charset === "latin1" || charset === "iso8859-1") charset = "windows-1252";
   try {
-    return { text: new TextDecoder(charset, { fatal: false }).decode(buf), finalUrl: res.url || safeUrl, contentType };
+    return { text: new TextDecoder(charset, { fatal: false }).decode(buf), finalUrl: currentUrl, contentType };
   } catch {
-    return { text: new TextDecoder("utf-8", { fatal: false }).decode(buf), finalUrl: res.url || safeUrl, contentType };
+    return { text: new TextDecoder("utf-8", { fatal: false }).decode(buf), finalUrl: currentUrl, contentType };
   }
 }
 

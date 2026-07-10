@@ -5,6 +5,7 @@ import {
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
   filterItemsForSource,
+  fetchTextSmart,
   parseAtomItems,
   parseHtmlListing,
   pickLeastLoadedInstagram,
@@ -71,6 +72,29 @@ describe("source capture utilities", () => {
   it("rejects private URLs", () => {
     expect(() => assertSafeHttpUrl("http://127.0.0.1:54321/feed")).toThrow("URL privada");
     expect(() => assertSafeHttpUrl("https://example.com/feed")).not.toThrow();
+  });
+
+  it("rejects redirects from a public source to a private destination", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {
+      status: 302,
+      headers: { location: "http://127.0.0.1/internal" },
+    })));
+
+    await expect(fetchTextSmart("https://example.com/feed"))
+      .rejects.toThrow("URL privada");
+  });
+
+  it("rejects oversized source responses before parsing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("small", {
+      status: 200,
+      headers: {
+        "content-type": "text/xml",
+        "content-length": String(6 * 1024 * 1024),
+      },
+    })));
+
+    await expect(fetchTextSmart("https://example.com/feed"))
+      .rejects.toThrow("limite de tamanho");
   });
 
   it("builds Google News queries for person and topic sources", () => {

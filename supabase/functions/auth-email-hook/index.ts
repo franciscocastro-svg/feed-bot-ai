@@ -12,7 +12,7 @@ import { ReauthenticationEmail } from '../_shared/email-templates/reauthenticati
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+    'authorization, x-client-info, apikey, content-type, x-auth-email-hook-secret, x-supabase-hook-secret, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
 const SITE_NAME = 'Flux & Feed'
@@ -20,6 +20,7 @@ const PUBLIC_SITE_URL = Deno.env.get('PUBLIC_SITE_URL') || 'https://fluxifeed.co
 const AUTH_EMAIL_FROM =
   Deno.env.get('AUTH_EMAIL_FROM') || 'Flux & Feed <suporte@news.fluxifeed.com>'
 const AUTH_EMAIL_REPLY_TO = Deno.env.get('AUTH_EMAIL_REPLY_TO') || 'suporte@fluxifeed.com'
+const AUTH_EMAIL_HOOK_SECRET = Deno.env.get('AUTH_EMAIL_HOOK_SECRET') || ''
 
 const EMAIL_SUBJECTS: Record<string, string> = {
   signup: 'Confirme seu e-mail no Flux & Feed',
@@ -156,6 +157,18 @@ async function handleWebhook(req: Request): Promise<Response> {
   }
 
   if (!payload) {
+    const authorization = req.headers.get('authorization') || ''
+    const providedSecret =
+      req.headers.get('x-auth-email-hook-secret') ||
+      req.headers.get('x-supabase-hook-secret') ||
+      (authorization.startsWith('Bearer ') ? authorization.slice(7) : '')
+    if (!AUTH_EMAIL_HOOK_SECRET || providedSecret !== AUTH_EMAIL_HOOK_SECRET) {
+      console.error('Raw auth email hook rejected: missing or invalid secret')
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     try {
       payload = await req.json()
     } catch {
@@ -210,6 +223,26 @@ async function handleWebhook(req: Request): Promise<Response> {
     })
   }
 
+  if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    return new Response(JSON.stringify({ error: 'Invalid recipient' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+  try {
+    const target = new URL(confirmationUrl)
+    const allowedOrigins = new Set([
+      new URL(PUBLIC_SITE_URL).origin,
+      new URL(Deno.env.get('SUPABASE_URL') || PUBLIC_SITE_URL).origin,
+    ])
+    if (!allowedOrigins.has(target.origin)) throw new Error('origin not allowed')
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid confirmation URL' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   const EmailTemplate = EMAIL_TEMPLATES[emailType]
   if (!EmailTemplate) {
     console.error('Unknown email type', { emailType })
@@ -259,6 +292,12 @@ Deno.serve(async (req) => {
   const url = new URL(req.url)
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   if (url.pathname.endsWith('/preview')) return handlePreview(req)
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
   try {
     return await handleWebhook(req)

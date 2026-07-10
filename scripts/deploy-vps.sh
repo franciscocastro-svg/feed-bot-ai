@@ -98,6 +98,9 @@ secure_secret_files
 install_web_dependencies
 install_worker_dependencies
 
+echo "==> Running automated checks"
+npm run check
+
 echo "==> Building frontend"
 npm run build
 
@@ -105,8 +108,8 @@ echo "==> Checking worker syntax"
 node --check worker/index.js
 
 echo "==> Restarting PM2 services"
-pm2 restart feedbot-worker --update-env
-pm2 restart feedbot-webhook --update-env
+pm2 delete feedbot-worker >/dev/null 2>&1 || true
+pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
 if command -v nginx >/dev/null 2>&1; then

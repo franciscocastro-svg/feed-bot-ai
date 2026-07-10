@@ -1,5 +1,6 @@
 // Publishes scheduled posts that are due, via the Meta Graph API.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { attachInstagramTokens } from "../_shared/instagram-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -536,6 +537,7 @@ Deno.serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
     const body = await req.json().catch(() => ({} as any));
     let userId: string | undefined = body?.user_id;
     const targetPostId = typeof body?.scheduled_post_id === "string" ? body.scheduled_post_id : undefined;
@@ -554,6 +556,11 @@ Deno.serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
       userId = user.id;
+    }
+
+    const { data: entitled } = await adminClient.rpc("has_active_entitlement", { _uid: userId });
+    if (entitled !== true) {
+      return new Response(JSON.stringify({ error: "active_subscription_required" }), { status: 403, headers: corsHeaders });
     }
 
 
@@ -637,7 +644,7 @@ Deno.serve(async (req) => {
     let awaitingChecked = 0;
     let awaitingRecovered = 0;
     let awaitingQuery = supabase.from("scheduled_posts")
-      .select("*, news_items(*), instagram_accounts(*)")
+      .select("*, news_items(*), instagram_accounts(id,user_id,username,ig_user_id,page_id,niche,active,token_expires_at,last_verified_at,verification_status,custom_hashtags)")
       .eq("user_id", userId)
       .eq("status", "awaiting_container")
       .not("ig_creation_id", "is", null);
@@ -652,7 +659,8 @@ Deno.serve(async (req) => {
     }
 
     const { data: awaitingContainers } = await awaitingQuery;
-    for (const p of (awaitingContainers || []) as any[]) {
+    const awaitingWithCredentials = await attachInstagramTokens(adminClient, (awaitingContainers || []) as any[]);
+    for (const p of awaitingWithCredentials as any[]) {
       if (processed > 0) break;
       awaitingChecked++;
 
@@ -674,7 +682,7 @@ Deno.serve(async (req) => {
       }
 
       if (acc.token_expires_at && new Date(acc.token_expires_at).getTime() <= Date.now()) {
-        await supabase.from("instagram_accounts").update({
+        await adminClient.from("instagram_accounts").update({
           active: false,
           verification_status: "invalid",
           token_expires_at: nowIso,
@@ -849,7 +857,7 @@ Deno.serve(async (req) => {
     }
 
     let dueQuery = supabase.from("scheduled_posts")
-      .select("*, news_items(*), instagram_accounts(*)")
+      .select("*, news_items(*), instagram_accounts(id,user_id,username,ig_user_id,page_id,niche,active,token_expires_at,last_verified_at,verification_status,custom_hashtags)")
       .eq("user_id", userId).eq("status", "scheduled")
       .lte("scheduled_for", new Date().toISOString());
 
@@ -859,7 +867,8 @@ Deno.serve(async (req) => {
       dueQuery = dueQuery.order("scheduled_for", { ascending: true }).limit(5);
     }
 
-    const { data: due } = await dueQuery;
+    const { data: dueRows } = await dueQuery;
+    const due = await attachInstagramTokens(adminClient, (dueRows || []) as any[]);
 
     // Pega último posted_at de cada conta IG envolvida
     const accountIds = Array.from(new Set((due || []).map((p: any) => p.instagram_account_id).filter(Boolean)));
@@ -1249,7 +1258,7 @@ Deno.serve(async (req) => {
 
         if (isExpiredToken && acc?.id) {
           expiredAccountIds.add(acc.id);
-          await supabase.from("instagram_accounts").update({
+          await adminClient.from("instagram_accounts").update({
             active: false,
             verification_status: "invalid",
             token_expires_at: new Date().toISOString(),
