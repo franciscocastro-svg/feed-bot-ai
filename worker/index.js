@@ -1796,37 +1796,72 @@ async function processVideoCutJob(job) {
       console.warn(`[cuts:${job.id}] Falha ao limpar clips antigos: ${cleanupError.message}`);
     }
 
-    const total = suggestions.length || 1;
+    // Multi-formato: cada sugestão × cada formato = 1 clip
+    const jobFormats = Array.isArray(job.formats) && job.formats.length
+      ? job.formats.filter((f) => ["reels", "feed_square", "feed_portrait"].includes(f))
+      : [job.format || "reels"];
+    const uniqueFormats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
+    const total = (suggestions.length || 1) * uniqueFormats.length;
+    let processed = 0;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
-      const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
-        .upsert({
-          job_id: job.id,
-          user_id: job.user_id,
-          instagram_account_id: job.instagram_account_id,
-          clip_index: idx + 1,
-          title: suggestion.title,
-          hook: suggestion.hook,
-          caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
-          hashtags: suggestion.hashtags,
-          reason: suggestion.reason,
-          score: suggestion.score,
-          start_seconds: suggestion.start_seconds,
-          end_seconds: suggestion.end_seconds,
-          duration_seconds: suggestion.duration_seconds,
-          status: "rendering",
-          format: job.format || "reels",
-          subtitle_style: job.subtitle_style || "classic",
-          video_url: null,
-          thumbnail_url: null,
-          error_message: null,
-        }, { onConflict: "job_id,clip_index" })
-        .select("*")
-        .single();
+      for (let fIdx = 0; fIdx < uniqueFormats.length; fIdx += 1) {
+        const clipFormat = uniqueFormats[fIdx];
+        const clipIndex = idx * uniqueFormats.length + fIdx + 1;
+        const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
+          .upsert({
+            job_id: job.id,
+            user_id: job.user_id,
+            instagram_account_id: job.instagram_account_id,
+            clip_index: clipIndex,
+            title: suggestion.title,
+            hook: suggestion.hook,
+            hook_text: suggestion.hook_text || null,
+            hook_score: suggestion.hook_score,
+            emotion_score: suggestion.emotion_score,
+            clarity_score: suggestion.clarity_score,
+            viral_score: suggestion.viral_score,
+            caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
+            hashtags: suggestion.hashtags,
+            reason: suggestion.reason,
+            score: suggestion.score,
+            start_seconds: suggestion.start_seconds,
+            end_seconds: suggestion.end_seconds,
+            duration_seconds: suggestion.duration_seconds,
+            status: "rendering",
+            format: clipFormat,
+            subtitle_style: job.subtitle_style || "classic",
+            subtitle_error: false,
+            video_url: null,
+            thumbnail_url: null,
+            error_message: null,
+          }, { onConflict: "job_id,clip_index" })
+          .select("*")
+          .single();
 
-      if (clipError) throw clipError;
-      const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
-      generatedCount += 1;
+        if (clipError) throw clipError;
+        // Sinal para generateVideoCutClip renderizar hook_text se hook_enabled
+        clip.hook_enabled = job.hook_enabled !== false;
+        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
+        generatedCount += 1;
+        processed += 1;
+
+        if (job.auto_publish && videoUrl && fIdx === 0) {
+          // Auto-publica só o primeiro formato pra não spammar a conta
+          const { data: fullClip } = await supabase
+            .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
+          if (fullClip) await autoPublishClip(job, fullClip, videoUrl, thumbnailUrl);
+        }
+
+        await supabase.from("video_cut_jobs")
+          .update({
+            generated_clips: generatedCount,
+            progress: Math.min(95, 45 + Math.round((processed / total) * 45)),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
+      }
+    }
 
       // Refetch clip com dados atualizados (video_url etc) para auto-publish
       if (job.auto_publish && videoUrl) {
