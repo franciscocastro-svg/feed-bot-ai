@@ -4,7 +4,7 @@ import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, Refre
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
-import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds } from "@/lib/videoCuts";
+import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds, viralBadgeTone, viralBadgeLabel, CUT_FORMAT_OPTIONS } from "@/lib/videoCuts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type CutFormat = "reels" | "feed_square" | "feed_portrait";
+
 type VideoCutClip = {
   id: string;
   job_id: string;
@@ -24,6 +26,7 @@ type VideoCutClip = {
   status: string;
   title?: string | null;
   hook?: string | null;
+  hook_text?: string | null;
   caption?: string | null;
   hashtags?: string[] | string | null;
   hashtagsText?: string;
@@ -33,6 +36,12 @@ type VideoCutClip = {
   video_url?: string | null;
   thumbnail_url?: string | null;
   news_item_id?: string | null;
+  format?: CutFormat | string | null;
+  viral_score?: number | null;
+  hook_score?: number | null;
+  emotion_score?: number | null;
+  clarity_score?: number | null;
+  subtitle_error?: boolean | null;
 };
 
 type VideoCutJob = {
@@ -159,14 +168,22 @@ export default function Cuts() {
   const [accountId, setAccountId] = useState("");
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [format, setFormat] = useState<"reels" | "feed_square" | "feed_portrait">("reels");
+  const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke">("classic");
+  const [hookEnabled, setHookEnabled] = useState(true);
   const [autoPublish, setAutoPublish] = useState(false);
   const [removeSilences, setRemoveSilences] = useState(true);
   const [zoomEffect, setZoomEffect] = useState(false);
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
   const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
+
+  const toggleFormat = (value: CutFormat, checked: boolean) => {
+    setFormats((prev) => {
+      if (checked) return prev.includes(value) ? prev : [...prev, value];
+      return prev.length > 1 ? prev.filter((f) => f !== value) : prev;
+    });
+  };
 
   const bounds = useMemo(() => videoCutRequestBounds({
     used: usage?.cuts_used_today,
