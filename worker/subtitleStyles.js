@@ -99,11 +99,14 @@ function groupWords(words, maxWordsPerLine = 3) {
  * @param {{width:number,height:number}} dims
  * @param {number} clipDurationSeconds
  */
-export function buildAssSubtitleFile(words, styleName, format, dims, clipDurationSeconds) {
+export function buildAssSubtitleFile(words, styleName, format, dims, clipDurationSeconds, options = {}) {
   const preset = STYLE_PRESETS[styleName] || STYLE_PRESETS.classic;
   const fontSize = fontSizeForFormat(format);
   const marginV = marginVForFormat(format);
-  const groups = groupWords(words, 3);
+  const hookFontSize = Math.round(fontSize * 1.55);
+  const groups = groupWords(words || [], 3);
+  const hookText = escapeAssText(options.hookText || "");
+  const hookDurationSec = Math.min(3.5, Math.max(1.5, Number(options.hookDurationSeconds) || 3));
 
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -115,12 +118,22 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Inter,${fontSize},${preset.primary},${preset.secondary},${preset.outline},${preset.back},${preset.bold},0,0,0,100,100,0,0,1,${preset.outlineWidth},${preset.shadow},2,60,60,${marginV},1
+Style: Hook,Impact,${hookFontSize},&H0000FFFF,&H0000FFFF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,6,2,8,60,60,${Math.round(dims.height * 0.18)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
   const events = [];
+
+  // Hook chamativo: primeiros ~3s no terço superior com fade + pop
+  if (hookText) {
+    const hookEnd = Math.min(hookDurationSec, Math.max(1, clipDurationSeconds - 0.2));
+    events.push(
+      `Dialogue: 1,${secondsToAssTime(0)},${secondsToAssTime(hookEnd)},Hook,,0,0,0,,{\\fad(200,300)\\t(0,300,\\fscx115\\fscy115)}${hookText}`,
+    );
+  }
+
   for (const group of groups) {
     if (!group.length) continue;
     const groupStart = group[0].start;
@@ -128,13 +141,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if (groupEnd <= groupStart) continue;
     if (groupStart >= clipDurationSeconds) continue;
     const safeEnd = Math.min(groupEnd, clipDurationSeconds);
-
-    // Monta texto com destaque na palavra ativa via \k (karaoke) — funciona nos 3 estilos.
-    // O truque: envolvemos cada palavra num \k<centiseconds> pra ffmpeg animar o highlight.
     const parts = group.map((w) => {
       const durCs = Math.max(1, Math.round((w.end - w.start) * 100));
       const txt = escapeAssText(w.word);
-      // \kf preenche a cor secundária progressivamente na palavra ativa
       return `{\\kf${durCs}\\1c${preset.primary}\\2c${preset.highlightColor}}${txt} `;
     });
     const text = parts.join("").trimEnd();
@@ -142,6 +151,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   }
 
   return header + events.join("\n") + "\n";
+}
+
+// Gera arquivo ASS APENAS com o hook (sem palavras) — usado quando a transcrição falha
+// mas ainda queremos exibir o gancho chamativo.
+export function buildHookOnlyAssFile(hookText, format, dims, clipDurationSeconds, hookDurationSeconds = 3) {
+  return buildAssSubtitleFile([], "classic", format, dims, clipDurationSeconds, {
+    hookText,
+    hookDurationSeconds,
+  });
 }
 
 export const SUBTITLE_STYLE_NAMES = Object.keys(STYLE_PRESETS);
