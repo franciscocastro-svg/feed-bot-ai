@@ -1863,21 +1863,6 @@ async function processVideoCutJob(job) {
       }
     }
 
-      // Refetch clip com dados atualizados (video_url etc) para auto-publish
-      if (job.auto_publish && videoUrl) {
-        const { data: fullClip } = await supabase
-          .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
-        if (fullClip) await autoPublishClip(job, fullClip, videoUrl, thumbnailUrl);
-      }
-
-      await supabase.from("video_cut_jobs")
-        .update({
-          generated_clips: generatedCount,
-          progress: Math.min(95, 45 + Math.round(((idx + 1) / total) * 45)),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.id);
-    }
 
     await supabase.from("video_cut_jobs")
       .update({
