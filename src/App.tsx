@@ -56,6 +56,7 @@ const CheckoutReturn = lazyRoute(() => import("./pages/CheckoutReturn"));
 const Terms = lazyRoute(() => import("./pages/Terms"));
 const Privacy = lazyRoute(() => import("./pages/Privacy"));
 const ForgotPassword = lazyRoute(() => import("./pages/ForgotPassword"));
+const VerifyEmail = lazyRoute(() => import("./pages/VerifyEmail"));
 const ResetPassword = lazyRoute(() => import("./pages/ResetPassword"));
 const DataDeletionStatus = lazyRoute(() => import("./pages/DataDeletionStatus"));
 const NotFound = lazyRoute(() => import("./pages/NotFound"));
@@ -86,6 +87,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/data-deletion" element={<DataDeletionStatus />} />

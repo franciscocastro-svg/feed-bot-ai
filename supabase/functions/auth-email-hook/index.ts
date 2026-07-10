@@ -44,7 +44,8 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 
 const SAMPLE_EMAIL = 'user@example.test'
 const SAMPLE_DATA: Record<string, object> = {
-  signup: { siteName: SITE_NAME, siteUrl: PUBLIC_SITE_URL, recipient: SAMPLE_EMAIL, confirmationUrl: PUBLIC_SITE_URL },
+  signup: { siteName: SITE_NAME, siteUrl: PUBLIC_SITE_URL, recipient: SAMPLE_EMAIL, confirmationUrl: PUBLIC_SITE_URL, token: '123456' },
+  email_confirm: { siteName: SITE_NAME, siteUrl: PUBLIC_SITE_URL, recipient: SAMPLE_EMAIL, confirmationUrl: PUBLIC_SITE_URL, token: '123456' },
   magiclink: { siteName: SITE_NAME, confirmationUrl: PUBLIC_SITE_URL },
   recovery: { siteName: SITE_NAME, confirmationUrl: PUBLIC_SITE_URL },
   invite: { siteName: SITE_NAME, siteUrl: PUBLIC_SITE_URL, confirmationUrl: PUBLIC_SITE_URL },

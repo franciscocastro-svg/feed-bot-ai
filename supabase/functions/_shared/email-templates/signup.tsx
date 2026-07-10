@@ -20,6 +20,7 @@ interface SignupEmailProps {
   siteUrl: string
   recipient: string
   confirmationUrl: string
+  token?: string
 }
 
 export const SignupEmail = ({
@@ -27,6 +28,7 @@ export const SignupEmail = ({
   siteUrl,
   recipient,
   confirmationUrl,
+  token,
 }: SignupEmailProps) => (
   <Html lang="pt-BR" dir="ltr">
     <Head />
@@ -45,10 +47,28 @@ export const SignupEmail = ({
             <strong>{siteName}</strong>
           </Link>
           ! Para começar a usar sua conta, confirme o e-mail{' '}
-          <strong>{recipient}</strong> clicando no botão abaixo.
+          <strong>{recipient}</strong> usando o código abaixo.
         </Text>
+        {token ? (
+          <Section style={{ textAlign: 'center', margin: '28px 0' }}>
+            <Text style={{
+              display: 'inline-block',
+              margin: 0,
+              padding: '16px 24px',
+              borderRadius: '8px',
+              backgroundColor: '#f4f0f4',
+              color: '#180617',
+              fontSize: '30px',
+              fontWeight: 700,
+              letterSpacing: '8px',
+            }}>
+              {token}
+            </Text>
+          </Section>
+        ) : null}
+        <Text style={text}>O código é pessoal e expira em poucos minutos.</Text>
         <Button style={button} href={confirmationUrl}>
-          Confirmar e-mail
+          Confirmar pelo navegador
         </Button>
         <Text style={text}>
           Se o botão não funcionar, copie e cole este link no navegador:{' '}

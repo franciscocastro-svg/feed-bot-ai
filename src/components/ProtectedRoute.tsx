@@ -1,6 +1,6 @@
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Clock, XCircle, CreditCard, ShieldCheck } from "lucide-react";
+import { Loader2, MailCheck, XCircle, CreditCard, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -123,13 +123,18 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="max-w-md text-center space-y-4">
-          <Clock className="h-16 w-16 text-orange-500 mx-auto" />
-          <h1 className="text-2xl font-bold">Aguardando aprovação</h1>
+          <MailCheck className="h-16 w-16 text-primary mx-auto" />
+          <h1 className="text-2xl font-bold">Confirme seu e-mail</h1>
           <p className="text-muted-foreground">
-            Seu cartão foi cadastrado e seu acesso está aguardando aprovação manual do administrador.
+            Digite o código enviado ao seu e-mail. Após a confirmação, o acesso é liberado automaticamente.
           </p>
           <p className="text-sm text-muted-foreground">{user.email}</p>
-          <Button variant="outline" onClick={() => signOut()}>Sair</Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button asChild>
+              <Link to={`/verify-email?email=${encodeURIComponent(user.email || "")}`}>Informar código</Link>
+            </Button>
+            <Button variant="outline" onClick={() => signOut()}>Sair</Button>
+          </div>
         </div>
       </div>
     );

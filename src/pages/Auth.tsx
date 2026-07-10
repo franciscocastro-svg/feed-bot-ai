@@ -103,7 +103,7 @@ export default function Auth() {
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
-        emailRedirectTo: window.location.origin + "/pricing",
+        emailRedirectTo: window.location.origin + "/verify-email",
         data: {
           display_name: parsed.data.name,
           whatsapp: parsed.data.whatsapp,
@@ -116,7 +116,9 @@ export default function Auth() {
     setLoading(false);
     if (error) return toast.error(error.message);
     trackMetaEvent("Lead", { content_name: "signup" });
-    toast.success("Conta criada! Confirme seu email e cadastre o cartão para ativar os 7 dias.");
+    sessionStorage.setItem("ff_pending_verification_email", parsed.data.email);
+    toast.success("Conta criada! Digite o código enviado ao seu e-mail.");
+    nav(`/verify-email?email=${encodeURIComponent(parsed.data.email)}`);
   };
 
   const handleGoogle = async () => {
