@@ -1510,21 +1510,41 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     }
   }
 
-  // === Transcrição (extrai áudio e chama Groq) ===
+  // === Transcrição (extrai áudio e chama Gemini/Groq) ===
   let transcript = null;
-  if (wantsSubtitles) {
+  let subtitleError = false;
+  const hookText = clip.hook_enabled === false ? "" : (clip.hook_text || "").trim();
+  const hasHook = hookText.length > 0;
+  if (wantsSubtitles || hasHook) {
     try {
-      await execAsync(
-        `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
-        { maxBuffer: 10 * 1024 * 1024 },
-      );
-      const words = await transcribeClip(audioPath);
-      if (words && words.length > 0) {
-        transcript = words;
-        const assContent = buildAssSubtitleFile(words, subtitleStyle, format, { width: outW, height: outH }, workingDuration);
+      let words = [];
+      if (wantsSubtitles) {
+        await execAsync(
+          `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
+          { maxBuffer: 10 * 1024 * 1024 },
+        );
+        words = (await transcribeClip(audioPath)) || [];
+        if (words.length > 0) {
+          transcript = words;
+        } else {
+          subtitleError = true;
+          console.warn(`[cuts:${clip.id}] Transcrição retornou vazia — clip ficará sem legenda.`);
+        }
+      }
+      // Sempre grava o .ass se houver palavras OU hook — o hook aparece mesmo sem transcrição.
+      if (words.length > 0 || hasHook) {
+        const assContent = buildAssSubtitleFile(
+          words,
+          wantsSubtitles ? subtitleStyle : "classic",
+          format,
+          { width: outW, height: outH },
+          workingDuration,
+          { hookText: hasHook ? hookText : "", hookDurationSeconds: 3 },
+        );
         await fs.promises.writeFile(subtitlePath, assContent, "utf8");
       }
     } catch (err) {
+      subtitleError = wantsSubtitles;
       console.warn(`[cuts:${clip.id}] Legenda não gerada:`, err?.message);
     }
   }
@@ -1591,6 +1611,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl,
       transcript: transcript ? { words: transcript } : null,
+      subtitle_error: subtitleError,
       error_message: null,
       updated_at: new Date().toISOString(),
     })
