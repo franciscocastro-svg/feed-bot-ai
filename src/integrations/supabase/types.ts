@@ -428,6 +428,36 @@ export type Database = {
         }
         Relationships: []
       }
+      data_deletion_requests: {
+        Row: {
+          account_ids: string[]
+          completed_at: string | null
+          confirmation_code: string
+          details: Json
+          meta_user_id: string
+          requested_at: string
+          status: string
+        }
+        Insert: {
+          account_ids?: string[]
+          completed_at?: string | null
+          confirmation_code: string
+          details?: Json
+          meta_user_id: string
+          requested_at?: string
+          status?: string
+        }
+        Update: {
+          account_ids?: string[]
+          completed_at?: string | null
+          confirmation_code?: string
+          details?: Json
+          meta_user_id?: string
+          requested_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       email_campaigns: {
         Row: {
           audience: string
@@ -634,6 +664,7 @@ export type Database = {
           niche: string | null
           page_id: string | null
           token_expires_at: string | null
+          token_secret_id: string | null
           updated_at: string
           user_id: string
           username: string
@@ -650,6 +681,7 @@ export type Database = {
           niche?: string | null
           page_id?: string | null
           token_expires_at?: string | null
+          token_secret_id?: string | null
           updated_at?: string
           user_id: string
           username: string
@@ -666,6 +698,7 @@ export type Database = {
           niche?: string | null
           page_id?: string | null
           token_expires_at?: string | null
+          token_secret_id?: string | null
           updated_at?: string
           user_id?: string
           username?: string
@@ -1906,6 +1939,8 @@ export type Database = {
       video_cut_jobs: {
         Row: {
           analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
           attempts: number
           auto_publish: boolean
           claimed_at: string | null
@@ -1930,6 +1965,8 @@ export type Database = {
           smart_crop: boolean
           source_file_name: string | null
           source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
           source_title: string | null
           source_video_url: string | null
           started_at: string | null
@@ -1942,6 +1979,8 @@ export type Database = {
         }
         Insert: {
           analysis?: Json
+          analysis_mode?: string | null
+          analysis_warning?: string | null
           attempts?: number
           auto_publish?: boolean
           claimed_at?: string | null
@@ -1966,6 +2005,8 @@ export type Database = {
           smart_crop?: boolean
           source_file_name?: string | null
           source_kind?: string
+          source_storage_bucket?: string | null
+          source_storage_path?: string | null
           source_title?: string | null
           source_video_url?: string | null
           started_at?: string | null
@@ -1978,6 +2019,8 @@ export type Database = {
         }
         Update: {
           analysis?: Json
+          analysis_mode?: string | null
+          analysis_warning?: string | null
           attempts?: number
           auto_publish?: boolean
           claimed_at?: string | null
@@ -2002,6 +2045,8 @@ export type Database = {
           smart_crop?: boolean
           source_file_name?: string | null
           source_kind?: string
+          source_storage_bucket?: string | null
+          source_storage_path?: string | null
           source_title?: string | null
           source_video_url?: string | null
           started_at?: string | null
@@ -2043,6 +2088,30 @@ export type Database = {
           usage_date?: string
           used_count?: number
           user_id?: string
+        }
+        Relationships: []
+      }
+      worker_health: {
+        Row: {
+          capabilities: Json
+          last_seen_at: string
+          queue_mode: string
+          version: string | null
+          worker_id: string
+        }
+        Insert: {
+          capabilities?: Json
+          last_seen_at?: string
+          queue_mode: string
+          version?: string | null
+          worker_id: string
+        }
+        Update: {
+          capabilities?: Json
+          last_seen_at?: string
+          queue_mode?: string
+          version?: string | null
+          worker_id?: string
         }
         Relationships: []
       }
@@ -2151,6 +2220,8 @@ export type Database = {
         Args: { _limit?: number; _worker: string }
         Returns: {
           analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
           attempts: number
           auto_publish: boolean
           claimed_at: string | null
@@ -2175,6 +2246,8 @@ export type Database = {
           smart_crop: boolean
           source_file_name: string | null
           source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
           source_title: string | null
           source_video_url: string | null
           started_at: string | null
@@ -2202,6 +2275,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2226,6 +2301,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2253,6 +2330,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2277,6 +2356,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2309,6 +2390,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2333,6 +2416,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2367,6 +2452,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2391,6 +2478,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2419,6 +2508,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2443,6 +2534,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2471,6 +2564,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2495,6 +2590,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2528,6 +2625,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2552,6 +2651,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2587,6 +2688,8 @@ export type Database = {
             }
             Returns: {
               analysis: Json
+              analysis_mode: string | null
+              analysis_warning: string | null
               attempts: number
               auto_publish: boolean
               claimed_at: string | null
@@ -2611,6 +2714,8 @@ export type Database = {
               smart_crop: boolean
               source_file_name: string | null
               source_kind: string
+              source_storage_bucket: string | null
+              source_storage_path: string | null
               source_title: string | null
               source_video_url: string | null
               started_at: string | null
@@ -2628,9 +2733,76 @@ export type Database = {
               isSetofReturn: false
             }
           }
+      create_video_cut_upload_job_v2: {
+        Args: {
+          _auto_publish?: boolean
+          _format?: string
+          _formats?: string[]
+          _hook_enabled?: boolean
+          _instagram_account_id: string
+          _remove_silences?: boolean
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _smart_crop?: boolean
+          _source_title?: string
+          _storage_path: string
+          _subtitle_style?: string
+          _zoom_effect?: boolean
+        }
+        Returns: {
+          analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
+          attempts: number
+          auto_publish: boolean
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          format: string
+          formats: string[] | null
+          generated_clips: number
+          hook_enabled: boolean
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          progress: number
+          remove_silences: boolean
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          smart_crop: boolean
+          source_file_name: string | null
+          source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
+          source_title: string | null
+          source_video_url: string | null
+          started_at: string | null
+          status: string
+          subtitle_style: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+          zoom_effect: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
+      }
+      delete_instagram_account_data: {
+        Args: { _confirmation_code: string; _meta_user_id: string }
+        Returns: Json
       }
       email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
@@ -2673,7 +2845,20 @@ export type Database = {
         Args: { _account_id: string }
         Returns: Json
       }
+      get_instagram_account_secret: {
+        Args: { _account_id: string }
+        Returns: string
+      }
       get_internal_cron_secret: { Args: never; Returns: string }
+      get_media_worker_health: {
+        Args: never
+        Returns: {
+          healthy: boolean
+          last_seen_at: string
+          queue_mode: string
+          version: string
+        }[]
+      }
       get_subscription_status: {
         Args: { _user_id: string }
         Returns: {
@@ -2753,6 +2938,7 @@ export type Database = {
           used_today: number
         }[]
       }
+      has_active_entitlement: { Args: { _uid: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
