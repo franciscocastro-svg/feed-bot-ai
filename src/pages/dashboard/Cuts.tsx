@@ -82,6 +82,7 @@ type SupabaseFlex = {
 const db = supabase as unknown as SupabaseFlex;
 const JOB_REFRESH_MS = 15000;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
+const VIDEO_WATCH_GRACE_MS = 5 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
 
@@ -135,6 +136,16 @@ function isJobActive(job: VideoCutJob) {
   return !["failed", "cancelled", "ready", "discarded"].includes(job.status);
 }
 
+function hasRecentVideoActivity() {
+  const now = Date.now();
+  return Array.from(document.querySelectorAll("video")).some((video) => {
+    const lastActivity = Number(video.dataset.lastActivity || 0);
+    const userTouchedVideoRecently = now - lastActivity < VIDEO_WATCH_GRACE_MS;
+    const videoIsInUse = !video.ended && (userTouchedVideoRecently || !video.paused || video.currentTime > 0);
+    return videoIsInUse;
+  });
+}
+
 export default function Cuts() {
   const { user } = useAuth();
   const { usage, refetch: refetchUsage } = usePlanUsage();
@@ -164,9 +175,9 @@ export default function Cuts() {
     maxPerJob: usage?.max_cuts_per_job,
   }), [usage]);
 
-  const load = async () => {
+  const load = async (options: { silent?: boolean } = {}) => {
     if (!user) return;
-    setLoading(true);
+    if (!options.silent) setLoading(true);
     const [{ data: accountRows }, { data: jobRows, error }] = await Promise.all([
       supabase.from("instagram_accounts").select("id, username, active").eq("active", true).order("username"),
       db
@@ -189,7 +200,7 @@ export default function Cuts() {
       } catch {}
       return nextJobs;
     });
-    setLoading(false);
+    if (!options.silent) setLoading(false);
   };
 
   useEffect(() => {
@@ -202,12 +213,9 @@ export default function Cuts() {
   useEffect(() => {
     if (!user || !hasActiveJobs) return;
     const interval = setInterval(() => {
-      // Não atualiza enquanto o usuário está assistindo a um vídeo — evita corte na reprodução
-      const playing = Array.from(document.querySelectorAll("video")).some(
-        (v) => !v.paused && !v.ended && v.currentTime > 0
-      );
-      if (playing) return;
-      load();
+      // Não atualiza enquanto o usuário está assistindo/interagindo com um vídeo — evita reiniciar a reprodução
+      if (hasRecentVideoActivity()) return;
+      load({ silent: true });
     }, JOB_REFRESH_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -638,7 +646,17 @@ export default function Cuts() {
                   <Card key={clip.id} className="overflow-hidden border-border/80">
                     <div className="aspect-[9/16] bg-black">
                       {clip.video_url ? (
-                        <video className="h-full w-full object-contain" src={clip.video_url} poster={clip.thumbnail_url || undefined} controls playsInline />
+                        <video
+                          className="h-full w-full object-contain"
+                          src={clip.video_url}
+                          poster={clip.thumbnail_url || undefined}
+                          controls
+                          playsInline
+                          onPlay={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+                          onPause={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+                          onSeeking={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+                          onTimeUpdate={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+                        />
                       ) : (
                         <div className="h-full grid place-items-center text-sm text-muted-foreground">Vídeo em geração</div>
                       )}
