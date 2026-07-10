@@ -190,7 +190,8 @@ export default function Cuts() {
     reserved: usage?.cuts_reserved_today,
     limit: usage?.cuts_limit,
     maxPerJob: usage?.max_cuts_per_job,
-  }), [usage]);
+    formatsCount: formats.length,
+  }), [usage, formats.length]);
 
   const load = async (options: { silent?: boolean } = {}) => {
     if (!user) return;
@@ -278,8 +279,10 @@ export default function Cuts() {
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
-          _format: format,
+          _format: formats[0],
+          _formats: formats,
           _subtitle_style: subtitleStyle,
+          _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
@@ -291,8 +294,10 @@ export default function Cuts() {
           _youtube_url: youtubeUrl.trim(),
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
-          _format: format,
+          _format: formats[0],
+          _formats: formats,
           _subtitle_style: subtitleStyle,
+          _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
@@ -528,7 +533,7 @@ export default function Cuts() {
               </Select>
             </div>
           </div>
-          <div className="grid md:grid-cols-[180px_220px_1fr] gap-3 items-end">
+          <div className="grid md:grid-cols-[180px_1fr] gap-3 items-start">
             <div className="space-y-2">
               <Label>Quantidade</Label>
               <Input
@@ -538,18 +543,30 @@ export default function Cuts() {
                 value={requestedClips}
                 onChange={(e) => setRequestedClips(Math.max(1, Math.min(Number(e.target.value) || 1, Math.max(1, bounds.maxRequest || 1))))}
               />
+              <p className="text-xs text-muted-foreground">Cada formato conta 1 crédito por corte.</p>
             </div>
             <div className="space-y-2">
-              <Label>Formato</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as typeof format)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="reels">Reels / Stories · 9:16</SelectItem>
-                  <SelectItem value="feed_square">Feed quadrado · 1:1</SelectItem>
-                  <SelectItem value="feed_portrait">Feed vertical · 4:5</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Formatos de saída (1 ou mais)</Label>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {CUT_FORMAT_OPTIONS.map((opt) => {
+                  const checked = formats.includes(opt.value);
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer transition ${checked ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <Checkbox checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
+                      <span>
+                        <span className="font-medium text-foreground block">{opt.label}</span>
+                        <span className="text-xs text-muted-foreground">{opt.description}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Estilo da legenda</Label>
               <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
@@ -564,10 +581,17 @@ export default function Cuts() {
             </div>
             <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               <p><span className="text-foreground font-medium">{limitText}</span></p>
-              <p>Máximo por vídeo: {bounds.maxPerJob || 0}. Duração máxima por link: {usage?.max_cut_video_minutes || 60} minutos.</p>
+              <p>Máximo por vídeo: {bounds.maxPerJob || 0} · Cada corte × {formats.length} formato(s) = {formats.length} crédito(s). Duração máxima: {usage?.max_cut_video_minutes || 60} min.</p>
             </div>
           </div>
-          <div className="grid md:grid-cols-3 gap-3">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Hook chamativo</span>
+                <span className="block text-xs text-muted-foreground">Texto grande gerado pela IA nos primeiros 3s.</span>
+              </span>
+            </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
               <Checkbox checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
               <span>
