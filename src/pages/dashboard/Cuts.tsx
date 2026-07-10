@@ -703,12 +703,43 @@ export default function Cuts() {
                       )}
                     </div>
                     <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant={statusVariant(clip.status)}>{statusLabel(clip.status)}</Badge>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant={statusVariant(clip.status)}>{statusLabel(clip.status)}</Badge>
+                          {clip.viral_score != null && (() => {
+                            const tone = viralBadgeTone(clip.viral_score);
+                            const cls = tone === "high"
+                              ? "bg-green-500/15 text-green-600 border-green-500/30"
+                              : tone === "mid"
+                                ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                                : "bg-red-500/15 text-red-600 border-red-500/30";
+                            return (
+                              <span
+                                className={`text-xs font-medium px-2 py-0.5 rounded-md border ${cls}`}
+                                title={`Gancho ${clip.hook_score ?? "-"} · Emoção ${clip.emotion_score ?? "-"} · Clareza ${clip.clarity_score ?? "-"}`}
+                              >
+                                {viralBadgeLabel(clip.viral_score)}
+                              </span>
+                            );
+                          })()}
+                          {clip.format && (
+                            <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-border">
+                              {clip.format === "reels" ? "9:16" : clip.format === "feed_square" ? "1:1" : "4:5"}
+                            </span>
+                          )}
+                          {clip.subtitle_error && (
+                            <span className="text-xs text-amber-600 px-2 py-0.5 rounded-md border border-amber-500/30 bg-amber-500/10">
+                              sem legenda
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">{formatCutTime(clip.start_seconds)} - {formatCutTime(clip.end_seconds)}</span>
                       </div>
                       <div>
                         <h3 className="font-semibold line-clamp-2">{clip.title || `Corte ${clip.clip_index}`}</h3>
+                        {clip.hook_text && (
+                          <p className="text-xs font-bold uppercase text-primary mt-1">🎯 {clip.hook_text}</p>
+                        )}
                         <p className="text-sm text-muted-foreground line-clamp-3 mt-1">{clip.hook || clip.reason || clip.caption}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
