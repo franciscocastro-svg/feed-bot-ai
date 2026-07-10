@@ -944,6 +944,12 @@ function normalizeHashtags(value) {
     .slice(0, 12);
 }
 
+function clampScore(value, fallback = null) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
 function clampClipSuggestion(clip, index, durationSeconds) {
   const start = Math.max(0, toSeconds(clip?.start_seconds ?? clip?.start ?? clip?.inicio));
   let end = Math.max(start + 8, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
@@ -952,6 +958,18 @@ function clampClipSuggestion(clip, index, durationSeconds) {
   if (end - start > 90) end = start + 90;
   if (end - start < 8) end = start + 20;
 
+  const hookScore = clampScore(clip?.hook_score ?? clip?.gancho_score, null);
+  const emotionScore = clampScore(clip?.emotion_score ?? clip?.emocao_score, null);
+  const clarityScore = clampScore(clip?.clarity_score ?? clip?.clareza_score, null);
+  let viralScore = clampScore(clip?.viral_score ?? clip?.viralidade, null);
+  if (viralScore == null && (hookScore != null || emotionScore != null || clarityScore != null)) {
+    viralScore = Math.round(
+      (hookScore ?? 60) * 0.5 + (emotionScore ?? 60) * 0.3 + (clarityScore ?? 60) * 0.2,
+    );
+  }
+
+  const hookText = cleanCutText(clip?.hook_text || clip?.chamada || clip?.big_hook, "").slice(0, 60);
+
   return {
     clip_index: index,
     start_seconds: start,
@@ -959,9 +977,14 @@ function clampClipSuggestion(clip, index, durationSeconds) {
     duration_seconds: Math.max(1, end - start),
     title: cleanCutText(clip?.title || clip?.titulo, `Corte ${index}`),
     hook: cleanCutText(clip?.hook || clip?.gancho, "Momento importante do vídeo"),
+    hook_text: hookText,
     caption: cleanCutText(clip?.caption || clip?.legenda, ""),
     reason: cleanCutText(clip?.reason || clip?.motivo, "Trecho com potencial para Reel."),
-    score: Math.max(0, Math.min(100, Number(clip?.score || clip?.nota || 70))),
+    score: clampScore(clip?.score || clip?.nota, 70),
+    hook_score: hookScore,
+    emotion_score: emotionScore,
+    clarity_score: clarityScore,
+    viral_score: viralScore,
     hashtags: normalizeHashtags(clip?.hashtags || "#reels #cortes #instagram"),
   };
 }
@@ -1056,17 +1079,27 @@ async function analyzeYoutubeForCuts(job, metadata, videoUri = job.youtube_url) 
     return fallbackClipSuggestions(job, metadata);
   }
 
-  const prompt = `Você é editor de Reels para Instagram. Analise este vídeo autorizado e escolha até ${Math.min(5, job.requested_clips || 1)} melhores cortes.
+  const wantsHook = job.hook_enabled !== false;
+  const prompt = `Você é editor senior de Reels para Instagram, especializado em identificar momentos com ALTO potencial viral. Analise este vídeo autorizado e escolha os ${Math.min(5, job.requested_clips || 1)} MELHORES cortes.
+
+Priorize trechos com:
+- GANCHO forte nos primeiros 3 segundos (pergunta provocativa, revelação, promessa, número marcante)
+- Picos EMOCIONAIS (surpresa, indignação, riso, tensão, empolgação)
+- Frases de IMPACTO ou "quotables"
+- Cliffhangers e revelações
+- Dados/números que chocam ou intrigam
+- Início e fim naturais (nada de começar no meio de frase)
 
 Regras:
-- Retorne apenas JSON válido, sem markdown.
-- Cada corte deve ter start_seconds, end_seconds, title, hook, caption, reason, score e hashtags.
-- Prefira trechos de 15 a 60 segundos com começo claro, assunto completo e final natural.
-- Não prometa viralização. Evite contexto enganoso.
-- Legenda em português brasileiro, curta, sem repetição e pronta para revisão.
+- Retorne APENAS JSON válido, sem markdown, sem comentários.
+- Cortes de 15 a 60 segundos.
+- Dê para cada corte 3 notas separadas (0-100): hook_score (força do gancho), emotion_score (intensidade emocional), clarity_score (clareza da mensagem).
+- Calcule viral_score = round(hook_score*0.5 + emotion_score*0.3 + clarity_score*0.2).
+${wantsHook ? '- Escreva um hook_text CURTO (máximo 6 palavras, MAIÚSCULAS, sem pontuação final) que aparecerá em texto grande sobreposto nos primeiros 3s. Exemplos: "VOCÊ NÃO VAI ACREDITAR", "OLHA ISSO", "3 COISAS QUE MUDAM TUDO".' : '- Deixe hook_text como string vazia "".'}
+- Legenda em português brasileiro, curta, sem prometer viralização enganosa.
 
-Formato:
-{"clips":[{"start_seconds":12,"end_seconds":42,"title":"Título curto","hook":"Gancho","caption":"Legenda curta","reason":"Por que esse trecho funciona","score":82,"hashtags":["#tema","#reels"]}]}`;
+Formato exato:
+{"clips":[{"start_seconds":12,"end_seconds":42,"title":"Título curto","hook":"Gancho descritivo","hook_text":"${wantsHook ? 'OLHA ISSO' : ''}","caption":"Legenda curta","reason":"Por que esse trecho funciona","hook_score":85,"emotion_score":78,"clarity_score":80,"viral_score":82,"score":82,"hashtags":["#tema","#reels"]}]}`;
 
   try {
     const res = await withTransientRetry(`Gemini video cuts ${job.id}`, async () => {
@@ -1477,21 +1510,41 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     }
   }
 
-  // === Transcrição (extrai áudio e chama Groq) ===
+  // === Transcrição (extrai áudio e chama Gemini/Groq) ===
   let transcript = null;
-  if (wantsSubtitles) {
+  let subtitleError = false;
+  const hookText = clip.hook_enabled === false ? "" : (clip.hook_text || "").trim();
+  const hasHook = hookText.length > 0;
+  if (wantsSubtitles || hasHook) {
     try {
-      await execAsync(
-        `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
-        { maxBuffer: 10 * 1024 * 1024 },
-      );
-      const words = await transcribeClip(audioPath);
-      if (words && words.length > 0) {
-        transcript = words;
-        const assContent = buildAssSubtitleFile(words, subtitleStyle, format, { width: outW, height: outH }, workingDuration);
+      let words = [];
+      if (wantsSubtitles) {
+        await execAsync(
+          `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
+          { maxBuffer: 10 * 1024 * 1024 },
+        );
+        words = (await transcribeClip(audioPath)) || [];
+        if (words.length > 0) {
+          transcript = words;
+        } else {
+          subtitleError = true;
+          console.warn(`[cuts:${clip.id}] Transcrição retornou vazia — clip ficará sem legenda.`);
+        }
+      }
+      // Sempre grava o .ass se houver palavras OU hook — o hook aparece mesmo sem transcrição.
+      if (words.length > 0 || hasHook) {
+        const assContent = buildAssSubtitleFile(
+          words,
+          wantsSubtitles ? subtitleStyle : "classic",
+          format,
+          { width: outW, height: outH },
+          workingDuration,
+          { hookText: hasHook ? hookText : "", hookDurationSeconds: 3 },
+        );
         await fs.promises.writeFile(subtitlePath, assContent, "utf8");
       }
     } catch (err) {
+      subtitleError = wantsSubtitles;
       console.warn(`[cuts:${clip.id}] Legenda não gerada:`, err?.message);
     }
   }
@@ -1558,6 +1611,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl,
       transcript: transcript ? { words: transcript } : null,
+      subtitle_error: subtitleError,
       error_message: null,
       updated_at: new Date().toISOString(),
     })
@@ -1742,53 +1796,73 @@ async function processVideoCutJob(job) {
       console.warn(`[cuts:${job.id}] Falha ao limpar clips antigos: ${cleanupError.message}`);
     }
 
-    const total = suggestions.length || 1;
+    // Multi-formato: cada sugestão × cada formato = 1 clip
+    const jobFormats = Array.isArray(job.formats) && job.formats.length
+      ? job.formats.filter((f) => ["reels", "feed_square", "feed_portrait"].includes(f))
+      : [job.format || "reels"];
+    const uniqueFormats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
+    const total = (suggestions.length || 1) * uniqueFormats.length;
+    let processed = 0;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
-      const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
-        .upsert({
-          job_id: job.id,
-          user_id: job.user_id,
-          instagram_account_id: job.instagram_account_id,
-          clip_index: idx + 1,
-          title: suggestion.title,
-          hook: suggestion.hook,
-          caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
-          hashtags: suggestion.hashtags,
-          reason: suggestion.reason,
-          score: suggestion.score,
-          start_seconds: suggestion.start_seconds,
-          end_seconds: suggestion.end_seconds,
-          duration_seconds: suggestion.duration_seconds,
-          status: "rendering",
-          format: job.format || "reels",
-          subtitle_style: job.subtitle_style || "classic",
-          video_url: null,
-          thumbnail_url: null,
-          error_message: null,
-        }, { onConflict: "job_id,clip_index" })
-        .select("*")
-        .single();
+      for (let fIdx = 0; fIdx < uniqueFormats.length; fIdx += 1) {
+        const clipFormat = uniqueFormats[fIdx];
+        const clipIndex = idx * uniqueFormats.length + fIdx + 1;
+        const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
+          .upsert({
+            job_id: job.id,
+            user_id: job.user_id,
+            instagram_account_id: job.instagram_account_id,
+            clip_index: clipIndex,
+            title: suggestion.title,
+            hook: suggestion.hook,
+            hook_text: suggestion.hook_text || null,
+            hook_score: suggestion.hook_score,
+            emotion_score: suggestion.emotion_score,
+            clarity_score: suggestion.clarity_score,
+            viral_score: suggestion.viral_score,
+            caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
+            hashtags: suggestion.hashtags,
+            reason: suggestion.reason,
+            score: suggestion.score,
+            start_seconds: suggestion.start_seconds,
+            end_seconds: suggestion.end_seconds,
+            duration_seconds: suggestion.duration_seconds,
+            status: "rendering",
+            format: clipFormat,
+            subtitle_style: job.subtitle_style || "classic",
+            subtitle_error: false,
+            video_url: null,
+            thumbnail_url: null,
+            error_message: null,
+          }, { onConflict: "job_id,clip_index" })
+          .select("*")
+          .single();
 
-      if (clipError) throw clipError;
-      const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
-      generatedCount += 1;
+        if (clipError) throw clipError;
+        // Sinal para generateVideoCutClip renderizar hook_text se hook_enabled
+        clip.hook_enabled = job.hook_enabled !== false;
+        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
+        generatedCount += 1;
+        processed += 1;
 
-      // Refetch clip com dados atualizados (video_url etc) para auto-publish
-      if (job.auto_publish && videoUrl) {
-        const { data: fullClip } = await supabase
-          .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
-        if (fullClip) await autoPublishClip(job, fullClip, videoUrl, thumbnailUrl);
+        if (job.auto_publish && videoUrl && fIdx === 0) {
+          // Auto-publica só o primeiro formato pra não spammar a conta
+          const { data: fullClip } = await supabase
+            .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
+          if (fullClip) await autoPublishClip(job, fullClip, videoUrl, thumbnailUrl);
+        }
+
+        await supabase.from("video_cut_jobs")
+          .update({
+            generated_clips: generatedCount,
+            progress: Math.min(95, 45 + Math.round((processed / total) * 45)),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
       }
-
-      await supabase.from("video_cut_jobs")
-        .update({
-          generated_clips: generatedCount,
-          progress: Math.min(95, 45 + Math.round(((idx + 1) / total) * 45)),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.id);
     }
+
 
     await supabase.from("video_cut_jobs")
       .update({

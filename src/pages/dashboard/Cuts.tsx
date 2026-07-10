@@ -4,7 +4,7 @@ import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, Refre
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
-import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds } from "@/lib/videoCuts";
+import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds, viralBadgeTone, viralBadgeLabel, CUT_FORMAT_OPTIONS } from "@/lib/videoCuts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type CutFormat = "reels" | "feed_square" | "feed_portrait";
+
 type VideoCutClip = {
   id: string;
   job_id: string;
@@ -24,6 +26,7 @@ type VideoCutClip = {
   status: string;
   title?: string | null;
   hook?: string | null;
+  hook_text?: string | null;
   caption?: string | null;
   hashtags?: string[] | string | null;
   hashtagsText?: string;
@@ -33,6 +36,12 @@ type VideoCutClip = {
   video_url?: string | null;
   thumbnail_url?: string | null;
   news_item_id?: string | null;
+  format?: CutFormat | string | null;
+  viral_score?: number | null;
+  hook_score?: number | null;
+  emotion_score?: number | null;
+  clarity_score?: number | null;
+  subtitle_error?: boolean | null;
 };
 
 type VideoCutJob = {
@@ -159,8 +168,9 @@ export default function Cuts() {
   const [accountId, setAccountId] = useState("");
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [format, setFormat] = useState<"reels" | "feed_square" | "feed_portrait">("reels");
+  const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke">("classic");
+  const [hookEnabled, setHookEnabled] = useState(true);
   const [autoPublish, setAutoPublish] = useState(false);
   const [removeSilences, setRemoveSilences] = useState(true);
   const [zoomEffect, setZoomEffect] = useState(false);
@@ -168,12 +178,20 @@ export default function Cuts() {
   const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
   const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
 
+  const toggleFormat = (value: CutFormat, checked: boolean) => {
+    setFormats((prev) => {
+      if (checked) return prev.includes(value) ? prev : [...prev, value];
+      return prev.length > 1 ? prev.filter((f) => f !== value) : prev;
+    });
+  };
+
   const bounds = useMemo(() => videoCutRequestBounds({
     used: usage?.cuts_used_today,
     reserved: usage?.cuts_reserved_today,
     limit: usage?.cuts_limit,
     maxPerJob: usage?.max_cuts_per_job,
-  }), [usage]);
+    formatsCount: formats.length,
+  }), [usage, formats.length]);
 
   const load = async (options: { silent?: boolean } = {}) => {
     if (!user) return;
@@ -261,8 +279,10 @@ export default function Cuts() {
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _source_title: videoFile?.name || "Vídeo enviado",
-          _format: format,
+          _format: formats[0],
+          _formats: formats,
           _subtitle_style: subtitleStyle,
+          _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
@@ -274,8 +294,10 @@ export default function Cuts() {
           _youtube_url: youtubeUrl.trim(),
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
-          _format: format,
+          _format: formats[0],
+          _formats: formats,
           _subtitle_style: subtitleStyle,
+          _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
@@ -511,7 +533,7 @@ export default function Cuts() {
               </Select>
             </div>
           </div>
-          <div className="grid md:grid-cols-[180px_220px_1fr] gap-3 items-end">
+          <div className="grid md:grid-cols-[180px_1fr] gap-3 items-start">
             <div className="space-y-2">
               <Label>Quantidade</Label>
               <Input
@@ -521,18 +543,30 @@ export default function Cuts() {
                 value={requestedClips}
                 onChange={(e) => setRequestedClips(Math.max(1, Math.min(Number(e.target.value) || 1, Math.max(1, bounds.maxRequest || 1))))}
               />
+              <p className="text-xs text-muted-foreground">Cada formato conta 1 crédito por corte.</p>
             </div>
             <div className="space-y-2">
-              <Label>Formato</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as typeof format)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="reels">Reels / Stories · 9:16</SelectItem>
-                  <SelectItem value="feed_square">Feed quadrado · 1:1</SelectItem>
-                  <SelectItem value="feed_portrait">Feed vertical · 4:5</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Formatos de saída (1 ou mais)</Label>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {CUT_FORMAT_OPTIONS.map((opt) => {
+                  const checked = formats.includes(opt.value);
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer transition ${checked ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <Checkbox checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
+                      <span>
+                        <span className="font-medium text-foreground block">{opt.label}</span>
+                        <span className="text-xs text-muted-foreground">{opt.description}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Estilo da legenda</Label>
               <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
@@ -547,10 +581,17 @@ export default function Cuts() {
             </div>
             <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
               <p><span className="text-foreground font-medium">{limitText}</span></p>
-              <p>Máximo por vídeo: {bounds.maxPerJob || 0}. Duração máxima por link: {usage?.max_cut_video_minutes || 60} minutos.</p>
+              <p>Máximo por vídeo: {bounds.maxPerJob || 0} · Cada corte × {formats.length} formato(s) = {formats.length} crédito(s). Duração máxima: {usage?.max_cut_video_minutes || 60} min.</p>
             </div>
           </div>
-          <div className="grid md:grid-cols-3 gap-3">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Hook chamativo</span>
+                <span className="block text-xs text-muted-foreground">Texto grande gerado pela IA nos primeiros 3s.</span>
+              </span>
+            </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
               <Checkbox checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
               <span>
@@ -662,12 +703,43 @@ export default function Cuts() {
                       )}
                     </div>
                     <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant={statusVariant(clip.status)}>{statusLabel(clip.status)}</Badge>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant={statusVariant(clip.status)}>{statusLabel(clip.status)}</Badge>
+                          {clip.viral_score != null && (() => {
+                            const tone = viralBadgeTone(clip.viral_score);
+                            const cls = tone === "high"
+                              ? "bg-green-500/15 text-green-600 border-green-500/30"
+                              : tone === "mid"
+                                ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                                : "bg-red-500/15 text-red-600 border-red-500/30";
+                            return (
+                              <span
+                                className={`text-xs font-medium px-2 py-0.5 rounded-md border ${cls}`}
+                                title={`Gancho ${clip.hook_score ?? "-"} · Emoção ${clip.emotion_score ?? "-"} · Clareza ${clip.clarity_score ?? "-"}`}
+                              >
+                                {viralBadgeLabel(clip.viral_score)}
+                              </span>
+                            );
+                          })()}
+                          {clip.format && (
+                            <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-border">
+                              {clip.format === "reels" ? "9:16" : clip.format === "feed_square" ? "1:1" : "4:5"}
+                            </span>
+                          )}
+                          {clip.subtitle_error && (
+                            <span className="text-xs text-amber-600 px-2 py-0.5 rounded-md border border-amber-500/30 bg-amber-500/10">
+                              sem legenda
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">{formatCutTime(clip.start_seconds)} - {formatCutTime(clip.end_seconds)}</span>
                       </div>
                       <div>
                         <h3 className="font-semibold line-clamp-2">{clip.title || `Corte ${clip.clip_index}`}</h3>
+                        {clip.hook_text && (
+                          <p className="text-xs font-bold uppercase text-primary mt-1">🎯 {clip.hook_text}</p>
+                        )}
                         <p className="text-sm text-muted-foreground line-clamp-3 mt-1">{clip.hook || clip.reason || clip.caption}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
