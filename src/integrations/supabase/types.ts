@@ -2184,6 +2184,10 @@ export type Database = {
         Returns: Json
       }
       can_manage_admin_permissions: { Args: never; Returns: boolean }
+      set_account_template_default: {
+        Args: { _account_id: string; _format: string; _template_id: string }
+        Returns: Json
+      }
       check_and_increment_usage: {
         Args: { _resource: string; _user_id: string }
         Returns: Json

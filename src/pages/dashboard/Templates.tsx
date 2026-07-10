@@ -244,7 +244,6 @@ export default function Templates() {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [defaultIds, setDefaultIds] = useState<Record<PostFormat, string | null>>({ feed: null, stories: null, reels: null });
-  const [defaultSources, setDefaultSources] = useState<Record<PostFormat, "account" | "global" | null>>({ feed: null, stories: null, reels: null });
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState(GLOBAL_SCOPE);
   const [globalSettings, setGlobalSettings] = useState<TemplateSettings | null>(null);
@@ -298,7 +297,6 @@ export default function Templates() {
       : accountSettings.find(item => item.instagram_account_id === selectedAccountId) || null;
     const resolved = resolveAccountTemplateDefaults(templates, globalSettings, override, selectedAccountId !== GLOBAL_SCOPE);
     setDefaultIds(resolved.ids);
-    setDefaultSources(resolved.sources);
 
     if (selectedAccountId === GLOBAL_SCOPE) {
       setBrand({ handle: globalSettings.brand_handle ?? undefined, name: globalSettings.brand_name ?? undefined, logo: globalSettings.brand_logo_url ?? undefined });
@@ -321,15 +319,11 @@ export default function Templates() {
       setGlobalSettings(current => current ? { ...current, ...update } : current);
       toast.success(`Padrão global de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} definido`);
     } else {
-      const payload = {
-        user_id: user!.id,
-        instagram_account_id: selectedAccountId,
-        ...update,
-      };
-      const { data, error } = await supabase.from("account_settings")
-        .upsert(payload as any, { onConflict: "instagram_account_id" })
-        .select("user_id, instagram_account_id, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
-        .single();
+      const { data, error } = await supabase.rpc("set_account_template_default", {
+        _account_id: selectedAccountId,
+        _format: format,
+        _template_id: id,
+      });
       if (error) return toast.error(error.message);
       setAccountSettings(current => [
         ...current.filter(item => item.instagram_account_id !== selectedAccountId),
@@ -550,7 +544,7 @@ export default function Templates() {
               <SelectValue placeholder="Selecione uma conta" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={GLOBAL_SCOPE}>Padrão global</SelectItem>
+              {accounts.length === 0 && <SelectItem value={GLOBAL_SCOPE}>Padrão global</SelectItem>}
               {accounts.map(account => (
                 <SelectItem key={account.id} value={account.id}>
                   @{account.username}{account.active ? "" : " (inativa)"}
@@ -727,9 +721,7 @@ export default function Templates() {
                     <ShieldCheck className="h-3 w-3" />
                     {selectedAccountId === GLOBAL_SCOPE
                       ? "Padrão global"
-                      : defaultSources[fmt.key] === "global"
-                        ? "Herdando padrão global"
-                        : "Padrão desta conta"}
+                      : "Padrão desta conta"}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-400">

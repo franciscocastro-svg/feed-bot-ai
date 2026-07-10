@@ -10,15 +10,15 @@ const templates = [
 ];
 
 describe("account template defaults", () => {
-  it("keeps an account override isolated and inherits the other formats", () => {
+  it("keeps an account override isolated without inheriting other formats", () => {
     const result = resolveAccountTemplateDefaults(
       templates,
       { default_feed_template_id: "feed-global", default_story_template_id: "story-global" },
       { default_feed_template_id: "feed-fuxico" },
       true,
     );
-    expect(result.ids).toEqual({ feed: "feed-fuxico", stories: "story-global", reels: null });
-    expect(result.sources).toEqual({ feed: "account", stories: "global", reels: null });
+    expect(result.ids).toEqual({ feed: "feed-fuxico", stories: null, reels: null });
+    expect(result.sources).toEqual({ feed: "account", stories: null, reels: null });
   });
 
   it("does not reuse another account's override", () => {
@@ -28,7 +28,7 @@ describe("account template defaults", () => {
       { default_reel_template_id: "reel-dolariza" },
       true,
     );
-    expect(result.ids).toEqual({ feed: "feed-global", stories: "story-global", reels: "reel-dolariza" });
+    expect(result.ids).toEqual({ feed: null, stories: null, reels: "reel-dolariza" });
   });
 
   it("ignores an id that belongs to the wrong format", () => {
@@ -41,14 +41,25 @@ describe("account template defaults", () => {
     expect(result.ids.stories).toBeNull();
   });
 
-  it("uses the legacy default only when it matches the selected format", () => {
+  it("uses the legacy default as a feed-only account setting", () => {
     const result = resolveAccountTemplateDefaults(
       templates,
       { default_template_id: "feed-global", default_story_template_id: "story-global" },
-      { default_template_id: "story-fuxico" },
+      { default_template_id: "feed-fuxico" },
       true,
     );
-    expect(result.ids).toEqual({ feed: "feed-global", stories: "story-fuxico", reels: null });
-    expect(result.sources).toEqual({ feed: "global", stories: "account", reels: null });
+    expect(result.ids).toEqual({ feed: "feed-fuxico", stories: null, reels: null });
+    expect(result.sources).toEqual({ feed: "account", stories: null, reels: null });
+  });
+
+  it("uses global defaults only when editing the global scope", () => {
+    const result = resolveAccountTemplateDefaults(
+      templates,
+      { default_feed_template_id: "feed-global", default_story_template_id: "story-global" },
+      null,
+      false,
+    );
+    expect(result.ids).toEqual({ feed: "feed-global", stories: "story-global", reels: null });
+    expect(result.sources).toEqual({ feed: "global", stories: "global", reels: null });
   });
 });

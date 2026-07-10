@@ -18,10 +18,10 @@ export function resolveAccountTemplateDefaults(
     !!id && templates.some(template => template.id === id && (template.format || "feed") === format);
   const globalFeed = globalSettings.default_feed_template_id || globalSettings.default_template_id || null;
   const accountFeed = accountSettings?.default_feed_template_id || accountSettings?.default_template_id || null;
-  const globalStory = globalSettings.default_story_template_id || globalSettings.default_template_id || null;
-  const accountStory = accountSettings?.default_story_template_id || accountSettings?.default_template_id || null;
-  const globalReel = globalSettings.default_reel_template_id || globalSettings.default_template_id || null;
-  const accountReel = accountSettings?.default_reel_template_id || accountSettings?.default_template_id || null;
+  const globalStory = globalSettings.default_story_template_id || null;
+  const accountStory = accountSettings?.default_story_template_id || null;
+  const globalReel = globalSettings.default_reel_template_id || null;
+  const accountReel = accountSettings?.default_reel_template_id || null;
   const candidates: Record<TemplateFormat, { account: string | null; global: string | null }> = {
     feed: { account: accountFeed, global: globalFeed },
     stories: { account: accountStory, global: globalStory },
@@ -31,9 +31,9 @@ export function resolveAccountTemplateDefaults(
   const sources = {} as Record<TemplateFormat, "account" | "global" | null>;
   (Object.keys(candidates) as TemplateFormat[]).forEach(format => {
     const candidate = candidates[format];
-    if (accountScoped && valid(candidate.account, format)) {
-      ids[format] = candidate.account;
-      sources[format] = "account";
+    if (accountScoped) {
+      ids[format] = valid(candidate.account, format) ? candidate.account : null;
+      sources[format] = ids[format] ? "account" : null;
     } else if (valid(candidate.global, format)) {
       ids[format] = candidate.global;
       sources[format] = "global";
