@@ -104,6 +104,7 @@ const db = supabase as unknown as SupabaseFlex;
 const JOB_REFRESH_MS = 15000;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 const VIDEO_WATCH_GRACE_MS = 5 * 60 * 1000;
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
 
@@ -436,31 +437,71 @@ export default function Cuts() {
 
   const getAutomaticScheduleDate = async (instagramAccountId: string) => {
     if (!user) throw new Error("Sessão expirada.");
-    const [{ data: settings }, { data: channel }, { data: lastPost, error: lastPostError }] = await Promise.all([
-      db.from<{ min_post_interval_minutes?: number }>("user_settings")
-        .select("min_post_interval_minutes").eq("user_id", user.id).maybeSingle(),
-      db.from<{ min_interval_minutes?: number }>("channel_settings")
-        .select("min_interval_minutes").eq("user_id", user.id).eq("channel", "reel").maybeSingle(),
-      db.from<{ scheduled_for: string }>("scheduled_posts")
-        .select("scheduled_for")
+    const [{ data: settings }, { data: channel }, activeResult, postedResult] = await Promise.all([
+      db.from<{ min_post_interval_minutes?: number; preferred_post_hours?: number[] }>("user_settings")
+        .select("min_post_interval_minutes, preferred_post_hours").eq("user_id", user.id).maybeSingle(),
+      db.from<{ min_interval_minutes?: number; allowed_hours?: number[] }>("channel_settings")
+        .select("min_interval_minutes, allowed_hours").eq("user_id", user.id).eq("channel", "reel").maybeSingle(),
+      db.from<{ scheduled_for: string; media_type?: string }>("scheduled_posts")
+        .select("scheduled_for, media_type")
         .eq("user_id", user.id)
         .eq("instagram_account_id", instagramAccountId)
         .in("status", ["scheduled", "posting", "awaiting_container"])
-        .order("scheduled_for", { ascending: false })
+        .order("scheduled_for", { ascending: true }),
+      db.from<{ posted_at?: string; media_type?: string }>("scheduled_posts")
+        .select("posted_at, media_type")
+        .eq("user_id", user.id)
+        .eq("instagram_account_id", instagramAccountId)
+        .eq("status", "posted")
+        .order("posted_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
     ]);
-    if (lastPostError) throw lastPostError;
+    if (activeResult.error) throw activeResult.error;
+    if (postedResult.error) throw postedResult.error;
+
     const intervalMinutes = Math.max(
       10,
       Number(settings?.min_post_interval_minutes) || 10,
       Number(channel?.min_interval_minutes) || 10,
     );
-    const earliest = Date.now() + intervalMinutes * 60_000;
-    const afterLastPost = lastPost?.scheduled_for
-      ? new Date(lastPost.scheduled_for).getTime() + intervalMinutes * 60_000
+    const gapMs = intervalMinutes * 60_000;
+    const allowedHours = Array.isArray(channel?.allowed_hours) && channel.allowed_hours.length
+      ? channel.allowed_hours.map(Number).filter((hour) => hour >= 0 && hour <= 23)
+      : Array.isArray(settings?.preferred_post_hours)
+        ? settings.preferred_post_hours.map(Number).filter((hour) => hour >= 0 && hour <= 23)
+        : [];
+    const activeTimes = ((activeResult.data || []) as Array<{ scheduled_for: string }>)
+      .map((post) => new Date(post.scheduled_for).getTime())
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    const lastPostedAt = postedResult.data?.posted_at
+      ? new Date(postedResult.data.posted_at).getTime()
       : 0;
-    return new Date(Math.max(earliest, afterLastPost));
+
+    let slot = Math.max(Date.now() + 60_000, lastPostedAt ? lastPostedAt + gapMs : 0);
+    const toBRT = (date: Date) => new Date(date.getTime() - BRT_OFFSET_MS);
+    const fromBRT = (date: Date) => new Date(date.getTime() + BRT_OFFSET_MS);
+    for (let guard = 0; guard < 800; guard++) {
+      const candidateBRT = toBRT(new Date(slot));
+      const hour = candidateBRT.getUTCHours();
+      if (allowedHours.length && !allowedHours.includes(hour)) {
+        const sortedHours = [...allowedHours].sort((a, b) => a - b);
+        const nextHour = sortedHours.find((allowed) => allowed > hour) ?? sortedHours[0];
+        const nextBRT = new Date(candidateBRT);
+        if (nextHour > hour) nextBRT.setUTCHours(nextHour, 0, 0, 0);
+        else {
+          nextBRT.setUTCDate(nextBRT.getUTCDate() + 1);
+          nextBRT.setUTCHours(nextHour, 0, 0, 0);
+        }
+        slot = fromBRT(nextBRT).getTime();
+        continue;
+      }
+      const conflicts = activeTimes.some((time) => Math.abs(slot - time) < gapMs);
+      if (!conflicts) return new Date(slot);
+      slot += Math.max(60_000, gapMs);
+    }
+    return new Date(slot);
   };
 
   const scheduleClipAt = async (clip: VideoCutClip, job: VideoCutJob, scheduledDate: Date) => {
