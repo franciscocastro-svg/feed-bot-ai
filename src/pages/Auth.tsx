@@ -99,11 +99,13 @@ export default function Auth() {
     const parsed = signupSchema.safeParse({ email, password, confirmPassword, name, whatsapp, city, state: stateUf, country });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     setLoading(true);
+    // Auto-confirm is enabled server-side; no OTP is sent at signup.
+    // Verification code is emailed only AFTER Stripe webhook confirms payment.
     const { error } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
-        emailRedirectTo: window.location.origin + "/verify-email",
+        emailRedirectTo: window.location.origin + "/pricing",
         data: {
           display_name: parsed.data.name,
           whatsapp: parsed.data.whatsapp,
@@ -116,9 +118,8 @@ export default function Auth() {
     setLoading(false);
     if (error) return toast.error(error.message);
     trackMetaEvent("Lead", { content_name: "signup" });
-    sessionStorage.setItem("ff_pending_verification_email", parsed.data.email);
-    toast.success("Conta criada! Digite o código enviado ao seu e-mail.");
-    nav(`/verify-email?email=${encodeURIComponent(parsed.data.email)}`);
+    toast.success("Conta criada! Cadastre seu cartão para ativar seu teste.");
+    nav("/pricing");
   };
 
   const handleGoogle = async () => {

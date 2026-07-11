@@ -141,19 +141,29 @@ Deno.serve(async (req) => {
         // Find existing row for this user+env
         const { data: existing } = await supabase
           .from("user_subscriptions")
-          .select("id")
+          .select("id, approval_status")
           .eq("user_id", userId)
           .eq("environment", env)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        const payload = {
+        // Payment gate: only trialing/active/past_due unlock the email-code step.
+        // Any other status (incomplete, incomplete_expired, canceled, unpaid) stays blocked.
+        const paidStatus = ["trialing", "active", "past_due"].includes(sub.status);
+        const alreadyApproved = existing?.approval_status === "approved";
+        const nextApprovalStatus = alreadyApproved
+          ? "approved"
+          : paidStatus
+            ? "pending_email_verification"
+            : "pending_payment";
+
+        const payload: Record<string, unknown> = {
           user_id: userId,
           environment: env,
           plan,
           status: sub.status,
-          approval_status: "approved",
+          approval_status: nextApprovalStatus,
           stripe_customer_id: sub.customer,
           stripe_subscription_id: sub.id,
           product_id: item?.price?.product,
@@ -168,6 +178,29 @@ Deno.serve(async (req) => {
           await supabase.from("user_subscriptions").update(payload).eq("id", existing.id);
         } else {
           await supabase.from("user_subscriptions").insert(payload);
+        }
+
+        // Idempotent: only fire the code email when we're transitioning INTO
+        // pending_email_verification (i.e. wasn't approved yet and payment is confirmed).
+        if (paidStatus && !alreadyApproved) {
+          try {
+            const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
+            if (internalSecret) {
+              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-verification-code`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-internal-secret": internalSecret,
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({ user_id: userId }),
+              });
+            } else {
+              console.warn("INTERNAL_CRON_SECRET missing; skipping code send");
+            }
+          } catch (err) {
+            console.error("send-verification-code call failed", (err as Error).message);
+          }
         }
         break;
       }
