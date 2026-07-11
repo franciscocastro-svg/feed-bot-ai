@@ -75,6 +75,45 @@ function postSortTime(row: any): number {
   return new Date(row?.scheduled_for || row?.created_at || row?.updated_at || 0).getTime();
 }
 
+async function promoteNextReadyPostAfterFailure(
+  supabase: any, userId: string, accountId: string | null | undefined,
+  failedPostId: string, minIntervalMinutes: number, allowedHours: number[],
+) {
+  if (!accountId) return null;
+  const { data: latestPosted } = await supabase.from("scheduled_posts")
+    .select("posted_at").eq("user_id", userId).eq("instagram_account_id", accountId)
+    .eq("status", "posted").not("posted_at", "is", null)
+    .order("posted_at", { ascending: false }).limit(1).maybeSingle();
+  const lastPostedAt = latestPosted?.posted_at ? new Date(latestPosted.posted_at).getTime() : 0;
+  const intervalMs = Math.max(1, minIntervalMinutes) * 60_000;
+  const earliest = Math.max(Date.now() + 60_000, lastPostedAt + intervalMs);
+  const { data: candidates } = await supabase.from("scheduled_posts")
+    .select("id, scheduled_for, media_type, news_items(editorial_ready, generated_video_url, generated_image_url, generated_cover_url)")
+    .eq("user_id", userId).eq("instagram_account_id", accountId).eq("status", "scheduled")
+    .neq("id", failedPostId).order("scheduled_for", { ascending: true }).limit(10);
+  const candidate = (candidates || []).find((row: any) => {
+    const news = Array.isArray(row.news_items) ? row.news_items[0] : row.news_items;
+    if (!news?.editorial_ready) return false;
+    if (row.media_type === "reel") return !!news.generated_video_url;
+    if (row.media_type === "story") return !!(news.generated_video_url || news.generated_cover_url || news.generated_image_url);
+    return !!(news.generated_image_url || news.generated_cover_url);
+  });
+  if (!candidate) return null;
+  const promotedAt = nextAllowedSpacedSlot(earliest, [], intervalMs, allowedHours);
+  const promotedIso = new Date(promotedAt).toISOString();
+  await supabase.from("scheduled_posts").update({
+    scheduled_for: promotedIso,
+    error_message: "Antecipado após falha anterior; intervalo calculado desde a última publicação concluída.",
+  }).eq("id", candidate.id);
+  await supabase.from("activity_logs").insert({
+    user_id: userId, action: "publish_queue_promoted_after_failure",
+    entity_type: "scheduled_post", entity_id: candidate.id,
+    details: { failed_post_id: failedPostId, account_id: accountId, promoted_to: promotedIso,
+      last_posted_at: latestPosted?.posted_at || null, min_interval_minutes: minIntervalMinutes },
+  });
+  return { id: candidate.id, scheduledFor: promotedIso };
+}
+
 async function findRecentDuplicatePostConflict(supabase: any, userId: string, _accountId: string, currentPost: any, news: any) {
   const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
   const { data } = await supabase
@@ -1419,6 +1458,15 @@ Deno.serve(async (req) => {
 
         await supabase.from("scheduled_posts").update({ status: "failed", error_message: msg }).eq("id", p.id);
         await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_failed", entity_type: "scheduled_post", entity_id: p.id, details: { error: msg } });
+        const failedCfg = getPostConfig(p);
+        await promoteNextReadyPostAfterFailure(
+          supabase,
+          userId!,
+          acc?.id || p.instagram_account_id,
+          p.id,
+          failedCfg.minIntervalMin,
+          failedCfg.allowedHours,
+        );
       }
     }
     return new Response(JSON.stringify({ processed }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
