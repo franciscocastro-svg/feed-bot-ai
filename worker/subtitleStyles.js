@@ -64,6 +64,42 @@ function escapeAssText(text) {
     .trim();
 }
 
+function wrapHookText(text, maxCharsPerLine = 18) {
+  const words = String(text || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return { text: "", longestLineLength: 0 };
+  const fullLine = words.join(" ");
+  if (fullLine.length <= maxCharsPerLine) {
+    return { text: escapeAssText(fullLine), longestLineLength: fullLine.length };
+  }
+  if (words.length === 1) {
+    const line = words[0].slice(0, maxCharsPerLine + 4);
+    return { text: escapeAssText(line), longestLineLength: line.length };
+  }
+
+  let best = null;
+  for (let split = 1; split < words.length; split += 1) {
+    const first = words.slice(0, split).join(" ");
+    const second = words.slice(split).join(" ");
+    const longest = Math.max(first.length, second.length);
+    const overflow = Math.max(0, first.length - maxCharsPerLine) + Math.max(0, second.length - maxCharsPerLine);
+    const score = overflow * 100 + longest * 2 + Math.abs(first.length - second.length);
+    if (!best || score < best.score) best = { first, second, longest, score };
+  }
+
+  const lines = best ? [best.first, best.second] : [words.join(" ")];
+  return {
+    text: lines.map(escapeAssText).join("\\N"),
+    longestLineLength: Math.max(...lines.map((line) => line.length)),
+  };
+}
+
+function hookFontSizeForText(baseFontSize, longestLineLength) {
+  const comfortableChars = 17;
+  if (longestLineLength <= comfortableChars) return Math.round(baseFontSize * 1.12);
+  const ratio = comfortableChars / Math.max(comfortableChars, longestLineLength);
+  return Math.max(Math.round(baseFontSize * 0.82), Math.round(baseFontSize * 1.12 * ratio));
+}
+
 function secondsToAssTime(seconds) {
   const total = Math.max(0, Number(seconds) || 0);
   const h = Math.floor(total / 3600);
@@ -103,9 +139,10 @@ export function buildAssSubtitleFile(words, styleName, format, dims, clipDuratio
   const preset = STYLE_PRESETS[styleName] || STYLE_PRESETS.classic;
   const fontSize = fontSizeForFormat(format);
   const marginV = marginVForFormat(format);
-  const hookFontSize = Math.round(fontSize * 1.55);
+  const formattedHook = wrapHookText(options.hookText || "", format === "reels" ? 18 : 16);
+  const hookFontSize = hookFontSizeForText(fontSize, formattedHook.longestLineLength);
   const groups = groupWords(words || [], 3);
-  const hookText = escapeAssText(options.hookText || "");
+  const hookText = formattedHook.text;
   const hookDurationSec = Math.min(3.5, Math.max(1.5, Number(options.hookDurationSeconds) || 3));
 
   const header = `[Script Info]
@@ -118,7 +155,7 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Inter,${fontSize},${preset.primary},${preset.secondary},${preset.outline},${preset.back},${preset.bold},0,0,0,100,100,0,0,1,${preset.outlineWidth},${preset.shadow},2,60,60,${marginV},1
-Style: Hook,Impact,${hookFontSize},&H0000FFFF,&H0000FFFF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,6,2,8,60,60,${Math.round(dims.height * 0.18)},1
+Style: Hook,Impact,${hookFontSize},&H0000FFFF,&H0000FFFF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,5,1,8,96,96,${Math.round(dims.height * 0.16)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -130,7 +167,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (hookText) {
     const hookEnd = Math.min(hookDurationSec, Math.max(1, clipDurationSeconds - 0.2));
     events.push(
-      `Dialogue: 1,${secondsToAssTime(0)},${secondsToAssTime(hookEnd)},Hook,,0,0,0,,{\\fad(200,300)\\t(0,300,\\fscx115\\fscy115)}${hookText}`,
+      `Dialogue: 1,${secondsToAssTime(0)},${secondsToAssTime(hookEnd)},Hook,,0,0,0,,{\\fad(180,260)\\t(0,220,\\fscx102\\fscy102)}${hookText}`,
     );
   }
 
