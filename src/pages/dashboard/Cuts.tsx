@@ -208,17 +208,40 @@ export default function Cuts() {
   const load = async (options: { silent?: boolean } = {}) => {
     if (!user) return;
     if (!options.silent) setLoading(true);
-    const [{ data: accountRows }, { data: jobRows, error }, healthResult] = await Promise.all([
-      supabase.from("instagram_accounts").select("id, username, active").eq("active", true).order("username"),
-      db
-        .from("video_cut_jobs")
-        .select("*, instagram_accounts(username), video_cut_clips(*)")
+    const { data: accountRows, error: accountsError } = await supabase
+      .from("instagram_accounts")
+      .select("id, username, active")
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .order("username");
+
+    const availableAccounts = accountRows || [];
+    const selectedAccountId = availableAccounts.some((account) => account.id === accountId)
+      ? accountId
+      : availableAccounts[0]?.id || "";
+
+    setAccounts(availableAccounts);
+    if (selectedAccountId !== accountId) setAccountId(selectedAccountId);
+
+    if (accountsError) {
+      toast.error(accountsError.message || "Não foi possível carregar as contas do Instagram.");
+    }
+
+    const jobsQuery = db
+      .from("video_cut_jobs")
+      .select("*, instagram_accounts(username), video_cut_clips(*)")
+      .eq("user_id", user.id);
+
+    if (selectedAccountId) jobsQuery.eq("instagram_account_id", selectedAccountId);
+
+    const [{ data: jobRows, error }, healthResult] = await Promise.all([
+      selectedAccountId
+        ? jobsQuery
         .order("created_at", { ascending: false })
-        .limit(40),
+        .limit(40)
+        : Promise.resolve({ data: [], error: null }),
       db.rpc<WorkerHealth[]>("get_media_worker_health"),
     ]);
-    setAccounts(accountRows || []);
-    if (!accountId && accountRows?.[0]?.id) setAccountId(accountRows[0].id);
     if (error) toast.error(error.message || "Não foi possível carregar os cortes.");
     setWorkerHealth((healthResult.data as WorkerHealth[] | undefined) || []);
     const nextJobs = ((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
@@ -240,7 +263,7 @@ export default function Cuts() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, accountId]);
 
   const hasActiveJobs = useMemo(() => jobs.some(isJobActive), [jobs]);
 
@@ -253,7 +276,7 @@ export default function Cuts() {
     }, JOB_REFRESH_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, hasActiveJobs]);
+  }, [user, accountId, hasActiveJobs]);
 
   useEffect(() => {
     if (requestedClips > bounds.maxRequest) setRequestedClips(Math.max(1, bounds.maxRequest || 1));
