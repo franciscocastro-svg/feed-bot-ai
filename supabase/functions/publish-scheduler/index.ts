@@ -1,6 +1,11 @@
 // Publishes scheduled posts that are due, via the Meta Graph API.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { attachInstagramTokens } from "../_shared/instagram-token.ts";
+import {
+  isNewsOlderThan,
+  isScheduledBeyondFreshnessWindow,
+  SCHEDULED_NEWS_MAX_AGE_HOURS,
+} from "../_shared/autopilot-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +108,8 @@ async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
 
   const keepByKey = new Map<string, any>();
   const cancelIds = new Set<string>();
+  const cancelNewsIds = new Set<string>();
+  const keptNewsIds = new Set<string>();
   const rows = ((data || []) as any[]).sort((a, b) => {
     const statusRank = (value: string) => value === "posting" ? 0 : value === "awaiting_container" ? 1 : 2;
     const byStatus = statusRank(a.status) - statusRank(b.status);
@@ -117,8 +124,10 @@ async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
     const existing = keys.map((key) => keepByKey.get(key)).find(Boolean);
     if (existing) {
       cancelIds.add(row.id);
+      if (row.news_item_id) cancelNewsIds.add(row.news_item_id);
       continue;
     }
+    if (row.news_item_id) keptNewsIds.add(row.news_item_id);
     keys.forEach((key) => keepByKey.set(key, row));
   }
 
@@ -127,6 +136,13 @@ async function cancelDuplicateActiveQueue(supabase: any, userId: string) {
     status: "cancelled",
     error_message: "Cancelado automaticamente: duplicado ativo da mesma notícia em outra conta do cliente",
   }).in("id", Array.from(cancelIds)).in("status", ACTIVE_QUEUE_STATUSES);
+  const rejectedNewsIds = Array.from(cancelNewsIds).filter((id) => !keptNewsIds.has(id));
+  if (rejectedNewsIds.length) {
+    await supabase.from("news_items").update({
+      status: "rejected",
+      error_message: "Duplicada: outra cópia da mesma notícia foi mantida na fila do cliente",
+    }).in("id", rejectedNewsIds).in("status", ["processing", "processed", "approved", "scheduled"]);
+  }
   return cancelIds.size;
 }
 
@@ -558,8 +574,18 @@ Deno.serve(async (req) => {
       userId = user.id;
     }
 
-    const { data: entitled } = await adminClient.rpc("has_active_entitlement", { _uid: userId });
+    const { data: entitled, error: entitlementError } = await adminClient.rpc("has_active_entitlement", { _uid: userId });
+    if (entitlementError) {
+      console.error("has_active_entitlement failed", { userId, message: entitlementError.message });
+      return new Response(JSON.stringify({ error: "entitlement_check_failed" }), { status: 503, headers: corsHeaders });
+    }
     if (entitled !== true) {
+      await adminClient.from("activity_logs").insert({
+        user_id: userId,
+        action: "publish_blocked_subscription",
+        entity_type: "user_subscription",
+        details: { reason: "active_subscription_required" },
+      });
       return new Response(JSON.stringify({ error: "active_subscription_required" }), { status: 403, headers: corsHeaders });
     }
 
@@ -625,18 +651,29 @@ Deno.serve(async (req) => {
       .lt("updated_at", new Date(Date.now() - STALE_POSTING_MINUTES * 60_000).toISOString());
 
     const { data: activeScheduled } = await supabase.from("scheduled_posts")
-      .select("id, scheduled_for, news_items(published_at)")
+      .select("id, scheduled_for, news_items(id,published_at)")
       .eq("user_id", userId)
       .eq("status", "scheduled");
-    const expiringIds = (activeScheduled || [])
+    const expiringRows = (activeScheduled || [])
       .filter((row: any) => row.news_items?.published_at)
-      .filter((row: any) => new Date(row.scheduled_for).getTime() >= new Date(row.news_items.published_at).getTime() + 12 * 3600 * 1000)
-      .map((row: any) => row.id);
+      .filter((row: any) => isScheduledBeyondFreshnessWindow(
+        row.news_items.published_at,
+        row.scheduled_for,
+        SCHEDULED_NEWS_MAX_AGE_HOURS,
+      ));
+    const expiringIds = expiringRows.map((row: any) => row.id);
+    const expiringNewsIds = expiringRows.map((row: any) => row.news_items?.id).filter(Boolean);
     if (expiringIds.length) {
       await supabase.from("scheduled_posts").update({
         status: "cancelled",
-        error_message: "Notícia expirada antes da próxima tentativa. Cancelada para liberar a fila.",
+        error_message: `Notícia agendada para além da janela de ${SCHEDULED_NEWS_MAX_AGE_HOURS}h. Cancelada para liberar a fila.`,
       }).in("id", expiringIds);
+      if (expiringNewsIds.length) {
+        await supabase.from("news_items").update({
+          status: "failed",
+          error_message: `Expirada na fila após ${SCHEDULED_NEWS_MAX_AGE_HOURS}h`,
+        }).in("id", expiringNewsIds).eq("status", "scheduled");
+      }
     }
 
     const duplicateQueueCancelled = await cancelDuplicateActiveQueue(supabase, userId!);
@@ -1052,10 +1089,17 @@ Deno.serve(async (req) => {
       try {
         const acc = p.instagram_accounts;
         const news = p.news_items;
-        // descarta se a notícia tem mais de 12h
-        if (news?.published_at && Date.now() - new Date(news.published_at).getTime() > 12 * 3600 * 1000) {
-          await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: "Notícia expirou (>12h)" }).eq("id", p.id);
-          await supabase.from("news_items").update({ status: "rejected", error_message: "Notícia com mais de 12h" }).eq("id", news.id);
+        // Horário permitido, cooldown e espera da Meta são estados operacionais,
+        // não uma rejeição editorial. A fila usa uma janela própria e maior.
+        if (isNewsOlderThan(news?.published_at, SCHEDULED_NEWS_MAX_AGE_HOURS)) {
+          await supabase.from("scheduled_posts").update({
+            status: "cancelled",
+            error_message: `Notícia expirou na fila após ${SCHEDULED_NEWS_MAX_AGE_HOURS}h`,
+          }).eq("id", p.id);
+          await supabase.from("news_items").update({
+            status: "failed",
+            error_message: `Expirada na fila após ${SCHEDULED_NEWS_MAX_AGE_HOURS}h`,
+          }).eq("id", news.id);
           continue;
         }
         if (!acc || !acc.ig_user_id || !acc.access_token) throw new Error("Conta Instagram sem credenciais");

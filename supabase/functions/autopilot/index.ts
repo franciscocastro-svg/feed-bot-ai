@@ -1,6 +1,7 @@
 // Autopilot: roda em cron, orquestra fetch -> process -> schedule -> publish
 // para todos os usuários com auto_approve = true
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { PENDING_NEWS_MAX_AGE_HOURS } from "../_shared/autopilot-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +30,34 @@ async function callFn(name: string, body: Record<string, unknown>) {
   let data: any = text;
   try { data = JSON.parse(text); } catch {}
   return { ok: r.ok, status: r.status, data };
+}
+
+async function recordFunctionFailure(
+  supabase: any,
+  userId: string,
+  functionName: string,
+  result: { ok: boolean; status: number; data: any },
+) {
+  if (result.ok) return;
+  const response = typeof result.data === "string"
+    ? result.data.slice(0, 500)
+    : result.data;
+  const { error } = await supabase.from("activity_logs").insert({
+    user_id: userId,
+    action: "autopilot_function_failed",
+    entity_type: functionName,
+    details: {
+      status: result.status,
+      response,
+    },
+  });
+  if (error) {
+    console.error("Failed to record autopilot function error", {
+      userId,
+      functionName,
+      message: error.message,
+    });
+  }
 }
 
 type ChannelCfg = {
@@ -156,8 +185,6 @@ function nextSlotForChannel(
   return null;
 }
 
-const MAX_NEWS_AGE_HOURS = 12;
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -263,7 +290,8 @@ Deno.serve(async (req) => {
       for (const uid of dueUserIds) {
         try {
           const r = await callFn("publish-scheduler", { user_id: uid });
-          results.push({ uid, ok: r.ok });
+          await recordFunctionFailure(supabase, uid, "publish-scheduler", r);
+          results.push({ uid, ok: r.ok, status: r.status, data: r.data });
         } catch (e) {
           results.push({ uid, error: String(e) });
         }
@@ -319,7 +347,10 @@ Deno.serve(async (req) => {
       ...(usersWithAwaitingContainer || []).map((s: any) => s.user_id),
     ]));
     for (const uid of dueUserIds) {
-      try { await callFn("publish-scheduler", { user_id: uid }); }
+      try {
+        const result = await callFn("publish-scheduler", { user_id: uid });
+        await recordFunctionFailure(supabase, uid, "publish-scheduler", result);
+      }
       catch (e) { console.error("publish-scheduler (early) failed", uid, e); }
     }
 
@@ -329,8 +360,9 @@ Deno.serve(async (req) => {
       try {
         userSummary.steps.fetch = "done (global)";
 
-        // 1.5) expirar pendentes/processadas com mais de 12h e cancelar agendamentos vencidos
-        const cutoffIso = new Date(Date.now() - MAX_NEWS_AGE_HOURS * 3600 * 1000).toISOString();
+        // 1.5) Retira apenas conteúdo que nunca entrou na fila dentro da janela.
+        // Uma espera operacional não é uma rejeição editorial.
+        const cutoffIso = new Date(Date.now() - PENDING_NEWS_MAX_AGE_HOURS * 3600 * 1000).toISOString();
         const { data: stale } = await supabase
           .from("news_items")
           .select("id")
@@ -339,9 +371,10 @@ Deno.serve(async (req) => {
           .lt("published_at", cutoffIso);
         const staleIds = (stale || []).map((s: any) => s.id);
         if (staleIds.length) {
-          await supabase.from("news_items").update({ status: "rejected", error_message: "Notícia com mais de 12h" }).in("id", staleIds);
-          await supabase.from("scheduled_posts").update({ status: "cancelled", error_message: "Notícia expirou (>12h)" })
-            .eq("user_id", userId).eq("status", "scheduled").in("news_item_id", staleIds);
+          await supabase.from("news_items").update({
+            status: "failed",
+            error_message: `Expirada sem entrar na fila após ${PENDING_NEWS_MAX_AGE_HOURS}h`,
+          }).in("id", staleIds);
         }
         userSummary.steps.expired = staleIds.length;
 
@@ -421,7 +454,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Só notícias frescas (<12h) E publicadas DEPOIS que o auto-piloto foi
+        // Só notícias frescas e publicadas DEPOIS que o auto-piloto foi
         // ligado (ignora histórico antigo). Cron roda periodicamente, então a
         // próxima notícia só entra quando a atual estiver pronta + agendada.
         const enabledAt = (u as any).auto_approve_enabled_at as string | null;
@@ -732,6 +765,7 @@ Deno.serve(async (req) => {
 
         // 4) publicar o que está vencido
         const pub = await callFn("publish-scheduler", { user_id: userId });
+        await recordFunctionFailure(supabase, userId, "publish-scheduler", pub);
         userSummary.steps.publish = pub.data;
       } catch (e) {
         userSummary.error = e instanceof Error ? e.message : String(e);
