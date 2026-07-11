@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null, contentType?: string | null) {
+  if (contentType === "video_cut") return Boolean(url);
   if (!url || !userId || !itemId) return false;
   const clean = String(url).split("?")[0];
   let decoded = clean;
@@ -43,12 +44,15 @@ export function useReelVideoGenerator() {
         const todo = (pending || []).filter((p: any) => {
           const n = p.news_items;
           if (!n) return false;
+          // Cortes IA já chegam com o MP4 final. Nunca os substitua pelo Reel
+          // editorial de 6 segundos, mesmo durante uma recuperação incompleta.
+          if (p.media_type === "reel" && n.content_type === "video_cut") return false;
           // Não tenta compor se o AI rewrite ainda não terminou — evita
           // renderizar um Story/Reel sem título e sem resumo.
           if (!n.rewritten_title || !n.rewritten_summary) return false;
           if (n.editorial_ready) {
             // mesmo "ready", se o Reel não foi renderizado pelo Flux & Feed para esta notícia, gera o MP4.
-            if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || user.id, n.id)) return true;
+            if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || user.id, n.id, n.content_type)) return true;
             return false;
           }
           return true;
@@ -88,7 +92,7 @@ export function useReelVideoGenerator() {
               const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
               const sourceUrl = await composeAndUploadStory(news, { withFollowCta: true });
               // 2) MP4
-              if (!isManagedReelVideoUrl(news.generated_video_url, user.id, news.id) && sourceUrl) {
+              if (!isManagedReelVideoUrl(news.generated_video_url, user.id, news.id, news.content_type) && sourceUrl) {
                 const { imageToReelVideo } = await import("@/lib/imageToVideo");
                 let accountAudio = null;
                 if (accountId) {

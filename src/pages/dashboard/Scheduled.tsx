@@ -13,7 +13,8 @@ const ACTIVE_POST_LIMIT = 150;
 const POSTED_POST_LIMIT = 30;
 const SCHEDULE_REFRESH_MS = 30000;
 
-function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null, contentType?: string | null) {
+  if (contentType === "video_cut") return Boolean(url);
   if (!url || !userId || !itemId) return false;
   const clean = String(url).split("?")[0];
   let decoded = clean;
@@ -37,7 +38,7 @@ export default function Scheduled() {
   const [editWhen, setEditWhen] = useState<string>("");
 
   const load = async () => {
-    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, editorial_ready, caption, reel_caption), instagram_accounts(username)";
+    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, editorial_ready, caption, reel_caption, content_type), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
       supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
       supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(POSTED_POST_LIMIT),
@@ -260,7 +261,7 @@ export default function Scheduled() {
             const posting = p.status === "posting";
             const news = p.news_items || {};
             const managedReelVideo = p.media_type === "reel"
-              ? isManagedReelVideoUrl(news.generated_video_url, p.user_id, p.news_item_id)
+              ? isManagedReelVideoUrl(news.generated_video_url, p.user_id, p.news_item_id, news.content_type)
               : false;
             const finalMediaReady = p.media_type === "reel"
               ? !!(managedReelVideo && news.editorial_ready)
@@ -311,7 +312,7 @@ export default function Scheduled() {
                       awaitingContainer ? (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · Instagram/Meta processando o vídeo</p>
                       ) : managedReelVideo && p.news_items?.editorial_ready ? (
-                        <p className="text-xs text-emerald-500 mt-1">🎬 Reel · vídeo pronto</p>
+                        <p className="text-xs text-emerald-500 mt-1">🎬 {news.content_type === "video_cut" ? "Corte IA · vídeo completo pronto" : "Reel · vídeo pronto"}</p>
                       ) : p.news_items?.generated_video_url ? (
                         <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · regenerando vídeo com template…</p>
                       ) : (
@@ -406,7 +407,7 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
   const news = post.news_items || {};
   const mediaType = post.media_type === "reel" ? "reel" : post.media_type === "story" ? "story" : "feed";
   const managedReelVideo = mediaType === "reel"
-    ? isManagedReelVideoUrl(news.generated_video_url, post.user_id, post.news_item_id)
+    ? isManagedReelVideoUrl(news.generated_video_url, post.user_id, post.news_item_id, news.content_type)
     : false;
   const isVideo = (mediaType === "reel" && managedReelVideo) || (mediaType === "story" && !!news.generated_video_url);
   const mediaUrl = mediaType === "feed"

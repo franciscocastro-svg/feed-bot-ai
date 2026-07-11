@@ -26,7 +26,8 @@ const ACTIVE_QUEUE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 const INSTAGRAM_CAPTION_LIMIT = 2200;
 const MIN_PUBLISH_CAPTION_CHARS = 40;
 
-function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
+function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null, contentType?: string | null) {
+  if (contentType === "video_cut") return Boolean(url);
   if (!url || !userId || !itemId) return false;
   const clean = String(url).split("?")[0];
   let decoded = clean;
@@ -979,7 +980,7 @@ Deno.serve(async (req) => {
       const waitedMs = Date.now() - new Date(p.created_at).getTime();
       const useFallback = waitedMs >= FALLBACK_AFTER_MS;
       const managedReelVideo = mt === "reel"
-        ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id)
+        ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id, news?.content_type)
         : false;
 
       const hasMedia = mt === "reel"
@@ -1234,7 +1235,7 @@ Deno.serve(async (req) => {
         const waitedMs = Date.now() - new Date(p.created_at).getTime();
         const pastFallbackWindow = waitedMs >= 15 * 60_000;
         const managedReelVideo = mediaType === "reel"
-          ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id)
+          ? isManagedReelVideoUrl(news?.generated_video_url, news?.user_id || p.user_id, news?.id || p.news_item_id, news?.content_type)
           : false;
         const staleReelVideo = mediaType === "reel" && !!news?.generated_video_url && !managedReelVideo;
 

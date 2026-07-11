@@ -91,7 +91,8 @@ async function uploadPostAsset(pathStorage, contents, options) {
   });
 }
 
-function isManagedReelVideoUrl(url, userId, itemId) {
+function isManagedReelVideoUrl(url, userId, itemId, contentType) {
+  if (contentType === "video_cut") return Boolean(url);
   if (!url || !userId || !itemId) return false;
   const clean = String(url).split("?")[0];
   let decoded = clean;
@@ -2229,9 +2230,12 @@ async function main() {
           const todo = pending.filter((p) => {
             const n = p.news_items;
             if (!n) return false;
+            // O worker de Cortes IA já gerou o MP4 completo. Esta fila não pode
+            // trocá-lo pelo Reel editorial estático de 6 segundos.
+            if (p.media_type === "reel" && n.content_type === "video_cut") return false;
             if (!n.rewritten_title || !n.rewritten_summary) return false;
             if (n.editorial_ready) {
-              if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id)) return true;
+              if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id, n.content_type)) return true;
               return false;
             }
             return true;
