@@ -829,6 +829,42 @@ async function generateReelVideoFromJob(job) {
         throw itemError || new Error("Notícia não encontrada");
       }
 
+      // Jobs criados antes da proteção de Cortes IA podem continuar na fila.
+      // Recupere o MP4 original do corte e finalize o job sem gerar o Reel
+      // editorial estático de 6 segundos.
+      if (item.content_type === "video_cut") {
+        const { data: clip, error: clipError } = await supabase
+          .from("video_cut_clips")
+          .select("video_url")
+          .eq("news_item_id", item.id)
+          .maybeSingle();
+        if (clipError) throw clipError;
+
+        const originalVideoUrl = clip?.video_url || item.generated_video_url;
+        if (!originalVideoUrl) {
+          throw new Error("Corte IA sem MP4 original disponível");
+        }
+
+        await supabase.from("news_items")
+          .update({ generated_video_url: originalVideoUrl, editorial_ready: true, error_message: null })
+          .eq("id", item.id);
+        await supabase.from("scheduled_posts")
+          .update({ error_message: null })
+          .eq("news_item_id", item.id)
+          .eq("status", "scheduled");
+        await supabase.from("reel_render_jobs")
+          .update({
+            status: "done",
+            output_url: originalVideoUrl,
+            completed_at: new Date().toISOString(),
+            error_message: null,
+          })
+          .eq("id", job.id);
+
+        console.log(`[job:${job.id}] Corte IA preservado; geração de 6s ignorada.`);
+        return originalVideoUrl;
+      }
+
       const { data: settings, error: settingsError } = await supabase
         .from("user_settings")
         .select("brand_handle, brand_name, brand_logo_url, reel_audio_url")
