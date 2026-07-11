@@ -381,10 +381,8 @@ export default function Cuts() {
       .maybeSingle();
     if (existingNewsError) throw existingNewsError;
 
-    let newsId = existingNews?.id || clip.news_item_id || clip.id;
-    const payload = {
-      id: newsId,
-      user_id: user.id,
+    let newsId = existingNews?.id || clip.news_item_id || "";
+    const updatePayload = {
       instagram_account_id: clip.instagram_account_id || job.instagram_account_id,
       source_name: "Cortes IA",
       original_title: title,
@@ -407,12 +405,25 @@ export default function Cuts() {
       editorial_ready: true,
       error_message: null,
     };
-    let { error } = await db.from("news_items").upsert(payload, { onConflict: "id" });
+
+    let error: SupabaseError | undefined;
+    if (newsId) {
+      ({ error } = await db.from("news_items").update(updatePayload).eq("id", newsId));
+    } else {
+      newsId = clip.id;
+      ({ error } = await db.from("news_items").insert({
+        ...updatePayload,
+        id: newsId,
+        user_id: user.id,
+      }));
+    }
+
     if (error) {
-      const duplicateId = String(error.message || "").match(/duplicate_news_item_url:([0-9a-f-]{36})/i)?.[1];
+      const duplicateId = String(error.message || "")
+        .match(/duplicate_news_item_(?:url|title):([0-9a-f-]{36})/i)?.[1];
       if (!duplicateId) throw error;
       newsId = duplicateId;
-      ({ error } = await db.from("news_items").upsert({ ...payload, id: newsId }, { onConflict: "id" }));
+      ({ error } = await db.from("news_items").update(updatePayload).eq("id", newsId));
       if (error) throw error;
     }
     const { error: clipError } = await db
