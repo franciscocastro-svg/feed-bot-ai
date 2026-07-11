@@ -614,6 +614,36 @@ export type Database = {
         }
         Relationships: []
       }
+      email_verification_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       follower_snapshots: {
         Row: {
           captured_at: string
@@ -1747,7 +1777,9 @@ export type Database = {
       }
       user_subscriptions: {
         Row: {
+          approval_reason: string | null
           approval_status: string
+          approved_at: string | null
           cancel_at_period_end: boolean
           created_at: string
           current_period_end: string | null
@@ -1755,6 +1787,7 @@ export type Database = {
           environment: string
           expires_at: string | null
           id: string
+          last_code_sent_at: string | null
           notes: string | null
           plan: string
           price_id: string | null
@@ -1764,9 +1797,13 @@ export type Database = {
           stripe_subscription_id: string | null
           updated_at: string
           user_id: string
+          verification_attempts: number
+          verification_blocked_until: string | null
         }
         Insert: {
+          approval_reason?: string | null
           approval_status?: string
+          approved_at?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1774,6 +1811,7 @@ export type Database = {
           environment?: string
           expires_at?: string | null
           id?: string
+          last_code_sent_at?: string | null
           notes?: string | null
           plan?: string
           price_id?: string | null
@@ -1783,9 +1821,13 @@ export type Database = {
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id: string
+          verification_attempts?: number
+          verification_blocked_until?: string | null
         }
         Update: {
+          approval_reason?: string | null
           approval_status?: string
+          approved_at?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1793,6 +1835,7 @@ export type Database = {
           environment?: string
           expires_at?: string | null
           id?: string
+          last_code_sent_at?: string | null
           notes?: string | null
           plan?: string
           price_id?: string | null
@@ -1802,6 +1845,8 @@ export type Database = {
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
+          verification_attempts?: number
+          verification_blocked_until?: string | null
         }
         Relationships: []
       }
@@ -2948,6 +2993,10 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_approved: { Args: { _uid: string }; Returns: boolean }
+      mark_pending_email_verification: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -2981,6 +3030,7 @@ export type Database = {
         Returns: undefined
       }
       unaccent: { Args: { "": string }; Returns: string }
+      verify_email_code: { Args: { _code: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "user"
