@@ -84,6 +84,7 @@ type SupabaseResult<T = unknown> = { data?: T; error?: SupabaseError };
 type SupabaseQuery<T = unknown> = PromiseLike<SupabaseResult<T>> & {
   select: (columns?: string) => SupabaseQuery<T>;
   eq: (column: string, value: unknown) => SupabaseQuery<T>;
+  in: (column: string, values: unknown[]) => SupabaseQuery<T>;
   order: (column: string, options?: { ascending?: boolean }) => SupabaseQuery<T>;
   limit: (count: number) => SupabaseQuery<T>;
   insert: (values: Record<string, unknown>) => SupabaseQuery<T>;
@@ -146,6 +147,20 @@ function humanVideoCutError(message?: string | null) {
     return "O YouTube bloqueou o acesso automático a esse vídeo. Envie o MP4 autorizado para gerar os cortes sem depender do YouTube.";
   }
   return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+}
+
+function databaseErrorMessage(error: unknown, fallback: string) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const message = typeof record.message === "string" ? record.message : "";
+  const details = typeof record.details === "string" ? record.details : "";
+  const text = `${record.code || ""} ${message} ${details}`.toLowerCase();
+  if (text.includes("idx_scheduled_posts_unique_active_news_per_ig") || text.includes("duplicate key")) {
+    return "Este corte já possui um agendamento ativo para esta conta.";
+  }
+  if (text.includes("row-level security") || text.includes("permission denied")) {
+    return "Sua sessão não tem permissão para agendar nesta conta. Atualize a página e entre novamente.";
+  }
+  return message || fallback;
 }
 
 function canDeleteJob(job: VideoCutJob) {
@@ -475,27 +490,64 @@ export default function Cuts() {
 
   const scheduleSelectedClip = async () => {
     if (!scheduleClip || !scheduleWhen) return;
+    if (!user) return toast.error("Sessão expirada. Entre novamente.");
     const job = jobs.find((row) => row.id === scheduleClip.job_id);
     if (!job) return toast.error("Job não encontrado.");
+    const scheduledDate = new Date(scheduleWhen);
+    if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+      return toast.error("Escolha uma data e um horário futuros.");
+    }
     try {
       const newsItemId = await ensureNewsItemForClip(scheduleClip, job);
-      const { data, error } = await db.from<{ id: string }>("scheduled_posts").insert({
-        user_id: user?.id,
-        news_item_id: newsItemId,
-        instagram_account_id: scheduleClip.instagram_account_id || job.instagram_account_id,
-        scheduled_for: new Date(scheduleWhen).toISOString(),
-        status: "scheduled",
-        media_type: "reel",
-      }).select("id").single();
-      if (error) throw error;
-      if (!data?.id) throw new Error("Agendamento não retornou confirmação.");
-      await db.from("video_cut_clips").update({ status: "scheduled", scheduled_post_id: data.id }).eq("id", scheduleClip.id);
-      await db.from("news_items").update({ status: "scheduled" }).eq("id", newsItemId);
+      const instagramAccountId = scheduleClip.instagram_account_id || job.instagram_account_id;
+      const { data: existing, error: existingError } = await db
+        .from<{ id: string; status: string }>("scheduled_posts")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .eq("news_item_id", newsItemId)
+        .eq("instagram_account_id", instagramAccountId)
+        .in("status", ["scheduled", "posting", "awaiting_container"])
+        .limit(1)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      let scheduledPostId = existing?.id;
+      if (existing?.status === "posting" || existing?.status === "awaiting_container") {
+        throw new Error("Este corte já está sendo processado para publicação no Instagram.");
+      }
+
+      if (scheduledPostId) {
+        const { error: updateScheduleError } = await db
+          .from("scheduled_posts")
+          .update({ scheduled_for: scheduledDate.toISOString(), media_type: "reel", error_message: null })
+          .eq("id", scheduledPostId);
+        if (updateScheduleError) throw updateScheduleError;
+      } else {
+        const { data, error } = await db.from<{ id: string }>("scheduled_posts").insert({
+          user_id: user.id,
+          news_item_id: newsItemId,
+          instagram_account_id: instagramAccountId,
+          scheduled_for: scheduledDate.toISOString(),
+          status: "scheduled",
+          media_type: "reel",
+        }).select("id").single();
+        if (error) throw error;
+        if (!data?.id) throw new Error("Agendamento não retornou confirmação.");
+        scheduledPostId = data.id;
+      }
+
+      const { error: clipUpdateError } = await db
+        .from("video_cut_clips")
+        .update({ status: "scheduled", scheduled_post_id: scheduledPostId })
+        .eq("id", scheduleClip.id);
+      if (clipUpdateError) throw clipUpdateError;
+      const { error: newsUpdateError } = await db.from("news_items").update({ status: "scheduled" }).eq("id", newsItemId);
+      if (newsUpdateError) throw newsUpdateError;
       setScheduleClip(null);
-      toast.success("Corte agendado como Reel.");
+      toast.success(existing ? "Horário do Reel atualizado." : "Corte agendado como Reel.");
       await load();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível agendar.");
+      toast.error(databaseErrorMessage(error, "Não foi possível agendar."));
     }
   };
 
