@@ -2967,6 +2967,10 @@ export type Database = {
           read_ct: number
         }[]
       }
+      set_account_template_default: {
+        Args: { _account_id: string; _format: string; _template_id: string }
+        Returns: Json
+      }
       set_admin_permissions: {
         Args: {
           _full_access?: boolean
