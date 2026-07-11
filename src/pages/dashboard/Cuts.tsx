@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
@@ -107,12 +107,6 @@ const VIDEO_WATCH_GRACE_MS = 5 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
 
-function nextLocalDateTime(minutes = 30) {
-  const date = new Date(Date.now() + minutes * 60 * 1000);
-  date.setSeconds(0, 0);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     queued: "Na fila",
@@ -202,8 +196,6 @@ export default function Cuts() {
   const [removeSilences, setRemoveSilences] = useState(true);
   const [zoomEffect, setZoomEffect] = useState(false);
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
-  const [scheduleClip, setScheduleClip] = useState<VideoCutClip | null>(null);
-  const [scheduleWhen, setScheduleWhen] = useState(nextLocalDateTime());
 
   const toggleFormat = (value: CutFormat, checked: boolean) => {
     setFormats((prev) => {
@@ -377,7 +369,19 @@ export default function Cuts() {
     const title = clip.title || "Corte IA";
     const caption = clip.caption || clip.hook || title;
     const hashtags = Array.isArray(clip.hashtags) ? clip.hashtags : splitHashtags(clip.hashtags);
-    const newsId = clip.news_item_id || clip.id;
+    const originalUrl = job.source_kind === "upload"
+      ? `upload://${job.id}/cut-${clip.clip_index}-${clip.id}`
+      : `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`;
+    const { data: existingNews, error: existingNewsError } = await db
+      .from<{ id: string }>("news_items")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("original_url", originalUrl)
+      .limit(1)
+      .maybeSingle();
+    if (existingNewsError) throw existingNewsError;
+
+    let newsId = existingNews?.id || clip.news_item_id || clip.id;
     const payload = {
       id: newsId,
       user_id: user.id,
@@ -385,9 +389,7 @@ export default function Cuts() {
       source_name: "Cortes IA",
       original_title: title,
       original_content: clip.reason || clip.hook || caption,
-      original_url: job.source_kind === "upload"
-        ? `upload://${job.id}/cut-${clip.clip_index}-${clip.id}`
-        : `${job.youtube_url}#cut-${clip.clip_index}-${clip.id}`,
+      original_url: originalUrl,
       original_image_url: clip.thumbnail_url,
       published_at: new Date().toISOString(),
       niche: "video",
@@ -405,19 +407,107 @@ export default function Cuts() {
       editorial_ready: true,
       error_message: null,
     };
-    const { error } = await db.from("news_items").upsert(payload, { onConflict: "id" });
-    if (error) throw error;
-    await db.from("video_cut_clips").update({ news_item_id: newsId, status: "approved" }).eq("id", clip.id);
+    let { error } = await db.from("news_items").upsert(payload, { onConflict: "id" });
+    if (error) {
+      const duplicateId = String(error.message || "").match(/duplicate_news_item_url:([0-9a-f-]{36})/i)?.[1];
+      if (!duplicateId) throw error;
+      newsId = duplicateId;
+      ({ error } = await db.from("news_items").upsert({ ...payload, id: newsId }, { onConflict: "id" }));
+      if (error) throw error;
+    }
+    const { error: clipError } = await db
+      .from("video_cut_clips")
+      .update({ news_item_id: newsId, status: "approved" })
+      .eq("id", clip.id);
+    if (clipError) throw clipError;
     return newsId;
+  };
+
+  const getAutomaticScheduleDate = async (instagramAccountId: string) => {
+    if (!user) throw new Error("Sessão expirada.");
+    const [{ data: settings }, { data: channel }, { data: lastPost, error: lastPostError }] = await Promise.all([
+      db.from<{ min_post_interval_minutes?: number }>("user_settings")
+        .select("min_post_interval_minutes").eq("user_id", user.id).maybeSingle(),
+      db.from<{ min_interval_minutes?: number }>("channel_settings")
+        .select("min_interval_minutes").eq("user_id", user.id).eq("channel", "reel").maybeSingle(),
+      db.from<{ scheduled_for: string }>("scheduled_posts")
+        .select("scheduled_for")
+        .eq("user_id", user.id)
+        .eq("instagram_account_id", instagramAccountId)
+        .in("status", ["scheduled", "posting", "awaiting_container"])
+        .order("scheduled_for", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (lastPostError) throw lastPostError;
+    const intervalMinutes = Math.max(
+      10,
+      Number(settings?.min_post_interval_minutes) || 10,
+      Number(channel?.min_interval_minutes) || 10,
+    );
+    const earliest = Date.now() + intervalMinutes * 60_000;
+    const afterLastPost = lastPost?.scheduled_for
+      ? new Date(lastPost.scheduled_for).getTime() + intervalMinutes * 60_000
+      : 0;
+    return new Date(Math.max(earliest, afterLastPost));
+  };
+
+  const scheduleClipAt = async (clip: VideoCutClip, job: VideoCutJob, scheduledDate: Date) => {
+    if (!user) throw new Error("Sessão expirada. Entre novamente.");
+    const newsItemId = await ensureNewsItemForClip(clip, job);
+    const instagramAccountId = clip.instagram_account_id || job.instagram_account_id;
+    const { data: existing, error: existingError } = await db
+      .from<{ id: string; status: string }>("scheduled_posts")
+      .select("id, status")
+      .eq("user_id", user.id)
+      .eq("news_item_id", newsItemId)
+      .eq("instagram_account_id", instagramAccountId)
+      .in("status", ["scheduled", "posting", "awaiting_container"])
+      .limit(1)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing?.status === "posting" || existing?.status === "awaiting_container") {
+      throw new Error("Este corte já está sendo processado para publicação no Instagram.");
+    }
+
+    let scheduledPostId = existing?.id;
+    if (scheduledPostId) {
+      const { error } = await db.from("scheduled_posts")
+        .update({ scheduled_for: scheduledDate.toISOString(), media_type: "reel", error_message: null })
+        .eq("id", scheduledPostId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await db.from<{ id: string }>("scheduled_posts").insert({
+        user_id: user.id,
+        news_item_id: newsItemId,
+        instagram_account_id: instagramAccountId,
+        scheduled_for: scheduledDate.toISOString(),
+        status: "scheduled",
+        media_type: "reel",
+      }).select("id").single();
+      if (error) throw error;
+      if (!data?.id) throw new Error("Agendamento não retornou confirmação.");
+      scheduledPostId = data.id;
+    }
+
+    const { error: clipUpdateError } = await db.from("video_cut_clips")
+      .update({ status: "scheduled", scheduled_post_id: scheduledPostId }).eq("id", clip.id);
+    if (clipUpdateError) throw clipUpdateError;
+    const { error: newsUpdateError } = await db.from("news_items")
+      .update({ status: "scheduled" }).eq("id", newsItemId);
+    if (newsUpdateError) throw newsUpdateError;
+    return { existed: Boolean(existing), scheduledDate };
   };
 
   const approveClip = async (clip: VideoCutClip, job: VideoCutJob) => {
     try {
-      await ensureNewsItemForClip(clip, job);
-      toast.success("Corte aprovado. Agora ele pode ser agendado como Reel.");
+      const instagramAccountId = clip.instagram_account_id || job.instagram_account_id;
+      const scheduledDate = await getAutomaticScheduleDate(instagramAccountId);
+      const result = await scheduleClipAt(clip, job, scheduledDate);
+      toast.success(`${result.existed ? "Agendamento atualizado" : "Corte aprovado e agendado"} para ${scheduledDate.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`);
       await load();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível aprovar.");
+      toast.error(databaseErrorMessage(error, "Não foi possível aprovar e agendar."));
     }
   };
 
@@ -481,74 +571,6 @@ export default function Cuts() {
     setEditingClip(null);
     toast.success("Legenda atualizada.");
     await load();
-  };
-
-  const openSchedule = (clip: VideoCutClip) => {
-    setScheduleClip(clip);
-    setScheduleWhen(nextLocalDateTime());
-  };
-
-  const scheduleSelectedClip = async () => {
-    if (!scheduleClip || !scheduleWhen) return;
-    if (!user) return toast.error("Sessão expirada. Entre novamente.");
-    const job = jobs.find((row) => row.id === scheduleClip.job_id);
-    if (!job) return toast.error("Job não encontrado.");
-    const scheduledDate = new Date(scheduleWhen);
-    if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
-      return toast.error("Escolha uma data e um horário futuros.");
-    }
-    try {
-      const newsItemId = await ensureNewsItemForClip(scheduleClip, job);
-      const instagramAccountId = scheduleClip.instagram_account_id || job.instagram_account_id;
-      const { data: existing, error: existingError } = await db
-        .from<{ id: string; status: string }>("scheduled_posts")
-        .select("id, status")
-        .eq("user_id", user.id)
-        .eq("news_item_id", newsItemId)
-        .eq("instagram_account_id", instagramAccountId)
-        .in("status", ["scheduled", "posting", "awaiting_container"])
-        .limit(1)
-        .maybeSingle();
-      if (existingError) throw existingError;
-
-      let scheduledPostId = existing?.id;
-      if (existing?.status === "posting" || existing?.status === "awaiting_container") {
-        throw new Error("Este corte já está sendo processado para publicação no Instagram.");
-      }
-
-      if (scheduledPostId) {
-        const { error: updateScheduleError } = await db
-          .from("scheduled_posts")
-          .update({ scheduled_for: scheduledDate.toISOString(), media_type: "reel", error_message: null })
-          .eq("id", scheduledPostId);
-        if (updateScheduleError) throw updateScheduleError;
-      } else {
-        const { data, error } = await db.from<{ id: string }>("scheduled_posts").insert({
-          user_id: user.id,
-          news_item_id: newsItemId,
-          instagram_account_id: instagramAccountId,
-          scheduled_for: scheduledDate.toISOString(),
-          status: "scheduled",
-          media_type: "reel",
-        }).select("id").single();
-        if (error) throw error;
-        if (!data?.id) throw new Error("Agendamento não retornou confirmação.");
-        scheduledPostId = data.id;
-      }
-
-      const { error: clipUpdateError } = await db
-        .from("video_cut_clips")
-        .update({ status: "scheduled", scheduled_post_id: scheduledPostId })
-        .eq("id", scheduleClip.id);
-      if (clipUpdateError) throw clipUpdateError;
-      const { error: newsUpdateError } = await db.from("news_items").update({ status: "scheduled" }).eq("id", newsItemId);
-      if (newsUpdateError) throw newsUpdateError;
-      setScheduleClip(null);
-      toast.success(existing ? "Horário do Reel atualizado." : "Corte agendado como Reel.");
-      await load();
-    } catch (error: unknown) {
-      toast.error(databaseErrorMessage(error, "Não foi possível agendar."));
-    }
   };
 
   const limitText = isUnlimited(bounds.limit)
@@ -863,10 +885,7 @@ export default function Cuts() {
                           Editar legenda
                         </Button>
                         <Button size="sm" onClick={() => approveClip(clip, job)} disabled={!clip.video_url || clip.status === "scheduled"}>
-                          <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => openSchedule(clip)} disabled={!clip.video_url || clip.status === "discarded"}>
-                          <Calendar className="h-4 w-4 mr-1" /> Agendar
+                          <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar e agendar
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => discardClip(clip)} disabled={clip.status === "scheduled"}>
                           <Trash2 className="h-4 w-4 mr-1" /> Descartar
@@ -914,22 +933,6 @@ export default function Cuts() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleClip} onOpenChange={(open) => !open && setScheduleClip(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Agendar corte como Reel</DialogTitle>
-            <DialogDescription>O corte aprovado entra na fila normal de publicação.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Data e horário</Label>
-            <Input type="datetime-local" value={scheduleWhen} onChange={(e) => setScheduleWhen(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setScheduleClip(null)}>Cancelar</Button>
-            <Button onClick={scheduleSelectedClip}>Agendar Reel</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
