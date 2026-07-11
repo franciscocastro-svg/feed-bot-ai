@@ -45,8 +45,11 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         ]);
         if (cancelled) return;
 
-        const status = approvalData?.approval_status || "pending";
-        setApproval(status === "approved" ? "approved" : status === "rejected" ? "rejected" : "pending");
+        const status = approvalData?.approval_status || "pending_payment";
+        setApproval(
+          status === "approved" ? "approved" :
+          status === "rejected" || status === "blocked" ? "rejected" : "pending"
+        );
         setSubscription((subscriptionData as any)?.[0] || null);
       } catch {
         if (cancelled) return;
