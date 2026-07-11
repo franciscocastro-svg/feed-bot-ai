@@ -149,20 +149,16 @@ export default function Scheduled() {
         await composeAndUploadPost(item);
       } else {
         const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
-        const coverUrl = await composeAndUploadStory(item, { withFollowCta: post.media_type === "reel" });
-        if (post.media_type === "reel") {
-          toast.info("Atualizando o vídeo com a nova arte...");
-          const { data: effective } = await supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id });
-          const { imageToReelVideo } = await import("@/lib/imageToVideo");
-          const blob = await imageToReelVideo(coverUrl, 6, (effective as any)?.reel_audio_url || undefined);
-          if (!(blob.type || "").includes("mp4")) throw new Error("Este navegador não conseguiu gerar o vídeo MP4.");
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) throw new Error("Sessão expirada");
-          const path = `${user.id}/${item.id}.mp4`;
-          const { error: uploadError } = await supabase.storage.from("post-images").upload(path, blob, { contentType: "video/mp4", upsert: true });
-          if (uploadError) throw uploadError;
-          const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
-          await supabase.from("news_items").update({ generated_video_url: `${pub.publicUrl}?t=${Date.now()}` }).eq("id", item.id);
+        await composeAndUploadStory(item, { withFollowCta: post.media_type === "reel" });
+        if (post.media_type === "reel" && item.content_type !== "video_cut") {
+          toast.info("Reenfileirando o vídeo para validação no VPS...");
+          const { error: resetError } = await supabase.from("news_items")
+            .update({ generated_video_url: null, editorial_ready: false, error_message: null })
+            .eq("id", item.id);
+          if (resetError) throw resetError;
+          await supabase.from("reel_render_jobs").delete().eq("scheduled_post_id", post.id);
+          const { error: enqueueError } = await supabase.rpc("enqueue_reel_render_job_for_post", { _scheduled_post_id: post.id });
+          if (enqueueError) throw enqueueError;
         }
       }
 

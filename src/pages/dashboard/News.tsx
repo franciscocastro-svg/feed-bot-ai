@@ -68,15 +68,6 @@ function feedPreviewUrl(item: any) {
   return item?.generated_image_url || item?.generated_cover_url || "";
 }
 
-function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null) {
-  if (!url || !userId || !itemId) return false;
-  const clean = String(url).split("?")[0];
-  let decoded = clean;
-  try { decoded = decodeURIComponent(clean); } catch { /* keep raw url */ }
-  const expectedPath = `${userId}/${itemId}.mp4`;
-  return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
-}
-
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
   const globalMin = Math.max(10, Number(userSettings?.min_post_interval_minutes) || 10);
   const channelMin = Math.max(globalMin, Number(channelSettings?.min_interval_minutes) || globalMin);
@@ -249,28 +240,13 @@ export default function News() {
         item.generated_cover_url = storyUrl;
         await supabase.from("news_items").update({ editorial_ready: true }).eq("id", item.id);
       }
-      // Para Reel ou Story em vídeo, gera o MP4 9:16 antes de agendar
-      if (mediaType === "reel" || mediaType === "story") {
-        if (mediaType === "reel" && !item.generated_video_url) {
-          const sourceUrl = item.generated_cover_url || item.generated_image_url;
-          if (!sourceUrl) throw new Error("Imagem não gerada ainda");
-          toast.info("Gerando vídeo 9:16 (~20s)...");
-          const { imageToReelVideo } = await import("@/lib/imageToVideo");
-          const { data: { user: u0 } } = await supabase.auth.getUser();
-          const [{ data: effective }, { data: settings }] = await Promise.all([
-            supabase.rpc("get_effective_account_settings", { _account_id: acc.id }),
-            supabase.from("user_settings").select("reel_audio_url").eq("user_id", u0!.id).maybeSingle(),
-          ]);
-          const blob = await imageToReelVideo(sourceUrl, 6, (effective as any)?.reel_audio_url || settings?.reel_audio_url);
-          const isMp4 = (blob.type || "").includes("mp4");
-          if (!isMp4) throw new Error("Seu navegador não consegue gerar MP4. Use o Chrome desktop para aprovar Reels.");
-          const { data: { user } } = await supabase.auth.getUser();
-          const path = `${user!.id}/${item.id}.mp4`;
-          const { error: upErr } = await supabase.storage.from("post-images").upload(path, blob, { contentType: "video/mp4", upsert: true });
-          if (upErr) throw upErr;
-          const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
-          await supabase.from("news_items").update({ generated_video_url: pub.publicUrl }).eq("id", item.id);
-        }
+      // Reels de notícias são gerados e validados exclusivamente pelo FFmpeg
+      // do VPS. Isso evita MP4s do MediaRecorder com duração/metadados instáveis.
+      if (mediaType === "reel" && item.content_type !== "video_cut") {
+        item.generated_video_url = null;
+        await supabase.from("news_items")
+          .update({ generated_video_url: null, editorial_ready: false, error_message: null })
+          .eq("id", item.id);
       }
 
       // Próximo slot livre — respeita Automação + configuração específica do canal
@@ -710,28 +686,32 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   const [storyAsVideo, setStoryAsVideo] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const ensureReelVideo = async (): Promise<string> => {
+  const ensureStoryVideo = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (isManagedReelVideoUrl(item.generated_video_url, user?.id, item.id)) return item.generated_video_url;
+    if (!user) throw new Error("Sessão expirada");
     const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
-    const sourceUrl = await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id }, { withFollowCta: true });
-    toast.info("Gerando vídeo 9:16 (pode levar ~20s)...");
+    const sourceUrl = await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id });
     const { imageToReelVideo } = await import("@/lib/imageToVideo");
-    const { data: settings } = await supabase.from("user_settings").select("reel_audio_url").eq("user_id", user!.id).maybeSingle();
-    const blob = await imageToReelVideo(sourceUrl, 6, settings?.reel_audio_url);
-    const path = `${user!.id}/${item.id}.mp4`;
+    const blob = await imageToReelVideo(sourceUrl, 6);
+    const path = `${user.id}/${item.id}.mp4`;
     const { error } = await supabase.storage.from("post-images").upload(path, blob, { contentType: "video/mp4", upsert: true });
     if (error) throw error;
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(path);
     await supabase.from("news_items").update({ generated_video_url: pub.publicUrl }).eq("id", item.id);
-    return pub.publicUrl;
   };
 
   const submit = async () => {
     if (!item || !when) return toast.error("Defina a data");
     setBusy(true);
     try {
-      if (mediaType === "reel" || (mediaType === "story" && storyAsVideo)) await ensureReelVideo();
+      if (mediaType === "reel" && item.content_type !== "video_cut") {
+        const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
+        await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id }, { withFollowCta: true });
+        await supabase.from("news_items")
+          .update({ generated_video_url: null, editorial_ready: false, error_message: null })
+          .eq("id", item.id);
+      }
+      if (mediaType === "story" && storyAsVideo) await ensureStoryVideo();
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from("scheduled_posts").insert({
         user_id: user!.id,

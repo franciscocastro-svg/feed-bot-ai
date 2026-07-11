@@ -44,9 +44,9 @@ export function useReelVideoGenerator() {
         const todo = (pending || []).filter((p: any) => {
           const n = p.news_items;
           if (!n) return false;
-          // Cortes IA já chegam com o MP4 final. Nunca os substitua pelo Reel
-          // editorial de 6 segundos, mesmo durante uma recuperação incompleta.
-          if (p.media_type === "reel" && n.content_type === "video_cut") return false;
+          // Reels são gerados e validados exclusivamente pelo FFmpeg do VPS.
+          // Cortes IA já chegam prontos e Reels de notícias entram na fila server-side.
+          if (p.media_type === "reel") return false;
           // Não tenta compor se o AI rewrite ainda não terminou — evita
           // renderizar um Story/Reel sem título e sem resumo.
           if (!n.rewritten_title || !n.rewritten_summary) return false;

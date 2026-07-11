@@ -101,6 +101,42 @@ function isManagedReelVideoUrl(url, userId, itemId, contentType) {
   return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
 }
 
+const STANDARD_NEWS_REEL_DURATION_SECONDS = 6;
+
+function buildStandardNewsReelCommand(imagePath, audioPath, outputPath) {
+  const audioInput = audioPath
+    ? `-stream_loop -1 -i ${shellQuote(audioPath)}`
+    : `-f lavfi -i ${shellQuote("anullsrc=r=48000:cl=stereo")}`;
+  return [
+    "ffmpeg -y",
+    `-loop 1 -framerate 30 -i ${shellQuote(imagePath)}`,
+    audioInput,
+    `-t ${STANDARD_NEWS_REEL_DURATION_SECONDS}`,
+    `-vf ${shellQuote("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p")}`,
+    "-r 30 -c:v libx264 -preset medium -crf 20 -profile:v high -level 4.1",
+    "-g 60 -keyint_min 60 -sc_threshold 0",
+    "-c:a aac -ar 48000 -b:a 128k",
+    "-movflags +faststart -shortest",
+    shellQuote(outputPath),
+  ].join(" ");
+}
+
+async function validateStandardNewsReel(filePath) {
+  const { stdout } = await execAsync(
+    `ffprobe -v error -show_entries format=duration:stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate -of json ${shellQuote(filePath)}`,
+  );
+  const probe = JSON.parse(stdout || "{}");
+  const duration = Number(probe?.format?.duration || 0);
+  const video = (probe?.streams || []).find((stream) => stream.codec_type === "video");
+  const audio = (probe?.streams || []).find((stream) => stream.codec_type === "audio");
+  if (duration < 5.5 || duration > 6.5) throw new Error(`Duração inválida do Reel normalizado: ${duration}s`);
+  if (video?.codec_name !== "h264" || video?.width !== 1080 || video?.height !== 1920 || video?.pix_fmt !== "yuv420p") {
+    throw new Error(`Vídeo fora do padrão Meta: ${video?.codec_name || "sem codec"} ${video?.width || 0}x${video?.height || 0} ${video?.pix_fmt || ""}`);
+  }
+  if (audio?.codec_name !== "aac") throw new Error(`Áudio fora do padrão Meta: ${audio?.codec_name || "ausente"}`);
+  return { duration, videoCodec: video.codec_name, audioCodec: audio.codec_name };
+}
+
 // Configuração de caminhos e env
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -757,14 +793,7 @@ async function generateReelVideoNode(item, settings) {
 
     // Executa ffmpeg local
     console.log(`[reel] Iniciando compilação do vídeo no FFmpeg...`);
-    let ffmpegCmd = "";
-    if (hasAudio) {
-      // Mescla imagem estática em loop de 6 segundos com a música cortada em 6 segundos
-      ffmpegCmd = `ffmpeg -y -loop 1 -i "${tempImgPath}" -i "${tempAudioPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -c:a aac -shortest -b:v 6M -b:a 128k "${tempVideoPath}"`;
-    } else {
-      // Gera vídeo de 6 segundos apenas com imagem estática (sem som)
-      ffmpegCmd = `ffmpeg -y -loop 1 -i "${tempImgPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -b:v 6M "${tempVideoPath}"`;
-    }
+    const ffmpegCmd = buildStandardNewsReelCommand(tempImgPath, hasAudio ? tempAudioPath : null, tempVideoPath);
 
     console.log(`[ffmpeg] Rodando comando: ${ffmpegCmd}`);
     const { stdout, stderr } = await execAsync(ffmpegCmd);
@@ -772,6 +801,8 @@ async function generateReelVideoNode(item, settings) {
     if (!fs.existsSync(tempVideoPath) || fs.statSync(tempVideoPath).size < 1000) {
       throw new Error(`Vídeo não foi gerado ou está vazio. stderr: ${stderr}`);
     }
+    const validation = await validateStandardNewsReel(tempVideoPath);
+    console.log(`[reel] Validação Meta concluída: ${JSON.stringify(validation)}`);
 
     console.log(`[reel] Vídeo gerado localmente com sucesso (${fs.statSync(tempVideoPath).size} bytes). Realizando upload...`);
 
@@ -899,15 +930,15 @@ async function generateReelVideoFromJob(job) {
       }
     }
 
-    const ffmpegCmd = hasAudio
-      ? `ffmpeg -y -loop 1 -i "${tempImgPath}" -i "${tempAudioPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -c:a aac -shortest -b:v 6M -b:a 128k "${tempVideoPath}"`
-      : `ffmpeg -y -loop 1 -i "${tempImgPath}" -c:v libx264 -t 6 -pix_fmt yuv420p -b:v 6M "${tempVideoPath}"`;
+    const ffmpegCmd = buildStandardNewsReelCommand(tempImgPath, hasAudio ? tempAudioPath : null, tempVideoPath);
 
     console.log(`[job:${job.id}] Gerando MP4 com FFmpeg...`);
     const { stderr } = await execAsync(ffmpegCmd);
     if (!fs.existsSync(tempVideoPath) || fs.statSync(tempVideoPath).size < 1000) {
       throw new Error(`Vídeo não foi gerado ou está vazio. stderr: ${stderr}`);
     }
+    const validation = await validateStandardNewsReel(tempVideoPath);
+    console.log(`[job:${job.id}] Validação Meta concluída: ${JSON.stringify(validation)}`);
 
     const videoBuffer = await fs.promises.readFile(tempVideoPath);
     const pathStorage = `${job.user_id}/${job.news_item_id}.mp4`;
@@ -2174,6 +2205,55 @@ async function processQueuedReelJobs() {
   return jobs.length;
 }
 
+async function recoverFailedNewsReels() {
+  const { data: failedPosts, error } = await supabase
+    .from("scheduled_posts")
+    .select("id, user_id, instagram_account_id, news_item_id, scheduled_for, retry_count, error_message, news_items(id, content_type, generated_cover_url, generated_image_url)")
+    .eq("status", "failed")
+    .eq("media_type", "reel")
+    .ilike("error_message", "%Erro ao processar mídia%")
+    .lt("retry_count", 3)
+    .order("scheduled_for", { ascending: true })
+    .limit(50);
+  if (error) {
+    console.warn("Não foi possível consultar Reels rejeitados para recuperação:", error.message || error);
+    return 0;
+  }
+
+  const recoverable = (failedPosts || []).filter((post) => {
+    const news = Array.isArray(post.news_items) ? post.news_items[0] : post.news_items;
+    return news && news.content_type !== "video_cut" && (news.generated_cover_url || news.generated_image_url);
+  });
+  if (!recoverable.length) return 0;
+
+  const nextByAccount = new Map();
+  for (const post of recoverable) {
+    const news = Array.isArray(post.news_items) ? post.news_items[0] : post.news_items;
+    const accountKey = post.instagram_account_id || post.user_id;
+    const previous = nextByAccount.get(accountKey) || Date.now();
+    const scheduledFor = new Date(Math.max(Date.now() + 2 * 60_000, previous + 10 * 60_000));
+    nextByAccount.set(accountKey, scheduledFor.getTime());
+
+    await supabase.from("news_items")
+      .update({ generated_video_url: null, editorial_ready: false, error_message: null })
+      .eq("id", news.id);
+    await supabase.from("reel_render_jobs").delete().eq("scheduled_post_id", post.id);
+    const { error: postError } = await supabase.from("scheduled_posts").update({
+      status: "scheduled",
+      scheduled_for: scheduledFor.toISOString(),
+      retry_count: Number(post.retry_count || 0) + 1,
+      error_message: "Reel rejeitado pela Meta; regenerando MP4 normalizado no VPS.",
+    }).eq("id", post.id);
+    if (postError) {
+      console.warn(`[recover:${post.id}] Falha ao reenfileirar:`, postError.message || postError);
+      continue;
+    }
+    await supabase.rpc("enqueue_reel_render_job_for_post", { _scheduled_post_id: post.id });
+    console.log(`[recover:${post.id}] Reel comum reenfileirado para normalização Meta.`);
+  }
+  return recoverable.length;
+}
+
 async function loadEffectivePostSettings(post) {
   if (post.instagram_account_id) {
     const { data, error } = await supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id });
@@ -2239,6 +2319,7 @@ async function main() {
   }
 
   await reportWorkerHealth();
+  if (queueEnabled("media")) await recoverFailedNewsReels();
   const heartbeatTimer = setInterval(() => {
     reportWorkerHealth().catch((error) => {
       console.warn("[health] Heartbeat falhou:", error?.message || error);
