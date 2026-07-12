@@ -30,6 +30,8 @@ import {
   PlayCircle,
   Target,
   Wand2,
+  Search,
+  Rocket,
 } from "lucide-react";
 
 const FORMATS = [
@@ -38,7 +40,68 @@ const FORMATS = [
   { key: "pergunta", label: "Pergunta de engajamento", desc: "Gera comentários" },
   { key: "carrossel", label: "Carrossel", desc: "5-7 slides estruturados" },
   { key: "frase", label: "Frase / Citação", desc: "Frase impactante + explicação" },
+  { key: "bastidor", label: "Bastidor", desc: "Processo, rotina e aprendizados reais" },
+  { key: "lista", label: "Lista prática", desc: "Conteúdo escaneável e acionável" },
+  { key: "mito_verdade", label: "Mito ou verdade", desc: "Quebra uma crença comum do nicho" },
+  { key: "estudo_caso", label: "Estudo de caso", desc: "Contexto, decisão, resultado e lição" },
+  { key: "oferta", label: "Oferta", desc: "Benefício, objeção e chamada para ação" },
+  { key: "roteiro_reel", label: "Roteiro de Reel", desc: "Gancho, cenas curtas e CTA" },
 ];
+
+const OBJECTIVES = [
+  { value: "educar", label: "Educar" },
+  { value: "engajar", label: "Engajar" },
+  { value: "autoridade", label: "Gerar autoridade" },
+  { value: "vender", label: "Vender" },
+  { value: "entreter", label: "Entreter" },
+  { value: "comunidade", label: "Fortalecer comunidade" },
+];
+
+const FUNNEL_STAGES = [
+  { value: "descoberta", label: "Descoberta" },
+  { value: "consideracao", label: "Consideração" },
+  { value: "conversao", label: "Conversão" },
+  { value: "retencao", label: "Retenção" },
+];
+
+const WEEK_DAYS = [
+  { value: 1, label: "Seg" }, { value: 2, label: "Ter" }, { value: 3, label: "Qua" },
+  { value: 4, label: "Qui" }, { value: 5, label: "Sex" }, { value: 6, label: "Sáb" },
+  { value: 0, label: "Dom" },
+];
+
+const CREATOR_PACKS = [
+  { key: "personal", title: "Marca pessoal", desc: "Autoridade, opinião e bastidores", topics: [
+    ["Minha visão sobre uma tendência do nicho", "Autoridade", "autoridade", ["roteiro_reel", "carrossel"]],
+    ["Erro que cometi e o que aprendi", "Bastidores", "comunidade", ["bastidor", "roteiro_reel"]],
+    ["Método que uso no meu trabalho", "Educação", "educar", ["mini_aula", "carrossel"]],
+  ] },
+  { key: "business", title: "Negócio local", desc: "Confiança, prova e vendas locais", topics: [
+    ["Dúvida mais comum antes de comprar", "Dúvidas", "educar", ["pergunta", "roteiro_reel"]],
+    ["Como funciona nosso atendimento", "Bastidores", "autoridade", ["bastidor", "carrossel"]],
+    ["Transformação entregue ao cliente", "Prova", "vender", ["estudo_caso", "oferta"]],
+  ] },
+  { key: "commerce", title: "Loja e e-commerce", desc: "Produtos, objeções e conversão", topics: [
+    ["Como escolher o produto certo", "Guia de compra", "educar", ["lista", "carrossel"]],
+    ["Produto em uso: benefício principal", "Produto", "vender", ["roteiro_reel", "oferta"]],
+    ["Mito ou verdade sobre o produto", "Objeções", "engajar", ["mito_verdade", "pergunta"]],
+  ] },
+  { key: "expert", title: "Professor ou especialista", desc: "Aulas, método e autoridade", topics: [
+    ["Conceito essencial explicado do zero", "Fundamentos", "educar", ["mini_aula", "carrossel"]],
+    ["Exercício prático para aplicar hoje", "Prática", "engajar", ["lista", "roteiro_reel"]],
+    ["Erro frequente dos iniciantes", "Erros", "autoridade", ["mito_verdade", "mini_aula"]],
+  ] },
+  { key: "creator", title: "Entretenimento e creator", desc: "Reação, opinião e comunidade", topics: [
+    ["Opinião que divide o meu nicho", "Opinião", "engajar", ["pergunta", "roteiro_reel"]],
+    ["Bastidores que o público não vê", "Bastidores", "comunidade", ["bastidor", "roteiro_reel"]],
+    ["Lista dos meus favoritos do momento", "Curadoria", "entreter", ["lista", "carrossel"]],
+  ] },
+  { key: "service", title: "Prestador de serviço", desc: "Educação, casos e captação", topics: [
+    ["Sinais de que a pessoa precisa deste serviço", "Diagnóstico", "educar", ["lista", "carrossel"]],
+    ["Caso real: problema, solução e aprendizado", "Resultados", "autoridade", ["estudo_caso", "roteiro_reel"]],
+    ["O que está incluso no atendimento", "Oferta", "vender", ["oferta", "carrossel"]],
+  ] },
+] as const;
 
 const QUICK_STARTS = [
   {
@@ -83,6 +146,18 @@ type Topic = {
   instagram_account_id: string | null;
   last_used_at: string | null;
   use_count: number;
+  content_pillar: string | null;
+  objective: string;
+  target_audience: string | null;
+  funnel_stage: string;
+  tone: string | null;
+  call_to_action: string | null;
+  keywords: string[];
+  frequency_per_week: number;
+  preferred_days: number[];
+  priority: number;
+  evergreen: boolean;
+  source_type: string;
 };
 
 type IgAccount = { id: string; username: string };
@@ -115,6 +190,15 @@ export default function Topics() {
   const [quickTheme, setQuickTheme] = useState("");
   const [quickFormat, setQuickFormat] = useState("dica");
   const [quickLoading, setQuickLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [objectiveFilter, setObjectiveFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [planOpen, setPlanOpen] = useState(false);
+  const [selectedPack, setSelectedPack] = useState(CREATOR_PACKS[0].key as string);
+  const [planAudience, setPlanAudience] = useState("");
+  const [planTone, setPlanTone] = useState("");
+  const [planAccount, setPlanAccount] = useState("all");
+  const [planLoading, setPlanLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -143,7 +227,12 @@ export default function Topics() {
     setSavingSettings(false);
   };
 
-  const openNew = () => { setEditing({ title: "", notes: "", formats: ["dica", "mini_aula", "pergunta"], active: true, instagram_account_id: null }); setOpen(true); };
+  const openNew = () => { setEditing({
+    title: "", notes: "", formats: ["dica", "mini_aula", "roteiro_reel"], active: true,
+    instagram_account_id: null, content_pillar: "", objective: "educar", target_audience: "",
+    funnel_stage: "descoberta", tone: "", call_to_action: "", keywords: [],
+    frequency_per_week: 1, preferred_days: [], priority: 3, evergreen: true, source_type: "manual",
+  }); setOpen(true); };
   const openEdit = (t: Topic) => { setEditing(t); setOpen(true); };
 
   const save = async () => {
@@ -157,6 +246,18 @@ export default function Topics() {
       formats: editing.formats && editing.formats.length ? editing.formats : ["dica"],
       active: editing.active !== false,
       instagram_account_id: editing.instagram_account_id || null,
+      content_pillar: editing.content_pillar?.trim() || null,
+      objective: editing.objective || "educar",
+      target_audience: editing.target_audience?.trim() || null,
+      funnel_stage: editing.funnel_stage || "descoberta",
+      tone: editing.tone?.trim() || null,
+      call_to_action: editing.call_to_action?.trim() || null,
+      keywords: editing.keywords || [],
+      frequency_per_week: Math.max(1, Math.min(7, editing.frequency_per_week || 1)),
+      preferred_days: editing.preferred_days || [],
+      priority: Math.max(1, Math.min(5, editing.priority || 3)),
+      evergreen: editing.evergreen !== false,
+      source_type: editing.source_type || "manual",
     };
     const res = editing.id
       ? await supabase.from("content_topics").update(payload).eq("id", editing.id)
@@ -193,6 +294,46 @@ export default function Topics() {
     if (!editing) return;
     const cur = editing.formats || [];
     setEditing({ ...editing, formats: cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key] });
+  };
+
+  const toggleDay = (day: number) => {
+    if (!editing) return;
+    const current = editing.preferred_days || [];
+    setEditing({ ...editing, preferred_days: current.includes(day) ? current.filter(d => d !== day) : [...current, day] });
+  };
+
+  const createStarterPlan = async () => {
+    const pack = CREATOR_PACKS.find(item => item.key === selectedPack);
+    if (!pack) return;
+    setPlanLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sessão expirada");
+      const rows = pack.topics.map(([title, pillar, objective, formats]) => ({
+        user_id: user.id,
+        title,
+        content_pillar: pillar,
+        objective,
+        formats: [...formats],
+        target_audience: planAudience.trim() || null,
+        tone: planTone.trim() || null,
+        instagram_account_id: planAccount === "all" ? null : planAccount,
+        funnel_stage: objective === "vender" ? "conversao" : "descoberta",
+        frequency_per_week: 1,
+        priority: 3,
+        active: true,
+        source_type: "starter_pack",
+      }));
+      const { error } = await supabase.from("content_topics").insert(rows);
+      if (error) throw error;
+      toast.success(`Plano criado com ${rows.length} pautas`);
+      setPlanOpen(false);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Não foi possível criar o plano");
+    } finally {
+      setPlanLoading(false);
+    }
   };
 
   const extractFromPdf = async () => {
@@ -237,7 +378,7 @@ export default function Topics() {
         active: true,
       }));
     if (rows.length === 0) { toast.error("Selecione ao menos uma"); return; }
-    const { error } = await supabase.from("content_topics").insert(rows);
+    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "pdf" })));
     if (error) { toast.error(error.message); return; }
     toast.success(`${rows.length} pautas importadas`);
     setPdfOpen(false); setPdfFile(null); setPdfSuggestions([]); setPdfSelected(new Set());
@@ -275,7 +416,7 @@ export default function Topics() {
       active: true,
     }));
     if (rows.length === 0) { toast.error("Selecione ao menos uma"); return; }
-    const { error } = await supabase.from("content_topics").insert(rows);
+    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "youtube" })));
     if (error) { toast.error(error.message); return; }
     toast.success(`${rows.length} pautas importadas`);
     setYtOpen(false); setYtUrl(""); setYtSuggestions([]); setYtSelected(new Set());
@@ -308,6 +449,15 @@ export default function Topics() {
     ...lane,
     count: topics.filter(t => (t.formats || []).includes(lane.value)).length,
   }));
+  const filteredTopics = topics.filter(topic => {
+    const term = search.trim().toLowerCase();
+    const matchesText = !term || [topic.title, topic.notes, topic.content_pillar, ...(topic.keywords || [])]
+      .filter(Boolean).some(value => String(value).toLowerCase().includes(term));
+    const matchesObjective = objectiveFilter === "all" || topic.objective === objectiveFilter;
+    const matchesAccount = accountFilter === "all" ||
+      (accountFilter === "shared" ? !topic.instagram_account_id : topic.instagram_account_id === accountFilter);
+    return matchesText && matchesObjective && matchesAccount;
+  });
   const runQuickStart = (action: typeof QUICK_STARTS[number]["action"]) => {
     if (action === "quick") {
       setQuickOpen(true);
@@ -342,6 +492,9 @@ export default function Topics() {
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => runQuickStart("quick")}>
             <Zap className="h-4 w-4 mr-2" /> Gerar avulso
+          </Button>
+          <Button variant="outline" onClick={() => setPlanOpen(true)}>
+            <Rocket className="h-4 w-4 mr-2" /> Criar plano inicial
           </Button>
           <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Nova pauta</Button>
         </div>
@@ -465,7 +618,31 @@ export default function Topics() {
               </div>
               <Button variant="outline" onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Adicionar</Button>
             </div>
-            {topics.map(t => (
+            <div className="grid gap-2 md:grid-cols-[1fr_190px_190px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={search} onChange={e => setSearch(e.target.value)} className="pl-9" placeholder="Buscar tema, pilar ou palavra-chave" />
+              </div>
+              <Select value={objectiveFilter} onValueChange={setObjectiveFilter}>
+                <SelectTrigger><SelectValue placeholder="Objetivo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os objetivos</SelectItem>
+                  {OBJECTIVES.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={accountFilter} onValueChange={setAccountFilter}>
+                <SelectTrigger><SelectValue placeholder="Conta" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as contas</SelectItem>
+                  <SelectItem value="shared">Pautas compartilhadas</SelectItem>
+                  {igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {filteredTopics.length === 0 && (
+              <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhuma pauta encontrada com esses filtros.</div>
+            )}
+            {filteredTopics.map(t => (
               <Card key={t.id} className={t.active ? "overflow-hidden" : "overflow-hidden opacity-60"}>
                 <CardContent className="p-0">
                   <div className="flex items-stretch">
@@ -475,6 +652,8 @@ export default function Topics() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold">{t.title}</h3>
                           <Badge variant={t.active ? "default" : "secondary"}>{t.active ? "Ativa" : "Inativa"}</Badge>
+                          {t.content_pillar && <Badge variant="outline">{t.content_pillar}</Badge>}
+                          <Badge variant="secondary">{OBJECTIVES.find(item => item.value === t.objective)?.label || t.objective}</Badge>
                           {t.instagram_account_id && (
                             <Badge variant="outline" className="text-xs">
                               @{igAccounts.find(a => a.id === t.instagram_account_id)?.username || "—"}
@@ -490,6 +669,8 @@ export default function Topics() {
                         <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Usada {t.use_count || 0}x</span>
                           <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> {t.last_used_at ? new Date(t.last_used_at).toLocaleDateString("pt-BR") : "Ainda não usada"}</span>
+                          <span>{t.frequency_per_week || 1}x por semana</span>
+                          <span>Prioridade {t.priority || 3}/5</span>
                         </div>
                       </div>
                       <div className="flex gap-2 md:justify-end">
@@ -548,7 +729,7 @@ export default function Topics() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? "Editar pauta" : "Nova pauta"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
@@ -559,6 +740,42 @@ export default function Topics() {
               <Label>Contexto / observações (opcional)</Label>
               <Textarea value={editing?.notes || ""} onChange={(e) => setEditing({ ...editing!, notes: e.target.value })}
                 placeholder="Ex: público de ensino médio, foco em ENEM, evitar fórmulas complexas..." rows={3} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Pilar de conteúdo</Label>
+                <Input value={editing?.content_pillar || ""} onChange={e => setEditing({ ...editing!, content_pillar: e.target.value })} placeholder="Ex: Educação, bastidores, produto" />
+              </div>
+              <div>
+                <Label>Objetivo</Label>
+                <Select value={editing?.objective || "educar"} onValueChange={value => setEditing({ ...editing!, objective: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{OBJECTIVES.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Etapa do funil</Label>
+                <Select value={editing?.funnel_stage || "descoberta"} onValueChange={value => setEditing({ ...editing!, funnel_stage: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{FUNNEL_STAGES.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Público específico</Label>
+                <Input value={editing?.target_audience || ""} onChange={e => setEditing({ ...editing!, target_audience: e.target.value })} placeholder="Ex: mães de primeira viagem" />
+              </div>
+              <div>
+                <Label>Tom desta pauta</Label>
+                <Input value={editing?.tone || ""} onChange={e => setEditing({ ...editing!, tone: e.target.value })} placeholder="Ex: direto, acolhedor, bem-humorado" />
+              </div>
+              <div>
+                <Label>Chamada para ação</Label>
+                <Input value={editing?.call_to_action || ""} onChange={e => setEditing({ ...editing!, call_to_action: e.target.value })} placeholder="Ex: comente sua dúvida" />
+              </div>
+            </div>
+            <div>
+              <Label>Palavras-chave</Label>
+              <Input value={(editing?.keywords || []).join(", ")} onChange={e => setEditing({ ...editing!, keywords: e.target.value.split(",").map(v => v.trim()).filter(Boolean) })} placeholder="marketing, vendas, instagram" />
             </div>
             {igAccounts.length > 1 && (
               <div>
@@ -574,7 +791,7 @@ export default function Topics() {
             )}
             <div>
               <Label>Formatos permitidos</Label>
-              <div className="grid gap-2 mt-2">
+              <div className="grid gap-2 mt-2 sm:grid-cols-2">
                 {FORMATS.map(f => (
                   <label key={f.key} className="flex items-start gap-3 p-2 rounded border border-border cursor-pointer hover:bg-secondary/50">
                     <input type="checkbox" className="mt-1" checked={(editing?.formats || []).includes(f.key)} onChange={() => toggleFormat(f.key)} />
@@ -586,6 +803,28 @@ export default function Topics() {
                 ))}
               </div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Frequência semanal</Label>
+                <Input type="number" min={1} max={7} value={editing?.frequency_per_week || 1}
+                  onChange={e => setEditing({ ...editing!, frequency_per_week: Math.max(1, Math.min(7, Number(e.target.value) || 1)) })} />
+              </div>
+              <div>
+                <Label>Prioridade (1 a 5)</Label>
+                <Input type="number" min={1} max={5} value={editing?.priority || 3}
+                  onChange={e => setEditing({ ...editing!, priority: Math.max(1, Math.min(5, Number(e.target.value) || 3)) })} />
+              </div>
+            </div>
+            <div>
+              <Label>Dias preferidos <span className="font-normal text-muted-foreground">(vazio = qualquer dia)</span></Label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {WEEK_DAYS.map(day => (
+                  <Button key={day.value} type="button" size="sm" variant={(editing?.preferred_days || []).includes(day.value) ? "default" : "outline"} onClick={() => toggleDay(day.value)}>
+                    {day.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <Label>Pauta ativa</Label>
               <Switch checked={editing?.active !== false} onCheckedChange={(v) => setEditing({ ...editing!, active: v })} />
@@ -594,6 +833,67 @@ export default function Topics() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={save}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={planOpen} onOpenChange={setPlanOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Rocket className="h-5 w-5 text-primary" /> Criar plano inicial de conteúdo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <p className="text-sm text-muted-foreground">Escolha o tipo de criador. O sistema cria uma base editável de pautas para começar — você pode misturar modelos e adicionar quantas ideias quiser.</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {CREATOR_PACKS.map(pack => (
+                <button key={pack.key} type="button" onClick={() => setSelectedPack(pack.key)}
+                  className={`rounded-lg border p-4 text-left transition ${selectedPack === pack.key ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}>
+                  <p className="font-semibold">{pack.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{pack.desc}</p>
+                  <p className="mt-3 text-xs text-primary">{pack.topics.length} pautas iniciais</p>
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Quem você quer alcançar?</Label>
+                <Input value={planAudience} onChange={e => setPlanAudience(e.target.value)} placeholder="Ex: pequenos empresários iniciantes" />
+              </div>
+              <div>
+                <Label>Tom de voz</Label>
+                <Input value={planTone} onChange={e => setPlanTone(e.target.value)} placeholder="Ex: simples, próximo e confiante" />
+              </div>
+            </div>
+            {igAccounts.length > 0 && (
+              <div>
+                <Label>Aplicar o plano em</Label>
+                <Select value={planAccount} onValueChange={setPlanAccount}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as contas</SelectItem>
+                    {igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="rounded-lg border bg-secondary/30 p-4">
+              <p className="text-sm font-semibold">Prévia das pautas</p>
+              <div className="mt-2 space-y-2">
+                {CREATOR_PACKS.find(pack => pack.key === selectedPack)?.topics.map(([title, pillar, objective]) => (
+                  <div key={title} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="flex-1">{title}</span>
+                    <Badge variant="outline">{pillar}</Badge>
+                    <Badge variant="secondary">{OBJECTIVES.find(item => item.value === objective)?.label || objective}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPlanOpen(false)}>Cancelar</Button>
+            <Button onClick={createStarterPlan} disabled={planLoading}>
+              {planLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} Criar plano
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -99,7 +99,7 @@ const App = () => (
               <Route index element={<Overview />} />
               <Route path="news" element={<News />} />
               <Route path="sources" element={<Sources />} />
-              <Route path="topics" element={<AdminOnlyRoute><Topics /></AdminOnlyRoute>} />
+              <Route path="topics" element={<Topics />} />
               <Route path="creator-profile" element={<AdminOnlyRoute><CreatorProfile /></AdminOnlyRoute>} />
               <Route path="scheduled" element={<Scheduled />} />
               <Route path="accounts" element={<Accounts />} />

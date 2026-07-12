@@ -13,6 +13,12 @@ const FORMAT_GUIDE: Record<string, string> = {
   pergunta: "ENGAJAMENTO: pergunta provocativa que faça o público comentar. Comece com a pergunta forte, contexto curto, peça opinião.",
   carrossel: "CARROSSEL: divida o conteúdo em 5-7 slides (slide 1 gancho, slides 2-6 desenvolvimento, slide final CTA). Use marcadores '— Slide N —'.",
   frase: "FRASE/CITAÇÃO: uma frase curta e impactante sobre o tema + 1-2 linhas explicando o porquê.",
+  bastidor: "BASTIDOR: mostre processo, decisão, erro ou aprendizado real. Crie proximidade sem perder a utilidade.",
+  lista: "LISTA: gancho objetivo + itens claros, escaneáveis e acionáveis + conclusão curta.",
+  mito_verdade: "MITO OU VERDADE: apresente uma crença comum, dê o veredito e explique de forma simples.",
+  estudo_caso: "ESTUDO DE CASO: contexto, desafio, decisão, resultado e aprendizado aplicável. Não invente números.",
+  oferta: "OFERTA: problema, transformação, benefício, tratamento de objeção e CTA claro sem promessas enganosas.",
+  roteiro_reel: "ROTEIRO DE REEL: gancho de 2 segundos, falas curtas por cena, virada e CTA. Duração estimada de 20-45s.",
 };
 
 async function generateContent(topic: any, format: string, settings: any, profile: any) {
@@ -21,6 +27,16 @@ async function generateContent(topic: any, format: string, settings: any, profil
   const tone = profile?.voice_tone || settings?.ai_tone || "engajante e descontraído";
   const niche = profile?.niche_detail || settings?.default_niche || "";
   const contextNote = topic.notes ? `\nContexto da pauta: ${topic.notes}` : "";
+  const planningBlock = `
+PLANEJAMENTO DESTA PAUTA:
+- Pilar: ${topic.content_pillar || "não informado"}
+- Objetivo: ${topic.objective || "educar"}
+- Etapa do funil: ${topic.funnel_stage || "descoberta"}
+- Público específico: ${topic.target_audience || "use o perfil geral"}
+- Tom específico: ${topic.tone || "use o perfil geral"}
+- CTA desejado: ${topic.call_to_action || "escolha um CTA natural"}
+- Palavras-chave: ${Array.isArray(topic.keywords) && topic.keywords.length ? topic.keywords.join(", ") : "livres"}
+`;
 
   const profileBlock = profile ? `
 PERFIL DO CRIADOR (use isso pra personalizar TUDO):
@@ -40,6 +56,7 @@ Você produz conteúdo PERENE (não notícia) baseado em uma pauta dada.
 Formato solicitado: ${format.toUpperCase()}.
 Diretriz do formato: ${guide}${contextNote}
 ${profileBlock}
+${planningBlock}
 REGRAS:
 - Caption rica em informação real, ensinando algo concreto.
 - Escreva COMO O CRIADOR escreveria, não como uma IA genérica.
@@ -129,7 +146,29 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "no_active_topics" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     // ordena por last_used_at asc nulls first, depois use_count asc
-    const sorted = [...topics].sort((a, b) => {
+    // Na geração automática, respeita os dias preferidos e distribui a
+    // frequência ao longo da semana. Geração manual de uma pauta específica
+    // sempre é permitida.
+    const today = new Date().getDay();
+    const now = Date.now();
+    const eligible = topicId ? topics : topics.filter((candidate: any) => {
+      const days = Array.isArray(candidate.preferred_days) ? candidate.preferred_days : [];
+      if (days.length > 0 && !days.includes(today)) return false;
+      if (!candidate.last_used_at) return true;
+      const frequency = Math.max(1, Math.min(7, Number(candidate.frequency_per_week) || 1));
+      const minimumGapMs = (7 / frequency) * 24 * 60 * 60 * 1000;
+      return now - new Date(candidate.last_used_at).getTime() >= minimumGapMs;
+    });
+    const candidates = eligible.length > 0 ? eligible : (topicId ? topics : []);
+    if (candidates.length === 0) {
+      return new Response(JSON.stringify({ error: "no_topic_due_today", skipped: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const sorted = [...candidates].sort((a, b) => {
+      const priorityDiff = (Number(b.priority) || 3) - (Number(a.priority) || 3);
+      if (priorityDiff !== 0) return priorityDiff;
       const av = a.last_used_at ? new Date(a.last_used_at).getTime() : 0;
       const bv = b.last_used_at ? new Date(b.last_used_at).getTime() : 0;
       if (av !== bv) return av - bv;

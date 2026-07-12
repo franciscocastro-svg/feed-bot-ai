@@ -7,7 +7,6 @@
 // - Fase C: liberar para todos os planos pagos.
 
 export const ADMIN_ONLY_PATHS: string[] = [
-  "/dashboard/topics",
   "/dashboard/creator-profile",
 ];
 
