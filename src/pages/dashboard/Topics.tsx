@@ -11,6 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
+  buildStarterTopicRows,
+  type CreatorPackDefinition,
+} from "@/lib/starterTopics";
+import {
   Plus,
   Trash2,
   Sparkles,
@@ -101,7 +105,7 @@ const CREATOR_PACKS = [
     ["Caso real: problema, solução e aprendizado", "Resultados", "autoridade", ["estudo_caso", "roteiro_reel"]],
     ["O que está incluso no atendimento", "Oferta", "vender", ["oferta", "carrossel"]],
   ] },
-] as const;
+] as const satisfies readonly CreatorPackDefinition[];
 
 const QUICK_STARTS = [
   {
@@ -309,21 +313,12 @@ export default function Topics() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada");
-      const rows = pack.topics.map(([title, pillar, objective, formats]) => ({
-        user_id: user.id,
-        title,
-        content_pillar: pillar,
-        objective,
-        formats: [...formats],
-        target_audience: planAudience.trim() || null,
+      const rows = buildStarterTopicRows(pack.topics, {
+        userId: user.id,
+        targetAudience: planAudience.trim() || null,
         tone: planTone.trim() || null,
-        instagram_account_id: planAccount === "all" ? null : planAccount,
-        funnel_stage: objective === "vender" ? "conversao" : "descoberta",
-        frequency_per_week: 1,
-        priority: 3,
-        active: true,
-        source_type: "starter_pack",
-      }));
+        instagramAccountId: planAccount === "all" ? null : planAccount,
+      });
       const { error } = await supabase.from("content_topics").insert(rows);
       if (error) throw error;
       toast.success(`Plano criado com ${rows.length} pautas`);
@@ -879,13 +874,16 @@ export default function Topics() {
             <div className="rounded-lg border bg-secondary/30 p-4">
               <p className="text-sm font-semibold">Prévia das pautas</p>
               <div className="mt-2 space-y-2">
-                {CREATOR_PACKS.find(pack => pack.key === selectedPack)?.topics.map(([title, pillar, objective]) => (
-                  <div key={title} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="flex-1">{title}</span>
-                    <Badge variant="outline">{pillar}</Badge>
-                    <Badge variant="secondary">{OBJECTIVES.find(item => item.value === objective)?.label || objective}</Badge>
-                  </div>
-                ))}
+                {CREATOR_PACKS.find(pack => pack.key === selectedPack)?.topics.map((topic) => {
+                  const [title, pillar, objective] = topic;
+                  return (
+                    <div key={title} className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="flex-1">{title}</span>
+                      <Badge variant="outline">{pillar}</Badge>
+                      <Badge variant="secondary">{OBJECTIVES.find(item => item.value === objective)?.label || objective}</Badge>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
