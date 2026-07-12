@@ -13,7 +13,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
 const PUBLISH_ACTIVE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 const DUPLICATE_LOOKBACK_HOURS = 72;
-const MAX_ACTIVE_QUEUE_PER_ACCOUNT = 3;
+const MAX_ACTIVE_QUEUE_PER_ACCOUNT = 2;
 
 async function callFn(name: string, body: Record<string, unknown>) {
   const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET") || "";
@@ -717,6 +717,7 @@ Deno.serve(async (req) => {
           : Math.max(0, masterDailyCap - scheduledTodayCount);
 
         const scheduledNow: { id: string; channel: string }[] = [];
+        const scheduledThisRunIgIds = new Set<string>();
         if (fallbackAccountId) {
           for (const it of ready || []) {
             if (alreadyScheduledNews.has(it.id)) continue;
@@ -725,6 +726,9 @@ Deno.serve(async (req) => {
             const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
               ? it.instagram_account_id
               : fallbackAccountId;
+            // No máximo uma nova publicação por conta em cada tick. A fila
+            // pode manter uma reserva, mas nunca é preenchida em rajada.
+            if (scheduledThisRunIgIds.has(targetIg)) continue;
             const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg, true));
             if (duplicateRow) {
               await supabase.from("news_items").update({
@@ -754,6 +758,7 @@ Deno.serve(async (req) => {
               allTaken.push(slot);
               remainingDailyCap--;
               activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
+              scheduledThisRunIgIds.add(targetIg);
               dupeRows.push({
                 news_item_id: it.id,
                 instagram_account_id: targetIg,
