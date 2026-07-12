@@ -1850,6 +1850,59 @@ export type Database = {
         }
         Relationships: []
       }
+      video_cut_brand_profiles: {
+        Row: {
+          created_at: string
+          default_preset_key: string
+          font_family: string
+          highlight_color: string
+          instagram_account_id: string
+          outline_color: string
+          primary_color: string
+          subtitle_position: string
+          updated_at: string
+          user_id: string
+          watermark_enabled: boolean
+          watermark_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          default_preset_key?: string
+          font_family?: string
+          highlight_color?: string
+          instagram_account_id: string
+          outline_color?: string
+          primary_color?: string
+          subtitle_position?: string
+          updated_at?: string
+          user_id: string
+          watermark_enabled?: boolean
+          watermark_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          default_preset_key?: string
+          font_family?: string
+          highlight_color?: string
+          instagram_account_id?: string
+          outline_color?: string
+          primary_color?: string
+          subtitle_position?: string
+          updated_at?: string
+          user_id?: string
+          watermark_enabled?: boolean
+          watermark_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_cut_brand_profiles_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: true
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       video_cut_clips: {
         Row: {
           caption: string | null
@@ -1857,6 +1910,7 @@ export type Database = {
           clip_index: number
           created_at: string
           duration_seconds: number
+          edit_config: Json
           emotion_score: number | null
           end_seconds: number
           error_message: string | null
@@ -1869,7 +1923,10 @@ export type Database = {
           instagram_account_id: string
           job_id: string
           news_item_id: string | null
+          provider_trace: Json
+          quality_report: Json
           reason: string | null
+          render_version: number
           scheduled_post_id: string | null
           score: number
           start_seconds: number
@@ -1879,6 +1936,7 @@ export type Database = {
           thumbnail_url: string | null
           title: string | null
           transcript: Json | null
+          transcript_text: string | null
           updated_at: string
           user_id: string
           video_url: string | null
@@ -1890,6 +1948,7 @@ export type Database = {
           clip_index: number
           created_at?: string
           duration_seconds?: number
+          edit_config?: Json
           emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
@@ -1902,7 +1961,10 @@ export type Database = {
           instagram_account_id: string
           job_id: string
           news_item_id?: string | null
+          provider_trace?: Json
+          quality_report?: Json
           reason?: string | null
+          render_version?: number
           scheduled_post_id?: string | null
           score?: number
           start_seconds?: number
@@ -1912,6 +1974,7 @@ export type Database = {
           thumbnail_url?: string | null
           title?: string | null
           transcript?: Json | null
+          transcript_text?: string | null
           updated_at?: string
           user_id: string
           video_url?: string | null
@@ -1923,6 +1986,7 @@ export type Database = {
           clip_index?: number
           created_at?: string
           duration_seconds?: number
+          edit_config?: Json
           emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
@@ -1935,7 +1999,10 @@ export type Database = {
           instagram_account_id?: string
           job_id?: string
           news_item_id?: string | null
+          provider_trace?: Json
+          quality_report?: Json
           reason?: string | null
+          render_version?: number
           scheduled_post_id?: string | null
           score?: number
           start_seconds?: number
@@ -1945,6 +2012,7 @@ export type Database = {
           thumbnail_url?: string | null
           title?: string | null
           transcript?: Json | null
+          transcript_text?: string | null
           updated_at?: string
           user_id?: string
           video_url?: string | null
@@ -1992,6 +2060,7 @@ export type Database = {
           claimed_by: string | null
           completed_at: string | null
           created_at: string
+          custom_prompt: string | null
           duration_seconds: number | null
           error_message: string | null
           fallback_required: boolean
@@ -2002,12 +2071,15 @@ export type Database = {
           id: string
           instagram_account_id: string
           max_attempts: number
+          preset_key: string
           progress: number
+          provider_trace: Json
           remove_silences: boolean
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
           smart_crop: boolean
+          source_expires_at: string
           source_file_name: string | null
           source_kind: string
           source_storage_bucket: string | null
@@ -2032,6 +2104,7 @@ export type Database = {
           claimed_by?: string | null
           completed_at?: string | null
           created_at?: string
+          custom_prompt?: string | null
           duration_seconds?: number | null
           error_message?: string | null
           fallback_required?: boolean
@@ -2042,12 +2115,15 @@ export type Database = {
           id?: string
           instagram_account_id: string
           max_attempts?: number
+          preset_key?: string
           progress?: number
+          provider_trace?: Json
           remove_silences?: boolean
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
           smart_crop?: boolean
+          source_expires_at?: string
           source_file_name?: string | null
           source_kind?: string
           source_storage_bucket?: string | null
@@ -2072,6 +2148,7 @@ export type Database = {
           claimed_by?: string | null
           completed_at?: string | null
           created_at?: string
+          custom_prompt?: string | null
           duration_seconds?: number | null
           error_message?: string | null
           fallback_required?: boolean
@@ -2082,12 +2159,15 @@ export type Database = {
           id?: string
           instagram_account_id?: string
           max_attempts?: number
+          preset_key?: string
           progress?: number
+          provider_trace?: Json
           remove_silences?: boolean
           requested_clips?: number
           reserved_clips?: number
           rights_confirmed?: boolean
           smart_crop?: boolean
+          source_expires_at?: string
           source_file_name?: string | null
           source_kind?: string
           source_storage_bucket?: string | null
@@ -2108,6 +2188,63 @@ export type Database = {
             columns: ["instagram_account_id"]
             isOneToOne: false
             referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_cut_rerender_requests: {
+        Row: {
+          attempts: number
+          clip_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_id: string
+          locked_at: string | null
+          locked_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          clip_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id: string
+          locked_at?: string | null
+          locked_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          clip_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_cut_rerender_requests_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "video_cut_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_cut_rerender_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "video_cut_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -2233,6 +2370,14 @@ export type Database = {
         Args: { _resource: string; _user_id: string }
         Returns: Json
       }
+      claim_expired_video_cut_sources: {
+        Args: { _limit?: number }
+        Returns: {
+          bucket: string
+          job_id: string
+          storage_path: string
+        }[]
+      }
       claim_reel_jobs: {
         Args: { _limit?: number; _worker: string }
         Returns: {
@@ -2273,6 +2418,7 @@ export type Database = {
           claimed_by: string | null
           completed_at: string | null
           created_at: string
+          custom_prompt: string | null
           duration_seconds: number | null
           error_message: string | null
           fallback_required: boolean
@@ -2283,12 +2429,15 @@ export type Database = {
           id: string
           instagram_account_id: string
           max_attempts: number
+          preset_key: string
           progress: number
+          provider_trace: Json
           remove_silences: boolean
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
           smart_crop: boolean
+          source_expires_at: string
           source_file_name: string | null
           source_kind: string
           source_storage_bucket: string | null
@@ -2306,6 +2455,28 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "video_cut_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_video_cut_rerenders: {
+        Args: { _limit?: number; _worker: string }
+        Returns: {
+          attempts: number
+          clip_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_id: string
+          locked_at: string | null
+          locked_by: string | null
+          status: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_rerender_requests"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -2328,6 +2499,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2338,12 +2510,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2383,6 +2558,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2393,12 +2569,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2443,6 +2622,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2453,12 +2633,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2505,6 +2688,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2515,12 +2699,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2561,6 +2748,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2571,12 +2759,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2617,6 +2808,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2627,12 +2819,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2678,6 +2873,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2688,12 +2884,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2741,6 +2940,7 @@ export type Database = {
               claimed_by: string | null
               completed_at: string | null
               created_at: string
+              custom_prompt: string | null
               duration_seconds: number | null
               error_message: string | null
               fallback_required: boolean
@@ -2751,12 +2951,15 @@ export type Database = {
               id: string
               instagram_account_id: string
               max_attempts: number
+              preset_key: string
               progress: number
+              provider_trace: Json
               remove_silences: boolean
               requested_clips: number
               reserved_clips: number
               rights_confirmed: boolean
               smart_crop: boolean
+              source_expires_at: string
               source_file_name: string | null
               source_kind: string
               source_storage_bucket: string | null
@@ -2804,6 +3007,7 @@ export type Database = {
           claimed_by: string | null
           completed_at: string | null
           created_at: string
+          custom_prompt: string | null
           duration_seconds: number | null
           error_message: string | null
           fallback_required: boolean
@@ -2814,12 +3018,15 @@ export type Database = {
           id: string
           instagram_account_id: string
           max_attempts: number
+          preset_key: string
           progress: number
+          provider_trace: Json
           remove_silences: boolean
           requested_clips: number
           reserved_clips: number
           rights_confirmed: boolean
           smart_crop: boolean
+          source_expires_at: string
           source_file_name: string | null
           source_kind: string
           source_storage_bucket: string | null
@@ -2997,6 +3204,10 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      mark_video_cut_source_deleted: {
+        Args: { _job_id: string; _storage_path: string }
+        Returns: boolean
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -3015,6 +3226,70 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      regenerate_video_cut_job: {
+        Args: { _custom_prompt?: string; _job_id: string; _preset_key?: string }
+        Returns: {
+          analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
+          attempts: number
+          auto_publish: boolean
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          custom_prompt: string | null
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          format: string
+          formats: string[] | null
+          generated_clips: number
+          hook_enabled: boolean
+          id: string
+          instagram_account_id: string
+          max_attempts: number
+          preset_key: string
+          progress: number
+          provider_trace: Json
+          remove_silences: boolean
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          smart_crop: boolean
+          source_expires_at: string
+          source_file_name: string | null
+          source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
+          source_title: string | null
+          source_video_url: string | null
+          started_at: string | null
+          status: string
+          subtitle_style: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+          zoom_effect: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_video_cut_rerender: {
+        Args: {
+          _clip_id: string
+          _end_seconds: number
+          _hook_text?: string
+          _start_seconds: number
+          _subtitle_style: string
+          _transcript_text?: string
+        }
+        Returns: string
       }
       set_account_template_default: {
         Args: { _account_id: string; _format: string; _template_id: string }
