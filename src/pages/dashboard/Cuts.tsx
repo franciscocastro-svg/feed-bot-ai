@@ -824,6 +824,7 @@ export default function Cuts() {
                 <>
                   <Label>Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                  <p className="text-xs text-muted-foreground">O vídeo é capturado e processado no servidor; você não precisa baixá-lo nem enviá-lo manualmente.</p>
                 </>
               ) : (
                 <>

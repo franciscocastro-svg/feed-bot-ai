@@ -65,6 +65,19 @@ CUT_ANALYSIS_PROVIDERS=xai,gemini
 
 O adapter usa a API compatível de Chat Completions da xAI e aceita resposta JSON estruturada. Não é necessário alterar o worker, o banco ou o frontend. O Grok entra somente na seleção/análise dos melhores trechos; a sincronização de áudio permanece no provedor de transcrição com timestamps.
 
+### Captura por link do YouTube
+
+O worker tenta, nesta ordem: cliente público padrão do yt-dlp, clientes públicos compatíveis, configuração personalizada e, por último, cookies válidos quando disponíveis. Um cookies.txt inválido não bloqueia mais os vídeos públicos.
+
+Configurações opcionais para instalações que usam um provedor de PO Token:
+
+```bash
+YT_DLP_REMOTE_COMPONENTS=ejs:github
+YT_DLP_EXTRACTOR_ARGS=youtube:player_client=mweb
+```
+
+Essas opções são deliberadamente opt-in. Mantenha o yt-dlp atualizado e configure um provedor de PO Token compatível antes de ativá-las.
+
 ### Recursos do Cortes IA Studio
 
 - Presets Viral, Clean, Podcast, Produto, Melhores momentos e prompt personalizado.

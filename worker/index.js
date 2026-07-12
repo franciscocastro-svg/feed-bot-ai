@@ -164,7 +164,7 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-cuts-studio";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-youtube-link-v2";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -1159,17 +1159,56 @@ function buildYtDlpCookieFlags() {
   return { flags: ["--cookies", shellQuote(cookiesFile)], cookiesFile, validationError: null };
 }
 
-function buildYtDlpBaseFlags() {
-  const cookieConfig = buildYtDlpCookieFlags();
+function buildYtDlpCommonFlags() {
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
   const flags = [
     "--no-warnings",
     "--geo-bypass",
     "--user-agent", shellQuote(ua),
-    "--extractor-args", shellQuote("youtube:player_client=web_safari,ios,android,web"),
   ];
-  flags.push(...cookieConfig.flags);
-  return flags.join(" ");
+  const remoteComponents = String(process.env.YT_DLP_REMOTE_COMPONENTS || "").trim();
+  if (remoteComponents) flags.push("--remote-components", shellQuote(remoteComponents));
+  return flags;
+}
+
+function buildYtDlpStrategies() {
+  const cookieConfig = buildYtDlpCookieFlags();
+  const customExtractorArgs = String(process.env.YT_DLP_EXTRACTOR_ARGS || "").trim();
+  const common = buildYtDlpCommonFlags();
+  const strategies = [
+    { name: "public-default", flags: [...common] },
+    {
+      name: "public-compatible-clients",
+      flags: [...common, "--extractor-args", shellQuote("youtube:player_client=web_safari,android_vr,web_embedded")],
+    },
+  ];
+  if (customExtractorArgs) {
+    strategies.push({ name: "public-custom", flags: [...common, "--extractor-args", shellQuote(customExtractorArgs)] });
+  }
+  if (cookieConfig.flags.length) {
+    strategies.push({ name: "authenticated-default", flags: [...common, ...cookieConfig.flags] });
+    if (customExtractorArgs) {
+      strategies.push({ name: "authenticated-custom", flags: [...common, ...cookieConfig.flags, "--extractor-args", shellQuote(customExtractorArgs)] });
+    }
+  } else if (cookieConfig.validationError) {
+    console.warn(`[cuts] Cookies do YouTube ignorados: ${cookieConfig.validationError}`);
+  }
+  return strategies;
+}
+
+async function runYtDlpWithStrategies(label, commandFactory) {
+  const errors = [];
+  for (const strategy of buildYtDlpStrategies()) {
+    try {
+      console.log(`[cuts] YouTube ${label}: tentativa ${strategy.name}`);
+      return await commandFactory(strategy);
+    } catch (error) {
+      const message = String(error?.stderr || error?.message || error || "").replace(/\s+/g, " ").trim();
+      errors.push(`${strategy.name}: ${message.slice(0, 350)}`);
+      console.warn(`[cuts] YouTube ${label} falhou em ${strategy.name}: ${message.slice(0, 220)}`);
+    }
+  }
+  throw new Error(`Todas as estratégias de captura por link falharam. ${errors.join(" | ")}`.slice(0, 1800));
 }
 
 async function probeYoutubeMetadata(youtubeUrl) {
@@ -1177,15 +1216,10 @@ async function probeYoutubeMetadata(youtubeUrl) {
     throw new Error("yt-dlp não está instalado no VPS.");
   }
 
-  const cookieConfig = buildYtDlpCookieFlags();
-  if (cookieConfig.validationError) {
-    throw new Error(`${cookieConfig.validationError}. Reenvie/exporte um cookies.txt válido e reinicie o worker.`);
-  }
-
-  const { stdout } = await execAsync(
-    `yt-dlp ${buildYtDlpBaseFlags()} --dump-json --skip-download --no-playlist ${shellQuote(youtubeUrl)}`,
+  const { stdout } = await runYtDlpWithStrategies("metadados", ({ flags }) => execAsync(
+    ["yt-dlp", ...flags, "--dump-json", "--skip-download", "--no-playlist", shellQuote(youtubeUrl)].join(" "),
     { maxBuffer: 15 * 1024 * 1024 },
-  );
+  ));
   const data = JSON.parse(stdout);
   return {
     duration_seconds: Number(data.duration || 0),
@@ -1336,31 +1370,19 @@ async function downloadYoutubeVideo(youtubeUrl, outputPath) {
     throw new Error("yt-dlp não está instalado no VPS.");
   }
 
-  const cookieConfig = buildYtDlpCookieFlags();
-  if (cookieConfig.validationError) {
-    throw new Error(`${cookieConfig.validationError}. Reenvie/exporte um cookies.txt válido e reinicie o worker.`);
-  }
-
-  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-
-  const baseArgs = [
-    "yt-dlp",
-    "--no-playlist",
-    "--no-warnings",
-    "--geo-bypass",
-    "--user-agent", shellQuote(userAgent),
-    "--extractor-args", shellQuote("youtube:player_client=web_safari,ios,android,web"),
-    "-f", shellQuote("bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
-    "--merge-output-format", "mp4",
-    "-o", shellQuote(outputPath),
-  ];
-  baseArgs.push(...cookieConfig.flags);
-  const command = [...baseArgs, shellQuote(youtubeUrl)].join(" ");
-
-  console.log(`[cuts] yt-dlp cookies: ${cookieConfig.cookiesFile ? `usando ${cookieConfig.cookiesFile}` : "não configurado"}`);
-
   try {
-    const { stderr } = await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
+    const { stderr } = await runYtDlpWithStrategies("download", async ({ flags }) => {
+      try { await fs.promises.rm(outputPath, { force: true }); } catch {}
+      return execAsync([
+        "yt-dlp",
+        ...flags,
+        "--no-playlist",
+        "-f", shellQuote("bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
+        "--merge-output-format", "mp4",
+        "-o", shellQuote(outputPath),
+        shellQuote(youtubeUrl),
+      ].join(" "), { maxBuffer: 30 * 1024 * 1024 });
+    });
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
       throw new Error(`Vídeo original não foi baixado. ${stderr || ""}`.trim());
     }
