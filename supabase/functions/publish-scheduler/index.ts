@@ -941,7 +941,9 @@ Deno.serve(async (req) => {
     if (targetPostId) {
       dueQuery = dueQuery.eq("id", targetPostId).limit(1);
     } else {
-      dueQuery = dueQuery.order("scheduled_for", { ascending: true }).limit(5);
+      // Uma pequena quantidade de itens problemáticos não pode esconder
+      // publicações prontas mais abaixo na fila.
+      dueQuery = dueQuery.order("scheduled_for", { ascending: true }).limit(25);
     }
 
     const { data: dueRows } = await dueQuery;
@@ -1042,7 +1044,44 @@ Deno.serve(async (req) => {
         .map((t: any) => new Date(t.scheduled_for).getTime())
         .sort((a, b) => a - b);
       for (let i = 0; i < skippedNotReady.length; i++) {
-        const cfg = getPostConfig(skippedNotReady[i]);
+        const skippedPost = skippedNotReady[i];
+        const cfg = getPostConfig(skippedPost);
+        const attempt = Number(skippedPost.retry_count || 0) + 1;
+        if (attempt >= 4) {
+          const message = "Mídia não ficou pronta após 3 reagendamentos. Item isolado para não bloquear a fila.";
+          await supabase.from("scheduled_posts").update({
+            status: "failed",
+            retry_count: attempt,
+            error_message: message,
+          }).eq("id", skippedPost.id);
+          if (skippedPost.news_items?.id) {
+            await supabase.from("news_items").update({
+              status: "failed",
+              error_message: message,
+            }).eq("id", skippedPost.news_items.id);
+          }
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "publish_media_quarantined",
+            entity_type: "scheduled_post",
+            entity_id: skippedPost.id,
+            details: {
+              attempt,
+              media_type: skippedPost.media_type,
+              content_type: skippedPost.news_items?.content_type || null,
+              reason: "media_not_ready_repeatedly",
+            },
+          });
+          await promoteNextReadyPostAfterFailure(
+            supabase,
+            userId!,
+            skippedPost.instagram_account_id,
+            skippedPost.id,
+            cfg.minIntervalMin,
+            cfg.allowedHours,
+          );
+          continue;
+        }
         const stepMs = Math.max(60_000, cfg.minIntervalMin * 60_000);
         const slot = nextAllowedSpacedSlot(
           Math.max(Date.now() + stepMs, (takenTimes[takenTimes.length - 1] ?? 0) + stepMs),
@@ -1052,8 +1091,9 @@ Deno.serve(async (req) => {
         );
         await supabase.from("scheduled_posts").update({
           scheduled_for: new Date(slot).toISOString(),
-          error_message: "Aguardando geração da arte/vídeo com template",
-        }).eq("id", skippedNotReady[i].id);
+          retry_count: attempt,
+          error_message: `Aguardando geração da arte/vídeo com template (tentativa ${attempt}/3)`,
+        }).eq("id", skippedPost.id);
         takenTimes.push(slot);
         takenTimes.sort((a, b) => a - b);
       }

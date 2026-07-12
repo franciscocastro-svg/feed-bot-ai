@@ -13,6 +13,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
 const PUBLISH_ACTIVE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 const DUPLICATE_LOOKBACK_HOURS = 72;
+const MAX_ACTIVE_QUEUE_PER_ACCOUNT = 3;
 
 async function callFn(name: string, body: Record<string, unknown>) {
   const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET") || "";
@@ -391,6 +392,12 @@ Deno.serve(async (req) => {
             .map((s: any) => s.instagram_account_id)
             .filter(Boolean),
         );
+        const activeQueueCountByIg = new Map<string, number>();
+        for (const row of activeQueueRows || []) {
+          const accountId = (row as any).instagram_account_id;
+          if (!accountId) continue;
+          activeQueueCountByIg.set(accountId, (activeQueueCountByIg.get(accountId) || 0) + 1);
+        }
 
         // pega TODAS as contas IG ativas (notícia carrega seu próprio IG; legado usa a 1ª)
         const { data: igAccs } = await supabase
@@ -551,7 +558,7 @@ Deno.serve(async (req) => {
             ? item.instagram_account_id
             : fallbackAccountId;
           if (!targetIg) continue;
-          if (activeQueueIgIds.has(targetIg)) continue;
+          if ((activeQueueCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
           if (inFlightIgIds.has(targetIg)) continue;
           if (pickedIgIds.has(targetIg)) continue;
           if (item.fingerprint && pickedFingerprints.has(item.fingerprint)) continue;
@@ -578,6 +585,8 @@ Deno.serve(async (req) => {
         userSummary.steps.processed = processed.length;
         userSummary.steps.active_queue = activeQueueCount || 0;
         userSummary.steps.active_queue_accounts = Array.from(activeQueueIgIds);
+        userSummary.steps.active_queue_by_account = Object.fromEntries(activeQueueCountByIg);
+        userSummary.steps.max_active_queue_per_account = MAX_ACTIVE_QUEUE_PER_ACCOUNT;
         userSummary.steps.in_flight = inFlight || 0;
         userSummary.steps.in_flight_accounts = Array.from(inFlightIgIds);
         userSummary.steps.pending_selected = pending.map((p) => ({
@@ -615,16 +624,16 @@ Deno.serve(async (req) => {
           const k = s.media_type === "story" ? "story" : s.media_type === "reel" ? "reel" : "feed";
           takenByCh[k].push(new Date(s.scheduled_for));
         });
-        // ⚠️ ONE-AT-A-TIME (autopilot): se a conta IG já tem QUALQUER post
-        // pendente (scheduled/posting), o autopilot NÃO enfileira mais nada
-        // pra ela. O próximo só é gerado depois que o atual for publicado.
-        // Isso evita filas longas e o efeito de "rajada" quando o sistema
-        // fica fechado a noite toda. Manual continua livre.
-        const igWithPending = new Set<string>(
-          (existingScheduled || [])
-            .map((s: any) => s.instagram_account_id)
-            .filter(Boolean),
-        );
+        // Mantém uma fila curta por conta. Um item problemático não pode
+        // bloquear toda a produção, mas o limite evita acúmulo sem controle.
+        const activeScheduledCountByIg = new Map<string, number>();
+        for (const row of existingScheduled || []) {
+          if (!row.instagram_account_id) continue;
+          activeScheduledCountByIg.set(
+            row.instagram_account_id,
+            (activeScheduledCountByIg.get(row.instagram_account_id) || 0) + 1,
+          );
+        }
 
         // carrega configurações de canais (cria defaults se faltar)
         const { data: chRows } = await supabase.from("channel_settings").select("*").eq("user_id", userId);
@@ -724,8 +733,7 @@ Deno.serve(async (req) => {
               }).eq("id", it.id).eq("user_id", userId);
               continue;
             }
-            // ONE-AT-A-TIME: se essa conta já tem post pendente, não enfileira outro
-            if (igWithPending.has(targetIg)) continue;
+            if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
             const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
             const cfg = pickChannel(text, channels);
             if (!cfg) continue;
@@ -745,7 +753,7 @@ Deno.serve(async (req) => {
               takenByCh[cfg.channel].push(slot);
               allTaken.push(slot);
               remainingDailyCap--;
-              igWithPending.add(targetIg); // bloqueia outras na mesma rodada
+              activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
               dupeRows.push({
                 news_item_id: it.id,
                 instagram_account_id: targetIg,
