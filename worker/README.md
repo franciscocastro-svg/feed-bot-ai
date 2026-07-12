@@ -89,6 +89,16 @@ Essas opções são deliberadamente opt-in. Mantenha o yt-dlp atualizado e confi
 - Nova versão a partir do mesmo vídeo e reprocessamento de um corte editado.
 - Originais privados preservados por sete dias e depois removidos pela rotina do worker.
 
+### Processamento no dispositivo
+
+No modo **Neste dispositivo**, o navegador mantém o MP4 original local, extrai um MP3 mono de baixa taxa e envia somente esse áudio ao bucket privado `video-cut-audio`. O worker transcreve e devolve os intervalos; o navegador então renderiza os MP4 finais e envia apenas os resultados para `post-images`.
+
+- Desktop: recomendado para arquivos de até 500 MB.
+- Celular/tablet: recomendado para arquivos de até 150 MB.
+- A página precisa permanecer aberta durante extração e renderização.
+- Se a sessão for interrompida, o usuário pode selecionar novamente o mesmo arquivo e concluir os cortes pendentes.
+- O modo nuvem continua disponível para aparelhos ou arquivos que ultrapassem os limites locais.
+
 ---
 
 ## 🏃 Como Executar o Worker

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +25,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  LocalVideoCutSession,
+  localDeviceCapability,
+  readVideoDuration,
+  type LocalCutProgress,
+} from "@/lib/localVideoCuts";
 
 type CutFormat = "reels" | "feed_square" | "feed_portrait";
 
@@ -79,6 +85,9 @@ type VideoCutJob = {
   fallback_required?: boolean | null;
   preset_key?: CutPresetKey | null;
   custom_prompt?: string | null;
+  processing_mode?: "cloud" | "local_device" | null;
+  local_file_name?: string | null;
+  local_file_size_bytes?: number | null;
   instagram_accounts?: { username?: string | null } | null;
   video_cut_clips?: VideoCutClip[];
 };
@@ -137,6 +146,7 @@ const VIDEO_WATCH_GRACE_MS = 5 * 60 * 1000;
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
+type ProcessingMode = "cloud" | "local_device";
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
@@ -215,6 +225,7 @@ export default function Cuts() {
   const [creating, setCreating] = useState(false);
   const [workerHealth, setWorkerHealth] = useState<WorkerHealth[]>([]);
   const [inputMode, setInputMode] = useState<InputMode>("youtube");
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>("local_device");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [accountId, setAccountId] = useState("");
@@ -234,6 +245,13 @@ export default function Cuts() {
   const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
   const [brandProfile, setBrandProfile] = useState<CutBrandProfile | null>(null);
+  const [localJobId, setLocalJobId] = useState<string | null>(null);
+  const [localAudioPath, setLocalAudioPath] = useState<string | null>(null);
+  const [localProgress, setLocalProgress] = useState<LocalCutProgress | null>(null);
+  const [localRendering, setLocalRendering] = useState(false);
+  const localSessionRef = useRef<LocalVideoCutSession | null>(null);
+
+  const deviceCapability = useMemo(() => localDeviceCapability(videoFile), [videoFile]);
 
   const toggleFormat = (value: CutFormat, checked: boolean) => {
     setFormats((prev) => {
@@ -374,6 +392,120 @@ export default function Cuts() {
     return path;
   };
 
+  const createLocalJob = async (requestClips: number) => {
+    if (!user || !videoFile) throw new Error("Escolha o vídeo original.");
+    if (!deviceCapability.supported || !deviceCapability.recommended) throw new Error(deviceCapability.reason);
+    const duration = Math.round(await readVideoDuration(videoFile));
+    const session = new LocalVideoCutSession(setLocalProgress);
+    localSessionRef.current = session;
+    await session.prepare(videoFile);
+    const audio = await session.extractAnalysisAudio();
+    const safeName = videoFile.name.replace(/[^a-z0-9._-]+/gi, "-").slice(-100);
+    const audioPath = `${user.id}/cuts/audio/${Date.now()}-${safeName || "video"}.mp3`;
+    const { error: uploadError } = await supabase.storage.from("video-cut-audio").upload(audioPath, audio, {
+      contentType: "audio/mpeg",
+      upsert: false,
+    });
+    if (uploadError) throw new Error(uploadError.message || "Não foi possível enviar o áudio para análise.");
+    const { data, error } = await db.rpc<{ id?: string }>("create_local_video_cut_job", {
+      _instagram_account_id: accountId,
+      _audio_storage_path: audioPath,
+      _source_file_name: videoFile.name,
+      _source_file_size_bytes: videoFile.size,
+      _duration_seconds: duration,
+      _requested_clips: requestClips,
+      _rights_confirmed: rightsConfirmed,
+      _format: formats[0],
+      _formats: formats,
+      _subtitle_style: subtitleStyle,
+      _hook_enabled: hookEnabled,
+      _remove_silences: removeSilences,
+      _zoom_effect: zoomEffect,
+      _smart_crop: smartCrop,
+      _preset_key: presetKey,
+      _custom_prompt: presetKey === "custom" ? customPrompt.trim() : null,
+    });
+    if (error || !data?.id) {
+      await supabase.storage.from("video-cut-audio").remove([audioPath]);
+      throw new Error(error?.message || "Não foi possível criar a análise local.");
+    }
+    setLocalJobId(data.id);
+    setLocalAudioPath(audioPath);
+    setLocalProgress({ phase: "audio", ratio: 1, message: "Áudio enviado. A IA está escolhendo os melhores momentos…" });
+    return data.id;
+  };
+
+  const renderLocalJob = async (job: VideoCutJob, selectedFile = videoFile) => {
+    if (!user || !selectedFile || localRendering) return;
+    if (job.local_file_name && selectedFile.name !== job.local_file_name) {
+      toast.error(`Selecione novamente o arquivo original: ${job.local_file_name}`);
+      return;
+    }
+    setLocalRendering(true);
+    try {
+      let session = localSessionRef.current;
+      if (!session) {
+        session = new LocalVideoCutSession(setLocalProgress);
+        localSessionRef.current = session;
+        await session.prepare(selectedFile);
+      }
+      const pendingClips = (job.video_cut_clips || []).filter((clip) => !clip.video_url);
+      for (let index = 0; index < pendingClips.length; index += 1) {
+        const clip = pendingClips[index];
+        setLocalProgress({ phase: "render", ratio: index / Math.max(1, pendingClips.length), message: `Renderizando corte ${index + 1} de ${pendingClips.length}…` });
+        const output = await session.renderCut({
+          id: clip.id,
+          startSeconds: Number(clip.start_seconds || 0),
+          endSeconds: Number(clip.end_seconds || 0),
+          format: String(clip.format || "reels"),
+          subtitleStyle: clip.subtitle_style,
+          transcriptWords: clip.transcript?.words || [],
+        });
+        const storagePath = `${user.id}/cuts/${clip.id}.mp4`;
+        const { error: outputError } = await supabase.storage.from("post-images").upload(storagePath, output, {
+          contentType: "video/mp4",
+          upsert: true,
+        });
+        if (outputError) throw new Error(outputError.message || `Falha ao enviar o corte ${index + 1}.`);
+        const videoUrl = supabase.storage.from("post-images").getPublicUrl(storagePath).data.publicUrl;
+        const { error: clipError } = await db.from("video_cut_clips").update({
+          video_url: videoUrl,
+          status: "draft",
+          error_message: null,
+          quality_report: { ok: true, render: "local_device", checked_at: new Date().toISOString() },
+          provider_trace: { render: "local_device" },
+          edit_config: { local_render_pending: false },
+        }).eq("id", clip.id);
+        if (clipError) throw new Error(clipError.message || "Não foi possível registrar o corte final.");
+      }
+      if (localAudioPath || job.source_storage_path) {
+        await supabase.storage.from("video-cut-audio").remove([localAudioPath || job.source_storage_path!]);
+      }
+      const { data: finalized, error: finalError } = await db.rpc<boolean>("finalize_local_video_cut_job", { _job_id: job.id });
+      if (finalError || finalized !== true) throw new Error(finalError?.message || "Alguns cortes ainda não foram concluídos.");
+      await session.dispose();
+      localSessionRef.current = null;
+      setLocalJobId(null);
+      setLocalAudioPath(null);
+      setVideoFile(null);
+      setLocalProgress({ phase: "render", ratio: 1, message: "Cortes prontos para revisão." });
+      toast.success("Cortes processados neste dispositivo e prontos para revisão.");
+      await Promise.all([load(), refetchUsage()]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha no processamento local.");
+    } finally {
+      setLocalRendering(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!localJobId || !videoFile || localRendering) return;
+    const job = jobs.find((item) => item.id === localJobId);
+    const hasPendingLocalClips = job?.video_cut_clips?.some((clip) => !clip.video_url && clip.status === "rendering");
+    if (job?.status === "ready" && hasPendingLocalClips) void renderLocalJob(job, videoFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs, localJobId, videoFile, localRendering]);
+
   const createJob = async () => {
     if (inputMode === "youtube" && !isSupportedYoutubeUrl(youtubeUrl)) return toast.error("Cole um link público válido do YouTube.");
     if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
@@ -388,6 +520,13 @@ export default function Cuts() {
       const requestClips = Math.min(requestedClips, bounds.maxRequest);
       let createdJobId: string | null = null;
       if (inputMode === "upload") {
+        if (processingMode === "local_device") {
+          await createLocalJob(requestClips);
+          toast.success("Áudio extraído no dispositivo. A IA está analisando os melhores momentos.");
+          setRightsConfirmed(false);
+          await Promise.all([load(), refetchUsage()]);
+          return;
+        }
         uploadedPath = await uploadVideoFile();
         const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_upload_job_v2", {
           _instagram_account_id: accountId,
@@ -436,11 +575,15 @@ export default function Cuts() {
       }
       toast.success("Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
       setYoutubeUrl("");
-      setVideoFile(null);
+      if (processingMode === "cloud") setVideoFile(null);
       setRightsConfirmed(false);
       await Promise.all([load(), refetchUsage()]);
     } catch (error: unknown) {
       if (uploadedPath) await supabase.storage.from("video-cut-inputs").remove([uploadedPath]);
+      if (inputMode === "upload" && processingMode === "local_device" && !localJobId && localSessionRef.current) {
+        await localSessionRef.current.dispose().catch(() => undefined);
+        localSessionRef.current = null;
+      }
       toast.error(error instanceof Error ? error.message : "Não foi possível criar o job.");
     } finally {
       setCreating(false);
@@ -731,6 +874,10 @@ export default function Cuts() {
       if (error && !missingRpc) throw new Error(error.message || "Não foi possível excluir o trabalho.");
       if (!deleted) return toast.error("Não consegui confirmar a exclusão. Atualize a página e tente novamente.");
 
+      if (job.processing_mode === "local_device" && job.source_storage_path) {
+        await supabase.storage.from("video-cut-audio").remove([job.source_storage_path]);
+      }
+
       toast.success("Trabalho excluído.");
       await load();
     } catch (error: unknown) {
@@ -835,8 +982,31 @@ export default function Cuts() {
                     onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use quando o YouTube bloquear o link. Limite beta: até 1 GB.
+                    Selecione o original. No modo local somente o áudio leve e os cortes finais são enviados.
                   </p>
+                  <div className="grid sm:grid-cols-2 gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setProcessingMode("local_device")}
+                      className={`rounded-xl border p-3 text-left transition ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Neste dispositivo</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Privado e econômico. Recomendado para computadores recentes.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProcessingMode("cloud")}
+                      className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Na nuvem</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Envia o MP4 completo e usa o worker do servidor.</span>
+                    </button>
+                  </div>
+                  {processingMode === "local_device" && videoFile && (
+                    <p className={`text-xs ${deviceCapability.recommended ? "text-green-600" : "text-amber-600"}`}>
+                      {deviceCapability.reason}
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -957,10 +1127,16 @@ export default function Cuts() {
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox checked={autoPublish} onCheckedChange={(c) => setAutoPublish(c === true)} />
+              <Checkbox
+                checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
+                disabled={inputMode === "upload" && processingMode === "local_device"}
+                onCheckedChange={(c) => setAutoPublish(c === true)}
+              />
               <span>
                 <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
-                <span className="block text-xs text-muted-foreground">Agenda para +10min sem revisão manual.</span>
+                <span className="block text-xs text-muted-foreground">
+                  {inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
+                </span>
               </span>
             </label>
           </div>
@@ -972,6 +1148,16 @@ export default function Cuts() {
             {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : inputMode === "upload" ? <Upload className="h-4 w-4 mr-2" /> : <Scissors className="h-4 w-4 mr-2" />}
             Gerar cortes para revisão
           </Button>
+          {localProgress && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                {(creating || localRendering || localProgress.ratio < 1) && <Loader2 className="h-4 w-4 animate-spin" />}
+                <span>{localProgress.message}</span>
+              </div>
+              <Progress value={Math.round(localProgress.ratio * 100)} />
+              <p className="text-xs text-muted-foreground">Mantenha esta página aberta até os vídeos finais aparecerem.</p>
+            </div>
+          )}
         </Card>
 
         <Card className="p-5 space-y-4">
@@ -1053,7 +1239,9 @@ export default function Cuts() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
-                  {job.source_kind === "upload" ? (
+                  {job.processing_mode === "local_device" ? (
+                    <span className="text-sm text-primary inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Processamento local</span>
+                  ) : job.source_kind === "upload" ? (
                     <span className="text-sm text-muted-foreground inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
                   ) : (
                     <a className="text-sm text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
@@ -1072,7 +1260,17 @@ export default function Cuts() {
                   <Clock className="h-4 w-4" />
                   {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                 </div>
-                {job.status === "ready" && (
+                {job.processing_mode === "local_device" && job.video_cut_clips?.some((clip) => !clip.video_url) && (
+                  <Button size="sm" onClick={() => {
+                    setLocalJobId(job.id);
+                    setLocalAudioPath(job.source_storage_path || null);
+                    void renderLocalJob(job);
+                  }} disabled={!videoFile || localRendering}>
+                    {localRendering ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+                    {videoFile ? "Concluir neste dispositivo" : "Selecione o original acima"}
+                  </Button>
+                )}
+                {job.status === "ready" && job.processing_mode !== "local_device" && (
                   <Button size="sm" variant="outline" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
                     {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     Nova versão

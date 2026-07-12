@@ -164,7 +164,7 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-youtube-link-v2";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-local-device-v1";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -2150,6 +2150,104 @@ function shouldSuggestUploadFallback(job, message) {
   return /youtube|yt-dlp|baixar|download|sign in to confirm|not a bot|precondition/i.test(String(message || ""));
 }
 
+async function processLocalAudioCutJob(job, tempDir) {
+  const audioPath = path.join(tempDir, "local-analysis.mp3");
+  let createdCount = 0;
+  try {
+    await supabase.from("video_cut_jobs").update({
+      status: "analyzing", progress: 12, error_message: null, updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
+
+    if (job.source_storage_bucket !== "video-cut-audio" || !job.source_storage_path) {
+      throw new Error("Áudio local do trabalho não foi encontrado.");
+    }
+    const expectedPrefix = `${job.user_id}/cuts/audio/`;
+    if (!job.source_storage_path.startsWith(expectedPrefix) || job.source_storage_path.includes("..")) {
+      throw new Error("Caminho do áudio local é inválido.");
+    }
+    const { data: signed, error: signedError } = await supabase.storage
+      .from("video-cut-audio").createSignedUrl(job.source_storage_path, 900);
+    if (signedError || !signed?.signedUrl) throw new Error(signedError?.message || "Não foi possível ler o áudio local.");
+    await downloadFile(signed.signedUrl, audioPath);
+
+    const duration = Math.max(3, Number(job.duration_seconds || 0));
+    const transcriptWords = await transcribeSourceForAnalysis(audioPath, tempDir);
+    if (!transcriptWords.length) throw new Error("Não foi possível identificar fala no áudio enviado.");
+    await supabase.from("video_cut_jobs").update({ progress: 45, updated_at: new Date().toISOString() }).eq("id", job.id);
+
+    const analysis = await analyzeTranscriptForCuts(job, {
+      title: job.source_title || job.local_file_name || "Vídeo local",
+      duration_seconds: duration,
+    }, transcriptWords);
+    const suggestions = analysis.clips || [];
+    if (!suggestions.length) throw new Error("A IA não encontrou trechos utilizáveis neste áudio.");
+
+    await supabase.from("video_cut_clips").delete().eq("job_id", job.id);
+    const jobFormats = Array.isArray(job.formats) && job.formats.length
+      ? job.formats.filter((format) => ["reels", "feed_square", "feed_portrait"].includes(format))
+      : [job.format || "reels"];
+    const formats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
+
+    for (let suggestionIndex = 0; suggestionIndex < suggestions.length; suggestionIndex += 1) {
+      const suggestion = suggestions[suggestionIndex];
+      const words = transcriptWords
+        .filter((word) => word.end >= suggestion.start_seconds && word.start <= suggestion.end_seconds)
+        .map((word) => ({
+          ...word,
+          start: Math.max(0, word.start - suggestion.start_seconds),
+          end: Math.max(0.04, word.end - suggestion.start_seconds),
+        }));
+      for (let formatIndex = 0; formatIndex < formats.length; formatIndex += 1) {
+        const clipIndex = suggestionIndex * formats.length + formatIndex + 1;
+        const { error: clipError } = await supabase.from("video_cut_clips").insert({
+          job_id: job.id,
+          user_id: job.user_id,
+          instagram_account_id: job.instagram_account_id,
+          clip_index: clipIndex,
+          status: "rendering",
+          title: suggestion.title,
+          hook: suggestion.hook,
+          hook_text: suggestion.hook_text || null,
+          hook_score: suggestion.hook_score,
+          emotion_score: suggestion.emotion_score,
+          clarity_score: suggestion.clarity_score,
+          viral_score: suggestion.viral_score,
+          caption: suggestion.caption || suggestion.title,
+          hashtags: suggestion.hashtags || [],
+          reason: suggestion.reason,
+          score: suggestion.score,
+          start_seconds: suggestion.start_seconds,
+          end_seconds: suggestion.end_seconds,
+          duration_seconds: suggestion.duration_seconds,
+          format: formats[formatIndex],
+          subtitle_style: job.subtitle_style || "classic",
+          transcript: { words },
+          transcript_text: words.map((word) => word.word).join(" "),
+          edit_config: { local_render_pending: true },
+          provider_trace: { analysis: analysis.provider || null, render: "local_device_pending" },
+        });
+        if (clipError) throw clipError;
+        createdCount += 1;
+      }
+    }
+
+    await supabase.from("video_cut_jobs").update({
+      status: "ready",
+      progress: 100,
+      analysis_mode: analysis.mode,
+      analysis_warning: analysis.warning,
+      provider_trace: { analysis: analysis.provider || null, render: "local_device" },
+      generated_clips: 0,
+      error_message: null,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
+    console.log(`[cuts:${job.id}] Áudio analisado; ${createdCount} corte(s) aguardando renderização no dispositivo.`);
+  } catch (error) {
+    await failVideoCutJob(job, error?.message || String(error), false, 0);
+  }
+}
+
 async function processVideoCutJob(job) {
   const tempDir = path.join(TEMP_DIR, `cut_${job.id}`);
   const sourcePath = path.join(tempDir, "source.mp4");
@@ -2161,6 +2259,11 @@ async function processVideoCutJob(job) {
 
     if (!(await commandExists("ffmpeg"))) {
       throw new Error("FFmpeg não está instalado no VPS.");
+    }
+
+    if (job.processing_mode === "local_device" || job.source_kind === "local_audio") {
+      await processLocalAudioCutJob(job, tempDir);
+      return;
     }
 
     await supabase.from("video_cut_jobs")
