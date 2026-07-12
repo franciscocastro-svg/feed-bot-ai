@@ -4,7 +4,17 @@ import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
-import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds, viralBadgeTone, viralBadgeLabel, CUT_FORMAT_OPTIONS } from "@/lib/videoCuts";
+import {
+  formatCutTime,
+  isSupportedYoutubeUrl,
+  splitHashtags,
+  videoCutRequestBounds,
+  viralBadgeTone,
+  viralBadgeLabel,
+  CUT_FORMAT_OPTIONS,
+  CUT_PRESET_OPTIONS,
+  type CutPresetKey,
+} from "@/lib/videoCuts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +52,11 @@ type VideoCutClip = {
   emotion_score?: number | null;
   clarity_score?: number | null;
   subtitle_error?: boolean | null;
+  subtitle_style?: "none" | "classic" | "neon" | "karaoke" | "clean" | "bold" | null;
+  transcript_text?: string | null;
+  quality_report?: { ok?: boolean; failures?: string[] } | null;
+  provider_trace?: { transcription?: string | null; framing?: string | null; framing_confidence?: number | null } | null;
+  transcript?: { words?: Array<{ word: string; start: number; end: number }> } | null;
 };
 
 type VideoCutJob = {
@@ -62,6 +77,8 @@ type VideoCutJob = {
   created_at: string;
   error_message?: string | null;
   fallback_required?: boolean | null;
+  preset_key?: CutPresetKey | null;
+  custom_prompt?: string | null;
   instagram_accounts?: { username?: string | null } | null;
   video_cut_clips?: VideoCutClip[];
 };
@@ -77,6 +94,19 @@ type WorkerHealth = {
   last_seen_at: string;
   healthy: boolean;
   version?: string | null;
+};
+
+type CutBrandProfile = {
+  instagram_account_id: string;
+  user_id: string;
+  font_family: string;
+  primary_color: string;
+  highlight_color: string;
+  outline_color: string;
+  watermark_enabled: boolean;
+  watermark_text: string;
+  subtitle_position: "safe_bottom" | "center" | "upper_third";
+  default_preset_key: CutPresetKey;
 };
 
 type SupabaseError = { message?: string } | null;
@@ -191,18 +221,36 @@ export default function Cuts() {
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
-  const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke">("classic");
+  const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke" | "clean" | "bold">("bold");
+  const [presetKey, setPresetKey] = useState<CutPresetKey>("viral");
+  const [customPrompt, setCustomPrompt] = useState("");
   const [hookEnabled, setHookEnabled] = useState(true);
   const [autoPublish, setAutoPublish] = useState(false);
   const [removeSilences, setRemoveSilences] = useState(true);
   const [zoomEffect, setZoomEffect] = useState(false);
+  const [smartCrop, setSmartCrop] = useState(true);
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
+  const [savingBrand, setSavingBrand] = useState(false);
+  const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
+  const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
+  const [brandProfile, setBrandProfile] = useState<CutBrandProfile | null>(null);
 
   const toggleFormat = (value: CutFormat, checked: boolean) => {
     setFormats((prev) => {
       if (checked) return prev.includes(value) ? prev : [...prev, value];
       return prev.length > 1 ? prev.filter((f) => f !== value) : prev;
     });
+  };
+
+  const applyPreset = (value: CutPresetKey) => {
+    setPresetKey(value);
+    const preset = CUT_PRESET_OPTIONS.find((item) => item.value === value);
+    if (!preset) return;
+    setSubtitleStyle(preset.subtitleStyle);
+    setHookEnabled(preset.hookEnabled);
+    setRemoveSilences(preset.removeSilences);
+    setZoomEffect(preset.zoomEffect);
+    setSmartCrop(true);
   };
 
   const bounds = useMemo(() => videoCutRequestBounds({
@@ -242,16 +290,33 @@ export default function Cuts() {
 
     if (selectedAccountId) jobsQuery.eq("instagram_account_id", selectedAccountId);
 
-    const [{ data: jobRows, error }, healthResult] = await Promise.all([
+    const [{ data: jobRows, error }, healthResult, brandResult] = await Promise.all([
       selectedAccountId
         ? jobsQuery
         .order("created_at", { ascending: false })
         .limit(40)
         : Promise.resolve({ data: [], error: null }),
       db.rpc<WorkerHealth[]>("get_media_worker_health"),
+      selectedAccountId
+        ? db.from<CutBrandProfile>("video_cut_brand_profiles").select("*").eq("instagram_account_id", selectedAccountId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
     if (error) toast.error(error.message || "Não foi possível carregar os cortes.");
     setWorkerHealth((healthResult.data as WorkerHealth[] | undefined) || []);
+    const storedBrand = brandResult.data as CutBrandProfile | null | undefined;
+    const nextBrand = storedBrand || (selectedAccountId && user ? {
+      instagram_account_id: selectedAccountId,
+      user_id: user.id,
+      font_family: "Inter",
+      primary_color: "#FFFFFF",
+      highlight_color: "#FFD400",
+      outline_color: "#000000",
+      watermark_enabled: true,
+      watermark_text: availableAccounts.find((account) => account.id === selectedAccountId)?.username || "",
+      subtitle_position: "safe_bottom" as const,
+      default_preset_key: "viral" as CutPresetKey,
+    } : null);
+    setBrandProfile(nextBrand);
     const nextJobs = ((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
       ...job,
       video_cut_clips: (job.video_cut_clips || []).slice().sort((a, b) => a.clip_index - b.clip_index),
@@ -273,7 +338,9 @@ export default function Cuts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accountId]);
 
-  const hasActiveJobs = useMemo(() => jobs.some(isJobActive), [jobs]);
+  const hasActiveJobs = useMemo(() => jobs.some((job) =>
+    isJobActive(job) || job.video_cut_clips?.some((clip) => clip.status === "rendering"),
+  ), [jobs]);
 
   useEffect(() => {
     if (!user || !hasActiveJobs) return;
@@ -312,15 +379,17 @@ export default function Cuts() {
     if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
     if (!accountId) return toast.error("Escolha uma conta do Instagram.");
     if (!rightsConfirmed) return toast.error("Confirme que você tem direito/autorização sobre o vídeo.");
+    if (presetKey === "custom" && customPrompt.trim().length < 10) return toast.error("Descreva em pelo menos 10 caracteres o que a IA deve procurar.");
     if (bounds.maxRequest <= 0) return toast.error("Seu limite de Cortes IA para hoje acabou.");
 
     setCreating(true);
     let uploadedPath: string | null = null;
     try {
       const requestClips = Math.min(requestedClips, bounds.maxRequest);
+      let createdJobId: string | null = null;
       if (inputMode === "upload") {
         uploadedPath = await uploadVideoFile();
-        const { error } = await db.rpc("create_video_cut_upload_job_v2", {
+        const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_upload_job_v2", {
           _instagram_account_id: accountId,
           _storage_path: uploadedPath,
           _requested_clips: requestClips,
@@ -328,28 +397,42 @@ export default function Cuts() {
           _source_title: videoFile?.name || "Vídeo enviado",
           _format: formats[0],
           _formats: formats,
-          _subtitle_style: subtitleStyle,
+          _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
           _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
+          _smart_crop: smartCrop,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
+        createdJobId = data?.id || null;
       } else {
-        const { error } = await db.rpc("create_video_cut_job", {
+        const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_job", {
           _instagram_account_id: accountId,
           _youtube_url: youtubeUrl.trim(),
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _format: formats[0],
           _formats: formats,
-          _subtitle_style: subtitleStyle,
+          _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
           _hook_enabled: hookEnabled,
           _auto_publish: autoPublish,
           _remove_silences: removeSilences,
           _zoom_effect: zoomEffect,
+          _smart_crop: smartCrop,
         });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
+        createdJobId = data?.id || null;
+      }
+      if (createdJobId) {
+        const { error: optionsError } = await db.from("video_cut_jobs")
+          .update({
+            preset_key: presetKey,
+            custom_prompt: presetKey === "custom" ? customPrompt.trim().slice(0, 2000) || null : null,
+            subtitle_style: subtitleStyle,
+          })
+          .eq("id", createdJobId);
+        if (optionsError) throw new Error(optionsError.message || "Não foi possível salvar o preset do corte.");
       }
       toast.success("Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
       setYoutubeUrl("");
@@ -362,6 +445,60 @@ export default function Cuts() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const saveBrandProfile = async () => {
+    if (!brandProfile || !user || !accountId) return;
+    setSavingBrand(true);
+    const payload = {
+      ...brandProfile,
+      user_id: user.id,
+      instagram_account_id: accountId,
+      watermark_text: brandProfile.watermark_text.trim().slice(0, 80) || null,
+    };
+    const { error } = await db.from("video_cut_brand_profiles")
+      .upsert(payload, { onConflict: "instagram_account_id" });
+    setSavingBrand(false);
+    if (error) return toast.error(error.message || "Não foi possível salvar a identidade dos cortes.");
+    toast.success("Identidade visual dos Cortes IA salva para esta conta.");
+    applyPreset(brandProfile.default_preset_key);
+  };
+
+  const regenerateJob = async (job: VideoCutJob) => {
+    if (presetKey === "custom" && customPrompt.trim().length < 10) {
+      return toast.error("Descreva o prompt personalizado antes de regenerar.");
+    }
+    setRegeneratingJobId(job.id);
+    const { error } = await db.rpc("regenerate_video_cut_job", {
+      _job_id: job.id,
+      _preset_key: presetKey,
+      _custom_prompt: presetKey === "custom" ? customPrompt.trim() : null,
+    });
+    setRegeneratingJobId(null);
+    if (error) return toast.error(error.message || "Não foi possível regenerar este vídeo.");
+    toast.success("Nova versão enviada para a fila usando o mesmo vídeo original.");
+    await Promise.all([load(), refetchUsage()]);
+  };
+
+  const rerenderClip = async () => {
+    if (!editingClip) return;
+    const start = Number(editingClip.start_seconds || 0);
+    const end = Number(editingClip.end_seconds || 0);
+    if (end - start < 3) return toast.error("O trecho precisa ter pelo menos 3 segundos.");
+    setRerenderingClipId(editingClip.id);
+    const { error } = await db.rpc("request_video_cut_rerender", {
+      _clip_id: editingClip.id,
+      _start_seconds: start,
+      _end_seconds: end,
+      _subtitle_style: editingClip.subtitle_style || subtitleStyle,
+      _hook_text: editingClip.hook_text || null,
+      _transcript_text: editingClip.transcript_text || null,
+    });
+    setRerenderingClipId(null);
+    if (error) return toast.error(error.message || "Não foi possível reprocessar o corte.");
+    toast.success("Corte enviado para reprocessamento. O vídeo será substituído quando ficar pronto.");
+    setEditingClip(null);
+    await load();
   };
 
   const ensureNewsItemForClip = async (clip: VideoCutClip, job: VideoCutJob) => {
@@ -746,6 +883,30 @@ export default function Cuts() {
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-3">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Preset de edição</Label>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                {CUT_PRESET_OPTIONS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => applyPreset(preset.value)}
+                    className={`rounded-xl border p-3 text-left transition ${presetKey === preset.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                  >
+                    <span className="block text-sm font-medium text-foreground">{preset.label}</span>
+                    <span className="block text-xs text-muted-foreground mt-1">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+              {presetKey === "custom" && (
+                <Textarea
+                  value={customPrompt}
+                  onChange={(event) => setCustomPrompt(event.target.value.slice(0, 2000))}
+                  rows={3}
+                  placeholder="Ex.: encontre explicações práticas sobre vendas, preserve exemplos completos e evite trechos políticos."
+                />
+              )}
+            </div>
             <div className="space-y-2">
               <Label>Estilo da legenda</Label>
               <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
@@ -754,6 +915,8 @@ export default function Cuts() {
                   <SelectItem value="classic">Clássica · branco/preto</SelectItem>
                   <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
                   <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
+                  <SelectItem value="bold">Bold viral · impacto e destaque</SelectItem>
+                  <SelectItem value="clean">Clean · discreta e profissional</SelectItem>
                   <SelectItem value="none">Sem legenda</SelectItem>
                 </SelectContent>
               </Select>
@@ -763,7 +926,7 @@ export default function Cuts() {
               <p>Máximo por vídeo: {bounds.maxPerJob || 0} · Cada corte × {formats.length} formato(s) = {formats.length} crédito(s). Duração máxima: {usage?.max_cut_video_minutes || 60} min.</p>
             </div>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
               <Checkbox checked={hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
               <span>
@@ -783,6 +946,13 @@ export default function Cuts() {
               <span>
                 <span className="font-medium text-foreground">Zoom sutil</span>
                 <span className="block text-xs text-muted-foreground">Efeito Ken Burns (+5% ao longo do corte).</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+              <Checkbox checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
+              <span>
+                <span className="font-medium text-foreground">Enquadrar pessoa</span>
+                <span className="block text-xs text-muted-foreground">Detecta o assunto principal e reposiciona o recorte.</span>
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
@@ -810,6 +980,56 @@ export default function Cuts() {
             <p><span className="text-foreground font-medium">2.</span> Se o YouTube bloquear, envie o MP4 autorizado e o worker processa pelo arquivo.</p>
             <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
           </div>
+          {brandProfile && (
+            <div className="border-t border-border pt-4 space-y-3">
+              <div>
+                <h3 className="font-semibold">Identidade desta conta</h3>
+                <p className="text-xs text-muted-foreground">Aplicada apenas aos cortes de @{accounts.find((account) => account.id === accountId)?.username || "Instagram"}.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  Texto
+                  <Input type="color" className="h-9 p-1" value={brandProfile.primary_color} onChange={(event) => setBrandProfile({ ...brandProfile, primary_color: event.target.value })} />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  Destaque
+                  <Input type="color" className="h-9 p-1" value={brandProfile.highlight_color} onChange={(event) => setBrandProfile({ ...brandProfile, highlight_color: event.target.value })} />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  Contorno
+                  <Input type="color" className="h-9 p-1" value={brandProfile.outline_color} onChange={(event) => setBrandProfile({ ...brandProfile, outline_color: event.target.value })} />
+                </label>
+              </div>
+              <div className="space-y-2">
+                <Label>Marca d'água</Label>
+                <Input value={brandProfile.watermark_text} onChange={(event) => setBrandProfile({ ...brandProfile, watermark_text: event.target.value })} placeholder="@sua_conta" />
+              </div>
+              <div className="space-y-2">
+                <Label>Posição das legendas</Label>
+                <Select value={brandProfile.subtitle_position} onValueChange={(value) => setBrandProfile({ ...brandProfile, subtitle_position: value as CutBrandProfile["subtitle_position"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="safe_bottom">Inferior segura</SelectItem>
+                    <SelectItem value="center">Centro</SelectItem>
+                    <SelectItem value="upper_third">Terço superior</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Preset padrão</Label>
+                <Select value={brandProfile.default_preset_key} onValueChange={(value) => setBrandProfile({ ...brandProfile, default_preset_key: value as CutPresetKey })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CUT_PRESET_OPTIONS.map((preset) => <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button variant="outline" className="w-full" onClick={saveBrandProfile} disabled={savingBrand}>
+                {savingBrand && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Salvar identidade
+              </Button>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -839,7 +1059,7 @@ export default function Cuts() {
                       YouTube <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
-                  {job.analysis_mode === "transcript_ai" && <Badge variant="outline">Análise pela fala</Badge>}
+                  {job.analysis_mode?.startsWith("transcript_ai") && <Badge variant="outline">Análise pela fala</Badge>}
                   {job.analysis_mode === "timeline_fallback" && <Badge variant="secondary">Modo básico</Badge>}
                 </div>
                 <p className="text-sm text-muted-foreground mt-2 truncate">
@@ -851,6 +1071,12 @@ export default function Cuts() {
                   <Clock className="h-4 w-4" />
                   {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                 </div>
+                {job.status === "ready" && (
+                  <Button size="sm" variant="outline" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
+                    {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    Nova versão
+                  </Button>
+                )}
                 {canDeleteJob(job) && (
                   <Button size="sm" variant="outline" onClick={() => deleteJob(job)}>
                     <Trash2 className="h-4 w-4 mr-1" /> Excluir
@@ -922,6 +1148,16 @@ export default function Cuts() {
                               sem legenda
                             </span>
                           )}
+                          {clip.quality_report?.ok && (
+                            <span className="text-xs text-green-600 px-2 py-0.5 rounded-md border border-green-500/30 bg-green-500/10" title="Codec, áudio, resolução e duração validados antes da publicação">
+                              qualidade validada
+                            </span>
+                          )}
+                          {clip.provider_trace?.framing === "gemini_vision" && (
+                            <span className="text-xs text-primary px-2 py-0.5 rounded-md border border-primary/30 bg-primary/5" title={`Confiança ${Math.round(Number(clip.provider_trace.framing_confidence || 0) * 100)}%`}>
+                              enquadramento IA
+                            </span>
+                          )}
                         </div>
                         <span className="text-xs text-muted-foreground">{formatCutTime(clip.start_seconds)} - {formatCutTime(clip.end_seconds)}</span>
                       </div>
@@ -933,8 +1169,12 @@ export default function Cuts() {
                         <p className="text-sm text-muted-foreground line-clamp-3 mt-1">{clip.hook || clip.reason || clip.caption}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setEditingClip({ ...clip, hashtagsText: hashtagsToText(clip.hashtags) })}>
-                          Editar legenda
+                        <Button size="sm" variant="outline" onClick={() => setEditingClip({
+                          ...clip,
+                          hashtagsText: hashtagsToText(clip.hashtags),
+                          transcript_text: clip.transcript_text || clip.transcript?.words?.map((word) => word.word).join(" ") || "",
+                        })}>
+                          Editar corte
                         </Button>
                         <Button size="sm" onClick={() => approveClip(clip, job)} disabled={!clip.video_url || clip.status === "scheduled"}>
                           <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar e agendar
@@ -955,8 +1195,8 @@ export default function Cuts() {
       <Dialog open={!!editingClip} onOpenChange={(open) => !open && setEditingClip(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Editar legenda do corte</DialogTitle>
-            <DialogDescription>Essas informações serão usadas quando o corte virar Reel agendado.</DialogDescription>
+            <DialogTitle>Editar corte e legenda</DialogTitle>
+            <DialogDescription>Metadados são salvos imediatamente; alterações de tempo, estilo ou transcrição exigem reprocessar o vídeo.</DialogDescription>
           </DialogHeader>
           {editingClip && (
             <div className="space-y-3">
@@ -967,6 +1207,35 @@ export default function Cuts() {
               <div className="space-y-2">
                 <Label>Gancho</Label>
                 <Input value={editingClip.hook || ""} onChange={(e) => setEditingClip({ ...editingClip, hook: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Início no original (segundos)</Label>
+                  <Input type="number" min={0} step={0.1} value={editingClip.start_seconds ?? 0} onChange={(e) => setEditingClip({ ...editingClip, start_seconds: Number(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim no original (segundos)</Label>
+                  <Input type="number" min={0} step={0.1} value={editingClip.end_seconds ?? 0} onChange={(e) => setEditingClip({ ...editingClip, end_seconds: Number(e.target.value) })} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Estilo no vídeo</Label>
+                <Select value={editingClip.subtitle_style || subtitleStyle} onValueChange={(value) => setEditingClip({ ...editingClip, subtitle_style: value as VideoCutClip["subtitle_style"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bold">Bold viral</SelectItem>
+                    <SelectItem value="classic">Clássica</SelectItem>
+                    <SelectItem value="clean">Clean</SelectItem>
+                    <SelectItem value="neon">Neon</SelectItem>
+                    <SelectItem value="karaoke">Karaokê</SelectItem>
+                    <SelectItem value="none">Sem legenda</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Transcrição que aparece no vídeo</Label>
+                <Textarea rows={6} value={editingClip.transcript_text || ""} onChange={(e) => setEditingClip({ ...editingClip, transcript_text: e.target.value })} />
+                <p className="text-xs text-muted-foreground">Você pode corrigir palavras e pontuação. Para cortar uma fala inteira, ajuste também os segundos de início e fim.</p>
               </div>
               <div className="space-y-2">
                 <Label>Legenda</Label>
@@ -981,6 +1250,10 @@ export default function Cuts() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingClip(null)}>Cancelar</Button>
             <Button onClick={saveClipEdit}>Salvar</Button>
+            <Button onClick={rerenderClip} disabled={rerenderingClipId === editingClip?.id}>
+              {rerenderingClipId === editingClip?.id && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar e reprocessar vídeo
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

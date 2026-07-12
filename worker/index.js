@@ -10,6 +10,13 @@ import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
+import { resolveCutPreset } from "./cutPresets.js";
+import {
+  normalizeTimedWords,
+  providerCapabilities,
+  requestStructuredAnalysis,
+  transcriptionProviderOrder,
+} from "./aiProviders.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -157,12 +164,13 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.10";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-cuts-studio";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_WHISPER_MODEL = process.env.GROQ_WHISPER_MODEL || "whisper-large-v3";
+const CUT_SUBTITLE_LEAD_MS = Number(process.env.CUT_SUBTITLE_LEAD_MS || 80);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("ERRO: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não definidos no .env!");
@@ -194,6 +202,7 @@ async function reportWorkerHealth() {
     ffprobe: await commandExists("ffprobe"),
     yt_dlp: await commandExists("yt-dlp"),
     transcription: Boolean(GEMINI_API_KEY || GROQ_API_KEY),
+    ai_providers: providerCapabilities(),
   };
   const { error } = await supabase.from("worker_health").upsert({
     worker_id: WORKER_ID,
@@ -1530,19 +1539,26 @@ Regras:
   }
 }
 
-// Wrapper: tenta Gemini primeiro (já temos a key), Groq como fallback.
-async function transcribeClip(audioPath) {
-  const viaGemini = await transcribeClipGemini(audioPath);
-  if (viaGemini && viaGemini.length > 0) {
-    console.log(`[cuts] Transcrição via Gemini: ${viaGemini.length} palavras`);
-    return viaGemini;
+// Groq/Whisper vem primeiro porque fornece timestamps reais por palavra.
+// Gemini continua como fallback. O contrato de providers fica isolado para que
+// um provedor futuro não obrigue a reescrever renderização ou legendas.
+async function transcribeClip(audioPath, maxDuration = Number.POSITIVE_INFINITY) {
+  for (const provider of transcriptionProviderOrder()) {
+    const rawWords = provider === "groq"
+      ? await transcribeClipGroq(audioPath)
+      : provider === "gemini"
+        ? await transcribeClipGemini(audioPath)
+        : null;
+    const words = normalizeTimedWords(rawWords, {
+      maxDuration,
+      leadMs: CUT_SUBTITLE_LEAD_MS,
+    });
+    if (words.length > 0) {
+      console.log(`[cuts] Transcrição via ${provider}: ${words.length} palavras; lead=${CUT_SUBTITLE_LEAD_MS}ms`);
+      return { words, provider };
+    }
   }
-  const viaGroq = await transcribeClipGroq(audioPath);
-  if (viaGroq && viaGroq.length > 0) {
-    console.log(`[cuts] Transcrição via Groq (fallback): ${viaGroq.length} palavras`);
-    return viaGroq;
-  }
-  return null;
+  return { words: [], provider: null };
 }
 
 async function transcribeSourceForAnalysis(sourcePath, tempDir) {
@@ -1559,8 +1575,9 @@ async function transcribeSourceForAnalysis(sourcePath, tempDir) {
     .sort();
   const words = [];
   for (let index = 0; index < parts.length; index += 1) {
-    const segmentWords = await transcribeClip(path.join(segmentDir, parts[index]));
-    if (!segmentWords?.length) continue;
+    const transcription = await transcribeClip(path.join(segmentDir, parts[index]), 600);
+    const segmentWords = transcription.words;
+    if (!segmentWords.length) continue;
     const offset = index * 600;
     words.push(...segmentWords.map((word) => ({
       ...word,
@@ -1597,20 +1614,24 @@ function snapClipToTranscript(clip, words, index, duration) {
 }
 
 async function analyzeTranscriptForCuts(job, metadata, words) {
-  if (!GEMINI_API_KEY || !words?.length) {
+  if (!words?.length) {
     return {
       clips: fallbackClipSuggestions(job, metadata),
       mode: "timeline_fallback",
-      warning: !words?.length ? "Não foi possível transcrever o vídeo completo." : "GEMINI_API_KEY não configurada.",
+      warning: "Não foi possível transcrever o vídeo completo.",
     };
   }
 
+  const preset = resolveCutPreset(job.preset_key, job);
   const wantsHook = job.hook_enabled !== false;
   const transcript = timedTranscript(words);
   const requested = Math.min(5, Number(job.requested_clips || 1));
   const prompt = `Você é um editor de vídeos curtos. Escolha os ${requested} melhores trechos desta TRANSCRIÇÃO COM TIMESTAMPS.
 
 Use somente o que está na transcrição. Priorize começo e fim naturais, gancho forte, emoção, clareza e uma ideia completa. Não comece no meio de frase. Cada corte deve ter entre 15 e 60 segundos. Não invente falas.
+
+PRESET DE EDIÇÃO (${preset.label}): ${preset.analysisInstruction}
+${job.custom_prompt ? `ORIENTAÇÃO DO CLIENTE: ${String(job.custom_prompt).slice(0, 1200)}` : ""}
 
 Retorne APENAS JSON válido:
 {"clips":[{"start_seconds":12,"end_seconds":42,"title":"Título curto","hook":"Resumo do gancho","hook_text":"${wantsHook ? "OLHA ISSO" : ""}","caption":"Legenda fiel ao trecho","reason":"Motivo da escolha","hook_score":85,"emotion_score":75,"clarity_score":90,"viral_score":84,"score":84,"hashtags":["#reels"]}]}
@@ -1620,33 +1641,18 @@ ${transcript}`;
 
   try {
     const model = process.env.GEMINI_CUT_ANALYSIS_MODEL || GEMINI_TEXT_MODEL;
-    const response = await withTransientRetry(`Gemini transcript cuts ${job.id}`, async () => {
-      const result = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.15, responseMimeType: "application/json" },
-        }),
-        signal: AbortSignal.timeout(180000),
-      });
-      if (!result.ok) {
-        const body = await result.text().catch(() => "");
-        const error = new Error(`Gemini transcript cuts ${result.status}: ${body.slice(0, 500)}`);
-        error.status = result.status;
-        throw error;
-      }
-      return result;
-    }, [2000, 5000]);
-    const payload = await response.json();
-    const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
-    const parsed = parseJsonFromText(text);
+    const result = await withTransientRetry(`AI transcript cuts ${job.id}`, () => requestStructuredAnalysis({
+      prompt,
+      gemini: { apiKey: GEMINI_API_KEY, model },
+    }), [2000, 5000]);
+    const parsed = parseJsonFromText(result.text);
     const clips = Array.isArray(parsed?.clips) ? parsed.clips : [];
     if (!clips.length) throw new Error("A IA não retornou trechos utilizáveis.");
     return {
       clips: clips.slice(0, requested).map((clip, index) => snapClipToTranscript(clip, words, index + 1, metadata.duration_seconds)),
-      mode: "transcript_ai",
+      mode: `transcript_ai:${result.provider}`,
       warning: null,
+      provider: result.provider,
     };
   } catch (error) {
     console.warn(`[cuts:${job.id}] Análise da transcrição falhou; usando modo básico:`, error?.message || error);
@@ -1695,6 +1701,138 @@ function buildKeepSegments(clipDuration, silences) {
   return segments.filter((seg) => seg.end - seg.start > 0.2);
 }
 
+function applyManualTranscript(words, transcriptText) {
+  const tokens = String(transcriptText || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!tokens.length || !words?.length) return words || [];
+  if (tokens.length === 1) return [{ word: tokens[0], start: words[0].start, end: words[words.length - 1].end }];
+  return tokens.map((word, index) => {
+    const position = index / (tokens.length - 1);
+    const sourceIndex = Math.min(words.length - 1, Math.round(position * (words.length - 1)));
+    const nextIndex = Math.min(words.length - 1, Math.max(sourceIndex, Math.round(((index + 1) / tokens.length) * words.length) - 1));
+    return {
+      word,
+      start: words[sourceIndex].start,
+      end: Math.max(words[sourceIndex].start + 0.04, words[nextIndex].end),
+    };
+  });
+}
+
+async function detectPrimarySubjectFocus(videoPath, durationSeconds, tempDir) {
+  const fallback = { x: 0.5, y: 0.44, confidence: 0, provider: "center_fallback", points: [] };
+  if (!GEMINI_API_KEY) return fallback;
+  const contactSheetPath = path.join(tempDir, `${path.basename(videoPath, path.extname(videoPath))}-faces.jpg`);
+  try {
+    const interval = Math.max(1, Number(durationSeconds || 1) / 6);
+    const filter = `fps=1/${interval.toFixed(3)},scale=320:-2,tile=3x2:padding=4:margin=4`;
+    await execAsync(
+      `ffmpeg -y -i ${shellQuote(videoPath)} -vf ${shellQuote(filter)} -frames:v 1 -q:v 4 ${shellQuote(contactSheetPath)}`,
+      { maxBuffer: 12 * 1024 * 1024 },
+    );
+    if (!fs.existsSync(contactSheetPath)) return fallback;
+    const image = (await fs.promises.readFile(contactSheetPath)).toString("base64");
+    const model = process.env.GEMINI_FACE_MODEL || GEMINI_TEXT_MODEL;
+    const prompt = `Observe esta grade 3x2 com até seis quadros consecutivos de um vídeo curto, da esquerda para a direita e de cima para baixo. Identifique a pessoa principal que fala ou conduz a cena em cada quadro. Retorne APENAS JSON: {"frames":[{"x":0.5,"y":0.42,"confidence":0.9},{"x":0.52,"y":0.41,"confidence":0.9}],"focus_x":0.5,"focus_y":0.44,"confidence":0.9}. x/y ficam entre 0 e 1 e apontam para o centro do rosto/torso principal. Inclua um item por quadro visível. Se a pessoa desaparecer em um quadro, repita a última posição confiável; se não houver pessoa em nenhum quadro, use centro e confidence 0.`;
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: "image/jpeg", data: image } },
+        ] }],
+        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!response.ok) return fallback;
+    const payload = await response.json();
+    const parsed = parseJsonFromText(payload?.candidates?.[0]?.content?.parts?.[0]?.text || "") || {};
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value)));
+    const rawFrames = Array.isArray(parsed.frames) ? parsed.frames.slice(0, 6) : [];
+    const points = rawFrames.map((frame, index) => ({
+      time: rawFrames.length <= 1 ? 0 : (index / (rawFrames.length - 1)) * Number(durationSeconds || 0),
+      x: clamp(frame?.x ?? parsed.focus_x ?? 0.5, 0.08, 0.92),
+      y: clamp(frame?.y ?? parsed.focus_y ?? 0.44, 0.08, 0.92),
+      confidence: clamp(frame?.confidence ?? parsed.confidence ?? 0, 0, 1),
+    }));
+    // Suavização simples evita que pequenas variações da detecção produzam um
+    // recorte tremendo entre quadros.
+    const smoothed = points.map((point, index) => {
+      const neighborhood = points.slice(Math.max(0, index - 1), Math.min(points.length, index + 2));
+      return {
+        ...point,
+        x: neighborhood.reduce((sum, item) => sum + item.x, 0) / neighborhood.length,
+        y: neighborhood.reduce((sum, item) => sum + item.y, 0) / neighborhood.length,
+      };
+    });
+    return {
+      x: clamp(parsed.focus_x ?? 0.5, 0.08, 0.92),
+      y: clamp(parsed.focus_y ?? 0.44, 0.08, 0.92),
+      confidence: clamp(parsed.confidence ?? 0, 0, 1),
+      provider: "gemini_vision",
+      points: smoothed,
+    };
+  } catch (error) {
+    console.warn(`[cuts] Reenquadramento inteligente indisponível: ${error?.message || error}`);
+    return fallback;
+  }
+}
+
+function focusAxisExpression(focus, axis) {
+  const points = Array.isArray(focus?.points) ? focus.points : [];
+  if (points.length < 2) return Number(focus?.[axis] ?? (axis === "x" ? 0.5 : 0.44)).toFixed(4);
+  let expression = Number(points[points.length - 1][axis]).toFixed(4);
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const current = points[index];
+    const next = points[index + 1];
+    const from = Number(current[axis]).toFixed(4);
+    const to = Number(next[axis]).toFixed(4);
+    const span = Math.max(0.1, next.time - current.time).toFixed(4);
+    const progress = `max(0,min(1,(t-${current.time.toFixed(4)})/${span}))`;
+    expression = `if(lt(t,${next.time.toFixed(4)}),${from}+(${to}-${from})*${progress},${expression})`;
+  }
+  return expression;
+}
+
+function buildSubjectCropFilter(outW, outH, focus) {
+  const x = focusAxisExpression(focus, "x");
+  const y = focusAxisExpression(focus, "y");
+  return `crop=${outW}:${outH}:x='max(0,min(iw-out_w,(${x})*iw-out_w/2))':y='max(0,min(ih-out_h,(${y})*ih-out_h/2))'`;
+}
+
+async function validateAiCutOutput(filePath, expected) {
+  const { stdout } = await execAsync(
+    `ffprobe -v error -show_entries format=duration,size:stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate,sample_rate -of json ${shellQuote(filePath)}`,
+    { maxBuffer: 4 * 1024 * 1024 },
+  );
+  const probe = JSON.parse(stdout || "{}");
+  const video = (probe.streams || []).find((stream) => stream.codec_type === "video");
+  const audio = (probe.streams || []).find((stream) => stream.codec_type === "audio");
+  const duration = Number(probe?.format?.duration || 0);
+  const size = Number(probe?.format?.size || 0);
+  const failures = [];
+  if (!video || video.codec_name !== "h264") failures.push("codec de vídeo diferente de H.264");
+  if (video?.width !== expected.width || video?.height !== expected.height) failures.push(`resolução ${video?.width || 0}x${video?.height || 0}`);
+  if (video?.pix_fmt !== "yuv420p") failures.push(`pixel format ${video?.pix_fmt || "ausente"}`);
+  if (!audio || audio.codec_name !== "aac") failures.push("áudio AAC ausente");
+  if (duration < 3 || duration > Math.max(65, Number(expected.duration || 0) + 2)) failures.push(`duração ${duration.toFixed(2)}s`);
+  if (size < 25_000) failures.push("arquivo final muito pequeno");
+  const report = {
+    ok: failures.length === 0,
+    checked_at: new Date().toISOString(),
+    duration_seconds: duration,
+    width: video?.width || 0,
+    height: video?.height || 0,
+    video_codec: video?.codec_name || null,
+    audio_codec: audio?.codec_name || null,
+    pixel_format: video?.pix_fmt || null,
+    size_bytes: size,
+    failures,
+  };
+  if (!report.ok) throw Object.assign(new Error(`Validação de qualidade falhou: ${failures.join(", ")}.`), { qualityReport: report });
+  return report;
+}
+
 async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   const overlayPath = path.join(tempDir, `${clip.id}-overlay.png`);
   const rawCutPath = path.join(tempDir, `${clip.id}-raw.mp4`);
@@ -1705,10 +1843,12 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   const thumbPath = path.join(tempDir, `${clip.id}.jpg`);
 
   const format = clip.format || job.format || "reels";
-  const subtitleStyle = clip.subtitle_style || job.subtitle_style || "classic";
+  const preset = resolveCutPreset(job.preset_key, job);
+  const subtitleStyle = clip.subtitle_style || preset.subtitleStyle || "classic";
   const wantsSubtitles = subtitleStyle && subtitleStyle !== "none";
-  const wantsSilenceRemoval = job.remove_silences !== false;
-  const wantsZoom = job.zoom_effect === true;
+  const wantsSilenceRemoval = preset.removeSilences;
+  const wantsZoom = preset.zoomEffect;
+  const wantsSmartCrop = preset.smartCrop;
   const { width: outW, height: outH } = getCutFormatDims(format);
 
   await writeCutOverlayPng(clip, settings, overlayPath, format);
@@ -1772,7 +1912,12 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
           `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
           { maxBuffer: 10 * 1024 * 1024 },
         );
-        words = (await transcribeClip(audioPath)) || [];
+        const transcriptionResult = await transcribeClip(audioPath, workingDuration);
+        words = transcriptionResult.words;
+        if (clip.edit_config?.manual_transcript && clip.transcript_text) {
+          words = applyManualTranscript(words, clip.transcript_text);
+        }
+        clip.transcription_provider = transcriptionResult.provider;
         if (words.length > 0) {
           transcript = words;
         } else {
@@ -1788,7 +1933,17 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
           format,
           { width: outW, height: outH },
           workingDuration,
-          { hookText: hasHook ? hookText : "", hookDurationSeconds: 3 },
+          {
+            hookText: hasHook ? hookText : "",
+            hookDurationSeconds: 3,
+            maxWordsPerGroup: subtitleStyle === "clean" ? 5 : 3,
+            maxCharsPerGroup: subtitleStyle === "clean" ? 34 : 24,
+            fontFamily: settings?.cut_brand_profile?.font_family,
+            primaryColor: settings?.cut_brand_profile?.primary_color,
+            highlightColor: settings?.cut_brand_profile?.highlight_color,
+            outlineColor: settings?.cut_brand_profile?.outline_color,
+            subtitlePosition: settings?.cut_brand_profile?.subtitle_position,
+          },
         );
         await fs.promises.writeFile(subtitlePath, assContent, "utf8");
       }
@@ -1799,9 +1954,12 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   }
 
   // === PASS 2: composição final — crop 9:16 + overlay + subtitles + loudnorm + zoom ===
+  const subjectFocus = wantsSmartCrop
+    ? await detectPrimarySubjectFocus(workingPath, workingDuration, tempDir)
+    : { x: 0.5, y: 0.5, confidence: 0, provider: "disabled" };
   const videoFilters = [];
   videoFilters.push(`scale=${outW}:${outH}:force_original_aspect_ratio=increase`);
-  videoFilters.push(`crop=${outW}:${outH}`);
+  videoFilters.push(buildSubjectCropFilter(outW, outH, subjectFocus));
   videoFilters.push("setsar=1");
   if (wantsZoom) {
     // Zoom sutil (5%) ao longo do clip
@@ -1834,6 +1992,11 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error(`Corte não foi gerado. ${stderr || ""}`.trim());
   }
+  const qualityReport = await validateAiCutOutput(outputPath, {
+    width: outW,
+    height: outH,
+    duration: workingDuration,
+  });
 
   await execAsync(
     `ffmpeg -y -ss 1 -i ${shellQuote(outputPath)} -frames:v 1 -q:v 3 ${shellQuote(thumbPath)}`,
@@ -1863,13 +2026,21 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl,
       transcript: transcript ? { words: transcript } : null,
+      transcript_text: transcript ? transcript.map((word) => word.word).join(" ") : null,
+      quality_report: qualityReport,
+      provider_trace: {
+        transcription: clip.transcription_provider || null,
+        framing: subjectFocus.provider,
+        framing_confidence: subjectFocus.confidence,
+        framing_points: subjectFocus.points?.length || 0,
+      },
       subtitle_error: subtitleError,
       error_message: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", clip.id);
 
-  return { videoUrl, thumbnailUrl, transcript };
+  return { videoUrl, thumbnailUrl, transcript, qualityReport };
 }
 
 // ---- Auto-publish: transforma corte pronto em scheduled_post ----
@@ -2031,6 +2202,10 @@ async function processVideoCutJob(job) {
       .update({
         analysis_mode: analysis.mode,
         analysis_warning: analysis.warning,
+        provider_trace: {
+          analysis: analysis.provider || null,
+          transcription_order: transcriptionProviderOrder(),
+        },
         progress: 35,
         updated_at: new Date().toISOString(),
       })
@@ -2052,6 +2227,18 @@ async function processVideoCutJob(job) {
       user_id: job.user_id,
       instagram_account_id: job.instagram_account_id,
     });
+    const { data: cutBrandProfile } = await supabase
+      .from("video_cut_brand_profiles")
+      .select("*")
+      .eq("instagram_account_id", job.instagram_account_id)
+      .maybeSingle();
+    const cutSettings = {
+      ...settings,
+      brand_handle: cutBrandProfile?.watermark_enabled === false
+        ? ""
+        : (cutBrandProfile?.watermark_text || settings?.brand_handle),
+      cut_brand_profile: cutBrandProfile || null,
+    };
 
     // Retry idempotente: se um processamento anterior deixou clips órfãos,
     // limpa antes de inserir novos (senão bate no unique(job_id, clip_index)).
@@ -2109,7 +2296,7 @@ async function processVideoCutJob(job) {
         if (clipError) throw clipError;
         // Sinal para generateVideoCutClip renderizar hook_text se hook_enabled
         clip.hook_enabled = job.hook_enabled !== false;
-        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, settings, tempDir);
+        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, cutSettings, tempDir);
         generatedCount += 1;
         processed += 1;
 
@@ -2142,11 +2329,9 @@ async function processVideoCutJob(job) {
       })
       .eq("id", job.id);
     await finishVideoCutUsage(job.id, generatedCount);
-    if (isUploadJob && job.source_storage_path) {
-      const bucket = job.source_storage_bucket || "video-cut-inputs";
-      const { error: removeError } = await supabase.storage.from(bucket).remove([job.source_storage_path]);
-      if (removeError) console.warn(`[cuts:${job.id}] Não foi possível limpar o MP4 privado:`, removeError.message || removeError);
-    }
+    // O original privado fica disponível por uma janela curta para permitir
+    // regeneração de estilo/transcrição sem exigir novo upload. A limpeza deve
+    // respeitar source_expires_at e pode ser executada por rotina dedicada.
     console.log(`[cuts:${job.id}] ${generatedCount} corte(s) pronto(s) para revisão.`);
   } catch (err) {
     const message = err?.message || String(err);
@@ -2177,6 +2362,87 @@ async function processQueuedVideoCutJobs() {
     await processVideoCutJob(job);
   }
   return jobs.length;
+}
+
+async function cleanupExpiredVideoCutSources() {
+  const { data: sources, error } = await supabase.rpc("claim_expired_video_cut_sources", { _limit: 50 });
+  if (error) {
+    if (!/claim_expired_video_cut_sources|schema cache|does not exist/i.test(error.message || "")) {
+      console.warn("[cuts-cleanup] Não foi possível listar originais vencidos:", error.message || error);
+    }
+    return 0;
+  }
+  let removed = 0;
+  for (const source of sources || []) {
+    const { error: removeError } = await supabase.storage.from(source.bucket || "video-cut-inputs").remove([source.storage_path]);
+    if (removeError) {
+      console.warn(`[cuts-cleanup:${source.job_id}] Falha ao apagar original:`, removeError.message || removeError);
+      continue;
+    }
+    const { error: markError } = await supabase.rpc("mark_video_cut_source_deleted", {
+      _job_id: source.job_id,
+      _storage_path: source.storage_path,
+    });
+    if (markError) console.warn(`[cuts-cleanup:${source.job_id}] Original apagado, mas registro não foi limpo:`, markError.message || markError);
+    removed += 1;
+  }
+  if (removed) console.log(`[cuts-cleanup] ${removed} original(is) privado(s) vencido(s) removido(s).`);
+  return removed;
+}
+
+async function processVideoCutRerenderRequests() {
+  const { data: requests, error } = await supabase.rpc("claim_video_cut_rerenders", { _worker: WORKER_ID, _limit: 1 });
+  if (error) {
+    if (!/claim_video_cut_rerenders|schema cache|does not exist/i.test(error.message || "")) {
+      console.warn("[cuts-rerender] Não foi possível reclamar a fila:", error.message || error);
+    }
+    return 0;
+  }
+  for (const request of requests || []) {
+    const tempDir = path.join(TEMP_DIR, `cut_rerender_${request.id}`);
+    const sourcePath = path.join(tempDir, "source.mp4");
+    try {
+      await fs.promises.mkdir(tempDir, { recursive: true });
+      const [{ data: job, error: jobError }, { data: clip, error: clipError }] = await Promise.all([
+        supabase.from("video_cut_jobs").select("*").eq("id", request.job_id).single(),
+        supabase.from("video_cut_clips").select("*").eq("id", request.clip_id).single(),
+      ]);
+      if (jobError || !job) throw new Error(jobError?.message || "Job original não encontrado.");
+      if (clipError || !clip) throw new Error(clipError?.message || "Corte não encontrado.");
+
+      if (job.source_kind === "upload") await downloadStoredVideo(job, sourcePath);
+      else await downloadYoutubeVideo(job.youtube_url, sourcePath);
+
+      const settings = await loadEffectivePostSettings(job);
+      const { data: brand } = await supabase.from("video_cut_brand_profiles")
+        .select("*").eq("instagram_account_id", job.instagram_account_id).maybeSingle();
+      const cutSettings = {
+        ...settings,
+        brand_handle: brand?.watermark_enabled === false ? "" : (brand?.watermark_text || settings?.brand_handle),
+        cut_brand_profile: brand || null,
+      };
+      clip.hook_enabled = job.hook_enabled !== false;
+      await generateVideoCutClip(job, clip, sourcePath, cutSettings, tempDir);
+      await supabase.from("video_cut_rerender_requests").update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        error_message: null,
+      }).eq("id", request.id);
+      console.log(`[cuts-rerender:${request.id}] Corte ${clip.id} reprocessado.`);
+    } catch (rerenderError) {
+      const message = String(rerenderError?.message || rerenderError).slice(0, 1000);
+      await Promise.all([
+        supabase.from("video_cut_rerender_requests").update({
+          status: "failed", error_message: message, completed_at: new Date().toISOString(),
+        }).eq("id", request.id),
+        supabase.from("video_cut_clips").update({ status: "failed", error_message: message }).eq("id", request.clip_id),
+      ]);
+      console.warn(`[cuts-rerender:${request.id}] Falhou: ${message}`);
+    } finally {
+      try { await fs.promises.rm(tempDir, { recursive: true, force: true }); } catch {}
+    }
+  }
+  return requests?.length || 0;
 }
 
 async function processQueuedReelJobs() {
@@ -2320,16 +2586,27 @@ async function main() {
 
   await reportWorkerHealth();
   if (queueEnabled("media")) await recoverFailedNewsReels();
+  if (queueEnabled("cuts")) await cleanupExpiredVideoCutSources();
   const heartbeatTimer = setInterval(() => {
     reportWorkerHealth().catch((error) => {
       console.warn("[health] Heartbeat falhou:", error?.message || error);
     });
   }, 30000);
   heartbeatTimer.unref();
+  const sourceCleanupTimer = setInterval(() => {
+    if (!queueEnabled("cuts")) return;
+    cleanupExpiredVideoCutSources().catch((error) => {
+      console.warn("[cuts-cleanup] Rotina falhou:", error?.message || error);
+    });
+  }, 60 * 60 * 1000);
+  sourceCleanupTimer.unref();
 
   while (true) {
     try {
-      if (queueEnabled("cuts")) await processQueuedVideoCutJobs();
+      if (queueEnabled("cuts")) {
+        await processVideoCutRerenderRequests();
+        await processQueuedVideoCutJobs();
+      }
 
       if (queueEnabled("media")) {
         await processQueuedReelJobs();

@@ -75,3 +75,22 @@ export const CUT_FORMAT_OPTIONS: Array<{ value: "reels" | "feed_square" | "feed_
   { value: "feed_portrait", label: "Feed vertical", description: "4:5" },
   { value: "feed_square", label: "Feed quadrado", description: "1:1" },
 ];
+
+export type CutPresetKey = "viral" | "clean" | "podcast" | "product" | "highlights" | "custom";
+
+export const CUT_PRESET_OPTIONS: Array<{
+  value: CutPresetKey;
+  label: string;
+  description: string;
+  subtitleStyle: "classic" | "neon" | "karaoke" | "clean" | "bold";
+  hookEnabled: boolean;
+  removeSilences: boolean;
+  zoomEffect: boolean;
+}> = [
+  { value: "viral", label: "Viral dinâmico", description: "Gancho forte, cortes rápidos e palavras destacadas.", subtitleStyle: "bold", hookEnabled: true, removeSilences: true, zoomEffect: true },
+  { value: "clean", label: "Clean profissional", description: "Visual discreto para autoridade, aulas e marcas.", subtitleStyle: "clean", hookEnabled: false, removeSilences: true, zoomEffect: false },
+  { value: "podcast", label: "Podcast / entrevista", description: "Preserva respostas completas e centraliza quem fala.", subtitleStyle: "classic", hookEnabled: true, removeSilences: true, zoomEffect: false },
+  { value: "product", label: "Produto / anúncio", description: "Problema, benefício, demonstração e chamada para ação.", subtitleStyle: "neon", hookEnabled: true, removeSilences: true, zoomEffect: true },
+  { value: "highlights", label: "Melhores momentos", description: "Energia, reação, humor e picos emocionais.", subtitleStyle: "karaoke", hookEnabled: true, removeSilences: false, zoomEffect: true },
+  { value: "custom", label: "Prompt personalizado", description: "Você orienta o que a IA deve procurar no vídeo.", subtitleStyle: "classic", hookEnabled: true, removeSilences: true, zoomEffect: false },
+];

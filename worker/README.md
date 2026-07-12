@@ -44,9 +44,37 @@ ffmpeg -version
    cat > .env << 'EOF'
    SUPABASE_URL=https://SUA_URL_SUPABASE.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY
+   GEMINI_API_KEY=SUA_CHAVE_GEMINI
+   GROQ_API_KEY=SUA_CHAVE_GROQ
+   CUT_TRANSCRIPTION_PROVIDERS=groq,gemini
+   CUT_ANALYSIS_PROVIDERS=gemini,xai
+   CUT_SUBTITLE_LEAD_MS=80
    EOF
    ```
    > ⚠️ **IMPORTANTE:** Use a **Service Role Key** (não a anon/public key), pois o worker precisa ignorar o RLS para ler a fila e escrever no bucket de Storage.
+
+### Grok/xAI (opcional e preparado para o futuro)
+
+O Cortes IA não depende do Grok para funcionar. A produção usa Groq/Whisper para timestamps de fala e Gemini para análise e enquadramento. Quando a conta xAI estiver aprovada, acrescente:
+
+```bash
+XAI_API_KEY=SUA_CHAVE_XAI
+XAI_CUT_MODEL=grok-4.5
+CUT_ANALYSIS_PROVIDERS=xai,gemini
+```
+
+O adapter usa a API compatível de Chat Completions da xAI e aceita resposta JSON estruturada. Não é necessário alterar o worker, o banco ou o frontend. O Grok entra somente na seleção/análise dos melhores trechos; a sincronização de áudio permanece no provedor de transcrição com timestamps.
+
+### Recursos do Cortes IA Studio
+
+- Presets Viral, Clean, Podcast, Produto, Melhores momentos e prompt personalizado.
+- Whisper/Groq como primeira opção de legenda e Gemini como contingência.
+- Correção configurável de atraso da legenda com `CUT_SUBTITLE_LEAD_MS`.
+- Detecção do apresentador em vários quadros e reenquadramento suavizado.
+- Validação H.264/AAC, resolução, pixel format, duração e tamanho antes do upload.
+- Identidade visual separada por conta do Instagram.
+- Nova versão a partir do mesmo vídeo e reprocessamento de um corte editado.
+- Originais privados preservados por sete dias e depois removidos pela rotina do worker.
 
 ---
 

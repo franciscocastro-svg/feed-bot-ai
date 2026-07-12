@@ -34,6 +34,26 @@ const STYLE_PRESETS = {
     bold: -1,
     highlightColor: "&H0000D46A", // verde
   },
+  clean: {
+    primary: "&H00FFFFFF",
+    secondary: "&H00FFFFFF",
+    outline: "&H50000000",
+    back: "&H00000000",
+    outlineWidth: 2,
+    shadow: 1,
+    bold: 0,
+    highlightColor: "&H00FFFFFF",
+  },
+  bold: {
+    primary: "&H00FFFFFF",
+    secondary: "&H00FFFFFF",
+    outline: "&H00000000",
+    back: "&HA0000000",
+    outlineWidth: 6,
+    shadow: 2,
+    bold: -1,
+    highlightColor: "&H0000D4FF",
+  },
 };
 
 function fontSizeForFormat(format) {
@@ -62,6 +82,12 @@ function escapeAssText(text) {
     .replace(/\}/g, "\\}")
     .replace(/\r?\n/g, " ")
     .trim();
+}
+
+function hexToAssColor(value, fallback) {
+  const match = String(value || "").trim().match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!match) return fallback;
+  return `&H00${match[3].toUpperCase()}${match[2].toUpperCase()}${match[1].toUpperCase()}`;
 }
 
 function wrapHookText(text, maxCharsPerLine = 18) {
@@ -110,11 +136,17 @@ function secondsToAssTime(seconds) {
 }
 
 // Agrupa palavras em frases curtas (2-4 palavras) — legível em vídeo curto vertical.
-function groupWords(words, maxWordsPerLine = 3) {
+function groupWords(words, maxWordsPerLine = 3, maxCharsPerLine = 24) {
   const groups = [];
   let bucket = [];
   for (const w of words) {
     if (!w || typeof w.start !== "number" || typeof w.end !== "number") continue;
+    const candidateLength = [...bucket, w].map((item) => String(item.word || "")).join(" ").length;
+    const longPause = bucket.length > 0 && Number(w.start) - Number(bucket[bucket.length - 1].end) > 0.42;
+    if (bucket.length && (candidateLength > maxCharsPerLine || longPause)) {
+      groups.push(bucket);
+      bucket = [];
+    }
     bucket.push(w);
     // Quebra quando bucket cheio ou quando termina em pontuação forte
     const endsPhrase = /[.!?,]$/.test(String(w.word || "").trim());
@@ -136,12 +168,24 @@ function groupWords(words, maxWordsPerLine = 3) {
  * @param {number} clipDurationSeconds
  */
 export function buildAssSubtitleFile(words, styleName, format, dims, clipDurationSeconds, options = {}) {
-  const preset = STYLE_PRESETS[styleName] || STYLE_PRESETS.classic;
+  const basePreset = STYLE_PRESETS[styleName] || STYLE_PRESETS.classic;
+  const preset = {
+    ...basePreset,
+    primary: hexToAssColor(options.primaryColor, basePreset.primary),
+    highlightColor: hexToAssColor(options.highlightColor, basePreset.highlightColor),
+    outline: hexToAssColor(options.outlineColor, basePreset.outline),
+  };
   const fontSize = fontSizeForFormat(format);
-  const marginV = marginVForFormat(format);
+  const configuredPosition = options.subtitlePosition;
+  const marginV = configuredPosition === "upper_third"
+    ? Math.round(dims.height * 0.58)
+    : configuredPosition === "center"
+      ? Math.round(dims.height * 0.38)
+      : marginVForFormat(format);
+  const fontFamily = escapeAssText(options.fontFamily || "Inter").replace(/,/g, " ") || "Inter";
   const formattedHook = wrapHookText(options.hookText || "", format === "reels" ? 18 : 16);
   const hookFontSize = hookFontSizeForText(fontSize, formattedHook.longestLineLength);
-  const groups = groupWords(words || [], 3);
+  const groups = groupWords(words || [], options.maxWordsPerGroup || 3, options.maxCharsPerGroup || 24);
   const hookText = formattedHook.text;
   const hookDurationSec = Math.min(3.5, Math.max(1.5, Number(options.hookDurationSeconds) || 3));
 
@@ -154,7 +198,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Inter,${fontSize},${preset.primary},${preset.secondary},${preset.outline},${preset.back},${preset.bold},0,0,0,100,100,0,0,1,${preset.outlineWidth},${preset.shadow},2,60,60,${marginV},1
+Style: Default,${fontFamily},${fontSize},${preset.primary},${preset.secondary},${preset.outline},${preset.back},${preset.bold},0,0,0,100,100,0,0,1,${preset.outlineWidth},${preset.shadow},2,60,60,${marginV},1
 Style: Hook,Impact,${hookFontSize},&H0000FFFF,&H0000FFFF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,5,1,8,96,96,${Math.round(dims.height * 0.16)},1
 
 [Events]
