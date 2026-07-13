@@ -6,6 +6,7 @@ import {
   isScheduledBeyondFreshnessWindow,
   SCHEDULED_NEWS_MAX_AGE_HOURS,
 } from "../_shared/autopilot-policy.ts";
+import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1102,47 +1103,63 @@ Deno.serve(async (req) => {
 
     if (!chosen) {
       if (cooldownPosts.length > 0) {
-        // Adia TODOS os posts prontos que bateram no cooldown, espaçando a fila.
-        // Antes apenas 1 item era adiado, deixando vários posts vencidos no mesmo horário.
+        // Preserva a ordem da fila por conta. O item mais antigo vai para o
+        // primeiro instante permitido e os posteriores avançam em cascata.
+        // Tratar horários futuros como obstáculos fixos fazia o item vencido
+        // saltar para o fim da fila e dobrava o intervalo observado.
         const sortedCooldown = cooldownPosts.sort((a, b) =>
           new Date(a.post.scheduled_for).getTime() - new Date(b.post.scheduled_for).getTime()
         );
-        const cooldownIds = new Set(sortedCooldown.map((item) => item.post.id));
         const cooldownAccountIds = Array.from(new Set(sortedCooldown.map((item) => item.post.instagram_account_id).filter(Boolean)));
-        const takenByAccount = new Map<string, number[]>();
-        if (cooldownAccountIds.length > 0) {
-          const { data: takenRows } = await supabase.from("scheduled_posts")
-            .select("id, instagram_account_id, scheduled_for")
+        const cooldownById = new Map(sortedCooldown.map((item) => [item.post.id, item]));
+        const nowMs = Date.now();
+        let firstPlannedAt = Number.POSITIVE_INFINITY;
+
+        for (const accountId of cooldownAccountIds) {
+          const { data: queuedRows } = await supabase.from("scheduled_posts")
+            .select("id, instagram_account_id, scheduled_for, created_at, media_type")
             .eq("user_id", userId)
-            .in("status", ACTIVE_QUEUE_STATUSES)
-            .in("instagram_account_id", cooldownAccountIds);
-          for (const row of (takenRows || []) as any[]) {
-            if (cooldownIds.has(row.id) || !row.instagram_account_id) continue;
-            const time = new Date(row.scheduled_for).getTime();
-            if (!Number.isFinite(time)) continue;
-            const list = takenByAccount.get(row.instagram_account_id) || [];
-            list.push(time);
-            takenByAccount.set(row.instagram_account_id, list);
+            .eq("status", "scheduled")
+            .eq("instagram_account_id", accountId)
+            .order("scheduled_for", { ascending: true })
+            .order("created_at", { ascending: true })
+            .limit(500);
+
+          const plan = planStableQueueSlots(((queuedRows || []) as any[]).map((row) => {
+            const cfg = getPostConfig(row);
+            const cooldown = cooldownById.get(row.id);
+            return {
+              id: row.id,
+              scheduledForMs: new Date(row.scheduled_for).getTime(),
+              createdAtMs: new Date(row.created_at || row.scheduled_for).getTime(),
+              minIntervalMs: cfg.minIntervalMin * 60_000,
+              allowedHours: cfg.allowedHours,
+              earliestAtMs: cooldown
+                ? Math.max(nowMs, cooldown.nextAllowedAt.getTime())
+                : undefined,
+            };
+          }));
+
+          for (const planned of plan) {
+            if (!Number.isFinite(planned.slotMs) || planned.slotMs === planned.scheduledForMs) continue;
+            const cooldown = cooldownById.get(planned.id);
+            const update: { scheduled_for: string; error_message?: string } = {
+              scheduled_for: new Date(planned.slotMs).toISOString(),
+            };
+            if (cooldown) {
+              update.error_message = `Aguardando intervalo mínimo de ${cooldown.minIntervalMin} min entre posts`;
+              firstPlannedAt = Math.min(firstPlannedAt, planned.slotMs);
+            }
+            await supabase.from("scheduled_posts").update(update).eq("id", planned.id).eq("status", "scheduled");
           }
-        }
-        for (const item of sortedCooldown) {
-          const stepMs = item.minIntervalMin * 60_000;
-          const accountKey = item.post.instagram_account_id || "__missing_account__";
-          const takenTimes = (takenByAccount.get(accountKey) || []).sort((a, b) => a - b);
-          const base = Math.max(Date.now(), item.nextAllowedAt.getTime());
-          const slot = nextAllowedSpacedSlot(base, takenTimes, stepMs, item.allowedHours);
-          await supabase.from("scheduled_posts").update({
-            scheduled_for: new Date(slot).toISOString(),
-            error_message: `Aguardando intervalo mínimo de ${item.minIntervalMin} min entre posts`,
-          }).eq("id", item.post.id);
-          takenTimes.push(slot);
-          takenByAccount.set(accountKey, takenTimes);
         }
         return new Response(JSON.stringify({
           processed: 0,
           reason: "cooldown active",
           postponed: sortedCooldown.length,
-          next_allowed_at: new Date(Math.max(Date.now(), sortedCooldown[0].nextAllowedAt.getTime())).toISOString(),
+          next_allowed_at: new Date(Number.isFinite(firstPlannedAt)
+            ? firstPlannedAt
+            : Math.max(nowMs, sortedCooldown[0].nextAllowedAt.getTime())).toISOString(),
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       return new Response(JSON.stringify({ processed: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
