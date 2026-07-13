@@ -23,6 +23,12 @@ export interface SafeLogFields {
   provider_status?: number | string;
   duration_ms?: number;
   error_code?: string;
+  subs_scanned?: number;
+  subs_updated?: number;
+  divergences?: number;
+  effects_recovered?: number;
+  errors_count?: number;
+  errors_by_code?: Record<string, number>;
 }
 
 const ALLOWED_FIELDS: ReadonlyArray<keyof SafeLogFields> = [
@@ -36,7 +42,14 @@ const ALLOWED_FIELDS: ReadonlyArray<keyof SafeLogFields> = [
   "provider_status",
   "duration_ms",
   "error_code",
+  "subs_scanned",
+  "subs_updated",
+  "divergences",
+  "effects_recovered",
+  "errors_count",
 ];
+
+const SAFE_ERROR_CODE_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 
 /** Cryptographically-random request id. */
 export function newRequestId(): string {
@@ -52,8 +65,12 @@ export function newRequestId(): string {
   }
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${
+    hex.slice(16, 20)
+  }-${hex.slice(20)}`;
 }
 
 function pickAllowed(fields: SafeLogFields | undefined): SafeLogFields {
@@ -66,6 +83,15 @@ function pickAllowed(fields: SafeLogFields | undefined): SafeLogFields {
     if (typeof value === "number" || typeof value === "string") {
       (out as Record<string, unknown>)[key] = value;
     }
+  }
+  if (fields.errors_by_code && typeof fields.errors_by_code === "object") {
+    const safeErrors: Record<string, number> = {};
+    for (const [code, count] of Object.entries(fields.errors_by_code)) {
+      if (!SAFE_ERROR_CODE_RE.test(code)) continue;
+      if (!Number.isFinite(count) || count < 0) continue;
+      safeErrors[code] = Math.floor(count);
+    }
+    if (Object.keys(safeErrors).length > 0) out.errors_by_code = safeErrors;
   }
   return out;
 }
@@ -100,7 +126,11 @@ export function createLogger(
   bind: SafeLogFields = {},
 ): Logger {
   const requestId = bind.request_id ?? newRequestId();
-  const base: SafeLogFields = { ...bind, function_name: functionName, request_id: requestId };
+  const base: SafeLogFields = {
+    ...bind,
+    function_name: functionName,
+    request_id: requestId,
+  };
 
   const emit = (level: LogLevel, message: string, fields?: SafeLogFields) => {
     const line = formatLogLine(level, message, { ...base, ...(fields ?? {}) });
@@ -132,13 +162,21 @@ export function createLogger(
  * Sanitize an unknown error into a short opaque code + generic message.
  * The raw provider text is never returned or logged.
  */
-export function classifyError(err: unknown): { error_code: string; message: string } {
+export function classifyError(
+  err: unknown,
+): { error_code: string; message: string } {
   if (err && typeof err === "object") {
     const anyErr = err as { code?: unknown; name?: unknown };
-    if (typeof anyErr.code === "string" && /^[A-Za-z0-9_.-]{1,40}$/.test(anyErr.code)) {
+    if (
+      typeof anyErr.code === "string" &&
+      /^[A-Za-z0-9_.-]{1,40}$/.test(anyErr.code)
+    ) {
       return { error_code: anyErr.code, message: "Operation failed" };
     }
-    if (typeof anyErr.name === "string" && /^[A-Za-z0-9_.-]{1,40}$/.test(anyErr.name)) {
+    if (
+      typeof anyErr.name === "string" &&
+      /^[A-Za-z0-9_.-]{1,40}$/.test(anyErr.name)
+    ) {
       return { error_code: anyErr.name, message: "Operation failed" };
     }
   }
@@ -159,7 +197,10 @@ export function containsSensitiveKeyword(text: string): boolean {
 }
 
 /** Attach the request_id to a Response, preserving other headers. */
-export function withRequestIdHeader<T extends Response>(res: T, requestId: string): T {
+export function withRequestIdHeader<T extends Response>(
+  res: T,
+  requestId: string,
+): T {
   try {
     res.headers.set("x-request-id", requestId);
   } catch {

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "release": "phase-1e-a-2-ii",
+  "description": "Deploy the isolated sandbox/live payment reconciler, then install its reconciler-only claim RPC and versioned cron jobs. The legacy webhook remains in containment mode.",
+  "affectedFunctions": [
+    {
+      "name": "payments-reconcile",
+      "entrypoint": "supabase/functions/payments-reconcile/index.ts",
+      "config": "supabase/functions/payments-reconcile/deno.json",
+      "lock": "supabase/functions/payments-reconcile/deno.lock",
+      "verifyJwt": false
+    }
+  ],
+  "migrations": [
+    "supabase/migrations/20260713234500_phase_1e_a_2_reconcile_cron.sql"
+  ],
+  "deploymentOrder": [
+    "verify function secret INTERNAL_CRON_SECRET and the three Vault entries without printing values",
+    "deploy payments-reconcile only",
+    "smoke test unauthorized request returns 401 and does not access Stripe or the database",
+    "apply 20260713234500_phase_1e_a_2_reconcile_cron.sql",
+    "verify both cron jobs and service_role-only RPC grants"
+  ],
+  "cronJobs": [
+    {
+      "jobname": "payments-reconcile-sandbox",
+      "schedule": "0 3 * * *",
+      "environment": "sandbox"
+    },
+    {
+      "jobname": "payments-reconcile-live",
+      "schedule": "15 3 * * *",
+      "environment": "live"
+    }
+  ],
+  "postMigrationVerification": "SELECT jobname, schedule FROM cron.job WHERE jobname IN ('payments-reconcile-sandbox','payments-reconcile-live') ORDER BY jobname;",
+  "rollback": "SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname IN ('payments-reconcile-sandbox','payments-reconcile-live'); then redeploy/remove payments-reconcile. The reconciler-only RPC may remain inert or be removed by a reviewed corrective migration.",
+  "releaseConstraints": {
+    "databaseMigrations": true,
+    "frontendPublish": false,
+    "otherEdgeFunctions": false,
+    "vpsRuntimeChange": false
+  }
+}

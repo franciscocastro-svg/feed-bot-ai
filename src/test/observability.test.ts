@@ -38,6 +38,25 @@ describe("observability logger", () => {
     expect(parsed).not.toHaveProperty("authorization");
   });
 
+  it("emits reconciler metrics but filters unsafe error-map entries", () => {
+    const parsed = JSON.parse(formatLogLine("info", "reconcile_completed", {
+      subs_scanned: 12,
+      subs_updated: 2,
+      divergences: 2,
+      effects_recovered: 1,
+      errors_count: 1,
+      errors_by_code: {
+        stripe_timeout: 1,
+        "customer@example.com": 3,
+        "not a safe code": 4,
+      },
+    }));
+    expect(parsed.subs_scanned).toBe(12);
+    expect(parsed.effects_recovered).toBe(1);
+    expect(parsed.errors_by_code).toEqual({ stripe_timeout: 1 });
+    expect(containsPII(JSON.stringify(parsed))).toBe(false);
+  });
+
   it("createLogger writes structured JSON to console and never leaks PII/secrets", () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});

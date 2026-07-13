@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "phase-1d",
+  "release": "phase-1e-a-2-ii",
   "affectedFunctions": [
     {
       "name": "auth-email-hook",
@@ -14,6 +14,13 @@
       "entrypoint": "supabase/functions/payments-webhook/index.ts",
       "config": "supabase/functions/payments-webhook/deno.json",
       "lock": "supabase/functions/payments-webhook/deno.lock",
+      "verifyJwt": false
+    },
+    {
+      "name": "payments-reconcile",
+      "entrypoint": "supabase/functions/payments-reconcile/index.ts",
+      "config": "supabase/functions/payments-reconcile/deno.json",
+      "lock": "supabase/functions/payments-reconcile/deno.lock",
       "verifyJwt": false
     }
   ],

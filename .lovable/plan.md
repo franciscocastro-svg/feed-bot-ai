@@ -461,7 +461,8 @@ Implementação: `payments-reconcile` faz `switch(effect_type)` antes de qualque
 ## 18. Status pós-execução
 
 ### Subfase 1E-A.2/i — CONCLUÍDA E APLICADA (ver seção 19).
-### Subfases ii, iii, iv — NÃO INICIADAS. Aguardando review.
+### Subfase 1E-A.2/ii — IMPLEMENTADA LOCALMENTE; NÃO APLICADA, NÃO DEPLOYADA.
+### Subfases iii e iv — NÃO INICIADAS. Aguardando validação/deploy isolado da ii.
 
 ---
 
@@ -472,4 +473,3 @@ Implementação: `payments-reconcile` faz `switch(effect_type)` antes de qualque
 - Nenhuma Edge Function alterada.
 - Documentação: `docs/PHASE-1E-A-2.md`.
 - Detalhes completos: ver relatório enviado no chat.
-
