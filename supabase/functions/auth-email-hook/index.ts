@@ -61,9 +61,9 @@ async function sendViaResend(params: {
   subject: string
   html: string
   text: string
-}): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
+}): Promise<{ ok: boolean; status: number; id?: string; error_code?: string }> {
   const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return { ok: false, status: 500, error: 'RESEND_API_KEY not configured' }
+  if (!apiKey) return { ok: false, status: 500, error_code: 'resend_not_configured' }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -82,9 +82,9 @@ async function sendViaResend(params: {
   })
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    // Do not log the API key; body only contains provider error info.
-    return { ok: false, status: res.status, error: body.slice(0, 500) }
+    // Drain body without logging its content (may contain recipient/email metadata).
+    await res.text().catch(() => '')
+    return { ok: false, status: res.status, error_code: 'resend_send_failed' }
   }
   const data: unknown = await res.json().catch(() => null)
   return { ok: true, status: res.status, id: readResponseId(data) }
