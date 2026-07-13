@@ -12,14 +12,21 @@ the worker, Stripe configuration, Meta configuration, or customer data.
 
 `payments-reconcile` accepts only `POST` with:
 
-- a constant-time validated `x-internal-secret` matching
-  `INTERNAL_CRON_SECRET`;
+- a constant-time validated `x-internal-secret` matching the Edge environment
+  value `INTERNAL_CRON_SECRET` or the established service-role-only Vault
+  source `internal_cron_secret`;
 - a JSON body containing exactly the intended `environment` (`sandbox` or
   `live`).
 
 The environment is passed once to `createStripeClient`. Sandbox and live keys
 are never read together. Subscription scans use 500-row pages with the stable
 cursor `(created_at, id)`, explicit columns and bounded concurrency.
+
+A request without the internal header returns `401` before database access. If
+the Edge environment value does not match, the function calls the existing
+service-role-only `get_internal_cron_secret()` RPC, caches the returned value
+for five minutes, and compares it in constant time. The value is never returned
+or logged.
 
 The reconciler compares current non-terminal local subscriptions with Stripe.
 Only divergences are passed through the reviewed

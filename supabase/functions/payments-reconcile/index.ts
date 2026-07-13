@@ -18,6 +18,8 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+let vaultAuthCache: { value: string; expiresAt: number } | null = null;
+
 type StripeClient = ReturnType<typeof createStripeClient>;
 
 interface EffectRow {
@@ -72,6 +74,27 @@ function constantTimeEqual(left: string, right: string): boolean {
     mismatch |= (a[index] ?? 0) ^ (b[index] ?? 0);
   }
   return mismatch === 0;
+}
+
+async function getVaultInternalAuth(): Promise<string | null> {
+  if (vaultAuthCache && vaultAuthCache.expiresAt > Date.now()) {
+    return vaultAuthCache.value;
+  }
+  const { data, error } = await supabase.rpc("get_internal_cron_secret");
+  if (error || typeof data !== "string" || data.length === 0) return null;
+  vaultAuthCache = { value: data, expiresAt: Date.now() + 5 * 60_000 };
+  return data;
+}
+
+async function isInternalRequestAuthorized(
+  suppliedAuth: string,
+  environmentAuth: string | undefined,
+): Promise<boolean> {
+  if (environmentAuth && constantTimeEqual(suppliedAuth, environmentAuth)) {
+    return true;
+  }
+  const vaultAuth = await getVaultInternalAuth();
+  return vaultAuth !== null && constantTimeEqual(suppliedAuth, vaultAuth);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -546,15 +569,21 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return jsonResponse(requestId, { error: "method_not_allowed" }, 405);
   }
-  const expectedAuth = Deno.env.get("INTERNAL_CRON_SECRET");
   const suppliedAuth = request.headers.get("x-internal-secret");
-  if (!expectedAuth) {
-    log.error("internal_auth_not_configured", {
-      error_code: "internal_auth_not_configured",
+  // Missing credentials fail before any database access. When a credential is
+  // supplied, accept the Edge environment value first and the established
+  // service-role-only Vault source as a compatibility fallback.
+  if (!suppliedAuth) {
+    log.warn("internal_auth_rejected", {
+      error_code: "internal_auth_rejected",
     });
-    return jsonResponse(requestId, { error: "service_unavailable" }, 503);
+    return jsonResponse(requestId, { error: "unauthorized" }, 401);
   }
-  if (!suppliedAuth || !constantTimeEqual(suppliedAuth, expectedAuth)) {
+  const authorized = await isInternalRequestAuthorized(
+    suppliedAuth,
+    Deno.env.get("INTERNAL_CRON_SECRET"),
+  );
+  if (!authorized) {
     log.warn("internal_auth_rejected", {
       error_code: "internal_auth_rejected",
     });

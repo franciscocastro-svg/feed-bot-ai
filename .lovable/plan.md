@@ -250,7 +250,7 @@ Artefatos criados:
 - `supabase/functions/payments-reconcile/deno.json`
 - `supabase/functions/payments-reconcile/deno.lock` (congelado; validado por `deno check --frozen` no CI, mesmo gate das outras críticas)
 - Entrada em `ops/edge-functions-critical.json` **e** em `ops/releases/phase-1e-a-2.json` (novo arquivo de release desta fase).
-- `verify_jwt = false` documentado em `supabase/config.toml` (bloco por-função). Autenticação por header `x-internal-secret` comparado a `INTERNAL_CRON_SECRET` em tempo constante.
+- `verify_jwt = false` documentado em `supabase/config.toml` (bloco por-função). Autenticação por header `x-internal-secret` comparado em tempo constante primeiro a `INTERNAL_CRON_SECRET` e, para compatibilidade com os crons saudáveis existentes, à entrada Vault `internal_cron_secret` obtida pelo RPC service-role-only `get_internal_cron_secret()`; nenhum valor é logado ou retornado.
 - Testes:
   - `src/test/payments-reconcile-isolation.test.ts` — garante que run sandbox nunca lê chave live e vice-versa.
   - `src/test/payments-reconcile-pagination.test.ts` — garante paginação e ausência de query global.

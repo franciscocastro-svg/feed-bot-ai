@@ -37,4 +37,11 @@ describe("payments-reconcile environment isolation", () => {
     expect(source).toContain('request.headers.get("x-internal-secret")');
     expect(source).toContain("constantTimeEqual");
   });
+
+  it("reuses the protected Vault credential without exposing or logging it", () => {
+    expect(source).toContain('supabase.rpc("get_internal_cron_secret")');
+    expect(source).toContain("isInternalRequestAuthorized");
+    expect(source).toContain("if (!suppliedAuth)");
+    expect(source).not.toMatch(/console\.(log|warn|error)\([^)]*(vaultAuth|suppliedAuth|environmentAuth)/);
+  });
 });
