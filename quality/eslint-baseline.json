@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "totalErrors": 447,
+  "files": {
+    "src/components/admin/AdminManager.tsx": {
+      "@typescript-eslint/no-explicit-any": 8
+    },
+    "src/components/admin/AlertsCard.tsx": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/components/admin/PlanLimitsEditor.tsx": {
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "src/components/admin/RoadmapCard.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/components/DashboardLayout.tsx": {
+      "@typescript-eslint/no-explicit-any": 5,
+      "no-empty": 1
+    },
+    "src/components/PlanUsageCard.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/PostCanvasEditor.tsx": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/components/ProtectedRoute.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/SubscriptionBanner.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/support/AudioRecorder.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/ui/command.tsx": {
+      "@typescript-eslint/no-empty-object-type": 1
+    },
+    "src/components/ui/textarea.tsx": {
+      "@typescript-eslint/no-empty-object-type": 1
+    },
+    "src/hooks/usePlanUsage.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/hooks/useReelVideoGenerator.ts": {
+      "@typescript-eslint/no-explicit-any": 4
+    },
+    "src/hooks/useSubscriptionStatus.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/lib/composePostCanvas.ts": {
+      "@typescript-eslint/no-explicit-any": 8,
+      "no-empty": 4
+    },
+    "src/lib/composeStoryCanvas.ts": {
+      "@typescript-eslint/no-explicit-any": 8,
+      "no-empty": 4,
+      "prefer-const": 1
+    },
+    "src/lib/imageToVideo.ts": {
+      "@typescript-eslint/no-explicit-any": 4,
+      "no-empty": 3
+    },
+    "src/pages/dashboard/Accounts.tsx": {
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/pages/dashboard/AccountSettings.tsx": {
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "src/pages/dashboard/Admin.tsx": {
+      "@typescript-eslint/no-explicit-any": 29
+    },
+    "src/pages/dashboard/AdminReleases.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/pages/dashboard/ChannelConfig.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/pages/dashboard/CreatorProfile.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/pages/dashboard/Insights.tsx": {
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/pages/dashboard/Logs.tsx": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/pages/dashboard/MetaApiHealth.tsx": {
+      "@typescript-eslint/no-explicit-any": 4
+    },
+    "src/pages/dashboard/News.tsx": {
+      "@typescript-eslint/no-explicit-any": 20,
+      "@typescript-eslint/no-unused-expressions": 1
+    },
+    "src/pages/dashboard/Scheduled.tsx": {
+      "@typescript-eslint/no-explicit-any": 11
+    },
+    "src/pages/dashboard/Settings.tsx": {
+      "@typescript-eslint/no-explicit-any": 4
+    },
+    "src/pages/dashboard/Sources.tsx": {
+      "@typescript-eslint/no-explicit-any": 13
+    },
+    "src/pages/dashboard/Templates.tsx": {
+      "@typescript-eslint/no-explicit-any": 14
+    },
+    "src/pages/dashboard/Topics.tsx": {
+      "@typescript-eslint/no-explicit-any": 17
+    },
+    "supabase/functions/_shared/template-layouts.d.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "supabase/functions/admin-email-campaigns/index.ts": {
+      "@typescript-eslint/no-explicit-any": 7
+    },
+    "supabase/functions/admin-impersonate/index.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "supabase/functions/autopilot/index.ts": {
+      "@typescript-eslint/no-explicit-any": 44,
+      "no-empty": 2
+    },
+    "supabase/functions/discover-rss/index.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "supabase/functions/extract-from-youtube/index.ts": {
+      "@typescript-eslint/no-explicit-any": 10
+    },
+    "supabase/functions/extract-topics-from-pdf/index.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "supabase/functions/fetch-insights/index.ts": {
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "supabase/functions/fetch-rss/index.ts": {
+      "@typescript-eslint/no-explicit-any": 13
+    },
+    "supabase/functions/generate-from-prompt/index.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "supabase/functions/generate-from-topic/index.ts": {
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "supabase/functions/instagram-data-deletion/index.ts": {
+      "@typescript-eslint/no-explicit-any": 10
+    },
+    "supabase/functions/instagram-oauth-callback/index.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "supabase/functions/keep-ig-token-alive/index.ts": {
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "supabase/functions/meta-usage-refresh/index.ts": {
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "supabase/functions/process-news/index.ts": {
+      "@typescript-eslint/ban-ts-comment": 1,
+      "@typescript-eslint/no-explicit-any": 44,
+      "no-empty": 1,
+      "no-useless-escape": 1
+    },
+    "supabase/functions/publish-scheduler/index.ts": {
+      "@typescript-eslint/no-explicit-any": 52
+    },
+    "supabase/functions/refresh-ig-token/index.ts": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "supabase/functions/verify-ig-token/index.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "tailwind.config.ts": {
+      "@typescript-eslint/no-require-imports": 1
+    }
+  }
+}

@@ -1,5 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import {
+  getInvoicePriceLookup,
+  getInvoiceSubscriptionId,
+  getSubscriptionPeriod,
+} from "../_shared/stripe-event-compat.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -101,7 +106,7 @@ Deno.serve(async (req) => {
 
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
-  let event: any;
+  let event: Awaited<ReturnType<typeof stripe.webhooks.constructEventAsync>>;
   try {
     event = await stripe.webhooks.constructEventAsync(body, sig!, signingSecret!);
   } catch (e) {
@@ -135,8 +140,7 @@ Deno.serve(async (req) => {
         const item = sub.items?.data?.[0];
         const priceLookup = item?.price?.lookup_key as string | undefined;
         const plan = lookupKeyToPlan(priceLookup);
-        const periodStart = item?.current_period_start || sub.current_period_start;
-        const periodEnd = item?.current_period_end || sub.current_period_end;
+        const { periodStart, periodEnd } = getSubscriptionPeriod(sub);
 
         // Find existing row for this user+env
         const { data: existing } = await supabase
@@ -206,7 +210,7 @@ Deno.serve(async (req) => {
       }
       case "invoice.payment_failed": {
         const inv = event.data.object;
-        const subId = inv.subscription;
+        const subId = getInvoiceSubscriptionId(inv);
         if (subId) {
           await supabase.from("user_subscriptions").update({
             status: "past_due",
@@ -216,14 +220,14 @@ Deno.serve(async (req) => {
       }
       case "invoice.payment_succeeded": {
         const inv = event.data.object;
-        const subId = inv.subscription;
+        const subId = getInvoiceSubscriptionId(inv);
         if (subId) {
           await supabase.from("user_subscriptions").update({
             status: "active",
           }).eq("stripe_subscription_id", subId).eq("environment", env);
         }
         if ((inv.amount_paid || 0) > 0) {
-          const priceLookup = inv.lines?.data?.[0]?.price?.lookup_key as string | undefined;
+          const priceLookup = getInvoicePriceLookup(inv);
           await sendMetaConversionEvent("Purchase", {
             env,
             eventId: `stripe_${event.id}`,

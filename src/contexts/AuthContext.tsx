@@ -87,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const { data: permissions, error } = await supabase
-          .from("admin_permissions" as any)
+          .from("admin_permissions")
           .select("sections, full_access")
           .eq("user_id", userId)
           .maybeSingle();
@@ -101,9 +101,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        const perm = permissions as { full_access?: boolean; sections?: string[] | null } | null;
-        setAdminFullAccess(perm?.full_access ?? false);
-        setAdminPermissions(perm?.sections || []);
+        setAdminFullAccess(permissions?.full_access ?? false);
+        setAdminPermissions(permissions?.sections || []);
       } catch {
         if (cancelled) return;
         setIsAdmin(false);

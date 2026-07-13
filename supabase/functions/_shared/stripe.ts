@@ -21,11 +21,17 @@ export function createStripeClient(env: StripeEnv): Stripe {
   const lovableApiKey = getEnv("LOVABLE_API_KEY");
   return new Stripe(connectionApiKey, {
     apiVersion: "2026-03-25.dahlia",
-    httpClient: Stripe.createFetchHttpClient((url: string | URL, init?: RequestInit) => {
-      const gatewayUrl = url.toString().replace("https://api.stripe.com", GATEWAY_STRIPE_BASE);
+    httpClient: Stripe.createFetchHttpClient((input: URL | RequestInfo, init?: RequestInit) => {
+      const sourceRequest = input instanceof Request ? input : null;
+      const sourceUrl = sourceRequest?.url || input.toString();
+      const gatewayUrl = sourceUrl.replace("https://api.stripe.com", GATEWAY_STRIPE_BASE);
       return fetch(gatewayUrl, {
+        ...(sourceRequest
+          ? { method: sourceRequest.method, body: sourceRequest.body, headers: sourceRequest.headers }
+          : {}),
         ...init,
         headers: {
+          ...Object.fromEntries(new Headers(sourceRequest?.headers).entries()),
           ...Object.fromEntries(new Headers(init?.headers).entries()),
           "X-Connection-Api-Key": connectionApiKey,
           "Lovable-API-Key": lovableApiKey,

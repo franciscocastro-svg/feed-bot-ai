@@ -8,6 +8,7 @@ import { MagicLinkEmail } from '../_shared/email-templates/magic-link.tsx'
 import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
+import { normalizeAuthEmailPayload, readResponseId } from '../_shared/auth-email-payload.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,7 +33,7 @@ const EMAIL_SUBJECTS: Record<string, string> = {
   reauthentication: 'Seu código de verificação Flux & Feed',
 }
 
-const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
+const EMAIL_TEMPLATES: Record<string, React.ElementType> = {
   signup: SignupEmail,
   email_confirm: SignupEmail,
   invite: InviteEmail,
@@ -83,8 +84,8 @@ async function sendViaResend(params: {
     // Do not log the API key; body only contains provider error info.
     return { ok: false, status: res.status, error: body.slice(0, 500) }
   }
-  const data = await res.json().catch(() => ({} as any))
-  return { ok: true, status: res.status, id: data?.id }
+  const data: unknown = await res.json().catch(() => null)
+  return { ok: true, status: res.status, id: readResponseId(data) }
 }
 
 async function handlePreview(req: Request): Promise<Response> {
@@ -132,7 +133,7 @@ async function handlePreview(req: Request): Promise<Response> {
 async function handleWebhook(req: Request): Promise<Response> {
   // Try Lovable-signed webhook first; if it fails, fall back to raw Supabase Auth
   // Send Email Hook payload (JSON body posted directly by GoTrue).
-  let payload: any = null
+  let payload: unknown = null
   let usedLovableVerification = false
 
   const lovableKey = Deno.env.get('LOVABLE_API_KEY')
@@ -181,47 +182,39 @@ async function handleWebhook(req: Request): Promise<Response> {
   }
 
   // Normalize: Lovable wraps data in payload.data; Supabase raw hook sends { user, email_data }.
-  let emailType: string
-  let recipient: string
-  let confirmationUrl: string
-  let token: string | undefined
-  let oldEmail: string | undefined
-  let newEmail: string | undefined
-
-  if (usedLovableVerification && payload?.data) {
-    emailType = payload.data.action_type
-    recipient = payload.data.email
-    confirmationUrl = payload.data.url
-    token = payload.data.token
-    oldEmail = payload.data.old_email
-    newEmail = payload.data.new_email
-  } else if (payload?.user && payload?.email_data) {
-    // Supabase Auth Send Email Hook raw shape
-    const ed = payload.email_data
-    emailType = ed.email_action_type // signup | recovery | invite | magiclink | email_change | reauthentication
-    recipient = payload.user.email
-    // Prefer prebuilt action_link; else build from token_hash + redirect
-    const redirect = ed.redirect_to || PUBLIC_SITE_URL
-    if (ed.action_link) {
-      confirmationUrl = ed.action_link
-    } else {
-      const siteUrl = Deno.env.get('SUPABASE_URL') || ''
-      const params = new URLSearchParams({
-        token: ed.token_hash,
-        type: ed.email_action_type === 'signup' ? 'signup' : ed.email_action_type,
-        redirect_to: redirect,
-      })
-      confirmationUrl = `${siteUrl}/auth/v1/verify?${params.toString()}`
-    }
-    token = ed.token
-    newEmail = payload.user.new_email
-    oldEmail = payload.user.email
-  } else {
+  const normalized = normalizeAuthEmailPayload(payload, usedLovableVerification)
+  if (!normalized) {
     console.error('Unrecognized auth email payload shape')
     return new Response(JSON.stringify({ error: 'Invalid payload' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  const emailType = normalized.emailType
+  const recipient = normalized.recipient
+  let confirmationUrl: string
+  const token = normalized.token
+  const oldEmail = normalized.oldEmail
+  const newEmail = normalized.newEmail
+
+  if (normalized.kind === 'lovable') {
+    confirmationUrl = normalized.confirmationUrl
+  } else {
+    // Supabase Auth Send Email Hook raw shape
+    // Prefer prebuilt action_link; else build from token_hash + redirect
+    const redirect = normalized.redirectTo || PUBLIC_SITE_URL
+    if (normalized.actionLink) {
+      confirmationUrl = normalized.actionLink
+    } else {
+      const siteUrl = Deno.env.get('SUPABASE_URL') || ''
+      const params = new URLSearchParams({
+        token: normalized.tokenHash,
+        type: emailType === 'signup' ? 'signup' : emailType,
+        redirect_to: redirect,
+      })
+      confirmationUrl = `${siteUrl}/auth/v1/verify?${params.toString()}`
+    }
   }
 
   if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
