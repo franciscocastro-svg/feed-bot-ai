@@ -40,6 +40,28 @@ function centsToCurrencyValue(amount: number | null | undefined): number | undef
   return Number((amount / 100).toFixed(2));
 }
 
+/**
+ * Attempt to reserve an external side-effect for this webhook event in the
+ * durable outbox. Returns true only when this call is the first (and thus
+ * responsible) writer; false means another attempt already handled it.
+ */
+async function tryClaimEffect(
+  env: StripeEnv,
+  eventId: string,
+  effectType: string,
+  requestId: string,
+): Promise<{ ok: boolean; error?: unknown }> {
+  const { data, error } = await supabase.rpc("try_claim_payment_webhook_effect", {
+    p_provider: "stripe",
+    p_environment: env,
+    p_event_id: eventId,
+    p_effect_type: effectType,
+    p_request_id: requestId,
+  });
+  if (error) return { ok: false, error };
+  return { ok: data === true };
+}
+
 async function sendMetaConversionEvent(
   eventName: "StartTrial" | "Purchase",
   params: {
