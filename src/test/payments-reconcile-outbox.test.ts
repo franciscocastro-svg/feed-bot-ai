@@ -64,6 +64,8 @@ describe("payments-reconcile outbox policy", () => {
     expect(migration).toContain("payments-reconcile-sandbox");
     expect(migration).toContain("payments-reconcile-live");
     expect(migration).toContain("vault.decrypted_secrets");
+    expect(migration).toContain("where name = 'internal_cron_secret'");
+    expect(migration).not.toContain("where name = 'INTERNAL_CRON_SECRET'");
     expect(migration).toContain("PAYMENTS_RECONCILE_URL_SANDBOX");
     expect(migration).toContain("PAYMENTS_RECONCILE_URL_LIVE");
     expect(migration).not.toMatch(/https:\/\/[^'\s]+\/functions\/v1\/payments-reconcile/);

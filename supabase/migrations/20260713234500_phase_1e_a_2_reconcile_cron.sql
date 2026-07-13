@@ -114,7 +114,7 @@ begin
 
   select decrypted_secret into v_internal_secret
     from vault.decrypted_secrets
-   where name = 'INTERNAL_CRON_SECRET';
+   where name = 'internal_cron_secret';
   select decrypted_secret into v_sandbox_url
     from vault.decrypted_secrets
    where name = 'PAYMENTS_RECONCILE_URL_SANDBOX';
@@ -156,7 +156,7 @@ select cron.schedule(
         'x-internal-secret', (
           select decrypted_secret
             from vault.decrypted_secrets
-           where name = 'INTERNAL_CRON_SECRET'
+           where name = 'internal_cron_secret'
         )
       ),
       body := '{"environment":"sandbox"}'::jsonb
@@ -179,7 +179,7 @@ select cron.schedule(
         'x-internal-secret', (
           select decrypted_secret
             from vault.decrypted_secrets
-           where name = 'INTERNAL_CRON_SECRET'
+           where name = 'internal_cron_secret'
         )
       ),
       body := '{"environment":"live"}'::jsonb

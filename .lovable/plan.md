@@ -222,7 +222,7 @@ Idempotência: o outbox `stripe_cancel_after_refund` é chaveado por `(event_id,
 ## 10. Cron e observabilidade
 
 - `pg_cron` agenda `payments-reconcile` em **dois jobs separados**: `03:00` UTC sandbox, `03:15` UTC live.
-- **Segredo:** `INTERNAL_CRON_SECRET` armazenado no Vault (`vault.secrets`). SQL do `cron.schedule` lê via `vault.decrypted_secrets`; nunca literal na migration. Migration usa `insert` tool (não `migration`) para não vazar em remixes.
+- **Segredo:** a variável Edge `INTERNAL_CRON_SECRET` corresponde à entrada Vault existente `internal_cron_secret` (lowercase). SQL do `cron.schedule` lê via `vault.decrypted_secrets`; nunca literal na migration. Migration usa `insert` tool (não `migration`) para não vazar em remixes.
 - Sem escrita em `activity_logs` (exige `user_id`). Métricas globais vão para logs estruturados da Edge Function via `createLogger('payments-reconcile')`: `duration_ms`, `subs_scanned`, `subs_updated`, `divergences`, `effects_recovered`, `errors_by_code`. Nada de PII.
 - **Paginação obrigatória:** lote de 500 assinaturas por iteração, cursor por `(created_at, id)`. Nunca `SELECT *` sem `LIMIT`.
 - Reconcilia:
@@ -310,7 +310,7 @@ Conteúdo:
 7. `CREATE OR REPLACE FUNCTION public.apply_stripe_subscription_event(p_request_id uuid, ...)` (§5.3, §6, §7, §9) — grants apenas para `service_role`.
 8. Redefinir `public.get_subscription_status` para delegar a `compute_subscription_access` (mesma shape observável, adicionando `has_access` e `reason`).
 
-Cron (via `insert` tool, arquivo separado da migration): dois `cron.schedule` (sandbox 03:00, live 03:15) lendo `INTERNAL_CRON_SECRET` do Vault. **Não** vai em `supabase/migrations/`.
+Cron (via `insert` tool, arquivo separado da migration): dois `cron.schedule` (sandbox 03:00, live 03:15) lendo `internal_cron_secret` do Vault. **Não** vai em `supabase/migrations/`.
 
 ---
 
@@ -393,7 +393,7 @@ SELECT cron.schedule(
     url  := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'PAYMENTS_RECONCILE_URL_SANDBOX'),
     headers := jsonb_build_object(
       'Content-Type','application/json',
-      'x-internal-secret',(SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'INTERNAL_CRON_SECRET')
+      'x-internal-secret',(SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'internal_cron_secret')
     ),
     body := '{}'::jsonb
   );
@@ -403,7 +403,7 @@ SELECT cron.schedule(
 SELECT cron.schedule('payments-reconcile-live', '15 3 * * *', $cron$ /* idem live */ $cron$);
 ```
 
-- `INTERNAL_CRON_SECRET`, `PAYMENTS_RECONCILE_URL_SANDBOX`, `PAYMENTS_RECONCILE_URL_LIVE` residem no Vault (`vault.decrypted_secrets`); nunca literais no SQL.
+- `internal_cron_secret`, `PAYMENTS_RECONCILE_URL_SANDBOX`, `PAYMENTS_RECONCILE_URL_LIVE` residem no Vault (`vault.decrypted_secrets`); nunca literais no SQL. A variável Edge correspondente permanece `INTERNAL_CRON_SECRET`.
 - Manifesto `ops/releases/phase-1e-a-2.json` lista os dois `jobname` exatos (`payments-reconcile-sandbox`, `payments-reconcile-live`) e um passo de verificação pós-migration: `SELECT jobname, schedule FROM cron.job WHERE jobname IN (...)`.
 - **Rollback documentado:** `SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname IN ('payments-reconcile-sandbox','payments-reconcile-live');` + redeploy da Edge anterior.
 

@@ -53,7 +53,8 @@ The versioned migration creates two jobs:
 The migration fails before replacing jobs unless the `cron` and `net` schemas
 and these Vault entries exist:
 
-- `INTERNAL_CRON_SECRET`;
+- `internal_cron_secret` (existing lowercase Vault entry; it matches the Edge
+  Function environment secret named `INTERNAL_CRON_SECRET`);
 - `PAYMENTS_RECONCILE_URL_SANDBOX`;
 - `PAYMENTS_RECONCILE_URL_LIVE`.
 

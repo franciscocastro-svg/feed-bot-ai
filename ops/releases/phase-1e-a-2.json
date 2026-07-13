@@ -15,7 +15,7 @@
     "supabase/migrations/20260713234500_phase_1e_a_2_reconcile_cron.sql"
   ],
   "deploymentOrder": [
-    "verify function secret INTERNAL_CRON_SECRET and the three Vault entries without printing values",
+    "verify function secret INTERNAL_CRON_SECRET, existing Vault entry internal_cron_secret, and both URL Vault entries without printing values",
     "deploy payments-reconcile only",
     "smoke test unauthorized request returns 401 and does not access Stripe or the database",
     "apply 20260713234500_phase_1e_a_2_reconcile_cron.sql",
