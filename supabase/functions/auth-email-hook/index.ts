@@ -9,11 +9,13 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 import { normalizeAuthEmailPayload, readResponseId } from '../_shared/auth-email-payload.ts'
+import { classifyError, createLogger, type Logger } from '../_shared/observability.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-auth-email-hook-secret, x-supabase-hook-secret, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Expose-Headers': 'x-request-id',
 }
 
 const SITE_NAME = 'Flux & Feed'
@@ -59,9 +61,9 @@ async function sendViaResend(params: {
   subject: string
   html: string
   text: string
-}): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
+}): Promise<{ ok: boolean; status: number; id?: string; error_code?: string }> {
   const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return { ok: false, status: 500, error: 'RESEND_API_KEY not configured' }
+  if (!apiKey) return { ok: false, status: 500, error_code: 'resend_not_configured' }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -80,9 +82,9 @@ async function sendViaResend(params: {
   })
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    // Do not log the API key; body only contains provider error info.
-    return { ok: false, status: res.status, error: body.slice(0, 500) }
+    // Drain body without logging its content (may contain recipient/email metadata).
+    await res.text().catch(() => '')
+    return { ok: false, status: res.status, error_code: 'resend_send_failed' }
   }
   const data: unknown = await res.json().catch(() => null)
   return { ok: true, status: res.status, id: readResponseId(data) }
@@ -130,9 +132,10 @@ async function handlePreview(req: Request): Promise<Response> {
   })
 }
 
-async function handleWebhook(req: Request): Promise<Response> {
-  // Try Lovable-signed webhook first; if it fails, fall back to raw Supabase Auth
-  // Send Email Hook payload (JSON body posted directly by GoTrue).
+async function handleWebhook(req: Request, log: Logger): Promise<Response> {
+  const requestId = log.requestId
+  const respHeaders = { ...corsHeaders, 'Content-Type': 'application/json', 'x-request-id': requestId }
+
   let payload: unknown = null
   let usedLovableVerification = false
 
@@ -148,10 +151,10 @@ async function handleWebhook(req: Request): Promise<Response> {
       usedLovableVerification = true
     } catch (err) {
       if (err instanceof WebhookError) {
-        console.error('Lovable webhook verification failed', { code: err.code })
+        log.error('lovable_signature_verification_failed', { error_code: err.code })
         return new Response(JSON.stringify({ error: 'Invalid signature' }), {
           status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: respHeaders,
         })
       }
       throw err
@@ -165,10 +168,10 @@ async function handleWebhook(req: Request): Promise<Response> {
       req.headers.get('x-supabase-hook-secret') ||
       (authorization.startsWith('Bearer ') ? authorization.slice(7) : '')
     if (!AUTH_EMAIL_HOOK_SECRET || providedSecret !== AUTH_EMAIL_HOOK_SECRET) {
-      console.error('Raw auth email hook rejected: missing or invalid secret')
+      log.error('raw_hook_unauthorized', { error_code: 'invalid_secret' })
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: respHeaders,
       })
     }
     try {
@@ -176,18 +179,17 @@ async function handleWebhook(req: Request): Promise<Response> {
     } catch {
       return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: respHeaders,
       })
     }
   }
 
-  // Normalize: Lovable wraps data in payload.data; Supabase raw hook sends { user, email_data }.
   const normalized = normalizeAuthEmailPayload(payload, usedLovableVerification)
   if (!normalized) {
-    console.error('Unrecognized auth email payload shape')
+    log.error('invalid_payload_shape', { error_code: 'invalid_payload' })
     return new Response(JSON.stringify({ error: 'Invalid payload' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: respHeaders,
     })
   }
 
@@ -201,8 +203,6 @@ async function handleWebhook(req: Request): Promise<Response> {
   if (normalized.kind === 'lovable') {
     confirmationUrl = normalized.confirmationUrl
   } else {
-    // Supabase Auth Send Email Hook raw shape
-    // Prefer prebuilt action_link; else build from token_hash + redirect
     const redirect = normalized.redirectTo || PUBLIC_SITE_URL
     if (normalized.actionLink) {
       confirmationUrl = normalized.actionLink
@@ -220,7 +220,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
     return new Response(JSON.stringify({ error: 'Invalid recipient' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: respHeaders,
     })
   }
   try {
@@ -233,16 +233,16 @@ async function handleWebhook(req: Request): Promise<Response> {
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid confirmation URL' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: respHeaders,
     })
   }
 
   const EmailTemplate = EMAIL_TEMPLATES[emailType]
   if (!EmailTemplate) {
-    console.error('Unknown email type', { emailType })
+    log.error('unknown_email_type', { event_type: emailType, error_code: 'unknown_email_type' })
     return new Response(JSON.stringify({ error: `Unknown email type: ${emailType}` }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: respHeaders,
     })
   }
 
@@ -264,42 +264,58 @@ async function handleWebhook(req: Request): Promise<Response> {
 
   const subject = EMAIL_SUBJECTS[emailType] || 'Flux & Feed'
 
-  console.log('Sending auth email via Resend', { emailType, recipient })
+  const started = Date.now()
   const result = await sendViaResend({ to: recipient, subject, html, text })
 
   if (!result.ok) {
-    console.error('Resend send failed', { status: result.status, error: result.error, emailType })
-    return new Response(JSON.stringify({ error: 'Failed to send email', status: result.status }), {
+    log.error('resend_failed', {
+      event_type: emailType,
+      provider_status: result.status,
+      error_code: result.error_code ?? 'resend_send_failed',
+      duration_ms: Date.now() - started,
+      status: 'failed',
+    })
+    return new Response(JSON.stringify({ error: 'Failed to send email' }), {
       status: 502,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: respHeaders,
     })
   }
 
-  console.log('Auth email sent via Resend', { emailType, recipient, id: result.id })
+  log.info('auth_email_sent', {
+    event_type: emailType,
+    provider_status: result.status,
+    status: 'sent',
+    duration_ms: Date.now() - started,
+  })
   return new Response(JSON.stringify({ success: true, id: result.id }), {
     status: 200,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: respHeaders,
   })
 }
 
 Deno.serve(async (req) => {
+  const log = createLogger('auth-email-hook')
+  const requestId = log.requestId
   const url = new URL(req.url)
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: { ...corsHeaders, 'x-request-id': requestId } })
+  }
   if (url.pathname.endsWith('/preview')) return handlePreview(req)
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-request-id': requestId },
     })
   }
 
   try {
-    return await handleWebhook(req)
+    return await handleWebhook(req, log)
   } catch (error) {
-    console.error('Webhook handler error:', error instanceof Error ? error.message : error)
+    const { error_code } = classifyError(error)
+    log.error('handler_error', { error_code, status: 'failed' })
     return new Response(JSON.stringify({ error: 'Internal error' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-request-id': requestId },
     })
   }
 })
