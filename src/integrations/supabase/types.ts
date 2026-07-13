@@ -1068,6 +1068,57 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_webhook_events: {
+        Row: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          environment: string
+          error_code: string | null
+          event_created_at: string | null
+          event_id: string
+          event_type: string
+          id: string
+          provider: string
+          request_id: string | null
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          environment: string
+          error_code?: string | null
+          event_created_at?: string | null
+          event_id: string
+          event_type: string
+          id?: string
+          provider: string
+          request_id?: string | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          environment?: string
+          error_code?: string | null
+          event_created_at?: string | null
+          event_id?: string
+          event_type?: string
+          id?: string
+          provider?: string
+          request_id?: string | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plan_limits: {
         Row: {
           auto_publish_enabled: boolean
@@ -2426,6 +2477,17 @@ export type Database = {
           storage_path: string
         }[]
       }
+      claim_payment_webhook_event: {
+        Args: {
+          p_environment: string
+          p_event_created_at: string
+          p_event_id: string
+          p_event_type: string
+          p_provider: string
+          p_request_id: string
+        }
+        Returns: string
+      }
       claim_reel_jobs: {
         Args: { _limit?: number; _worker: string }
         Returns: {
@@ -2532,6 +2594,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      complete_payment_webhook_event: {
+        Args: { p_environment: string; p_event_id: string; p_provider: string }
+        Returns: undefined
       }
       create_local_video_cut_job: {
         Args: {
@@ -3225,6 +3291,15 @@ export type Database = {
       }
       enqueue_reel_render_job_for_post: {
         Args: { _scheduled_post_id: string }
+        Returns: undefined
+      }
+      fail_payment_webhook_event: {
+        Args: {
+          p_environment: string
+          p_error_code: string
+          p_event_id: string
+          p_provider: string
+        }
         Returns: undefined
       }
       finalize_local_video_cut_job: {
