@@ -5,11 +5,18 @@ import {
   getInvoiceSubscriptionId,
   getSubscriptionPeriod,
 } from "../_shared/stripe-event-compat.ts";
+import { classifyError, createLogger } from "../_shared/observability.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
+
+const jsonHeaders = (requestId: string) => ({
+  "Content-Type": "application/json",
+  "x-request-id": requestId,
+  "Access-Control-Expose-Headers": "x-request-id",
+});
 
 // Map price lookup_key -> internal plan
 function lookupKeyToPlan(key: string | undefined | null): string {
@@ -50,10 +57,7 @@ async function sendMetaConversionEvent(
 
   const pixelId = Deno.env.get("META_PIXEL_ID");
   const accessToken = Deno.env.get("META_CONVERSIONS_ACCESS_TOKEN");
-  if (!pixelId || !accessToken) {
-    console.warn("Meta Conversions API not configured");
-    return;
-  }
+  if (!pixelId || !accessToken) return;
 
   const eventSourceUrl = Deno.env.get("PUBLIC_SITE_URL") ||
     Deno.env.get("PUBLIC_APP_URL") ||
@@ -91,12 +95,18 @@ async function sendMetaConversionEvent(
   );
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Meta CAPI ${response.status}: ${text.slice(0, 500)}`);
+    // Do not include the provider body; surface only the numeric status.
+    const err = new Error("meta_capi_failed") as Error & { code: string; provider_status: number };
+    err.code = "meta_capi_failed";
+    err.provider_status = response.status;
+    throw err;
   }
 }
 
 Deno.serve(async (req) => {
+  const log = createLogger("payments-webhook");
+  const requestId = log.requestId;
+
   const url = new URL(req.url);
   const env: StripeEnv = url.searchParams.get("env") === "live" ? "live" : "sandbox";
   const stripe = createStripeClient(env);
@@ -110,10 +120,63 @@ Deno.serve(async (req) => {
   try {
     event = await stripe.webhooks.constructEventAsync(body, sig!, signingSecret!);
   } catch (e) {
-    console.error("Webhook signature failed:", (e as Error).message);
-    return new Response("Bad signature", { status: 400 });
+    const { error_code } = classifyError(e);
+    log.error("signature_verification_failed", { environment: env, error_code });
+    return new Response("Bad signature", { status: 400, headers: { "x-request-id": requestId } });
   }
 
+  // Idempotency: claim the event before running any side effects.
+  const claimResult = await supabase.rpc("claim_payment_webhook_event", {
+    p_provider: "stripe",
+    p_environment: env,
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_event_created_at: event.created ? new Date(event.created * 1000).toISOString() : null,
+    p_request_id: requestId,
+  });
+
+  if (claimResult.error) {
+    const { error_code } = classifyError(claimResult.error);
+    log.error("claim_failed", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      error_code,
+    });
+    return new Response(JSON.stringify({ error: "claim_failed" }), {
+      status: 500,
+      headers: jsonHeaders(requestId),
+    });
+  }
+
+  const claimStatus = (claimResult.data as string | null) ?? "unknown";
+  if (claimStatus === "duplicate_completed") {
+    log.info("duplicate_event", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      status: "duplicate_completed",
+    });
+    return new Response(JSON.stringify({ received: true, duplicate: true }), {
+      status: 200,
+      headers: jsonHeaders(requestId),
+    });
+  }
+
+  if (claimStatus === "already_processing") {
+    log.warn("event_already_processing", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      status: "already_processing",
+    });
+    return new Response(JSON.stringify({ received: true, in_flight: true }), {
+      status: 200,
+      headers: jsonHeaders(requestId),
+    });
+  }
+
+  const started = Date.now();
   try {
     switch (event.type) {
       case "checkout.session.completed": {
@@ -128,21 +191,30 @@ Deno.serve(async (req) => {
           amount: session.amount_total,
           orderId: session.id,
           plan: lookupKeyToPlan(priceLookup),
-        }).catch((error) => console.warn("Meta StartTrial failed:", error.message));
+        }).catch((error) => {
+          const { error_code } = classifyError(error);
+          log.warn("meta_start_trial_failed", { environment: env, error_code });
+        });
         break;
       }
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object;
         const userId = sub.metadata?.userId;
-        if (!userId) { console.warn("No userId in metadata", sub.id); break; }
+        if (!userId) {
+          log.warn("missing_user_id_metadata", {
+            environment: env,
+            event_id: event.id,
+            event_type: event.type,
+          });
+          break;
+        }
 
         const item = sub.items?.data?.[0];
         const priceLookup = item?.price?.lookup_key as string | undefined;
         const plan = lookupKeyToPlan(priceLookup);
         const { periodStart, periodEnd } = getSubscriptionPeriod(sub);
 
-        // Find existing row for this user+env
         const { data: existing } = await supabase
           .from("user_subscriptions")
           .select("id, approval_status")
@@ -152,8 +224,6 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        // Payment gate: only trialing/active/past_due unlock the email-code step.
-        // Any other status (incomplete, incomplete_expired, canceled, unpaid) stays blocked.
         const paidStatus = ["trialing", "active", "past_due"].includes(sub.status);
         const alreadyApproved = existing?.approval_status === "approved";
         const nextApprovalStatus = alreadyApproved
@@ -184,8 +254,6 @@ Deno.serve(async (req) => {
           await supabase.from("user_subscriptions").insert(payload);
         }
 
-        // Idempotent: only fire the code email when we're transitioning INTO
-        // pending_email_verification (i.e. wasn't approved yet and payment is confirmed).
         if (paidStatus && !alreadyApproved) {
           try {
             const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
@@ -200,10 +268,11 @@ Deno.serve(async (req) => {
                 body: JSON.stringify({ user_id: userId }),
               });
             } else {
-              console.warn("INTERNAL_CRON_SECRET missing; skipping code send");
+              log.warn("internal_cron_secret_missing", { environment: env });
             }
           } catch (err) {
-            console.error("send-verification-code call failed", (err as Error).message);
+            const { error_code } = classifyError(err);
+            log.error("send_verification_code_failed", { environment: env, error_code });
           }
         }
         break;
@@ -237,7 +306,10 @@ Deno.serve(async (req) => {
             amount: inv.amount_paid,
             orderId: inv.id,
             plan: lookupKeyToPlan(priceLookup),
-          }).catch((error) => console.warn("Meta Purchase failed:", error.message));
+          }).catch((error) => {
+            const { error_code } = classifyError(error);
+            log.warn("meta_purchase_failed", { environment: env, error_code });
+          });
         }
         break;
       }
@@ -253,13 +325,49 @@ Deno.serve(async (req) => {
         break;
       }
       default:
-        console.log("Unhandled event:", event.type);
+        log.info("unhandled_event", {
+          environment: env,
+          event_id: event.id,
+          event_type: event.type,
+        });
     }
+
+    await supabase.rpc("complete_payment_webhook_event", {
+      p_provider: "stripe",
+      p_environment: env,
+      p_event_id: event.id,
+    });
+
+    log.info("event_completed", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      status: "completed",
+      duration_ms: Date.now() - started,
+    });
     return new Response(JSON.stringify({ received: true }), {
-      headers: { "Content-Type": "application/json" },
+      status: 200,
+      headers: jsonHeaders(requestId),
     });
   } catch (e) {
-    console.error("Webhook handler error:", e);
-    return new Response("Handler error", { status: 500 });
+    const { error_code } = classifyError(e);
+    await supabase.rpc("fail_payment_webhook_event", {
+      p_provider: "stripe",
+      p_environment: env,
+      p_event_id: event.id,
+      p_error_code: error_code,
+    });
+    log.error("event_failed", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      status: "failed",
+      error_code,
+      duration_ms: Date.now() - started,
+    });
+    return new Response("Handler error", {
+      status: 500,
+      headers: { "x-request-id": requestId },
+    });
   }
 });
