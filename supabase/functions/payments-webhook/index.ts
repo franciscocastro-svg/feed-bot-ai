@@ -40,6 +40,28 @@ function centsToCurrencyValue(amount: number | null | undefined): number | undef
   return Number((amount / 100).toFixed(2));
 }
 
+/**
+ * Attempt to reserve an external side-effect for this webhook event in the
+ * durable outbox. Returns true only when this call is the first (and thus
+ * responsible) writer; false means another attempt already handled it.
+ */
+async function tryClaimEffect(
+  env: StripeEnv,
+  eventId: string,
+  effectType: string,
+  requestId: string,
+): Promise<{ ok: boolean; error?: unknown }> {
+  const { data, error } = await supabase.rpc("try_claim_payment_webhook_effect", {
+    p_provider: "stripe",
+    p_environment: env,
+    p_event_id: eventId,
+    p_effect_type: effectType,
+    p_request_id: requestId,
+  });
+  if (error) return { ok: false, error };
+  return { ok: data === true };
+}
+
 async function sendMetaConversionEvent(
   eventName: "StartTrial" | "Purchase",
   params: {
@@ -149,7 +171,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const claimStatus = (claimResult.data as string | null) ?? "unknown";
+  const claimStatus = (claimResult.data as string | null);
   if (claimStatus === "duplicate_completed") {
     log.info("duplicate_event", {
       environment: env,
@@ -176,25 +198,50 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Effects run ONLY when the claim RPC returned exactly "claimed".
+  // Any other value (null, unknown string, etc.) is treated as a hard
+  // failure — return 500 without touching side effects or the ledger.
+  if (claimStatus !== "claimed") {
+    log.error("claim_unknown_status", {
+      environment: env,
+      event_id: event.id,
+      event_type: event.type,
+      error_code: "claim_unknown_status",
+      status: typeof claimStatus === "string" ? claimStatus : "null",
+    });
+    return new Response(JSON.stringify({ error: "claim_unknown_status" }), {
+      status: 500,
+      headers: jsonHeaders(requestId),
+    });
+  }
+
   const started = Date.now();
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const priceLookup = session.metadata?.priceId as string | undefined;
-        await sendMetaConversionEvent("StartTrial", {
-          env,
-          eventId: `stripe_${event.id}`,
-          created: event.created,
-          email: session.customer_details?.email || session.customer_email,
-          currency: session.currency,
-          amount: session.amount_total,
-          orderId: session.id,
-          plan: lookupKeyToPlan(priceLookup),
-        }).catch((error) => {
-          const { error_code } = classifyError(error);
-          log.warn("meta_start_trial_failed", { environment: env, error_code });
-        });
+        const claim = await tryClaimEffect(env, event.id, "meta_start_trial", requestId);
+        if (claim.error) {
+          const { error_code } = classifyError(claim.error);
+          throw Object.assign(new Error("effect_claim_failed"), { code: error_code });
+        }
+        if (claim.ok) {
+          await sendMetaConversionEvent("StartTrial", {
+            env,
+            eventId: `stripe_${event.id}`,
+            created: event.created,
+            email: session.customer_details?.email || session.customer_email,
+            currency: session.currency,
+            amount: session.amount_total,
+            orderId: session.id,
+            plan: lookupKeyToPlan(priceLookup),
+          }).catch((error) => {
+            // Meta CAPI is best-effort per outbox; log without failing the event.
+            const { error_code } = classifyError(error);
+            log.warn("meta_start_trial_failed", { environment: env, error_code });
+          });
+        }
         break;
       }
       case "customer.subscription.created":
@@ -215,7 +262,7 @@ Deno.serve(async (req) => {
         const plan = lookupKeyToPlan(priceLookup);
         const { periodStart, periodEnd } = getSubscriptionPeriod(sub);
 
-        const { data: existing } = await supabase
+        const existingResult = await supabase
           .from("user_subscriptions")
           .select("id, approval_status")
           .eq("user_id", userId)
@@ -223,6 +270,11 @@ Deno.serve(async (req) => {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+        if (existingResult.error) {
+          const { error_code } = classifyError(existingResult.error);
+          throw Object.assign(new Error("subscription_lookup_failed"), { code: error_code });
+        }
+        const existing = existingResult.data;
 
         const paidStatus = ["trialing", "active", "past_due"].includes(sub.status);
         const alreadyApproved = existing?.approval_status === "approved";
@@ -248,31 +300,41 @@ Deno.serve(async (req) => {
           expires_at: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
         };
 
-        if (existing) {
-          await supabase.from("user_subscriptions").update(payload).eq("id", existing.id);
-        } else {
-          await supabase.from("user_subscriptions").insert(payload);
+        const mutation = existing
+          ? await supabase.from("user_subscriptions").update(payload).eq("id", existing.id)
+          : await supabase.from("user_subscriptions").insert(payload);
+        if (mutation.error) {
+          const { error_code } = classifyError(mutation.error);
+          throw Object.assign(new Error("subscription_write_failed"), { code: error_code });
         }
 
         if (paidStatus && !alreadyApproved) {
-          try {
-            const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
-            if (internalSecret) {
-              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-verification-code`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-internal-secret": internalSecret,
-                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                },
-                body: JSON.stringify({ user_id: userId }),
-              });
-            } else {
-              log.warn("internal_cron_secret_missing", { environment: env });
+          const emailClaim = await tryClaimEffect(env, event.id, "send_verification_code", requestId);
+          if (emailClaim.error) {
+            const { error_code } = classifyError(emailClaim.error);
+            throw Object.assign(new Error("effect_claim_failed"), { code: error_code });
+          }
+          if (emailClaim.ok) {
+            try {
+              const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
+              if (internalSecret) {
+                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-verification-code`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-internal-secret": internalSecret,
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                  },
+                  body: JSON.stringify({ user_id: userId }),
+                });
+              } else {
+                log.warn("internal_cron_secret_missing", { environment: env });
+              }
+            } catch (err) {
+              // Non-fatal for the webhook; the outbox row keeps us from retrying.
+              const { error_code } = classifyError(err);
+              log.error("send_verification_code_failed", { environment: env, error_code });
             }
-          } catch (err) {
-            const { error_code } = classifyError(err);
-            log.error("send_verification_code_failed", { environment: env, error_code });
           }
         }
         break;
@@ -281,9 +343,13 @@ Deno.serve(async (req) => {
         const inv = event.data.object;
         const subId = getInvoiceSubscriptionId(inv);
         if (subId) {
-          await supabase.from("user_subscriptions").update({
+          const upd = await supabase.from("user_subscriptions").update({
             status: "past_due",
           }).eq("stripe_subscription_id", subId).eq("environment", env);
+          if (upd.error) {
+            const { error_code } = classifyError(upd.error);
+            throw Object.assign(new Error("subscription_write_failed"), { code: error_code });
+          }
         }
         break;
       }
@@ -291,25 +357,36 @@ Deno.serve(async (req) => {
         const inv = event.data.object;
         const subId = getInvoiceSubscriptionId(inv);
         if (subId) {
-          await supabase.from("user_subscriptions").update({
+          const upd = await supabase.from("user_subscriptions").update({
             status: "active",
           }).eq("stripe_subscription_id", subId).eq("environment", env);
+          if (upd.error) {
+            const { error_code } = classifyError(upd.error);
+            throw Object.assign(new Error("subscription_write_failed"), { code: error_code });
+          }
         }
         if ((inv.amount_paid || 0) > 0) {
-          const priceLookup = getInvoicePriceLookup(inv);
-          await sendMetaConversionEvent("Purchase", {
-            env,
-            eventId: `stripe_${event.id}`,
-            created: event.created,
-            email: inv.customer_email,
-            currency: inv.currency,
-            amount: inv.amount_paid,
-            orderId: inv.id,
-            plan: lookupKeyToPlan(priceLookup),
-          }).catch((error) => {
-            const { error_code } = classifyError(error);
-            log.warn("meta_purchase_failed", { environment: env, error_code });
-          });
+          const purchaseClaim = await tryClaimEffect(env, event.id, "meta_purchase", requestId);
+          if (purchaseClaim.error) {
+            const { error_code } = classifyError(purchaseClaim.error);
+            throw Object.assign(new Error("effect_claim_failed"), { code: error_code });
+          }
+          if (purchaseClaim.ok) {
+            const priceLookup = getInvoicePriceLookup(inv);
+            await sendMetaConversionEvent("Purchase", {
+              env,
+              eventId: `stripe_${event.id}`,
+              created: event.created,
+              email: inv.customer_email,
+              currency: inv.currency,
+              amount: inv.amount_paid,
+              orderId: inv.id,
+              plan: lookupKeyToPlan(priceLookup),
+            }).catch((error) => {
+              const { error_code } = classifyError(error);
+              log.warn("meta_purchase_failed", { environment: env, error_code });
+            });
+          }
         }
         break;
       }
@@ -317,11 +394,15 @@ Deno.serve(async (req) => {
         const sub = event.data.object;
         const userId = sub.metadata?.userId;
         if (!userId) break;
-        await supabase.from("user_subscriptions").update({
+        const upd = await supabase.from("user_subscriptions").update({
           status: "canceled",
           plan: "free",
           cancel_at_period_end: true,
         }).eq("stripe_subscription_id", sub.id).eq("environment", env);
+        if (upd.error) {
+          const { error_code } = classifyError(upd.error);
+          throw Object.assign(new Error("subscription_write_failed"), { code: error_code });
+        }
         break;
       }
       default:
@@ -332,11 +413,31 @@ Deno.serve(async (req) => {
         });
     }
 
-    await supabase.rpc("complete_payment_webhook_event", {
+    // Fenced completion: only succeeds when this request still owns the claim.
+    const completeResult = await supabase.rpc("complete_payment_webhook_event", {
       p_provider: "stripe",
       p_environment: env,
       p_event_id: event.id,
+      p_request_id: requestId,
     });
+    if (completeResult.error) {
+      const { error_code } = classifyError(completeResult.error);
+      throw Object.assign(new Error("complete_rpc_failed"), { code: error_code });
+    }
+    if (completeResult.data !== true) {
+      // Fence lost — another worker recovered this event. Do not overwrite state.
+      log.warn("complete_fence_lost", {
+        environment: env,
+        event_id: event.id,
+        event_type: event.type,
+        status: "fence_lost",
+        duration_ms: Date.now() - started,
+      });
+      return new Response(JSON.stringify({ received: true, fence_lost: true }), {
+        status: 200,
+        headers: jsonHeaders(requestId),
+      });
+    }
 
     log.info("event_completed", {
       environment: env,
@@ -351,12 +452,30 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     const { error_code } = classifyError(e);
-    await supabase.rpc("fail_payment_webhook_event", {
+    // Fenced fail: only marks failed if this worker still owns the claim.
+    const failResult = await supabase.rpc("fail_payment_webhook_event", {
       p_provider: "stripe",
       p_environment: env,
       p_event_id: event.id,
       p_error_code: error_code,
+      p_request_id: requestId,
     });
+    if (failResult.error) {
+      const { error_code: rpc_error_code } = classifyError(failResult.error);
+      log.error("fail_rpc_failed", {
+        environment: env,
+        event_id: event.id,
+        event_type: event.type,
+        error_code: rpc_error_code,
+      });
+    } else if (failResult.data !== true) {
+      log.warn("fail_fence_lost", {
+        environment: env,
+        event_id: event.id,
+        event_type: event.type,
+        status: "fence_lost",
+      });
+    }
     log.error("event_failed", {
       environment: env,
       event_id: event.id,
@@ -371,3 +490,4 @@ Deno.serve(async (req) => {
     });
   }
 });
+

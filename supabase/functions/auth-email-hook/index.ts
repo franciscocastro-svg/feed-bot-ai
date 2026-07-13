@@ -91,9 +91,13 @@ async function sendViaResend(params: {
 }
 
 async function handlePreview(req: Request): Promise<Response> {
+  const previewLog = createLogger('auth-email-hook')
+  const previewRequestId = previewLog.requestId
   const previewCorsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Expose-Headers': 'x-request-id',
+    'x-request-id': previewRequestId,
   }
   if (req.method === 'OPTIONS') return new Response(null, { headers: previewCorsHeaders })
 
