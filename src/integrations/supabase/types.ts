@@ -2580,6 +2580,15 @@ export type Database = {
           storage_path: string
         }[]
       }
+      claim_payment_webhook_effects_for_reconcile: {
+        Args: { p_environment: string; p_limit?: number; p_request_id: string }
+        Returns: {
+          attempt_count: number
+          effect_type: string
+          event_id: string
+          id: string
+        }[]
+      }
       claim_payment_webhook_event: {
         Args: {
           p_environment: string
