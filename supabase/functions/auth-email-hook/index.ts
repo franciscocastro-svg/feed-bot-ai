@@ -9,11 +9,13 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 import { normalizeAuthEmailPayload, readResponseId } from '../_shared/auth-email-payload.ts'
+import { classifyError, createLogger, type Logger } from '../_shared/observability.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-auth-email-hook-secret, x-supabase-hook-secret, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Expose-Headers': 'x-request-id',
 }
 
 const SITE_NAME = 'Flux & Feed'
