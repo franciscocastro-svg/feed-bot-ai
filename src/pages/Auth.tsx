@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SEO } from "@/components/SEO";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
@@ -70,6 +70,11 @@ function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: Pas
 
 export default function Auth() {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const rawNext = searchParams.get("next");
+  // Only accept same-origin relative paths for the post-auth redirect.
+  const nextPath = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
+  const postAuthTarget = nextPath ?? "/dashboard";
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -91,7 +96,7 @@ export default function Auth() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Bem-vindo!");
-    nav("/dashboard");
+    nav(postAuthTarget);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -124,18 +129,18 @@ export default function Auth() {
 
   const handleGoogle = async () => {
     setLoading(true);
-    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin + "/dashboard" });
+    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin + postAuthTarget });
     if (r.error) { setLoading(false); toast.error("Falha ao entrar com Google"); return; }
     if (r.redirected) return;
-    nav("/dashboard");
+    nav(postAuthTarget);
   };
 
   const handleApple = async () => {
     setLoading(true);
-    const r = await lovable.auth.signInWithOAuth("apple", { redirect_uri: window.location.origin + "/dashboard" });
+    const r = await lovable.auth.signInWithOAuth("apple", { redirect_uri: window.location.origin + postAuthTarget });
     if (r.error) { setLoading(false); toast.error("Falha ao entrar com Apple"); return; }
     if (r.redirected) return;
-    nav("/dashboard");
+    nav(postAuthTarget);
   };
 
   return (

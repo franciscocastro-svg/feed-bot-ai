@@ -60,6 +60,7 @@ const VerifyEmail = lazyRoute(() => import("./pages/VerifyEmail"));
 const ResetPassword = lazyRoute(() => import("./pages/ResetPassword"));
 const DataDeletionStatus = lazyRoute(() => import("./pages/DataDeletionStatus"));
 const NotFound = lazyRoute(() => import("./pages/NotFound"));
+const OAuthConsent = lazyRoute(() => import("./pages/OAuthConsent"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -95,6 +96,7 @@ const App = () => (
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/checkout/return" element={<CheckoutReturn />} />
+            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route index element={<Overview />} />
               <Route path="news" element={<News />} />
