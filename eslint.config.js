@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "supabase/functions/mcp/index.ts"] },
   {
     files: ["scripts/**/*.mjs", "src/test/**/*.mjs"],
     languageOptions: {

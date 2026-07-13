@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "release": "phase-1d",
+  "affectedFunctions": [
+    {
+      "name": "auth-email-hook",
+      "entrypoint": "supabase/functions/auth-email-hook/index.ts",
+      "config": "supabase/functions/auth-email-hook/deno.json",
+      "lock": "supabase/functions/auth-email-hook/deno.lock",
+      "verifyJwt": false
+    },
+    {
+      "name": "payments-webhook",
+      "entrypoint": "supabase/functions/payments-webhook/index.ts",
+      "config": "supabase/functions/payments-webhook/deno.json",
+      "lock": "supabase/functions/payments-webhook/deno.lock",
+      "verifyJwt": false
+    }
+  ],
+  "releaseConstraints": {
+    "databaseMigrations": false,
+    "frontendPublish": false,
+    "otherEdgeFunctions": false,
+    "vpsRuntimeChange": false
+  }
+}

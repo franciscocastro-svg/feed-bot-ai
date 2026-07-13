@@ -30,11 +30,29 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Restore Deno dependency cache
+        uses: actions/cache@v4
+        with:
+          path: .deno-cache
+          key: deno-${{ runner.os }}-${{ hashFiles('ops/edge-functions-critical.json', 'supabase/functions/**/deno.json', 'supabase/functions/**/deno.lock', 'supabase/functions/**/*.ts', 'supabase/functions/**/*.tsx') }}
+          restore-keys: |
+            deno-${{ runner.os }}-
+
       - name: Install locked dependencies
         run: npm ci
 
       - name: Run blocking quality gates
         run: npm run ci
+
+      - name: Check critical Edge Functions
+        env:
+          DENO_DIR: .deno-cache
+        run: npm run check:edge-functions
 
       - name: Check production dependency security
         run: npm audit --omit=dev --audit-level=moderate
