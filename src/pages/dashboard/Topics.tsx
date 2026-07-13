@@ -211,7 +211,7 @@ export default function Topics() {
       supabase.from("instagram_accounts").select("id, username").eq("active", true),
       supabase.from("user_settings").select("topics_enabled, topics_posts_per_day").maybeSingle(),
     ]);
-    setTopics(((t.data as unknown) as Topic[]) || []);
+    setTopics(t.data || []);
     setIgAccounts((ig.data as IgAccount[]) || []);
     setEnabled(!!us.data?.topics_enabled);
     setPostsPerDay(us.data?.topics_posts_per_day || 1);
@@ -264,8 +264,8 @@ export default function Topics() {
       source_type: editing.source_type || "manual",
     };
     const res = editing.id
-      ? await supabase.from("content_topics").update(payload as any).eq("id", editing.id)
-      : await supabase.from("content_topics").insert(payload as any);
+      ? await supabase.from("content_topics").update(payload).eq("id", editing.id)
+      : await supabase.from("content_topics").insert(payload);
     if (res.error) { toast.error(res.error.message); return; }
     toast.success(editing.id ? "Pauta atualizada" : "Pauta criada");
     setOpen(false); setEditing(null); load();
@@ -373,7 +373,7 @@ export default function Topics() {
         active: true,
       }));
     if (rows.length === 0) { toast.error("Selecione ao menos uma"); return; }
-    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "pdf" })) as any);
+    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "pdf" })));
     if (error) { toast.error(error.message); return; }
     toast.success(`${rows.length} pautas importadas`);
     setPdfOpen(false); setPdfFile(null); setPdfSuggestions([]); setPdfSelected(new Set());
@@ -411,7 +411,7 @@ export default function Topics() {
       active: true,
     }));
     if (rows.length === 0) { toast.error("Selecione ao menos uma"); return; }
-    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "youtube" })) as any);
+    const { error } = await supabase.from("content_topics").insert(rows.map(row => ({ ...row, source_type: "youtube" })));
     if (error) { toast.error(error.message); return; }
     toast.success(`${rows.length} pautas importadas`);
     setYtOpen(false); setYtUrl(""); setYtSuggestions([]); setYtSelected(new Set());

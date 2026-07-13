@@ -41,7 +41,7 @@ describe("buildStarterTopicRows", () => {
       instagramAccountId: null,
     });
 
-    expect((rows[1] as any).funnel_stage).toBe("conversao");
+    expect(rows[1].funnel_stage).toBe("conversao");
     expect(rows[1].instagram_account_id).toBeNull();
   });
 

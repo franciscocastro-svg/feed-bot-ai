@@ -39,19 +39,12 @@ ffmpeg -version
    *Nota: O `@napi-rs/canvas` utiliza Skia compilado em Rust de forma nativa, dispensando a instalação de compiladores extras ou bibliotecas gráficas pesadas (como Cairo).*
 
 3. **Configure as Variáveis de Ambiente:**
-   Crie ou copie um arquivo `.env` dentro da pasta `worker/` (ou garanta que ele exista na raiz da pasta `feed-bot-ai/`):
+   Copie o contrato sem valores e preencha o `.env` somente no VPS:
    ```bash
-   cat > .env << 'EOF'
-   SUPABASE_URL=https://SUA_URL_SUPABASE.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY
-   GEMINI_API_KEY=SUA_CHAVE_GEMINI
-   GROQ_API_KEY=SUA_CHAVE_GROQ
-   CUT_TRANSCRIPTION_PROVIDERS=groq,gemini
-   CUT_ANALYSIS_PROVIDERS=gemini,xai
-   CUT_SUBTITLE_LEAD_MS=80
-   EOF
+   cp .env.example .env
+   chmod 600 .env
    ```
-   > ⚠️ **IMPORTANTE:** Use a **Service Role Key** (não a anon/public key), pois o worker precisa ignorar o RLS para ler a fila e escrever no bucket de Storage.
+   > ⚠️ **IMPORTANTE:** Use a **Service Role Key** (não a anon/public key), pois o worker precisa ignorar o RLS para ler a fila e escrever no bucket de Storage. Nunca envie esse arquivo ao Git ou em capturas de tela.
 
 ### Grok/xAI (opcional e preparado para o futuro)
 

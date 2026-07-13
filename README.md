@@ -59,14 +59,13 @@ Localizadas em `/supabase/functions`. São chamadas via triggers HTTP ou agendad
    ```bash
    npm install
    ```
-2. Inicialize o arquivo de variáveis de ambiente:
-   Crie um arquivo `.env` na raiz do projeto com as credenciais do Supabase:
-   ```env
-   VITE_SUPABASE_URL=https://sua-url-do-supabase.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=seu-token-publico-do-supabase
-   # Compatibilidade com builds antigos da Lovable:
-   # VITE_SUPABASE_ANON_KEY=tambem-e-aceito-como-fallback
+2. Inicialize o arquivo de variáveis de ambiente a partir do contrato versionado:
+   ```bash
+   cp .env.example .env
    ```
+   Preencha apenas valores públicos `VITE_*` no frontend. Segredos de servidor
+   pertencem ao cofre da Lovable/Supabase ou ao `.env` privado do worker. Consulte
+   `docs/PHASE-1B-ENVIRONMENT-SECURITY.md` para a separação completa.
 3. Inicie o servidor de desenvolvimento local:
    ```bash
    npm run dev
@@ -76,6 +75,11 @@ Localizadas em `/supabase/functions`. São chamadas via triggers HTTP ou agendad
 Para rodar os testes unitários do agendador e utilitários:
 ```bash
 npm run test
+```
+
+Para executar todas as proteções locais, incluindo a verificação de segredos:
+```bash
+npm run ci
 ```
 
 ---

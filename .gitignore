@@ -27,4 +27,11 @@ dist-ssr
 .env
 .env.development
 .env.local
+.env.*
+!.env.example
+!.env.*.example
 .env.*.local
+worker/.env
+worker/.env.*
+!worker/.env.example
+!worker/.env.*.example

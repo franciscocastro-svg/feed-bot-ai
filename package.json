@@ -9,10 +9,12 @@
     "build:dev": "vite build --mode development",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "check:worker": "node --check worker/index.js",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "check": "npm run typecheck && npm run test && npm run check:worker",
     "lint": "eslint .",
     "lint:phase1": "eslint src/lib/starterTopics.ts src/test/starter-topics.test.ts",
-    "ci": "npm run typecheck && npm run lint:phase1 && npm run test && npm run check:worker && npm run build",
+    "lint:phase1b": "eslint scripts/secret-scanner.mjs scripts/check-secrets.mjs src/test/secret-scanner.test.ts",
+    "ci": "npm run check:secrets && npm run typecheck && npm run lint:phase1 && npm run lint:phase1b && npm run test && npm run check:worker && npm run build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
