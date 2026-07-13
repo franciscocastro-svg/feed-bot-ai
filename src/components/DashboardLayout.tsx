@@ -43,14 +43,14 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: {
     ? [...visibleNav, { to: "/dashboard/admin", icon: Shield, label: "Painel Admin", badge: adminUnread }]
     : visibleNav;
   return (
-    <div className="flex flex-col h-full bg-sidebar">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar pb-[env(safe-area-inset-bottom)]">
       <div className="p-6 border-b border-border flex items-center justify-between gap-2">
         <NavLink to="/dashboard" onClick={onNavigate} className="min-w-0">
           <BrandLogo priority className="h-7 max-w-[150px]" />
         </NavLink>
         <ReleaseNotesBell />
       </div>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
         {items.map((item: any) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/dashboard"} onClick={onNavigate}
             className={({ isActive }) => cn(
@@ -143,18 +143,18 @@ export default function DashboardLayout() {
   const handleSignOut = async () => { await signOut(); navigate("/"); };
 
   return (
-    <div className="min-h-screen flex w-full">
+    <div className="flex h-screen w-full overflow-hidden supports-[height:100dvh]:h-[100dvh]">
       <Helmet><meta name="robots" content="noindex,nofollow" /></Helmet>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-64 shrink-0 border-r border-border flex-col">
+      <aside className="hidden h-full w-64 shrink-0 flex-col border-r border-border md:flex">
         <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} />
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <PaymentTestModeBanner />
         {/* Mobile top bar */}
         <header
-          className="md:hidden flex items-center justify-between p-3 border-b border-border bg-sidebar sticky top-0 z-40"
+          className="z-40 flex shrink-0 items-center justify-between border-b border-border bg-sidebar p-3 md:hidden"
           style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
         >
           <Sheet open={open} onOpenChange={setOpen}>
@@ -163,7 +163,7 @@ export default function DashboardLayout() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-72">
+            <SheetContent side="left" className="w-[min(18rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden p-0">
               <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
@@ -173,7 +173,7 @@ export default function DashboardLayout() {
           <ReleaseNotesBell />
         </header>
 
-        <main className="flex-1 overflow-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
           <Outlet />
         </main>
       </div>

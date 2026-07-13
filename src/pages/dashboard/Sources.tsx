@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertTriangle,
@@ -679,8 +679,8 @@ export default function Sources() {
           {(result.sample_items || []).map((item) => (
             <div key={item.url} className="rounded-lg border p-3">
               <p className="text-sm font-medium">{item.title}</p>
-              <p className="text-xs text-muted-foreground truncate">{item.url}</p>
-              <div className="flex gap-2 mt-2">
+              <p className="break-all text-xs text-muted-foreground">{item.url}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
                 {item.published_at && <Badge variant="outline" className="text-xs">{new Date(item.published_at).toLocaleString("pt-BR")}</Badge>}
                 <Badge variant="secondary" className="text-xs">Score {item.score || 0}</Badge>
                 {item.image ? <Badge variant="secondary" className="text-xs">Com imagem</Badge> : <Badge variant="outline" className="text-xs">Sem imagem</Badge>}
@@ -699,7 +699,7 @@ export default function Sources() {
     <div className="space-y-4">
       <div>
         <Label>Tipo de fonte</Label>
-        <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
           {sourceModeOptions.map((option) => {
             const Icon = option.icon;
             const active = sourceMode === option.value;
@@ -760,7 +760,7 @@ export default function Sources() {
       )}
 
       {(sourceMode === "person" || sourceMode === "topic") && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label>País</Label>
             <Select value={form.country} onValueChange={(v) => { setPreview(null); setForm({ ...form, country: v }); }}>
@@ -849,14 +849,14 @@ export default function Sources() {
   );
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-5xl">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl md:text-3xl font-bold">Fontes de conteúdo</h1>
           <p className="text-sm md:text-base text-muted-foreground mt-1">RSS, sites, pessoas, temas e URLs com prévia e diagnóstico.</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={fetchNow} disabled={fetching} className="flex-1 sm:flex-none">
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button variant="outline" onClick={fetchNow} disabled={fetching} className="w-full sm:w-auto">
             {fetching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Captar agora
           </Button>
@@ -869,13 +869,16 @@ export default function Sources() {
             }
           }}>
             <DialogTrigger asChild>
-              <Button variant="secondary" className="flex-1 sm:flex-none">
+              <Button variant="secondary" className="h-auto min-h-10 w-full whitespace-normal py-2 sm:w-auto">
                 <Sparkles className="h-4 w-4 mr-2" /> Descobrir por nicho
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Descobrir fontes por nicho</DialogTitle></DialogHeader>
-              <div className="space-y-4">
+            <DialogContent>
+              <DialogHeader className="pr-9">
+                <DialogTitle>Descobrir fontes por nicho</DialogTitle>
+                <DialogDescription>Busque, revise e vincule fontes compatíveis com seus perfis.</DialogDescription>
+              </DialogHeader>
+              <div className="min-w-0 space-y-4">
                 <div>
                   <Label>Nicho</Label>
                   <Input
@@ -909,11 +912,11 @@ export default function Sources() {
                               }}
                             />
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium truncate">{candidate.name}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="min-w-0 break-words font-medium">{candidate.name}</p>
                                 {candidate.valid ? <Badge variant="secondary">Válida</Badge> : <Badge variant="outline">Sem prévia</Badge>}
                               </div>
-                              <p className="text-xs text-muted-foreground truncate">{candidate.url}</p>
+                              <p className="break-all text-xs text-muted-foreground">{candidate.url}</p>
                               {candidate.preview?.sample_items?.[0] && (
                                 <p className="text-xs text-muted-foreground mt-2">Exemplo: {candidate.preview.sample_items[0].title}</p>
                               )}
@@ -923,7 +926,7 @@ export default function Sources() {
                         </div>
                       );
                     })}
-                    <Button onClick={addDiscovered} disabled={discoverSaving || selectedDiscoverUrls.length === 0} className="w-full">
+                    <Button onClick={addDiscovered} disabled={discoverSaving || selectedDiscoverUrls.length === 0} className="h-auto min-h-10 w-full whitespace-normal py-2">
                       {discoverSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Adicionando...</> : `Adicionar ${selectedDiscoverUrls.length} fonte(s) selecionada(s)`}
                     </Button>
                   </div>
@@ -935,10 +938,13 @@ export default function Sources() {
             setOpen(v);
             if (!v) resetForm();
           }}>
-            <DialogTrigger asChild><Button onClick={openNew} className="flex-1 sm:flex-none"><Plus className="h-4 w-4 mr-2" /> Nova fonte</Button></DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{editingId ? "Editar fonte" : "Adicionar fonte de conteúdo"}</DialogTitle></DialogHeader>
-              <div className="space-y-4">
+            <DialogTrigger asChild><Button onClick={openNew} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" /> Nova fonte</Button></DialogTrigger>
+            <DialogContent>
+              <DialogHeader className="pr-9">
+                <DialogTitle>{editingId ? "Editar fonte" : "Adicionar fonte de conteúdo"}</DialogTitle>
+                <DialogDescription>Configure a fonte, valide a prévia e escolha onde o conteúdo será publicado.</DialogDescription>
+              </DialogHeader>
+              <div className="min-w-0 space-y-4">
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { step: 1 as WizardStep, label: "Configurar" },
@@ -960,7 +966,7 @@ export default function Sources() {
                 {wizardStep === 2 && <PreviewPanel result={preview} />}
                 {wizardStep === 3 && renderStepThree()}
 
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-col gap-2 pt-2 min-[420px]:flex-row">
                   {wizardStep > 1 && <Button variant="outline" onClick={() => setWizardStep((wizardStep - 1) as WizardStep)} className="flex-1">Voltar</Button>}
                   {wizardStep === 1 && (
                     <Button onClick={() => previewCurrent(true)} disabled={previewing} className="flex-1">
@@ -988,7 +994,7 @@ export default function Sources() {
       </div>
 
       {sources.length === 0 ? (
-        <Card className="p-12 text-center text-muted-foreground border-dashed">
+        <Card className="border-dashed p-6 text-center text-muted-foreground md:p-12">
           <Newspaper className="h-10 w-10 mx-auto mb-3 opacity-50" />
           Nenhuma fonte. Adicione RSS, pessoa, tema ou URL para começar.
         </Card>
@@ -1005,12 +1011,12 @@ export default function Sources() {
             const healthColor = health.status === "ok" ? "text-green-600" : health.status === "warning" ? "text-yellow-600" : "text-destructive";
             const summary = s.last_run_summary || {};
             return (
-              <Card key={s.id} className={`p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4 ${!s.active ? "opacity-60" : ""}`}>
-                <div className="flex items-center gap-3 md:gap-4 min-w-0">
+              <Card key={s.id} className={`flex min-w-0 flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:gap-4 md:p-5 ${!s.active ? "opacity-60" : ""}`}>
+                <div className="flex min-w-0 items-start gap-3 md:items-center md:gap-4">
                   <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center shrink-0"><KindIcon className="h-5 w-5 text-primary" /></div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium truncate">{s.name} {s.niche && <span className="text-xs text-muted-foreground ml-1">· {cleanLabelPrefix(s.niche)}</span>}</p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="max-w-full break-words font-medium">{s.name} {s.niche && <span className="ml-1 text-xs text-muted-foreground">· {cleanLabelPrefix(s.niche)}</span>}</p>
                       <Badge variant="outline" className="text-xs gap-1"><KindIcon className="h-3 w-3" /> {kind.label}</Badge>
                       {Number(s.quality_score || 0) > 0 && <Badge variant="secondary" className="text-xs">Qualidade {Number(s.quality_score || 0).toFixed(0)}</Badge>}
                       <TooltipProvider>
@@ -1026,12 +1032,12 @@ export default function Sources() {
                         </Tooltip>
                       </TooltipProvider>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{s.url}</p>
+                    <p className="break-all text-xs text-muted-foreground">{s.url}</p>
                     <p className="text-xs text-muted-foreground">
                       A cada {s.fetch_interval_minutes} min · {(s.last_success_at || s.last_fetched_at) ? `Última leitura: ${new Date(s.last_success_at || s.last_fetched_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : "Nunca captada"}
                     </p>
                     {(s.last_success_at || s.last_error_at) && (
-                      <p className={`text-xs mt-1 ${health.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+                      <p className={`mt-1 break-words text-xs ${health.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
                         {health.status === "error"
                           ? `Erro: ${s.last_error || "não identificado"}`
                           : `${Number(summary.items_found ?? s.last_items_found ?? 0)} encontrados · ${Number(summary.items_after_relevance ?? 0)} relevantes · ${Number(summary.items_distributed ?? s.last_items_created ?? 0)} distribuídos · ${Number(summary.items_duplicates ?? 0)} duplicados · ${Number(s.last_items_created || 0)} novos`}
@@ -1048,9 +1054,9 @@ export default function Sources() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 md:gap-3 shrink-0 flex-wrap">
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 md:w-auto md:flex-nowrap md:gap-3">
                   <Select value={String(s.fetch_interval_minutes)} onValueChange={(v) => updateInterval(s.id, +v)}>
-                    <SelectTrigger className="w-[130px] md:w-[140px] h-9"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-10 min-w-[130px] flex-1 md:h-9 md:w-[140px] md:flex-none"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {INTERVAL_OPTIONS.map((m) => (
                         <SelectItem key={m} value={String(m)}>
@@ -1063,15 +1069,15 @@ export default function Sources() {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => fetchOne(s.id)} disabled={perSourceFetching === s.id || !s.active}>
+                        <Button variant="ghost" size="icon" aria-label={`Captar agora ${s.name}`} onClick={() => fetchOne(s.id)} disabled={perSourceFetching === s.id || !s.active}>
                           {perSourceFetching === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Captar agora apenas desta fonte</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: s.id, name: s.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button variant="ghost" size="icon" aria-label={`Editar ${s.name}`} onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" aria-label={`Remover ${s.name}`} onClick={() => setConfirmDelete({ id: s.id, name: s.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </Card>
             );
