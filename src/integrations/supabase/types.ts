@@ -1070,31 +1070,55 @@ export type Database = {
       }
       payment_webhook_effects: {
         Row: {
+          attempt_count: number
+          claim_expires_at: string | null
+          completed_at: string | null
           created_at: string
           effect_type: string
           environment: string
+          error_code: string | null
           event_id: string
           id: string
           provider: string
           request_id: string | null
+          started_at: string | null
+          status: string
+          stripe_response_id: string | null
+          updated_at: string
         }
         Insert: {
+          attempt_count?: number
+          claim_expires_at?: string | null
+          completed_at?: string | null
           created_at?: string
           effect_type: string
           environment: string
+          error_code?: string | null
           event_id: string
           id?: string
           provider: string
           request_id?: string | null
+          started_at?: string | null
+          status?: string
+          stripe_response_id?: string | null
+          updated_at?: string
         }
         Update: {
+          attempt_count?: number
+          claim_expires_at?: string | null
+          completed_at?: string | null
           created_at?: string
           effect_type?: string
           environment?: string
+          error_code?: string | null
           event_id?: string
           id?: string
           provider?: string
           request_id?: string | null
+          started_at?: string | null
+          status?: string
+          stripe_response_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1894,6 +1918,7 @@ export type Database = {
       }
       user_subscriptions: {
         Row: {
+          access_frozen: boolean
           approval_reason: string | null
           approval_status: string
           approved_at: string | null
@@ -1905,19 +1930,27 @@ export type Database = {
           expires_at: string | null
           id: string
           last_code_sent_at: string | null
+          last_stripe_event_at: string | null
+          last_stripe_event_id: string | null
+          last_stripe_event_type: string | null
           notes: string | null
+          past_due_since: string | null
+          payment_email_verified_at: string | null
           plan: string
           price_id: string | null
           product_id: string | null
+          refund_state: string
           status: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          terminal_state: boolean
           updated_at: string
           user_id: string
           verification_attempts: number
           verification_blocked_until: string | null
         }
         Insert: {
+          access_frozen?: boolean
           approval_reason?: string | null
           approval_status?: string
           approved_at?: string | null
@@ -1929,19 +1962,27 @@ export type Database = {
           expires_at?: string | null
           id?: string
           last_code_sent_at?: string | null
+          last_stripe_event_at?: string | null
+          last_stripe_event_id?: string | null
+          last_stripe_event_type?: string | null
           notes?: string | null
+          past_due_since?: string | null
+          payment_email_verified_at?: string | null
           plan?: string
           price_id?: string | null
           product_id?: string | null
+          refund_state?: string
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          terminal_state?: boolean
           updated_at?: string
           user_id: string
           verification_attempts?: number
           verification_blocked_until?: string | null
         }
         Update: {
+          access_frozen?: boolean
           approval_reason?: string | null
           approval_status?: string
           approved_at?: string | null
@@ -1953,13 +1994,20 @@ export type Database = {
           expires_at?: string | null
           id?: string
           last_code_sent_at?: string | null
+          last_stripe_event_at?: string | null
+          last_stripe_event_id?: string | null
+          last_stripe_event_type?: string | null
           notes?: string | null
+          past_due_since?: string | null
+          payment_email_verified_at?: string | null
           plan?: string
           price_id?: string | null
           product_id?: string | null
+          refund_state?: string
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          terminal_state?: boolean
           updated_at?: string
           user_id?: string
           verification_attempts?: number
@@ -2490,6 +2538,31 @@ export type Database = {
           user_id: string
         }[]
       }
+      apply_stripe_subscription_event: {
+        Args: {
+          p_cancel_at_period_end: boolean
+          p_current_period_end: string
+          p_current_period_start: string
+          p_environment: string
+          p_event_created_at: string
+          p_event_id: string
+          p_event_type: string
+          p_plan: string
+          p_price_id: string
+          p_product_id: string
+          p_refund_state?: string
+          p_request_id?: string
+          p_status: string
+          p_stripe_customer_id: string
+          p_stripe_subscription_id: string
+          p_terminal: boolean
+          p_user_id: string
+        }
+        Returns: {
+          action: string
+          subscription_id: string
+        }[]
+      }
       can_create_resource: {
         Args: { _resource: string; _user_id: string }
         Returns: Json
@@ -2625,6 +2698,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      complete_payment_webhook_effect: {
+        Args: {
+          p_effect_type: string
+          p_environment: string
+          p_event_id: string
+          p_provider: string
+          p_request_id: string
+          p_stripe_response_id?: string
+        }
+        Returns: boolean
+      }
       complete_payment_webhook_event: {
         Args: {
           p_environment: string
@@ -2633,6 +2717,24 @@ export type Database = {
           p_request_id: string
         }
         Returns: boolean
+      }
+      compute_subscription_access: {
+        Args: { _environment: string; _user_id: string }
+        Returns: {
+          approval_status: string
+          cancel_at_period_end: boolean
+          current_period_end: string
+          effective_plan: string
+          email_verified_via_auth: boolean
+          has_access: boolean
+          payment_email_verified_at: string
+          reason: string
+          refund_state: string
+          status: string
+          stripe_subscription_id: string
+          subscription_id: string
+          terminal_state: boolean
+        }[]
       }
       create_local_video_cut_job: {
         Args: {
@@ -3328,6 +3430,17 @@ export type Database = {
         Args: { _scheduled_post_id: string }
         Returns: undefined
       }
+      fail_payment_webhook_effect: {
+        Args: {
+          p_effect_type: string
+          p_environment: string
+          p_error_code: string
+          p_event_id: string
+          p_provider: string
+          p_request_id: string
+        }
+        Returns: boolean
+      }
       fail_payment_webhook_event: {
         Args: {
           p_environment: string
@@ -3504,6 +3617,14 @@ export type Database = {
           read_ct: number
         }[]
       }
+      reconcile_my_subscription_approval: {
+        Args: { _environment: string }
+        Returns: undefined
+      }
+      recover_expired_webhook_claims: {
+        Args: { p_environment: string; p_limit?: number }
+        Returns: number
+      }
       regenerate_video_cut_job: {
         Args: { _custom_prompt?: string; _job_id: string; _preset_key?: string }
         Returns: {
@@ -3585,6 +3706,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      sync_subscription_approval: {
+        Args: { _environment: string; _user_id: string }
+        Returns: undefined
+      }
+      sync_subscription_approval_internal: {
+        Args: { _environment: string; _user_id: string }
+        Returns: undefined
+      }
       try_claim_payment_webhook_effect: {
         Args: {
           p_effect_type: string
@@ -3596,7 +3725,10 @@ export type Database = {
         Returns: boolean
       }
       unaccent: { Args: { "": string }; Returns: string }
-      verify_email_code: { Args: { _code: string }; Returns: Json }
+      verify_email_code: {
+        Args: { _code: string; _environment: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"
