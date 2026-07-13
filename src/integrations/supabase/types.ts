@@ -3725,10 +3725,9 @@ export type Database = {
         Returns: boolean
       }
       unaccent: { Args: { "": string }; Returns: string }
-      verify_email_code: {
-        Args: { _code: string; _environment: string }
-        Returns: Json
-      }
+      verify_email_code:
+        | { Args: { _code: string }; Returns: Json }
+        | { Args: { _code: string; _environment: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "user"
