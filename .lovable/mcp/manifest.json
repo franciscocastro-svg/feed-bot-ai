@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://gewnaxrhiyylfizgbqdi.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "fluxifeed-mcp",
+      "version": "0.1.0",
+      "title": "FluxiFeed MCP"
+    },
+    "tools": [
+      {
+        "name": "list_topics",
+        "title": "Listar pautas",
+        "description": "Lista as pautas de conteúdo (content_topics) do usuário autenticado, com opção de filtrar por status.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "archived"
+              ],
+              "description": "Filtrar por status da pauta."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Máximo de pautas retornadas (padrão 25)."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "create_topic",
+        "title": "Criar pauta",
+        "description": "Cria uma nova pauta de conteúdo (content_topics) para o usuário autenticado.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 200,
+              "description": "Título da pauta."
+            },
+            "angle": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "Ângulo ou abordagem editorial."
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_scheduled_posts",
+        "title": "Listar posts agendados",
+        "description": "Lista os posts agendados (scheduled_posts) do usuário autenticado, ordenados pela data de publicação.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Máximo de agendamentos retornados (padrão 25)."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
