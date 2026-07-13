@@ -201,7 +201,7 @@ describe("payment webhook idempotency (reference model of claim RPC)", () => {
     // Simulate: claim ok, side-effect throws, handler calls fail() (not complete).
     const l = new Ledger();
     l.claim("stripe", "live", "evt_mut", "invoice.paid", "req_A", 1000);
-    let mutationOk = false;
+    const mutationOk = false;
     try {
       if (!mutationOk) throw new Error("db_write_failed");
       l.complete("stripe", "live", "evt_mut", "req_A", 1100);
