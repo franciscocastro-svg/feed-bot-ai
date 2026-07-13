@@ -341,39 +341,75 @@ export type Database = {
       content_topics: {
         Row: {
           active: boolean
+          call_to_action: string | null
+          content_pillar: string | null
           created_at: string
+          evergreen: boolean
           formats: string[]
+          frequency_per_week: number
+          funnel_stage: string
           id: string
           instagram_account_id: string | null
+          keywords: string[]
           last_used_at: string | null
           notes: string | null
+          objective: string
+          preferred_days: number[]
+          priority: number
+          source_type: string
+          target_audience: string | null
           title: string
+          tone: string | null
           updated_at: string
           use_count: number
           user_id: string
         }
         Insert: {
           active?: boolean
+          call_to_action?: string | null
+          content_pillar?: string | null
           created_at?: string
+          evergreen?: boolean
           formats?: string[]
+          frequency_per_week?: number
+          funnel_stage?: string
           id?: string
           instagram_account_id?: string | null
+          keywords?: string[]
           last_used_at?: string | null
           notes?: string | null
+          objective?: string
+          preferred_days?: number[]
+          priority?: number
+          source_type?: string
+          target_audience?: string | null
           title: string
+          tone?: string | null
           updated_at?: string
           use_count?: number
           user_id: string
         }
         Update: {
           active?: boolean
+          call_to_action?: string | null
+          content_pillar?: string | null
           created_at?: string
+          evergreen?: boolean
           formats?: string[]
+          frequency_per_week?: number
+          funnel_stage?: string
           id?: string
           instagram_account_id?: string | null
+          keywords?: string[]
           last_used_at?: string | null
           notes?: string | null
+          objective?: string
+          preferred_days?: number[]
+          priority?: number
+          source_type?: string
+          target_audience?: string | null
           title?: string
+          tone?: string | null
           updated_at?: string
           use_count?: number
           user_id?: string
