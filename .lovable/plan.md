@@ -347,7 +347,118 @@ Registradas em `ops/releases/phase-1e-a-2.json`:
 
 ---
 
-## 17. Confirmação final
+## 17. Correções bloqueantes v3.1 (incorporadas ao plano; nada implementado)
+
+### 17.1 Redefinição de `public.verify_email_code(_code text)` (na migration)
+
+`SECURITY DEFINER`, `search_path = public`, `VOLATILE`, `REVOKE ALL FROM PUBLIC`, `GRANT EXECUTE TO authenticated`. Em UMA única transação:
+
+1. Exigir `auth.uid()` não nulo (senão retorna `{ok:false, error:'unauthorized'}`).
+2. `SELECT ... FOR UPDATE` da linha mais recente em `email_verification_codes` do usuário atual: valida `code_hash = crypt(_code, code_hash)` (bcrypt/pgcrypto), `used_at IS NULL`, `expires_at > now()`, `attempts < max_attempts`. Incrementa `attempts` sempre; em falha retorna `invalid_code` / `expired` / `rate_limited` sem side-effects adicionais.
+3. Em sucesso: `UPDATE email_verification_codes SET used_at = now()`; `UPDATE public.user_subscriptions SET payment_email_verified_at = now() WHERE user_id = auth.uid() AND environment = _environment_da_linha AND approval_status NOT IN ('rejected','blocked') AND payment_email_verified_at IS NULL`.
+4. Chama `public.sync_subscription_approval(auth.uid(), _environment)` dentro da mesma transação (RPC interna `SECURITY DEFINER`, chamada pela definer sem exigir `service_role` de rede — a checagem de grant é bypass legítimo dentro do próprio banco).
+5. Preserva `rejected`/`blocked`: o UPDATE tem filtro `NOT IN ('rejected','blocked')` e `sync_subscription_approval` também respeita esse gate.
+6. **Nunca** escreve em `auth.*`.
+
+Edge `verify-code` continua tal como está hoje: aceita o JWT do usuário, cria `createClient` com `anon key + Authorization: Bearer <jwt do usuário>` e chama `rpc('verify_email_code', { _code })`. Sem `SERVICE_ROLE_KEY` no navegador ou no Edge de verificação.
+
+**Testes (adicionar a `src/test/verify-email-code.test.ts`, com Supabase mockado por interface RPC):**
+- código válido preenche `payment_email_verified_at` e libera acesso via `compute_subscription_access`.
+- código expirado / hash inválido não preenche e não libera.
+- código já `used_at` não produz efeito na segunda chamada (idempotente por falha).
+- chamada com JWT do usuário A não afeta linhas do usuário B (`auth.uid()` é fonte única).
+- assinatura `approval_status='rejected'` ou `'blocked'` permanece bloqueada mesmo com código correto.
+
+### 17.2 Cron versionado (sem `insert tool`)
+
+Os dois `cron.schedule` entram em arquivo SQL versionado carregado pela release:
+`supabase/migrations/<timestamp>_phase_1e_a_2_cron.sql` (parte da mesma migration da fase, seção final). Idempotente:
+
+```sql
+DO $$
+DECLARE
+  jobid_sb bigint;
+  jobid_lv bigint;
+BEGIN
+  SELECT jobid INTO jobid_sb FROM cron.job WHERE jobname = 'payments-reconcile-sandbox';
+  IF jobid_sb IS NOT NULL THEN PERFORM cron.unschedule(jobid_sb); END IF;
+  SELECT jobid INTO jobid_lv FROM cron.job WHERE jobname = 'payments-reconcile-live';
+  IF jobid_lv IS NOT NULL THEN PERFORM cron.unschedule(jobid_lv); END IF;
+END $$;
+
+SELECT cron.schedule(
+  'payments-reconcile-sandbox', '0 3 * * *',
+  $cron$
+  SELECT net.http_post(
+    url  := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'PAYMENTS_RECONCILE_URL_SANDBOX'),
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'x-internal-secret',(SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'INTERNAL_CRON_SECRET')
+    ),
+    body := '{}'::jsonb
+  );
+  $cron$
+);
+
+SELECT cron.schedule('payments-reconcile-live', '15 3 * * *', $cron$ /* idem live */ $cron$);
+```
+
+- `INTERNAL_CRON_SECRET`, `PAYMENTS_RECONCILE_URL_SANDBOX`, `PAYMENTS_RECONCILE_URL_LIVE` residem no Vault (`vault.decrypted_secrets`); nunca literais no SQL.
+- Manifesto `ops/releases/phase-1e-a-2.json` lista os dois `jobname` exatos (`payments-reconcile-sandbox`, `payments-reconcile-live`) e um passo de verificação pós-migration: `SELECT jobname, schedule FROM cron.job WHERE jobname IN (...)`.
+- **Rollback documentado:** `SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname IN ('payments-reconcile-sandbox','payments-reconcile-live');` + redeploy da Edge anterior.
+
+### 17.3 Retry do outbox por `effect_type` (não genérico)
+
+Coluna `payment_webhook_effects.effect_type` já existe; adicionar `retry_policy` derivada em código (tabela `_shared/webhook-effect-policy.ts` no runtime da Edge, mas o gate real está no reconciliador):
+
+| effect_type | Política |
+|---|---|
+| `stripe_cancel_after_refund` | Antes de repetir, `stripe.subscriptions.retrieve(id)`; se `status='canceled'` → marca `completed` sem nova chamada; senão executa `cancel` idempotente. |
+| `meta_start_trial`, `meta_purchase` | Retry permitido **somente** reutilizando o mesmo `event_id` estável (`stripe_<event.id>`) enviado no primeiro POST — dedup no lado da Meta. |
+| `send_verification_code` | **Sem retry automático** após ambiguidade de rede. Reenvio só pelo fluxo controlado de resend com cooldown/rate-limit da UI. Se o provedor de e-mail futuro documentar `Idempotency-Key`, mudança de política vira novo plano com testes específicos. |
+| `unknown` / não listado | Não executar; `status='failed'`, `error_code='unsupported_effect_type'`, log sanitizado, sem stack. |
+
+Implementação: `payments-reconcile` faz `switch(effect_type)` antes de qualquer retry e recusa efeitos fora da whitelist. Reserva de claim expirado (`processing` > 5 min) segue a mesma política — não é bypass.
+
+**Testes (`src/test/webhook-effect-retry.test.ts`):**
+- timeout de `stripe_cancel_after_refund` após Stripe já ter cancelado → retry marca `completed` sem 2ª chamada.
+- resposta perdida de `meta_purchase` → retry envia com mesmo `event_id`; segundo POST dedupado.
+- resposta ambígua de `send_verification_code` → nenhum retry automático; contador de attempts não avança até resend manual.
+- efeito com `effect_type='foo_bar'` → recusado, `failed`/`unsupported_effect_type`, sem execução.
+- claim expirado de cada tipo respeita a mesma política.
+
+### 17.4 Ordenação com `event_created_at` igual
+
+`apply_stripe_subscription_event` ordena por `(event_created_at DESC, terminal_rank DESC)` e nunca por ordem lexical de `event_id`. Regras de empate:
+
+1. **Terminal sempre vence.** `terminal_rank = 1` para `customer.subscription.deleted` já processada, `refund_state='full'`, `dispute lost`; `0` caso contrário. Um evento com `terminal_rank=0` **não** pode gravar sobre linha com `terminal_state=true`.
+2. Para `invoice.payment_failed` vs `invoice.payment_succeeded` no mesmo segundo: a RPC chama `stripe.subscriptions.retrieve(sub_id)` (fora da transação, dentro do handler) e usa o `status` autoritativo do Stripe como precedência. Se indisponível, aplica precedência explícita: `succeeded > failed` **somente** quando não há terminal posterior.
+3. Chaveamento por `stripe_subscription_id`: eventos antigos de uma sub cancelada nunca revogam uma nova sub (linha diferente).
+
+**Testes (`src/test/stripe-event-ordering.test.ts`):**
+- dois eventos com mesmo `created`, um `deleted` e um `updated` → estado final é terminal cancelado.
+- `payment_failed` e `payment_succeeded` mesmo segundo → resolvido pelo `status` retornado por `subscriptions.retrieve`.
+- evento antigo `updated` (linha A cancelada) não altera linha B corrente.
+
+### 17.5 Reconfirmação dos itens fixos
+
+- **Migration final (uma):** `<timestamp>_phase_1e_a_2.sql` inclui colunas §7, RPCs §3–§11, redefinição de `verify_email_code` §17.1, e os dois `cron.schedule` §17.2. Aditiva, sem `DROP` destrutivo.
+- **Arquivos finais** (criados / modificados):
+  - `supabase/migrations/<timestamp>_phase_1e_a_2.sql` (novo)
+  - `supabase/functions/payments-webhook/index.ts` (modificado)
+  - `supabase/functions/verify-code/index.ts` (inalterado no comportamento; comentário atualizado)
+  - `supabase/functions/payments-reconcile/index.ts` (novo) + `deno.json` + `deno.lock`
+  - `ops/releases/phase-1e-a-2.json` (novo) + entrada em `ops/edge-functions-critical.json`
+  - `src/test/verify-email-code.test.ts`, `src/test/webhook-effect-retry.test.ts`, `src/test/stripe-event-ordering.test.ts` (novos)
+  - `.lovable/plan.md` (este arquivo, já modificado)
+- **Testes finais:** existentes de idempotência + §14 anteriores + §17.1/17.3/17.4.
+- **Cron:** 100 % versionado na migration; `jobname` fixos `payments-reconcile-sandbox` / `payments-reconcile-live`; segredos via Vault; rollback via `cron.unschedule` documentado no manifesto.
+- **`verify_email_code`:** redefinida na migration com o comportamento §17.1.
+- **Políticas de efeito:** individuais por `effect_type` §17.3.
+
+---
+
+## 18. Confirmação final
 
 - **Nenhum arquivo do projeto foi implementado, modificado ou deletado** além deste `.lovable/plan.md`.
 - **Nenhuma migration foi aplicada.**
