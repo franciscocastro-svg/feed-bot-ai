@@ -341,39 +341,75 @@ export type Database = {
       content_topics: {
         Row: {
           active: boolean
+          call_to_action: string | null
+          content_pillar: string | null
           created_at: string
+          evergreen: boolean
           formats: string[]
+          frequency_per_week: number
+          funnel_stage: string
           id: string
           instagram_account_id: string | null
+          keywords: string[]
           last_used_at: string | null
           notes: string | null
+          objective: string
+          preferred_days: number[]
+          priority: number
+          source_type: string
+          target_audience: string | null
           title: string
+          tone: string | null
           updated_at: string
           use_count: number
           user_id: string
         }
         Insert: {
           active?: boolean
+          call_to_action?: string | null
+          content_pillar?: string | null
           created_at?: string
+          evergreen?: boolean
           formats?: string[]
+          frequency_per_week?: number
+          funnel_stage?: string
           id?: string
           instagram_account_id?: string | null
+          keywords?: string[]
           last_used_at?: string | null
           notes?: string | null
+          objective?: string
+          preferred_days?: number[]
+          priority?: number
+          source_type?: string
+          target_audience?: string | null
           title: string
+          tone?: string | null
           updated_at?: string
           use_count?: number
           user_id: string
         }
         Update: {
           active?: boolean
+          call_to_action?: string | null
+          content_pillar?: string | null
           created_at?: string
+          evergreen?: boolean
           formats?: string[]
+          frequency_per_week?: number
+          funnel_stage?: string
           id?: string
           instagram_account_id?: string | null
+          keywords?: string[]
           last_used_at?: string | null
           notes?: string | null
+          objective?: string
+          preferred_days?: number[]
+          priority?: number
+          source_type?: string
+          target_audience?: string | null
           title?: string
+          tone?: string | null
           updated_at?: string
           use_count?: number
           user_id?: string
@@ -2070,8 +2106,12 @@ export type Database = {
           hook_enabled: boolean
           id: string
           instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
           max_attempts: number
           preset_key: string
+          processing_mode: string
           progress: number
           provider_trace: Json
           remove_silences: boolean
@@ -2114,8 +2154,12 @@ export type Database = {
           hook_enabled?: boolean
           id?: string
           instagram_account_id: string
+          local_file_name?: string | null
+          local_file_size_bytes?: number | null
+          local_render_expires_at?: string | null
           max_attempts?: number
           preset_key?: string
+          processing_mode?: string
           progress?: number
           provider_trace?: Json
           remove_silences?: boolean
@@ -2158,8 +2202,12 @@ export type Database = {
           hook_enabled?: boolean
           id?: string
           instagram_account_id?: string
+          local_file_name?: string | null
+          local_file_size_bytes?: number | null
+          local_render_expires_at?: string | null
           max_attempts?: number
           preset_key?: string
+          processing_mode?: string
           progress?: number
           provider_trace?: Json
           remove_silences?: boolean
@@ -2428,8 +2476,12 @@ export type Database = {
           hook_enabled: boolean
           id: string
           instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
           max_attempts: number
           preset_key: string
+          processing_mode: string
           progress: number
           provider_trace: Json
           remove_silences: boolean
@@ -2481,6 +2533,80 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      create_local_video_cut_job: {
+        Args: {
+          _audio_storage_path: string
+          _custom_prompt?: string
+          _duration_seconds: number
+          _format?: string
+          _formats?: string[]
+          _hook_enabled?: boolean
+          _instagram_account_id: string
+          _preset_key?: string
+          _remove_silences?: boolean
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _smart_crop?: boolean
+          _source_file_name: string
+          _source_file_size_bytes: number
+          _subtitle_style?: string
+          _zoom_effect?: boolean
+        }
+        Returns: {
+          analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
+          attempts: number
+          auto_publish: boolean
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          custom_prompt: string | null
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          format: string
+          formats: string[] | null
+          generated_clips: number
+          hook_enabled: boolean
+          id: string
+          instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
+          max_attempts: number
+          preset_key: string
+          processing_mode: string
+          progress: number
+          provider_trace: Json
+          remove_silences: boolean
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          smart_crop: boolean
+          source_expires_at: string
+          source_file_name: string | null
+          source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
+          source_title: string | null
+          source_video_url: string | null
+          started_at: string | null
+          status: string
+          subtitle_style: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+          zoom_effect: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_video_cut_job:
         | {
             Args: {
@@ -2509,8 +2635,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2568,8 +2698,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2632,8 +2766,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2698,8 +2836,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2758,8 +2900,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2818,8 +2964,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2883,8 +3033,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -2950,8 +3104,12 @@ export type Database = {
               hook_enabled: boolean
               id: string
               instagram_account_id: string
+              local_file_name: string | null
+              local_file_size_bytes: number | null
+              local_render_expires_at: string | null
               max_attempts: number
               preset_key: string
+              processing_mode: string
               progress: number
               provider_trace: Json
               remove_silences: boolean
@@ -3017,8 +3175,12 @@ export type Database = {
           hook_enabled: boolean
           id: string
           instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
           max_attempts: number
           preset_key: string
+          processing_mode: string
           progress: number
           provider_trace: Json
           remove_silences: boolean
@@ -3064,6 +3226,10 @@ export type Database = {
       enqueue_reel_render_job_for_post: {
         Args: { _scheduled_post_id: string }
         Returns: undefined
+      }
+      finalize_local_video_cut_job: {
+        Args: { _job_id: string }
+        Returns: boolean
       }
       finalize_video_cut_job_usage: {
         Args: { _generated_count?: number; _job_id: string }
@@ -3249,8 +3415,12 @@ export type Database = {
           hook_enabled: boolean
           id: string
           instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
           max_attempts: number
           preset_key: string
+          processing_mode: string
           progress: number
           provider_trace: Json
           remove_silences: boolean
