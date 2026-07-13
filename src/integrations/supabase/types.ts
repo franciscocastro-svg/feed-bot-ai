@@ -1068,6 +1068,36 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_webhook_effects: {
+        Row: {
+          created_at: string
+          effect_type: string
+          environment: string
+          event_id: string
+          id: string
+          provider: string
+          request_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          effect_type: string
+          environment: string
+          event_id: string
+          id?: string
+          provider: string
+          request_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          effect_type?: string
+          environment?: string
+          event_id?: string
+          id?: string
+          provider?: string
+          request_id?: string | null
+        }
+        Relationships: []
+      }
       payment_webhook_events: {
         Row: {
           attempt_count: number
@@ -2596,8 +2626,13 @@ export type Database = {
         }
       }
       complete_payment_webhook_event: {
-        Args: { p_environment: string; p_event_id: string; p_provider: string }
-        Returns: undefined
+        Args: {
+          p_environment: string
+          p_event_id: string
+          p_provider: string
+          p_request_id: string
+        }
+        Returns: boolean
       }
       create_local_video_cut_job: {
         Args: {
@@ -3299,8 +3334,9 @@ export type Database = {
           p_error_code: string
           p_event_id: string
           p_provider: string
+          p_request_id: string
         }
-        Returns: undefined
+        Returns: boolean
       }
       finalize_local_video_cut_job: {
         Args: { _job_id: string }
@@ -3548,6 +3584,16 @@ export type Database = {
           _target_user_id: string
         }
         Returns: undefined
+      }
+      try_claim_payment_webhook_effect: {
+        Args: {
+          p_effect_type: string
+          p_environment: string
+          p_event_id: string
+          p_provider: string
+          p_request_id: string
+        }
+        Returns: boolean
       }
       unaccent: { Args: { "": string }; Returns: string }
       verify_email_code: { Args: { _code: string }; Returns: Json }
