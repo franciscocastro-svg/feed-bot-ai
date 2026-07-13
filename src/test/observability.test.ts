@@ -26,7 +26,7 @@ describe("observability logger", () => {
       environment: "sandbox",
       duration_ms: 12,
       // deliberately try to smuggle extra fields:
-      ...({ recipient: "victim@example.com", authorization: "Bearer abc" } as unknown as {}),
+      ...({ recipient: "victim@example.com", authorization: "Bearer abc" } as unknown as Record<string, never>),
     });
     expect(line.includes("\n")).toBe(false);
     const parsed = JSON.parse(line);
