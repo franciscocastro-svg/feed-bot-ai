@@ -458,11 +458,18 @@ Implementação: `payments-reconcile` faz `switch(effect_type)` antes de qualque
 
 ---
 
-## 18. Confirmação final
+## 18. Status pós-execução
 
-- **Nenhum arquivo do projeto foi implementado, modificado ou deletado** além deste `.lovable/plan.md`.
-- **Nenhuma migration foi aplicada.**
-- **Nenhuma Edge Function foi deployada.**
-- **Nenhum secret foi criado ou alterado.**
-- **Nenhuma publicação foi feita.**
-- Aguardando aprovação explícita para iniciar a implementação a partir de `main@c794dbd559156da007e2093406f0b5d93d9d3724`.
+### Subfase 1E-A.2/i — CONCLUÍDA E APLICADA (ver seção 19).
+### Subfases ii, iii, iv — NÃO INICIADAS. Aguardando review.
+
+---
+
+## 19. Registro da subfase 1E-A.2/i
+
+- Migrations aplicadas: `20260713211849_*.sql` (schema + RPCs) e `20260713211950_*.sql` (correção de grants padrão do Supabase).
+- Nenhum `cron.schedule` criado.
+- Nenhuma Edge Function alterada.
+- Documentação: `docs/PHASE-1E-A-2.md`.
+- Detalhes completos: ver relatório enviado no chat.
+
