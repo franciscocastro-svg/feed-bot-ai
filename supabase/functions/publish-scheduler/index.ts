@@ -6,6 +6,7 @@ import {
   isScheduledBeyondFreshnessWindow,
   SCHEDULED_NEWS_MAX_AGE_HOURS,
 } from "../_shared/autopilot-policy.ts";
+import { resolveGlobalPostInterval } from "../_shared/editorial-policy.ts";
 import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
 
 const corsHeaders = {
@@ -13,8 +14,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_MIN_MINUTES_BETWEEN_POSTS = 10;
-const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
 // Quando a Meta devolve "too many actions" (code 9 / subcode 2207042),
 // pausamos a conta por esse período para evitar piorar o bloqueio.
 const RATE_LIMIT_COOLDOWN_MINUTES = 240;
@@ -644,10 +643,7 @@ Deno.serve(async (req) => {
     const remaining = isUnlimited ? Infinity : Math.max(0, dailyCap - (postedToday || 0));
     const hasDailyCapacity = isUnlimited || remaining > 0;
 
-    const minIntervalMin = Math.max(
-      SAFE_MIN_MINUTES_BETWEEN_POSTS,
-      settings?.min_post_interval_minutes ?? DEFAULT_MIN_MINUTES_BETWEEN_POSTS,
-    );
+    const minIntervalMin = resolveGlobalPostInterval(settings?.min_post_interval_minutes);
     const globalAllowedHours = normalizedHours(settings?.preferred_post_hours);
     const { data: channelRows } = await supabase.from("channel_settings")
       .select("channel, min_interval_minutes, allowed_hours")
@@ -656,7 +652,7 @@ Deno.serve(async (req) => {
     for (const row of (channelRows || []) as any[]) {
       const hours = normalizedHours(row.allowed_hours);
       channelConfig.set(row.channel, {
-        minIntervalMin: Math.max(minIntervalMin, Number(row.min_interval_minutes) || minIntervalMin),
+        minIntervalMin,
         allowedHours: hours.length ? hours : globalAllowedHours,
       });
     }

@@ -2,6 +2,14 @@
 // para todos os usuários com auto_approve = true
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { PENDING_NEWS_MAX_AGE_HOURS } from "../_shared/autopilot-policy.ts";
+import {
+  compareEditorialNews,
+  editorialNewsScore,
+  MIN_POST_INTERVAL_MINUTES,
+  resolveGlobalPostInterval,
+  shouldPrepareNextPost,
+  type EditorialNews,
+} from "../_shared/editorial-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,10 +18,9 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SAFE_MIN_MINUTES_BETWEEN_POSTS = 10;
 const PUBLISH_ACTIVE_STATUSES = ["scheduled", "posting", "awaiting_container"];
 const DUPLICATE_LOOKBACK_HOURS = 72;
-const MAX_ACTIVE_QUEUE_PER_ACCOUNT = 2;
+const MAX_ACTIVE_QUEUE_PER_ACCOUNT = 1;
 
 async function callFn(name: string, body: Record<string, unknown>) {
   const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET") || "";
@@ -70,6 +77,21 @@ type ChannelCfg = {
   keywords: string[];
   urgent_keywords: string[];
   is_priority: boolean;
+};
+
+type ActiveQueueRow = {
+  id: string;
+  status: string;
+  instagram_account_id: string | null;
+  news_item_id: string | null;
+  scheduled_for: string;
+  created_at: string;
+  news_items: EditorialNews | EditorialNews[] | null;
+};
+
+type PostedAccountRow = {
+  instagram_account_id: string | null;
+  posted_at: string | null;
 };
 
 function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
@@ -144,7 +166,7 @@ function nextSlotForChannel(
   cfg: ChannelCfg,
   takenByChannel: Date[],
   allTaken: Date[],
-  minIntervalAcrossAccount = SAFE_MIN_MINUTES_BETWEEN_POSTS,
+  minIntervalAcrossAccount = MIN_POST_INTERVAL_MINUTES,
 ): Date | null {
   // Tudo é interpretado em America/Sao_Paulo (UTC-3, sem horário de verão).
   // O servidor Deno roda em UTC, então aplicamos offset manual.
@@ -155,7 +177,7 @@ function nextSlotForChannel(
   const now = new Date();
   let candidate = new Date(now.getTime() + 60_000);
   const cooldownMs = cfg.min_interval_minutes * 60_000;
-  const globalCooldownMs = Math.max(minIntervalAcrossAccount, SAFE_MIN_MINUTES_BETWEEN_POSTS) * 60_000;
+  const globalCooldownMs = Math.max(minIntervalAcrossAccount, MIN_POST_INTERVAL_MINUTES) * 60_000;
   const lastTakenAt = allTaken.length ? Math.max(...allTaken.map((d) => d.getTime())) : 0;
   if (lastTakenAt && candidate.getTime() < lastTakenAt + globalCooldownMs) {
     candidate = new Date(lastTakenAt + globalCooldownMs);
@@ -357,6 +379,7 @@ Deno.serve(async (req) => {
 
     for (const u of users || []) {
       const userId = u.user_id;
+      const masterMinInterval = resolveGlobalPostInterval((u as any).min_post_interval_minutes);
       const userSummary: any = { userId, steps: {} };
       try {
         userSummary.steps.fetch = "done (global)";
@@ -382,11 +405,69 @@ Deno.serve(async (req) => {
         // 2) processar pendentes — uma por Instagram livre por execução do autopilot.
         // Mantém o fluxo seguro "pegar -> carregar -> postar", mas sem travar
         // clientes com múltiplas contas quando uma conta já tem fila e outra não.
-        const { data: activeQueueRows, count: activeQueueCount } = await supabase
+        const { data: activeQueueData } = await supabase
           .from("scheduled_posts")
-          .select("id, instagram_account_id", { count: "exact" })
+          .select("id, status, instagram_account_id, news_item_id, scheduled_for, created_at, news_items(id,published_at,original_title,rewritten_title,original_content,rewritten_summary,original_image_url,generated_image_url,generated_cover_url,generated_video_url)")
           .eq("user_id", userId)
           .in("status", PUBLISH_ACTIVE_STATUSES);
+        let activeQueueRows = (activeQueueData || []) as ActiveQueueRow[];
+
+        // Uma única vaga editorial por conta. Se houver reservas antigas do
+        // modelo anterior, mantém a melhor notícia (ou um envio já iniciado),
+        // promove-a para o primeiro horário e cancela as reservas excedentes.
+        const activeByAccount = new Map<string, ActiveQueueRow[]>();
+        for (const row of activeQueueRows) {
+          if (!row.instagram_account_id) continue;
+          const rows = activeByAccount.get(row.instagram_account_id) || [];
+          rows.push(row);
+          activeByAccount.set(row.instagram_account_id, rows);
+        }
+        const compactedIds = new Set<string>();
+        const queueRankingNowMs = Date.now();
+        for (const [accountId, rows] of activeByAccount) {
+          if (rows.length <= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
+          const inFlight = rows.filter((row) => row.status === "posting" || row.status === "awaiting_container");
+          const scheduled = rows.filter((row) => row.status === "scheduled");
+          const keep = inFlight[0] || [...scheduled].sort((a, b) => {
+            const newsA = Array.isArray(a.news_items) ? a.news_items[0] : a.news_items;
+            const newsB = Array.isArray(b.news_items) ? b.news_items[0] : b.news_items;
+            return compareEditorialNews(newsA || {}, newsB || {}, queueRankingNowMs);
+          })[0];
+          if (!keep) continue;
+          const earliestScheduledFor = rows
+            .map((row) => new Date(row.scheduled_for).getTime())
+            .filter(Number.isFinite)
+            .sort((a, b) => a - b)[0];
+          if (keep.status === "scheduled" && Number.isFinite(earliestScheduledFor)) {
+            await supabase.from("scheduled_posts").update({
+              scheduled_for: new Date(earliestScheduledFor).toISOString(),
+            }).eq("id", keep.id).eq("status", "scheduled");
+          }
+          const extras = scheduled.filter((row) => row.id !== keep.id);
+          if (!extras.length) continue;
+          const extraIds = extras.map((row) => row.id);
+          const extraNewsIds = extras.map((row) => row.news_item_id).filter(Boolean);
+          await supabase.from("scheduled_posts").update({
+            status: "cancelled",
+            error_message: "Substituída pela melhor notícia disponível na fila editorial dinâmica.",
+          }).in("id", extraIds).eq("status", "scheduled");
+          if (extraNewsIds.length) {
+            await supabase.from("news_items").update({
+              status: "rejected",
+              error_message: "Superada por notícia mais nova ou mais relevante antes da publicação.",
+            }).in("id", extraNewsIds).eq("status", "scheduled");
+          }
+          extraIds.forEach((id) => compactedIds.add(id));
+          await supabase.from("activity_logs").insert({
+            user_id: userId,
+            action: "editorial_queue_compacted",
+            entity_type: "instagram_account",
+            entity_id: accountId,
+            details: { kept_post_id: keep.id, cancelled_post_ids: extraIds },
+          });
+        }
+        activeQueueRows = activeQueueRows.filter((row) => !compactedIds.has(row.id));
+        const activeQueueCount = activeQueueRows.length;
         const activeQueueIgIds = new Set<string>(
           (activeQueueRows || [])
             .map((s: any) => s.instagram_account_id)
@@ -407,6 +488,27 @@ Deno.serve(async (req) => {
           .eq("active", true);
         const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
         const fallbackAccountId = igAccs?.[0]?.id;
+        let postedRows: PostedAccountRow[] = [];
+        if (validIgIds.size > 0) {
+          const { data } = await supabase.from("scheduled_posts")
+            .select("instagram_account_id, posted_at")
+            .eq("user_id", userId)
+            .eq("status", "posted")
+            .in("instagram_account_id", Array.from(validIgIds))
+            .not("posted_at", "is", null)
+            .order("posted_at", { ascending: false })
+            .limit(1000);
+          postedRows = (data || []) as PostedAccountRow[];
+        }
+        const lastPostedByAccount = new Map<string, number>();
+        for (const row of postedRows) {
+          if (!row.instagram_account_id || lastPostedByAccount.has(row.instagram_account_id)) continue;
+          lastPostedByAccount.set(row.instagram_account_id, new Date(row.posted_at).getTime());
+        }
+        const canPrepareAccount = (accountId: string) => shouldPrepareNextPost(
+          lastPostedByAccount.get(accountId),
+          masterMinInterval,
+        );
         userSummary.steps.active_instagram_accounts = (igAccs || []).map((a: any) => ({
           id: a.id,
           username: a.username,
@@ -477,23 +579,15 @@ Deno.serve(async (req) => {
           .order("published_at", { ascending: false, nullsFirst: false })
           .limit(50);
 
-        // ranking de engajamento: recência + imagem + palavras virais + corpo
-        const VIRAL = /\b(urgente|exclusivo|bombou|chocante|polêmica|polemica|escândalo|escandalo|revela|revelad[oa]|surpreende|surpreendente|inédit[oa]|inedit[oa]|recorde|histórico|historico|morre|morreu|morte|prisão|prisao|preso|presa|vaza|vazou|confirma|confirmad[oa]|anuncia|anunciad[oa]|novo|nova|primeira vez|nunca visto|impressionante|viral)\b/gi;
+        // ranking editorial: recência domina; urgência, imagem e qualidade
+        // escolhem a melhor notícia entre itens igualmente frescos.
         const now2 = Date.now();
         type RankedNews = { id: string; instagram_account_id: string | null; score: number; fingerprint: string | null };
         const ranked: RankedNews[] = (pendingAll || []).map((n: any) => {
-          const ageH = n.published_at ? (now2 - new Date(n.published_at).getTime()) / 3.6e6 : 999;
-          const recency = Math.max(0, 100 - ageH * 6);
-          const titleLen = (n.original_title?.length || 0);
-          const titleScore = titleLen >= 40 && titleLen <= 100 ? 30 : Math.min(20, titleLen / 5);
-          const hasImage = n.original_image_url ? 25 : 0;
-          const bodyScore = Math.min(20, ((n.original_content?.length || 0) / 200));
-          const viralMatches = ((n.original_title || "") + " " + (n.original_content || "")).match(VIRAL)?.length || 0;
-          const viralScore = Math.min(40, viralMatches * 10);
           return {
             id: n.id,
             instagram_account_id: n.instagram_account_id || null,
-            score: recency + titleScore + hasImage + bodyScore + viralScore,
+            score: editorialNewsScore(n, now2),
             fingerprint: n.original_canonical_url || n.original_url || normalizeDuplicateTitle(n.original_title),
           };
         }).sort((a, b) => b.score - a.score);
@@ -559,6 +653,7 @@ Deno.serve(async (req) => {
             : fallbackAccountId;
           if (!targetIg) continue;
           if ((activeQueueCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
+          if (!canPrepareAccount(targetIg)) continue;
           if (inFlightIgIds.has(targetIg)) continue;
           if (pickedIgIds.has(targetIg)) continue;
           if (item.fingerprint && pickedFingerprints.has(item.fingerprint)) continue;
@@ -598,9 +693,11 @@ Deno.serve(async (req) => {
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase
           .from("news_items")
-          .select("id, rewritten_title, rewritten_summary, original_title, original_content, original_url, original_canonical_url, instagram_account_id")
+          .select("id, rewritten_title, rewritten_summary, original_title, original_content, original_image_url, generated_image_url, generated_cover_url, generated_video_url, original_url, original_canonical_url, published_at, instagram_account_id")
           .eq("user_id", userId)
           .eq("status", "processed");
+        const readyRankingNowMs = Date.now();
+        const rankedReady = [...(ready || [])].sort((a, b) => compareEditorialNews(a, b, readyRankingNowMs));
 
         const { data: existingScheduled } = await supabase
           .from("scheduled_posts")
@@ -656,11 +753,6 @@ Deno.serve(async (req) => {
         const masterDailyCap = rawMasterDailyCap < 0
           ? Number.POSITIVE_INFINITY
           : rawMasterDailyCap;
-        const masterMinInterval = Math.max(
-          Number((u as any).min_post_interval_minutes) || SAFE_MIN_MINUTES_BETWEEN_POSTS,
-          SAFE_MIN_MINUTES_BETWEEN_POSTS,
-        );
-
         // se Automação define um tipo padrão, FORÇA todos os canais a esse tipo
         if (masterMediaType && ["feed", "story", "reel"].includes(masterMediaType)) {
           channels = channels.map(c => ({ ...c, active: c.channel === masterMediaType }));
@@ -668,7 +760,7 @@ Deno.serve(async (req) => {
           if (!channels.some(c => c.channel === masterMediaType && c.active)) {
             channels.push({
               channel: masterMediaType as any, active: true,
-              min_interval_minutes: 60, allowed_hours: [], max_per_day: masterDailyCap,
+              min_interval_minutes: masterMinInterval, allowed_hours: [], max_per_day: masterDailyCap,
               keywords: [], urgent_keywords: [], is_priority: false,
             });
           }
@@ -683,11 +775,11 @@ Deno.serve(async (req) => {
           }));
         }
 
-        // Cada canal usa o próprio min_interval_minutes / max_per_day.
-        // O valor global de Automação serve apenas como piso de segurança.
+        // O intervalo global é autoritativo; cada canal mantém apenas suas
+        // regras editoriais, horários e limite diário.
         channels = channels.map(c => ({
           ...c,
-          min_interval_minutes: Math.max(c.min_interval_minutes, masterMinInterval),
+          min_interval_minutes: masterMinInterval,
         }));
 
         // === RESTRIÇÃO DE PLANO: madrugada (22h–7h BRT) só p/ Pro/Business ===
@@ -719,13 +811,14 @@ Deno.serve(async (req) => {
         const scheduledNow: { id: string; channel: string }[] = [];
         const scheduledThisRunIgIds = new Set<string>();
         if (fallbackAccountId) {
-          for (const it of ready || []) {
+          for (const it of rankedReady) {
             if (alreadyScheduledNews.has(it.id)) continue;
             if (remainingDailyCap <= 0) break; // respeita limite global da Automação
             // Resolve qual IG usar: o vinculado à notícia (se válido) ou o fallback
             const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
               ? it.instagram_account_id
               : fallbackAccountId;
+            if (!canPrepareAccount(targetIg)) continue;
             // No máximo uma nova publicação por conta em cada tick. A fila
             // pode manter uma reserva, mas nunca é preenchida em rajada.
             if (scheduledThisRunIgIds.has(targetIg)) continue;
