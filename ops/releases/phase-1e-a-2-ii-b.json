@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "release": "phase-1e-a-2-ii-b",
+  "description": "Add a private durable ledger for automatic payment reconciliation and correlate each cron dispatch with its Edge Function execution without changing payment behavior.",
+  "affectedFunctions": [
+    {
+      "name": "payments-reconcile",
+      "entrypoint": "supabase/functions/payments-reconcile/index.ts",
+      "config": "supabase/functions/payments-reconcile/deno.json",
+      "lock": "supabase/functions/payments-reconcile/deno.lock",
+      "verifyJwt": false
+    }
+  ],
+  "migrations": [
+    "supabase/migrations/20260714153000_phase_1e_a_2_reconcile_run_ledger.sql",
+    "supabase/migrations/20260714153100_phase_1e_a_2_reconcile_observable_cron.sql"
+  ],
+  "deploymentOrder": [
+    "verify the existing function/Vault secret names without printing values",
+    "apply 20260714153000_phase_1e_a_2_reconcile_run_ledger.sql",
+    "deploy payments-reconcile only; do not invoke it",
+    "apply 20260714153100_phase_1e_a_2_reconcile_observable_cron.sql",
+    "verify private grants, exactly two reconciliation jobs, and dispatcher-based commands",
+    "wait for the next automatic runs; do not invoke reconciliation manually"
+  ],
+  "cronJobs": [
+    {
+      "jobname": "payments-reconcile-sandbox",
+      "schedule": "0 3 * * *",
+      "environment": "sandbox"
+    },
+    {
+      "jobname": "payments-reconcile-live",
+      "schedule": "15 3 * * *",
+      "environment": "live"
+    }
+  ],
+  "postReleaseVerification": [
+    "payment_reconcile_runs has RLS enabled and no anon/authenticated policies or grants",
+    "dispatch/begin/complete RPCs are executable only by their documented internal roles",
+    "cron.job contains one sandbox and one live reconciliation job using dispatch_payment_reconcile",
+    "the five pre-existing non-payment cron jobs remain active and unchanged"
+  ],
+  "rollback": "Do not delete run records. A reviewed corrective migration may restore the two prior cron commands; the private ledger and RPCs can remain inert. Redeploy the previous payments-reconcile version only after the cron body is compatible.",
+  "releaseConstraints": {
+    "manualReconciliation": false,
+    "paymentBehaviorChange": false,
+    "frontendPublish": false,
+    "otherEdgeFunctions": false,
+    "vpsRuntimeChange": false
+  }
+}

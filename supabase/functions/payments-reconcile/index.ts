@@ -12,6 +12,7 @@ const EFFECT_BATCH_SIZE = 100;
 const SUBSCRIPTION_CONCURRENCY = 10;
 const EFFECT_CONCURRENCY = 5;
 const MAX_RUNTIME_MS = 110_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -49,6 +50,8 @@ interface Metrics {
   effects_recovered: number;
   errors_by_code: Record<string, number>;
 }
+
+type ReconcileRunStatus = "completed" | "completed_with_errors" | "failed";
 
 function jsonResponse(
   requestId: string,
@@ -137,6 +140,63 @@ function recordError(metrics: Metrics, error: unknown): string {
   metrics.errors_by_code[error_code] =
     (metrics.errors_by_code[error_code] ?? 0) + 1;
   return error_code;
+}
+
+function errorsCount(metrics: Metrics): number {
+  return Object.values(metrics.errors_by_code).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+}
+
+async function beginReconcileRun(
+  runId: string | null,
+  environment: StripeEnv,
+  edgeRequestId: string,
+): Promise<string> {
+  const result = await supabase.rpc("begin_payment_reconcile_run", {
+    p_run_id: runId,
+    p_environment: environment,
+    p_edge_request_id: edgeRequestId,
+  });
+  if (result.error) {
+    throw Object.assign(new Error("reconcile_run_begin_failed"), {
+      code: "reconcile_run_begin_failed",
+    });
+  }
+  if (typeof result.data !== "string" || !UUID_RE.test(result.data)) {
+    throw Object.assign(new Error("reconcile_run_not_claimed"), {
+      code: "reconcile_run_not_claimed",
+    });
+  }
+  return result.data;
+}
+
+async function completeReconcileRun(
+  runId: string,
+  environment: StripeEnv,
+  edgeRequestId: string,
+  status: ReconcileRunStatus,
+  responseHttpStatus: number,
+  startedAt: number,
+  metrics: Metrics,
+  errorCode: string | null,
+): Promise<boolean> {
+  const result = await supabase.rpc("complete_payment_reconcile_run", {
+    p_run_id: runId,
+    p_environment: environment,
+    p_edge_request_id: edgeRequestId,
+    p_status: status,
+    p_response_http_status: responseHttpStatus,
+    p_duration_ms: Math.max(0, Date.now() - startedAt),
+    p_subs_scanned: metrics.subs_scanned,
+    p_subs_updated: metrics.subs_updated,
+    p_divergences: metrics.divergences,
+    p_effects_recovered: metrics.effects_recovered,
+    p_errors_count: errorsCount(metrics),
+    p_error_code: errorCode,
+  });
+  return !result.error && result.data === true;
 }
 
 async function mapConcurrent<T>(
@@ -595,12 +655,19 @@ Deno.serve(async (request) => {
   }
 
   let environment: StripeEnv;
+  let dispatchedRunId: string | null = null;
   try {
     const body = asRecord(await request.json());
     if (body.environment !== "sandbox" && body.environment !== "live") {
       return jsonResponse(requestId, { error: "invalid_environment" }, 400);
     }
     environment = body.environment;
+    if (body.run_id !== undefined && body.run_id !== null) {
+      if (typeof body.run_id !== "string" || !UUID_RE.test(body.run_id)) {
+        return jsonResponse(requestId, { error: "invalid_run_id" }, 400);
+      }
+      dispatchedRunId = body.run_id;
+    }
   } catch {
     return jsonResponse(requestId, { error: "invalid_payload" }, 400);
   }
@@ -613,6 +680,27 @@ Deno.serve(async (request) => {
     errors_by_code: {},
   };
 
+  let activeRunId: string;
+  try {
+    // The ledger is claimed before Stripe is initialized. A duplicate delivery
+    // cannot pass this fence and therefore cannot repeat reconciliation work.
+    activeRunId = await beginReconcileRun(
+      dispatchedRunId,
+      environment,
+      requestId,
+    );
+  } catch (error) {
+    const { error_code } = classifyError(error);
+    log.error("reconcile_run_begin_failed", {
+      environment,
+      status: "failed",
+      error_code,
+      duration_ms: Date.now() - startedAt,
+    });
+    const status = error_code === "reconcile_run_not_claimed" ? 409 : 500;
+    return jsonResponse(requestId, { error: error_code }, status);
+  }
+
   try {
     // createStripeClient selects exactly one credential family from environment.
     const stripe = createStripeClient(environment);
@@ -620,33 +708,74 @@ Deno.serve(async (request) => {
     await reconcileSubscriptions(stripe, environment, startedAt, metrics);
 
     const duration = Date.now() - startedAt;
-    const errorsCount = Object.values(metrics.errors_by_code).reduce(
-      (sum, count) => sum + count,
-      0,
+    const totalErrors = errorsCount(metrics);
+    const runStatus: ReconcileRunStatus = totalErrors > 0
+      ? "completed_with_errors"
+      : "completed";
+    const persisted = await completeReconcileRun(
+      activeRunId,
+      environment,
+      requestId,
+      runStatus,
+      200,
+      startedAt,
+      metrics,
+      null,
     );
+    if (!persisted) {
+      log.error("reconcile_run_complete_failed", {
+        environment,
+        status: "failed",
+        error_code: "reconcile_run_complete_failed",
+        duration_ms: Date.now() - startedAt,
+      });
+      return jsonResponse(
+        requestId,
+        { error: "reconcile_run_complete_failed" },
+        500,
+      );
+    }
     log.info("reconcile_completed", {
       environment,
-      status: errorsCount > 0 ? "completed_with_errors" : "completed",
+      status: runStatus,
       duration_ms: duration,
       subs_scanned: metrics.subs_scanned,
       subs_updated: metrics.subs_updated,
       divergences: metrics.divergences,
       effects_recovered: metrics.effects_recovered,
-      errors_count: errorsCount,
+      errors_count: totalErrors,
       errors_by_code: metrics.errors_by_code,
     });
     return jsonResponse(requestId, {
-      ok: errorsCount === 0,
+      ok: totalErrors === 0,
       environment,
       duration_ms: duration,
       subs_scanned: metrics.subs_scanned,
       subs_updated: metrics.subs_updated,
       divergences: metrics.divergences,
       effects_recovered: metrics.effects_recovered,
-      errors_count: errorsCount,
+      errors_count: totalErrors,
     });
   } catch (error) {
     const errorCode = recordError(metrics, error);
+    const persisted = await completeReconcileRun(
+      activeRunId,
+      environment,
+      requestId,
+      "failed",
+      500,
+      startedAt,
+      metrics,
+      errorCode,
+    ).catch(() => false);
+    if (!persisted) {
+      log.error("reconcile_run_complete_failed", {
+        environment,
+        status: "failed",
+        error_code: "reconcile_run_complete_failed",
+        duration_ms: Date.now() - startedAt,
+      });
+    }
     log.error("reconcile_failed", {
       environment,
       status: "failed",
