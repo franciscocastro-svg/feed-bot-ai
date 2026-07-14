@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { templateGradientSvg } from "../_shared/template-gradients.js";
 import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
+import { loadInterFontBuffers } from "../_shared/font-loading.ts";
 
 let wasmReady: Promise<void> | null = null;
 async function ensureWasm() {
@@ -14,29 +15,17 @@ async function ensureWasm() {
   await wasmReady;
 }
 
-let fontBuffers: Uint8Array[] | null = null;
+let fontBuffersPromise: Promise<Uint8Array[]> | null = null;
 async function loadFonts(): Promise<Uint8Array[]> {
-  if (fontBuffers) return fontBuffers;
-  // Fontsource via jsDelivr — leve (~80KB cada), confiável, com CORS
-  const urls = [
-    "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.16/files/inter-latin-900-normal.woff",
-    "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.16/files/inter-latin-400-normal.woff",
-  ];
-  const buffers: Uint8Array[] = [];
-  for (const u of urls) {
-    try {
-      const r = await fetch(u);
-      if (r.ok) {
-        const buf = new Uint8Array(await r.arrayBuffer());
-        buffers.push(buf);
-        console.log(`font loaded ${u} (${buf.length} bytes)`);
-      } else {
-        console.error(`font ${u} status ${r.status}`);
-      }
-    } catch (e) { console.error("font load failed", u, e); }
+  if (!fontBuffersPromise) {
+    fontBuffersPromise = loadInterFontBuffers().catch((error) => {
+      // Não guarda uma falha no cache da instância quente: a próxima execução
+      // pode tentar novamente quando o CDN voltar.
+      fontBuffersPromise = null;
+      throw error;
+    });
   }
-  fontBuffers = buffers;
-  return buffers;
+  return fontBuffersPromise;
 }
 
 async function svgToPng(svg: string): Promise<Uint8Array> {
