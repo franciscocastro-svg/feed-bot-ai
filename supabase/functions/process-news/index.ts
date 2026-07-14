@@ -4,6 +4,12 @@ import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { templateGradientSvg } from "../_shared/template-gradients.js";
 import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
 import { loadInterFontBuffers } from "../_shared/font-loading.ts";
+import {
+  assertEditorialCopy,
+  fetchRequiredBrandLogo,
+  resolveEditorialIdentity,
+  versionPublicAssetUrl,
+} from "../_shared/editorial-integrity.ts";
 
 let wasmReady: Promise<void> | null = null;
 async function ensureWasm() {
@@ -1278,19 +1284,38 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       }
     }
 
-    // Prefer per-account overrides if this news_item is bound to an IG account
+    // Prefer per-account overrides if this news_item is bound to an IG account.
+    // The account username remains the safe identity fallback when legacy brand
+    // fields are empty.
     let settings: any = null;
+    let accountUsername = "";
     if (item.instagram_account_id) {
       const { data: eff } = await supabase.rpc("get_effective_account_settings", { _account_id: item.instagram_account_id });
       if (eff) settings = eff;
+      const { data: account } = await supabase
+        .from("instagram_accounts")
+        .select("username")
+        .eq("id", item.instagram_account_id)
+        .maybeSingle();
+      accountUsername = account?.username || "";
     }
-    if (!settings) {
+    const missingGlobalFallback = !settings ||
+      !String(settings?.brand_name || "").trim() ||
+      !String(settings?.brand_handle || "").trim() ||
+      !String(settings?.brand_logo_url || "").trim();
+    if (missingGlobalFallback) {
       const { data: us } = await supabase
         .from("user_settings")
         .select("ai_tone, brand_name, brand_handle, brand_logo_url, default_media_type, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id")
         .eq("user_id", userId)
         .maybeSingle();
-      settings = us;
+      settings = {
+        ...(us || {}),
+        ...(settings || {}),
+        brand_name: String(settings?.brand_name || "").trim() || us?.brand_name || null,
+        brand_handle: String(settings?.brand_handle || "").trim() || us?.brand_handle || null,
+        brand_logo_url: String(settings?.brand_logo_url || "").trim() || us?.brand_logo_url || null,
+      };
     }
     const intendedMediaType = requestedMediaType || settings?.default_media_type || "feed";
     const activeFeedTemplate = await loadTemplate(supabase, userId, templateIdForFormat(settings, "feed"), "feed");
@@ -1388,18 +1413,13 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const { data: rawPub } = supabase.storage.from("post-images").getPublicUrl(rawPath);
 
     // ── 2. Logo da marca (para o template) ────────────────────────────────────
+    const identity = resolveEditorialIdentity(settings, accountUsername);
     let logoDataUrl: string | null = null;
-    if (settings?.brand_logo_url) {
-      try {
-        const safeLogoUrl = assertSafeHttpUrl(settings.brand_logo_url);
-        const lr = await fetch(safeLogoUrl);
-        if (lr.ok) {
-          const lbuf = new Uint8Array(await lr.arrayBuffer());
-          const lct = lr.headers.get("content-type") || "image/png";
-          const b64 = btoa(Array.from(lbuf).map(b => String.fromCharCode(b)).join(""));
-          logoDataUrl = `data:${lct};base64,${b64}`;
-        }
-      } catch (e) { console.warn("[logo-fetch]", e); }
+    if (identity.logoUrl) {
+      const safeLogoUrl = assertSafeHttpUrl(identity.logoUrl);
+      const logo = await fetchRequiredBrandLogo(safeLogoUrl);
+      const b64 = btoa(Array.from(logo.bytes).map((byte) => String.fromCharCode(byte)).join(""));
+      logoDataUrl = `data:${logo.contentType};base64,${b64}`;
     }
 
     // ── 3. Arte editorial do Feed (1080×1080 PNG com template overlay) ────────
@@ -1409,8 +1429,9 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
 
     try {
       let feedSvg: string;
-      const brandName  = settings?.brand_name  || "";
-      const brandHandle = settings?.brand_handle || brandName;
+      const brandName = identity.brandName;
+      const brandHandle = identity.brandHandle;
+      assertEditorialCopy(ai.title, ai.subtitle);
 
       if (activeFeedTemplate) {
         // Template customizado: busca background se houver URL
@@ -1455,15 +1476,18 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         .upload(editPath, editorialBytes, { contentType: "image/png", upsert: true });
       if (!editErr) {
         const { data: editPub } = supabase.storage.from("post-images").getPublicUrl(editPath);
-        generatedCoverUrl = editPub.publicUrl;
+        generatedCoverUrl = versionPublicAssetUrl(editPub.publicUrl, Date.now());
         editorialReady = true;
         console.log(`[editorial] Feed art gerada: ${editPath}`);
       } else {
-        console.warn("[editorial] Upload falhou:", editErr);
+        throw new Error(`Upload da arte editorial falhou: ${editErr.message}`);
       }
     } catch (e) {
-      // Falha na composição não é fatal — o scheduler usará a foto crua como fallback
-      console.warn("[editorial] Geração falhou (não fatal):", e instanceof Error ? e.message : e);
+      // Nunca publica uma composição parcial. O estado failed aciona o backoff
+      // existente e uma nova tentativa quando fonte/logo/CDN se recuperarem.
+      const reason = e instanceof Error ? e.message : String(e);
+      console.error("[editorial] Geração bloqueada por integridade:", reason);
+      throw new Error(`Arte editorial incompleta: ${reason}`);
     }
 
     // ── 4. Capa do Reel (1080×1920 PNG) ─────────────────────────────────────
@@ -1483,8 +1507,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         rcSvg = customTemplateSvg({
           title: ai.title,
           subtitle: ai.subtitle,
-          brandHandle: settings?.brand_handle || settings?.brand_name || "",
-          brandName: settings?.brand_name || "",
+          brandHandle: identity.brandHandle,
+          brandName: identity.brandName,
           bgDataUrl,
           presetKey: activeVerticalTemplate.preset_key ?? null,
           config: templateConfig,
@@ -1496,8 +1520,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         rcSvg = reelCoverSvg({
           title: ai.title,
           hook: ai.hook || "URGENTE",
-          brandName: settings?.brand_name || "",
-          brandHandle: settings?.brand_handle || settings?.brand_name || "",
+          brandName: identity.brandName,
+          brandHandle: identity.brandHandle,
           logoDataUrl,
           photoDataUrl: rawPhotoDataUrl,
         });
@@ -1520,7 +1544,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
 
     const feedImageUrl = generatedCoverUrl || rawPub.publicUrl;
 
-    const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
+    const handle = identity.brandHandle;
     const followCta = handle ? `👉 SIGA @${handle} para mais notícias do dia` : "";
 
     // Override de hashtags por conta IG: se a conta tiver custom_hashtags

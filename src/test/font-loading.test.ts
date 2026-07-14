@@ -34,6 +34,21 @@ describe("font loading for automatic artwork", () => {
       arrayBuffer: async () => new ArrayBuffer(0),
     }));
 
-    await expect(loadInterFontBuffers(fetchFont)).rejects.toThrow("Nenhuma fonte compatível");
+    await expect(loadInterFontBuffers(fetchFont)).rejects.toThrow("Fonte Inter 900 indisponível");
+  });
+
+  it("fails closed when only one required font variation is available", async () => {
+    let call = 0;
+    const fetchFont = vi.fn(async () => {
+      call++;
+      const isFirstVariation = call === 1;
+      const bytes = isFirstVariation ? woff2() : new Uint8Array();
+      return {
+        ok: isFirstVariation,
+        arrayBuffer: async () => bytes.buffer,
+      };
+    });
+
+    await expect(loadInterFontBuffers(fetchFont)).rejects.toThrow("Fonte Inter 400 indisponível");
   });
 });

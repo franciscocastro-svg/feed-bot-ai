@@ -23,7 +23,8 @@ export function isWoff2Font(buffer: Uint8Array): boolean {
 export async function loadInterFontBuffers(fetchFont: FontFetch = fetch): Promise<Uint8Array[]> {
   const buffers: Uint8Array[] = [];
 
-  for (const candidates of INTER_FONT_CANDIDATES) {
+  for (const [variationIndex, candidates] of INTER_FONT_CANDIDATES.entries()) {
+    let loaded = false;
     for (const url of candidates) {
       try {
         const response = await fetchFont(url);
@@ -31,15 +32,17 @@ export async function loadInterFontBuffers(fetchFont: FontFetch = fetch): Promis
         const buffer = new Uint8Array(await response.arrayBuffer());
         if (!isWoff2Font(buffer)) continue;
         buffers.push(buffer);
+        loaded = true;
         break;
       } catch {
         // Tenta o próximo CDN da mesma variação da fonte.
       }
     }
-  }
 
-  if (buffers.length === 0) {
-    throw new Error("Nenhuma fonte compatível ficou disponível para compor a arte");
+    if (!loaded) {
+      const variation = variationIndex === 0 ? "900" : "400";
+      throw new Error(`Fonte Inter ${variation} indisponível para compor a arte`);
+    }
   }
 
   return buffers;

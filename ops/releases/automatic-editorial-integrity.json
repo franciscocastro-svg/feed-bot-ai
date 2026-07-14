@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "release": "automatic-editorial-integrity-hotfix",
+  "affectedFunctions": ["process-news"],
+  "validation": [
+    "npm run ci",
+    "deno check --frozen --config supabase/functions/process-news/deno.json --lock supabase/functions/process-news/deno.lock supabase/functions/process-news/index.ts"
+  ],
+  "constraints": {
+    "databaseMigrations": false,
+    "frontendPublish": false,
+    "otherEdgeFunctions": false,
+    "manualFunctionInvocation": false,
+    "regeneratePublishedPosts": false
+  }
+}
