@@ -502,7 +502,7 @@ Deno.serve(async (req) => {
         }
         const lastPostedByAccount = new Map<string, number>();
         for (const row of postedRows) {
-          if (!row.instagram_account_id || lastPostedByAccount.has(row.instagram_account_id)) continue;
+          if (!row.instagram_account_id || !row.posted_at || lastPostedByAccount.has(row.instagram_account_id)) continue;
           lastPostedByAccount.set(row.instagram_account_id, new Date(row.posted_at).getTime());
         }
         const canPrepareAccount = (accountId: string) => shouldPrepareNextPost(
