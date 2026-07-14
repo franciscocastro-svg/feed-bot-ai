@@ -1,6 +1,7 @@
 // Gera um post avulso a partir de um tema livre digitado pelo cliente.
 // Não cadastra pauta, vai direto pra news_items com content_type='topic'.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { generateTopicJson } from "../_shared/topic-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,27 +68,11 @@ REGRAS:
 
 Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"..."}`;
 
-    const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Tema: "${theme}"\nGere o post no formato ${format}.` },
-        ],
-        response_format: { type: "json_object" },
-      }),
+    const generated = await generateTopicJson({
+      systemPrompt,
+      userPrompt: `Tema: "${theme}"\nGere o post no formato ${format}.`,
     });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      if (res.status === 402) return new Response(JSON.stringify({ error: "Sem créditos de IA.", code: "no_credits" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (res.status === 429) return new Response(JSON.stringify({ error: "Rate limit, tente em alguns segundos.", code: "rate_limited" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI ${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const data = await res.json();
-    const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    const parsed = generated.content;
 
     const insertRow: any = {
       user_id: user.id,
@@ -118,14 +103,16 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
       action: "generate_from_prompt",
       entity_type: "news_item",
       entity_id: inserted.id,
-      details: { theme, format },
+      details: { theme, format, ai_provider: generated.provider, ai_model: generated.model },
     });
 
-    return new Response(JSON.stringify({ ok: true, news_item_id: inserted.id }), {
+    return new Response(JSON.stringify({ ok: true, news_item_id: inserted.id, ai_provider: generated.provider }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error(e);
-    return new Response(JSON.stringify({ error: e?.message || "unknown" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const code = typeof e?.code === "string" ? e.code : null;
+    const expected = code === "no_provider" || code === "no_credits" || code === "ai_unavailable";
+    return new Response(JSON.stringify({ error: e?.message || "unknown", code }), { status: expected ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

@@ -1,6 +1,7 @@
 // Gera um item de conteúdo a partir de uma "pauta" cadastrada pelo usuário.
 // Não substitui o fluxo de notícias; insere em news_items com content_type='topic'.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { generateTopicJson } from "../_shared/topic-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,6 @@ const FORMAT_GUIDE: Record<string, string> = {
 };
 
 async function generateContent(topic: any, format: string, settings: any, profile: any) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
   const guide = FORMAT_GUIDE[format] || FORMAT_GUIDE.dica;
   const tone = profile?.voice_tone || settings?.ai_tone || "engajante e descontraído";
   const niche = profile?.niche_detail || settings?.default_niche || "";
@@ -68,40 +68,15 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
 
   const userPrompt = `Pauta: "${topic.title}"\nGere o conteúdo no formato ${format}.`;
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    if (res.status === 402) {
-      const err: any = new Error("Sem créditos de IA — adicione créditos em Configurações da Workspace para gerar conteúdo a partir de pautas.");
-      err.code = "no_credits";
-      throw err;
-    }
-    if (res.status === 429) {
-      const err: any = new Error("Limite de requisições atingido. Tente novamente em alguns segundos.");
-      err.code = "rate_limited";
-      throw err;
-    }
-    throw new Error(`AI ${res.status}: ${txt.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content || "{}";
-  const parsed = JSON.parse(content);
+  const generated = await generateTopicJson({ systemPrompt, userPrompt });
+  const parsed = generated.content;
   return {
     title: String(parsed.title || topic.title).slice(0, 200),
     caption: String(parsed.caption || ""),
     hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 20) : [],
     cover_text: String(parsed.cover_text || parsed.title || topic.title).slice(0, 120),
+    ai_provider: generated.provider,
+    ai_model: generated.model,
   };
 }
 
@@ -221,7 +196,7 @@ Deno.serve(async (req) => {
       action: "generate_from_topic",
       entity_type: "news_item",
       entity_id: inserted.id,
-      details: { topic_id: topic.id, format, title: generated.title },
+      details: { topic_id: topic.id, format, title: generated.title, ai_provider: generated.ai_provider, ai_model: generated.ai_model },
     });
 
     return new Response(JSON.stringify({ ok: true, news_item_id: inserted.id, format, topic_id: topic.id }), {
@@ -232,7 +207,10 @@ Deno.serve(async (req) => {
     const msg = e instanceof Error ? e.message : "unknown";
     const code = e?.code || null;
     // Fix: status HTTP semântico (não retornar 200 para erros)
-    const status = code === "no_credits" ? 402 : code === "rate_limited" ? 429 : 500;
+    const status = code === "no_credits" ? 402
+      : code === "rate_limited" ? 429
+      : code === "no_provider" || code === "ai_unavailable" ? 503
+      : 500;
     return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
