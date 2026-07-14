@@ -643,7 +643,9 @@ export default function Sources() {
     }
     const diagnostics = result.diagnostics || {};
     const relaxedPreview = Boolean(diagnostics.relaxed_preview);
-    const routeLabel = diagnostics.resolved_via === "domain_search"
+    const routeLabel = diagnostics.resolved_provider === "bing_news"
+      ? "busca alternativa"
+      : diagnostics.resolved_via === "domain_search"
       ? "google news"
       : diagnostics.resolved_via === "search_variant"
         ? "busca extra"

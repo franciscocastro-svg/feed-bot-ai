@@ -353,12 +353,28 @@ Deno.serve(async (req) => {
         const targetIgs: (string | null)[] = linkedIgIds.length > 0 ? uniqueIgIds(linkedIgIds) : [null];
         const distributor = await createInstagramDistributor(supabase, userId, targetIgs);
 
-        fetchUrl = buildSourceFetchUrl(source);
-        const raw = await fetchTextSmart(fetchUrl);
-        const parsed = parseSourceItems(raw.text, raw.finalUrl || fetchUrl);
-        const filtered = filterItemsForSource(parsed.items, { ...source, url: fetchUrl }, parsed.parseType, 5);
-        diagnostics = filtered.diagnostics;
-        selectedItems = filtered.items;
+        const sourceKind = inferSourceKind(source);
+        if (["person", "topic", "google_news"].includes(sourceKind)) {
+          const searchResult = await previewSource(source, 5);
+          fetchUrl = searchResult.final_url || searchResult.url || buildSourceFetchUrl(source);
+          diagnostics = searchResult.diagnostics;
+          selectedItems = (searchResult.sample_items || []).map((item) => ({
+            title: item.title,
+            link: item.url,
+            description: item.description || "",
+            pubDate: item.published_at || undefined,
+            image: item.image || null,
+            sourceType: item.source_type === "atom" || item.source_type === "html" ? item.source_type : "rss",
+            _score: item.score || 0,
+          }));
+        } else {
+          fetchUrl = buildSourceFetchUrl(source);
+          const raw = await fetchTextSmart(fetchUrl);
+          const parsed = parseSourceItems(raw.text, raw.finalUrl || fetchUrl);
+          const filtered = filterItemsForSource(parsed.items, { ...source, url: fetchUrl }, parsed.parseType, 5);
+          diagnostics = filtered.diagnostics;
+          selectedItems = filtered.items;
+        }
 
         for (const item of selectedItems) {
           const isListingItem = !!item._htmlListing;

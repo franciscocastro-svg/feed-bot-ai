@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertSafeHttpUrl,
+  buildBingNewsSearchUrl,
   buildSearchQueryVariants,
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
@@ -109,6 +110,15 @@ describe("source capture utilities", () => {
 
     expect(url).toContain("news.google.com/rss/search");
     expect(decodeURIComponent(url)).toContain('"Neymar" Santos -fake');
+  });
+
+  it("builds a localized Bing News RSS fallback URL", () => {
+    const url = buildBingNewsSearchUrl("Neymar Santos", "BR", "pt-BR");
+
+    expect(url).toContain("bing.com/news/search");
+    expect(url).toContain("format=rss");
+    expect(url).toContain("setlang=pt-BR");
+    expect(url).toContain("cc=BR");
   });
 
   it("builds broader query variants for topic sources", () => {
@@ -240,6 +250,44 @@ describe("source capture utilities", () => {
     expect(result.valid).toBe(true);
     expect(result.diagnostics.relaxed_preview).toBe(true);
     expect(result.sample_items?.[0]?.title).toContain("Celebridade");
+  });
+
+  it("retries a transient Google News failure and falls back to Bing News", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("news.google.com")) {
+        return new Response("temporariamente indisponível", { status: 503 });
+      }
+      return new Response(`
+        <rss><channel>
+          <item>
+            <title>Neymar anuncia novidade importante na carreira</title>
+            <link>https://example.com/esportes/neymar-novidade</link>
+            <description>Notícia recente sobre Neymar e sua carreira.</description>
+            <pubDate>${new Date().toUTCString()}</pubDate>
+          </item>
+        </channel></rss>
+      `, {
+        status: 200,
+        headers: { "content-type": "application/rss+xml; charset=utf-8" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await previewSource({
+      source_kind: "person",
+      query: "Neymar",
+      include_terms: ["Neymar Jr"],
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics.resolved_via).toBe("search_fallback");
+    expect(result.diagnostics.resolved_provider).toBe("bing_news");
+    expect(result.sample_items[0].title).toContain("Neymar");
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("news.google.com"))).toHaveLength(2);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("bing.com/news/search"))).toBe(true);
   });
 
   it("previews a discovered feed candidate when the site page has no items", async () => {

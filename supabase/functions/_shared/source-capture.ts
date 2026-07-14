@@ -40,8 +40,9 @@ export type SourceDiagnostics = {
   filtered_missing_required_terms: number;
   warnings: string[];
   relaxed_preview?: boolean;
-  resolved_via?: "direct" | "feed_candidate" | "search_variant" | "domain_search";
+  resolved_via?: "direct" | "feed_candidate" | "search_variant" | "search_fallback" | "domain_search";
   resolved_query?: string;
+  resolved_provider?: "google_news" | "bing_news";
 };
 
 export function createDiagnostics(parseType: SourceDiagnostics["parse_type"] = "none"): SourceDiagnostics {
@@ -189,23 +190,31 @@ async function readResponseBodyLimited(res: Response, maxBytes: number): Promise
 }
 
 export async function fetchTextSmart(url: string, timeoutMs = 15000): Promise<{ text: string; finalUrl: string; contentType: string }> {
-  let currentUrl = await assertPublicDns(url);
+  let currentUrl = url;
   let res: Response | null = null;
-  for (let redirectCount = 0; redirectCount <= 5; redirectCount++) {
-    res = await fetch(currentUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; FluxFeed/1.0)",
-        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
-      },
-      redirect: "manual",
-      signal: timeoutSignal(timeoutMs),
-    });
-    if (![301, 302, 303, 307, 308].includes(res.status)) break;
-    const location = res.headers.get("location");
-    if (!location) throw new Error("Redirecionamento da fonte sem destino");
-    if (redirectCount === 5) throw new Error("A fonte excedeu o limite de redirecionamentos");
-    currentUrl = await assertPublicDns(new URL(location, currentUrl).toString());
+  const transientStatuses = new Set([429, 500, 502, 503, 504]);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    currentUrl = await assertPublicDns(url);
+    res = null;
+    for (let redirectCount = 0; redirectCount <= 5; redirectCount++) {
+      res = await fetch(currentUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; FluxFeed/1.0)",
+          "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+        },
+        redirect: "manual",
+        signal: timeoutSignal(timeoutMs),
+      });
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get("location");
+      if (!location) throw new Error("Redirecionamento da fonte sem destino");
+      if (redirectCount === 5) throw new Error("A fonte excedeu o limite de redirecionamentos");
+      currentUrl = await assertPublicDns(new URL(location, currentUrl).toString());
+    }
+    if (!res || !transientStatuses.has(res.status) || attempt === 1) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (!res) throw new Error("Fonte não respondeu");
   if (!res.ok) throw new Error(`Fonte respondeu HTTP ${res.status}`);
@@ -495,6 +504,17 @@ export function buildGoogleNewsSearchUrl(query: string, country = "BR", language
   const gl = (country || "BR").toUpperCase();
   const ceidLang = gl === "BR" ? "pt-419" : hl.split("-")[0] || "en";
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query.trim())}&hl=${encodeURIComponent(hl)}&gl=${encodeURIComponent(gl)}&ceid=${encodeURIComponent(`${gl}:${ceidLang}`)}`;
+}
+
+export function buildBingNewsSearchUrl(query: string, country = "BR", language = "pt-BR"): string {
+  const market = language || ((country || "BR").toUpperCase() === "BR" ? "pt-BR" : "en-US");
+  const params = new URLSearchParams({
+    q: query.trim(),
+    format: "rss",
+    setlang: market,
+    cc: (country || "BR").toUpperCase(),
+  });
+  return `https://www.bing.com/news/search?${params.toString()}`;
 }
 
 export function buildSearchQuery(source: SourceLike): string {
@@ -1039,12 +1059,16 @@ async function buildSearchPreviewResponse(
   query: string,
   resolvedVia: NonNullable<SourceDiagnostics["resolved_via"]>,
   limit: number,
+  provider: "google_news" | "bing_news" = "google_news",
 ) {
-  const url = buildGoogleNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR");
+  const url = provider === "bing_news"
+    ? buildBingNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR")
+    : buildGoogleNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR");
   const raw = await fetchTextSmart(url);
   const parsed = parseSourceItems(raw.text, raw.finalUrl || url);
   const searchSource = { ...source, source_kind: "google_news" as SourceKind, query, url };
   const filtered = filterItemsForSource(parsed.items, searchSource, parsed.parseType, limit);
+  filtered.diagnostics.resolved_provider = provider;
   if (filtered.items.length > 0) {
     return buildPreviewResponse(
       true,
@@ -1059,6 +1083,7 @@ async function buildSearchPreviewResponse(
   }
 
   const relaxed = relaxedSearchPreviewItems(parsed.items, searchSource, parsed.parseType, limit);
+  relaxed.diagnostics.resolved_provider = provider;
   if (relaxed.items.length > 0) {
     return buildPreviewResponse(
       true,
@@ -1084,6 +1109,55 @@ async function buildSearchPreviewResponse(
   );
 }
 
+async function previewSearchSource(source: SourceLike, limit: number) {
+  const queries = buildSearchQueryVariants(source);
+  const firstQuery = queries[0] || buildSearchQuery(source);
+  if (!firstQuery) throw new Error("Fonte precisa de uma busca");
+
+  let lastResponse: Awaited<ReturnType<typeof buildSearchPreviewResponse>> | null = null;
+  const failures: string[] = [];
+
+  for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+    const query = queries[queryIndex];
+    for (const provider of ["google_news", "bing_news"] as const) {
+      try {
+        const resolvedVia = provider === "bing_news"
+          ? "search_fallback"
+          : queryIndex === 0 ? "direct" : "search_variant";
+        const response = await buildSearchPreviewResponse(source, query, resolvedVia, limit, provider);
+        lastResponse = response;
+        if (!response.valid) continue;
+        if (provider === "bing_news") {
+          response.diagnostics.warnings.unshift("A busca principal estava indisponível; usei uma rota alternativa de notícias.");
+        }
+        return response;
+      } catch (error) {
+        failures.push(error instanceof Error ? error.message : "Serviço de busca indisponível");
+      }
+    }
+  }
+
+  if (lastResponse) {
+    if (failures.length > 0) {
+      lastResponse.diagnostics.warnings.unshift("Uma das rotas de busca ficou indisponível e as alternativas não encontraram conteúdo aproveitável.");
+    }
+    return lastResponse;
+  }
+
+  const diagnostics = createDiagnostics("none");
+  diagnostics.warnings.push("Os serviços de busca de notícias estão temporariamente indisponíveis. Tente atualizar a prévia em alguns instantes.");
+  return buildPreviewResponse(
+    false,
+    buildGoogleNewsSearchUrl(firstQuery, source.country || "BR", source.language || "pt-BR"),
+    "",
+    "none",
+    [],
+    [],
+    [],
+    diagnostics,
+  );
+}
+
 function buildDomainSearchQuery(source: SourceLike, sourceUrl: string): string | null {
   try {
     const host = new URL(sourceUrl).hostname.replace(/^www\./i, "");
@@ -1096,6 +1170,8 @@ function buildDomainSearchQuery(source: SourceLike, sourceUrl: string): string |
 }
 
 export async function previewSource(source: SourceLike, limit = 5) {
+  if (isSearchSource(source)) return previewSearchSource(source, limit);
+
   const url = buildSourceFetchUrl(source);
   const raw = await fetchTextSmart(url);
   const parsed = parseSourceItems(raw.text, raw.finalUrl || url);
@@ -1115,32 +1191,6 @@ export async function previewSource(source: SourceLike, limit = 5) {
       feedCandidates,
       markDiagnostics(filtered.diagnostics, "direct"),
     );
-  }
-
-  if (isSearchSource(source)) {
-    const firstQuery = buildSearchQueryVariants(source)[0] || buildSearchQuery(source);
-    const relaxed = relaxedSearchPreviewItems(parsed.items, { ...source, url }, parsed.parseType, limit);
-    if (relaxed.items.length > 0) {
-      return buildPreviewResponse(
-        true,
-        url,
-        raw.finalUrl,
-        parsed.parseType,
-        parsed.items,
-        relaxed.items,
-        feedCandidates,
-        markDiagnostics(relaxed.diagnostics, "direct", firstQuery),
-      );
-    }
-
-    for (const query of buildSearchQueryVariants(source).slice(1)) {
-      try {
-        const response = await buildSearchPreviewResponse(source, query, "search_variant", limit);
-        if (response.valid) return response;
-      } catch {
-        // keep trying the next search variation
-      }
-    }
   }
 
   if (filtered.items.length === 0 && feedCandidates.length > 0) {
