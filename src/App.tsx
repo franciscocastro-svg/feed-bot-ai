@@ -8,7 +8,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
-import { MetaPixelTracker } from "@/components/MetaPixelTracker";
+import { AnalyticsConsentBanner } from "@/components/AnalyticsConsentBanner";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
 import Admin from "./pages/dashboard/Admin";
@@ -78,7 +79,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <MetaPixelTracker />
+          <AnalyticsTracker />
+          <AnalyticsConsentBanner />
           <AppErrorBoundary>
           <Suspense fallback={
             <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">

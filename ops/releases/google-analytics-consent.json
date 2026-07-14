@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "release": "google-analytics-consent",
+  "measurementId": "G-0PP4T02MH7",
+  "affectedSurface": ["frontend-public-pages"],
+  "validation": ["npm run ci", "npm audit --omit=dev --audit-level=moderate"],
+  "constraints": {
+    "databaseMigrations": false,
+    "edgeFunctionDeploys": false,
+    "databaseWrites": false,
+    "paymentChanges": false,
+    "dashboardTracking": false
+  }
+}

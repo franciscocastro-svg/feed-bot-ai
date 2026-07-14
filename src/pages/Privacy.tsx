@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { BrandLogo } from "@/components/BrandLogo";
+import { openAnalyticsConsentPreferences } from "@/lib/analyticsConsent";
 
 export default function Privacy() {
   return (
@@ -24,7 +25,7 @@ export default function Privacy() {
 
       <main className="container max-w-3xl py-16">
         <h1 className="font-display text-4xl font-bold mb-2">Política de Privacidade</h1>
-        <p className="text-sm text-muted-foreground mb-10">Última atualização: 06/07/2026</p>
+        <p className="text-sm text-muted-foreground mb-10">Última atualização: 14/07/2026</p>
 
         <section className="space-y-6 text-foreground/90 leading-relaxed">
           <div>
@@ -58,7 +59,16 @@ export default function Privacy() {
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">6. Cookies, Pixel e medição</h2>
-            <p>Usamos cookies essenciais para manter sua sessão e proteger sua conta. Também podemos usar Meta Pixel e Meta Conversions API para medir visitas, cadastros, eventos de conversão e desempenho de campanhas, sempre de acordo com as configurações disponíveis no navegador, dispositivo e plataformas de anúncios.</p>
+            <p>Usamos armazenamento e cookies essenciais para manter sua sessão, preservar preferências e proteger sua conta. Eles não podem ser desativados quando forem necessários ao funcionamento do serviço.</p>
+            <p className="mt-2">Com sua autorização, usamos Google Analytics e Meta Pixel para medir visitas às páginas públicas, cadastros, eventos de conversão e desempenho de campanhas. Essas ferramentas podem tratar informações técnicas, como página visitada, navegador, dispositivo, referência de origem e localização aproximada. Não enviamos a essas ferramentas senhas, dados de cartão, conteúdo do dashboard ou tokens das contas conectadas.</p>
+            <p className="mt-2">As ferramentas analíticas permanecem bloqueadas até sua escolha. Você pode recusar sem perder funcionalidades e alterar sua preferência a qualquer momento neste navegador.</p>
+            <button
+              type="button"
+              className="mt-3 text-sm font-medium text-primary underline underline-offset-4"
+              onClick={openAnalyticsConsentPreferences}
+            >
+              Gerenciar cookies analíticos
+            </button>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">7. Seus direitos (LGPD)</h2>

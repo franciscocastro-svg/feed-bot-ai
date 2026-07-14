@@ -1,3 +1,6 @@
+import { hasAnalyticsConsent } from "@/lib/analyticsConsent";
+import { sanitizeAnalyticsPath } from "@/lib/analyticsRoutes";
+
 const DEFAULT_META_PIXEL_ID = "802276099545966";
 const META_PIXEL_SCRIPT_ID = "fluxifeed-meta-pixel";
 
@@ -24,6 +27,11 @@ const getMetaPixelId = () => {
 
 let initializedPixelId: string | null = null;
 
+function isSafeMetaLocation(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.search === "" && sanitizeAnalyticsPath(window.location.pathname) !== null;
+}
+
 function createFbq() {
   if (window.fbq) return window.fbq;
 
@@ -46,11 +54,11 @@ function createFbq() {
   return fbq;
 }
 
-export function initMetaPixel() {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
+export function initMetaPixel(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined" || !hasAnalyticsConsent()) return false;
 
   const pixelId = getMetaPixelId();
-  if (!pixelId) return;
+  if (!pixelId) return false;
 
   const fbq = createFbq();
 
@@ -60,21 +68,32 @@ export function initMetaPixel() {
     script.async = true;
     script.src = "https://connect.facebook.net/en_US/fbevents.js";
     const firstScript = document.getElementsByTagName("script")[0];
-    firstScript?.parentNode?.insertBefore(script, firstScript);
+    if (firstScript?.parentNode) {
+      firstScript.parentNode.insertBefore(script, firstScript);
+    } else {
+      document.head.appendChild(script);
+    }
   }
 
   if (initializedPixelId !== pixelId) {
     fbq("init", pixelId);
     initializedPixelId = pixelId;
   }
+  fbq("consent", "grant");
+  return true;
 }
 
 export function trackMetaPageView() {
-  initMetaPixel();
+  if (!isSafeMetaLocation() || !initMetaPixel()) return;
   window.fbq?.("track", "PageView");
 }
 
 export function trackMetaEvent(eventName: string, payload?: Record<string, string | number | boolean>) {
-  initMetaPixel();
+  if (!isSafeMetaLocation() || !initMetaPixel()) return;
   window.fbq?.("track", eventName, payload || {});
+}
+
+export function revokeMetaPixelConsent() {
+  if (typeof window === "undefined" || !window.fbq) return;
+  window.fbq("consent", "revoke");
 }
