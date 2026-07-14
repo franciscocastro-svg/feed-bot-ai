@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { BrandLogo } from "@/components/BrandLogo";
+import { buildSupportWhatsAppUrl, SUPPORT_WHATSAPP_DISPLAY } from "@/lib/contact";
 
 export default function Terms() {
   return (
@@ -94,7 +95,7 @@ export default function Terms() {
           <div>
             <h2 className="text-2xl font-semibold mb-2">13. Contato</h2>
             <p>
-              Dúvidas sobre estes Termos: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou WhatsApp <a className="text-primary underline" href="https://wa.me/5561999052691">(61) 99905-2691</a>.
+              Dúvidas sobre estes Termos: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou WhatsApp <a className="text-primary underline" href={buildSupportWhatsAppUrl()}>{SUPPORT_WHATSAPP_DISPLAY}</a>.
             </p>
           </div>
         </section>

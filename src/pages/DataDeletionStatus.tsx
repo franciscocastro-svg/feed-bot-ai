@@ -4,6 +4,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { SEO } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { buildSupportWhatsAppUrl, SUPPORT_WHATSAPP_DISPLAY } from "@/lib/contact";
 
 export default function DataDeletionStatus() {
   const [searchParams] = useSearchParams();
@@ -44,7 +45,7 @@ export default function DataDeletionStatus() {
                 <h2 className="font-semibold text-foreground">Como solicitar</h2>
                 <ol className="mt-3 list-decimal space-y-2 pl-5">
                   <li>Acesse sua conta no Flux & Feed e desconecte as contas do Instagram que não deseja mais manter vinculadas.</li>
-                  <li>Envie uma solicitação para <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou pelo WhatsApp <a className="text-primary underline" href="https://wa.me/5561999052691">(61) 99905-2691</a>.</li>
+                  <li>Envie uma solicitação para <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou pelo WhatsApp <a className="text-primary underline" href={buildSupportWhatsAppUrl()}>{SUPPORT_WHATSAPP_DISPLAY}</a>.</li>
                   <li>Informe o email cadastrado na plataforma e, se aplicável, o @ da conta do Instagram conectada.</li>
                 </ol>
               </div>

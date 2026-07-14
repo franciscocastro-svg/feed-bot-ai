@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { BrandLogo } from "@/components/BrandLogo";
 import { openAnalyticsConsentPreferences } from "@/lib/analyticsConsent";
+import { buildSupportWhatsAppUrl, SUPPORT_WHATSAPP_DISPLAY } from "@/lib/contact";
 
 export default function Privacy() {
   return (
@@ -90,7 +91,7 @@ export default function Privacy() {
           <div>
             <h2 className="text-2xl font-semibold mb-2">11. Encarregado (DPO)</h2>
             <p>
-              Para exercer seus direitos ou tirar dúvidas: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou <a className="text-primary underline" href="https://wa.me/5561999052691">WhatsApp (61) 99905-2691</a>.
+              Para exercer seus direitos ou tirar dúvidas: <a className="text-primary underline" href="mailto:diassiscastroficial@gmail.com">diassiscastroficial@gmail.com</a> ou <a className="text-primary underline" href={buildSupportWhatsAppUrl()}>WhatsApp {SUPPORT_WHATSAPP_DISPLAY}</a>.
             </p>
           </div>
         </section>

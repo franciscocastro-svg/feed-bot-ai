@@ -13,9 +13,9 @@ import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { usePlanUsage } from "@/hooks/usePlanUsage";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
+import { buildSupportWhatsAppUrl } from "@/lib/contact";
 import { trackMetaEvent } from "@/lib/metaPixel";
 
-const WHATSAPP_BUSINESS = "5561999052691";
 type PlanLimit = Database["public"]["Tables"]["plan_limits"]["Row"];
 
 // Maps internal plan key -> Stripe price lookup_key
@@ -98,18 +98,6 @@ const ROADMAP_STATUS_STYLES: Record<string, string> = {
   Planejado: "border-primary/30 bg-primary/10 text-primary",
   "Em estudo": "border-amber-300/30 bg-amber-300/10 text-amber-300",
 };
-
-function parseWhatsAppNumber(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length < 10) return null;
-  return digits;
-}
-
-function whatsappLink(number: string, message = "Quero o plano Business"): string | null {
-  const digits = parseWhatsAppNumber(number);
-  if (!digits) return null;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
-}
 
 function formatPrice(brl: number | null | undefined, isNegotiable: boolean): string {
   if (isNegotiable) return "Sob consulta";
@@ -269,9 +257,7 @@ export default function Pricing() {
                       variant="outline"
                       className="w-full"
                       onClick={() => {
-                        const link = whatsappLink(WHATSAPP_BUSINESS);
-                        if (link) window.open(link, "_blank", "noopener,noreferrer");
-                        else toast.error("Número de WhatsApp inválido. Contate o suporte.");
+                        window.open(buildSupportWhatsAppUrl("Quero o plano Business"), "_blank", "noopener,noreferrer");
                       }}
                     >
                       <MessageCircle className="h-4 w-4 mr-2" /> Falar com vendas

@@ -13,6 +13,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { BrandLogo } from "@/components/BrandLogo";
+import { buildSupportWhatsAppUrl } from "@/lib/contact";
 import proofInstagramProfile from "@/assets/proof-instagram-profile.jpg";
 import proofInstagramInsights from "@/assets/proof-instagram-insights.jpg";
 import proofInstagramStories from "@/assets/proof-instagram-stories.jpg";
@@ -31,8 +32,7 @@ const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean 
   business: { label: "Falar com vendas", whatsapp: true },
 };
 const INSTAGRAM_URL = "https://www.instagram.com/fluxifeed?utm_source=qr&igsh=MXVkbHIxa3FwMWJ3YQ==";
-const WHATSAPP_CONTACT_URL =
-  "https://wa.me/5561999052691?text=Ol%C3%A1%21%20Quero%20saber%20mais%20sobre%20o%20Flux%20%26%20Feed.";
+const WHATSAPP_CONTACT_URL = buildSupportWhatsAppUrl("Olá! Quero saber mais sobre o Flux & Feed.");
 
 type LandingPlan = {
   plan: string;

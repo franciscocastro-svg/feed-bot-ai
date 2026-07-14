@@ -214,7 +214,7 @@ export default function Auth() {
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2"><Label>Nome completo</Label><Input value={name} onChange={e => setName(e.target.value)} maxLength={100} required /></div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={255} /></div>
-                <div className="space-y-2"><Label>WhatsApp</Label><Input type="tel" placeholder="+55 11 99999-9999" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required maxLength={20} /></div>
+                <div className="space-y-2"><Label>WhatsApp</Label><Input type="tel" placeholder="+55 61 99905-2691" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required maxLength={20} /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2"><Label>Cidade</Label><Input value={city} onChange={e => setCity(e.target.value)} required maxLength={100} /></div>
                   <div className="space-y-2"><Label>Estado</Label><Input value={stateUf} onChange={e => setStateUf(e.target.value)} required maxLength={100} /></div>
