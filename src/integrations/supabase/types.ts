@@ -1068,6 +1068,66 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_reconcile_runs: {
+        Row: {
+          divergences: number
+          duration_ms: number | null
+          edge_request_id: string | null
+          effects_recovered: number
+          environment: string
+          error_code: string | null
+          errors_count: number
+          finished_at: string | null
+          id: string
+          pg_net_request_id: number | null
+          queued_at: string
+          response_http_status: number | null
+          started_at: string | null
+          status: string
+          subs_scanned: number
+          subs_updated: number
+          trigger_source: string
+        }
+        Insert: {
+          divergences?: number
+          duration_ms?: number | null
+          edge_request_id?: string | null
+          effects_recovered?: number
+          environment: string
+          error_code?: string | null
+          errors_count?: number
+          finished_at?: string | null
+          id?: string
+          pg_net_request_id?: number | null
+          queued_at?: string
+          response_http_status?: number | null
+          started_at?: string | null
+          status?: string
+          subs_scanned?: number
+          subs_updated?: number
+          trigger_source?: string
+        }
+        Update: {
+          divergences?: number
+          duration_ms?: number | null
+          edge_request_id?: string | null
+          effects_recovered?: number
+          environment?: string
+          error_code?: string | null
+          errors_count?: number
+          finished_at?: string | null
+          id?: string
+          pg_net_request_id?: number | null
+          queued_at?: string
+          response_http_status?: number | null
+          started_at?: string | null
+          status?: string
+          subs_scanned?: number
+          subs_updated?: number
+          trigger_source?: string
+        }
+        Relationships: []
+      }
       payment_webhook_effects: {
         Row: {
           attempt_count: number
@@ -2563,6 +2623,14 @@ export type Database = {
           subscription_id: string
         }[]
       }
+      begin_payment_reconcile_run: {
+        Args: {
+          p_edge_request_id: string
+          p_environment: string
+          p_run_id: string
+        }
+        Returns: string
+      }
       can_create_resource: {
         Args: { _resource: string; _user_id: string }
         Returns: Json
@@ -2706,6 +2774,23 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      complete_payment_reconcile_run: {
+        Args: {
+          p_divergences: number
+          p_duration_ms: number
+          p_edge_request_id: string
+          p_effects_recovered: number
+          p_environment: string
+          p_error_code?: string
+          p_errors_count: number
+          p_response_http_status: number
+          p_run_id: string
+          p_status: string
+          p_subs_scanned: number
+          p_subs_updated: number
+        }
+        Returns: boolean
       }
       complete_payment_webhook_effect: {
         Args: {
@@ -3429,6 +3514,10 @@ export type Database = {
       delete_instagram_account_data: {
         Args: { _confirmation_code: string; _meta_user_id: string }
         Returns: Json
+      }
+      dispatch_payment_reconcile: {
+        Args: { p_environment: string }
+        Returns: string
       }
       email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
