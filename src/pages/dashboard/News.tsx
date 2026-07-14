@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PostCanvasEditor } from "@/components/PostCanvasEditor";
+import { statusLabelPt } from "@/lib/statusLabels";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-muted text-muted-foreground",
@@ -70,9 +71,8 @@ function feedPreviewUrl(item: any) {
 
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
   const globalMin = Math.max(10, Number(userSettings?.min_post_interval_minutes) || 10);
-  const channelMin = Math.max(globalMin, Number(channelSettings?.min_interval_minutes) || globalMin);
   const globalMs = globalMin * 60_000;
-  const channelMs = channelMin * 60_000;
+  const channelMs = globalMs;
   const allowedHours = Array.isArray(channelSettings?.allowed_hours) && channelSettings.allowed_hours.length
     ? channelSettings.allowed_hours.map(Number).filter((h: number) => h >= 0 && h <= 23)
     : Array.isArray(userSettings?.preferred_post_hours)
@@ -352,7 +352,7 @@ export default function News() {
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="flex-1 md:w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "all" ? "Todos status" : s}</SelectItem>)}</SelectContent>
+            <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "all" ? "Todos os estados" : statusLabelPt(s)}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="flex-1 md:w-[180px]"><SelectValue /></SelectTrigger>
@@ -412,7 +412,7 @@ export default function News() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <p className="font-medium leading-tight text-sm md:text-base line-clamp-3">{n.rewritten_title || n.original_title}</p>
-                    <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{n.status}</span>
+                    <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{statusLabelPt(n.status)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2 break-words">
                     {n.source_name} · {accountName(n.instagram_account_id)} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}

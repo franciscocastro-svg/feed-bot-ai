@@ -1468,14 +1468,15 @@ Deno.serve(async (req) => {
             .neq("id", p.id)
             .lte("scheduled_for", nextAt)
             .order("scheduled_for", { ascending: true });
-          for (let i = 0; i < (queuedSameAccount || []).length; i++) {
+          const queuedRows = queuedSameAccount || [];
+          for (let i = 0; i < queuedRows.length; i++) {
             const slot = nextSpacedSlot(new Date(nextAt).getTime(), takenTimes, stepMs);
             await supabase.from("scheduled_posts").update({
               scheduled_for: new Date(slot).toISOString(),
               error_message: isAppLimit
                 ? "Aguardando fim do limite de chamadas do app Instagram desta conta"
                 : "Aguardando fim do bloqueio temporário do Instagram nesta conta",
-            }).eq("id", queuedSameAccount[i].id);
+            }).eq("id", queuedRows[i].id);
             takenTimes.push(slot);
             takenTimes.sort((a: number, b: number) => a - b);
           }

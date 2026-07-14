@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { statusLabelPt } from "@/lib/statusLabels";
 import {
   LocalVideoCutSession,
   localDeviceCapability,
@@ -162,7 +163,7 @@ function statusLabel(status: string) {
     scheduled: "Agendado",
     discarded: "Descartado",
   };
-  return map[status] || status;
+  return map[status] || statusLabelPt(status);
 }
 
 function statusVariant(status: string): BadgeVariant {

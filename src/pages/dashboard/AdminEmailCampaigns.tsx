@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { CalendarClock, CheckCircle2, Eye, Loader2, Mail, Pencil, Plus, Send, Settings2, Trash2, Users, XCircle } from "lucide-react";
 import { formatBR } from "@/lib/utils";
+import { statusLabelPt } from "@/lib/statusLabels";
 
 type Campaign = {
   id: string; name: string; campaign_type: string; audience: string; subject: string;
@@ -144,7 +145,7 @@ export default function AdminEmailCampaigns() {
 
   const statusBadge = (status: string) => {
     const variant = status === "sent" ? "default" : status === "failed" ? "destructive" : "secondary";
-    return <Badge variant={variant}>{statusLabels[status] || status}</Badge>;
+    return <Badge variant={variant}>{statusLabels[status] || statusLabelPt(status)}</Badge>;
   };
 
   return (

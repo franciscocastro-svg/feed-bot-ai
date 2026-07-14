@@ -106,7 +106,7 @@ export function RoadmapCard({ totalClients }: { totalClients: number }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Map className="h-5 w-5 text-primary" />
-          Roadmap do produto
+          Planejamento do produto
         </CardTitle>
         <p className="text-sm text-muted-foreground mt-1">
           Três frentes que evoluem em paralelo: <strong>infraestrutura</strong> (quando escalar),{" "}

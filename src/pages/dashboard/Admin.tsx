@@ -22,6 +22,7 @@ import { AlertsCard } from "@/components/admin/AlertsCard";
 import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
 import { RoadmapCard } from "@/components/admin/RoadmapCard";
+import { statusLabelPt } from "@/lib/statusLabels";
 
 const TokenHealth = lazy(() => import("./TokenHealth"));
 const MetaApiHealth = lazy(() => import("./MetaApiHealth"));
@@ -63,7 +64,7 @@ const ADMIN_TABS = [
   { value: "releases", label: "Novidades", icon: Megaphone },
   { value: "email", label: "E-mail", icon: Mail },
   { value: "support", label: "Suporte", icon: LifeBuoy },
-  { value: "roadmap", label: "Roadmap", icon: MapIcon },
+  { value: "roadmap", label: "Planejamento", icon: MapIcon },
 ];
 
 type QuickFilter = "all" | "pending" | "paying" | "token_expiring" | "failing" | "blocked";
@@ -263,7 +264,7 @@ export default function Admin() {
         .order("created_at", { ascending: false })
         .limit(15),
       checkEndpoint("/health", "Site"),
-      checkEndpoint("/deploy-health", "Deploy"),
+      checkEndpoint("/deploy-health", "Implantação"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "posting"),
       supabase.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "awaiting_container"),
@@ -617,11 +618,11 @@ export default function Admin() {
 
   const statusBadge = (s: string) => {
     if (s === "active") return <Badge className="bg-green-600">Ativo</Badge>;
-    if (s === "trialing") return <Badge className="bg-blue-500">Trial</Badge>;
-    if (s === "past_due") return <Badge className="bg-orange-500">Atraso</Badge>;
+    if (s === "trialing") return <Badge className="bg-blue-500">Período de teste</Badge>;
+    if (s === "past_due") return <Badge className="bg-orange-500">Pagamento em atraso</Badge>;
     if (s === "blocked") return <Badge variant="destructive">Bloqueado</Badge>;
     if (s === "canceled") return <Badge variant="outline">Cancelado</Badge>;
-    return <Badge variant="outline">{s}</Badge>;
+    return <Badge variant="outline">{statusLabelPt(s)}</Badge>;
   };
 
   const toggleSort = (key: SortKey) => {
@@ -970,10 +971,10 @@ export default function Admin() {
                 <CardContent className="pt-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      {h.label === "Deploy" ? <Radio className="h-4 w-4" /> : <Server className="h-4 w-4" />}
+                      {h.label === "Implantação" ? <Radio className="h-4 w-4" /> : <Server className="h-4 w-4" />}
                     </div>
                     <Badge className={h.status === "online" ? "bg-green-600" : "bg-destructive"}>
-                      {h.status === "online" ? "Online" : "Offline"}
+                      {h.status === "online" ? "Disponível" : "Fora do ar"}
                     </Badge>
                   </div>
                   <div>
@@ -1587,8 +1588,8 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
           <div className="space-y-5 mt-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="capitalize">{row.plan}</Badge>
-              <Badge variant="outline">{row.sub_status}</Badge>
-              <Badge variant="outline">{row.approval_status}</Badge>
+              <Badge variant="outline">{statusLabelPt(row.sub_status)}</Badge>
+              <Badge variant="outline">{statusLabelPt(row.approval_status)}</Badge>
               <div className="ml-auto flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => onImpersonate(row.user_id)} title="Gera link mágico de acesso">
                   <LogIn className="h-3.5 w-3.5 mr-1"/> Logar como
@@ -1625,7 +1626,7 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
                     <div key={s.id} className="text-xs border-b border-border/50 py-1">
                       <div className="flex justify-between">
                         <span className="font-medium">{s.name}</span>
-                        {!s.active && <Badge variant="outline" className="text-[10px]">off</Badge>}
+                        {!s.active && <Badge variant="outline" className="text-[10px]">Inativa</Badge>}
                       </div>
                       <div className="text-muted-foreground line-clamp-1">{s.url}</div>
                     </div>
@@ -1642,7 +1643,7 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
                     <div key={p.id} className="text-xs border-b border-border/50 py-1">
                       <div className="flex justify-between gap-2">
                         <span className="line-clamp-1 flex-1">{p.news_items?.rewritten_title || "—"}</span>
-                        <Badge variant="outline" className="text-[10px] shrink-0">{p.status}</Badge>
+                        <Badge variant="outline" className="text-[10px] shrink-0">{statusLabelPt(p.status)}</Badge>
                       </div>
                       <div className="text-muted-foreground text-[10px]">{p.media_type} · {new Date(p.scheduled_for).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</div>
                       {p.error_message && <div className="text-destructive line-clamp-1">{p.error_message}</div>}

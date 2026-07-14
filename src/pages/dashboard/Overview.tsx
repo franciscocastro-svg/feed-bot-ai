@@ -22,6 +22,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
+import { statusLabelPt } from "@/lib/statusLabels";
 
 type NewsSummary = {
   id: string;
@@ -521,7 +522,7 @@ export default function Overview() {
                     <div key={n.id} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-secondary/40 transition-colors">
                       <span className="text-xs text-foreground/90 truncate flex-1 min-w-0">{n.rewritten_title || n.original_title}</span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border shrink-0 ${cls}`}>
-                        {n.status}
+                        {statusLabelPt(n.status)}
                       </span>
                     </div>
                   );

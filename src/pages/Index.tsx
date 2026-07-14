@@ -450,7 +450,7 @@ export default function Index() {
                     <div className="text-sm font-semibold text-foreground">Central de operação</div>
                     <div className="text-xs text-muted-foreground">Conteúdo, agenda e publicação por conta</div>
                   </div>
-                  <span className="hidden rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">Online</span>
+                  <span className="hidden rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">Disponível</span>
                 </div>
                 <div className="grid gap-4 p-3 sm:p-5">
                   <div className="rounded-xl border border-border/60 bg-background/70 p-4">

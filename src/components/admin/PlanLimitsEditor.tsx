@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 const NUM_FIELDS: { key: string; label: string; hint?: string }[] = [
   { key: "price_brl", label: "Preço (BRL)" },
-  { key: "trial_days", label: "Trial (dias)" },
+  { key: "trial_days", label: "Período de teste (dias)" },
   { key: "max_ig_accounts", label: "Contas IG", hint: "-1 = ilimitado" },
   { key: "max_posts_per_day", label: "Posts/dia", hint: "-1 = ilimitado" },
   { key: "max_rss_sources", label: "Fontes RSS", hint: "-1 = ilimitado" },
