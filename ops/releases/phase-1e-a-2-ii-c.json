@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "release": "phase-1e-a-2-ii-c",
+  "description": "Recover dual-environment checkout activation and environment-scoped e-mail verification without creating or replaying payments.",
+  "affectedFunctions": [
+    "payments-webhook",
+    "send-verification-code",
+    "verify-code"
+  ],
+  "migration": "supabase/migrations/20260714170000_phase_1e_a_2_checkout_dual_env_hotfix.sql",
+  "frontendFiles": [
+    "src/pages/CheckoutReturn.tsx",
+    "src/components/ProtectedRoute.tsx",
+    "src/hooks/useSubscriptionStatus.tsx",
+    "src/pages/VerifyEmail.tsx",
+    "src/pages/dashboard/Admin.tsx"
+  ],
+  "deploymentOrder": [
+    "run npm run ci, the secret scanner, and deno check for the three affected Edge Functions",
+    "verify required secret names without reading their values",
+    "deploy send-verification-code, verify-code, and payments-webhook from this exact commit",
+    "publish the frontend from this exact commit",
+    "apply 20260714170000_phase_1e_a_2_checkout_dual_env_hotfix.sql",
+    "do not invoke checkout, payment functions, Stripe events, verification delivery, or manual replay",
+    "wait for Stripe automatic retry and perform an aggregate read-only audit"
+  ],
+  "releaseConstraints": {
+    "createCheckout": false,
+    "manualStripeReplay": false,
+    "manualFunctionInvocation": false,
+    "customerDataMutationOutsideMigration": false,
+    "advanceToPhase1EA2iii": false
+  }
+}

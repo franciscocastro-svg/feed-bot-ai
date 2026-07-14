@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { trackMetaEvent } from "@/lib/metaPixel";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 const codeSchema = z.string().regex(/^\d{6}$/, "Digite os 6 números do código");
 
@@ -39,7 +40,9 @@ export default function VerifyEmail() {
     const parsed = codeSchema.safeParse(code);
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("verify-code", { body: { code: parsed.data } });
+    const { data, error } = await supabase.functions.invoke("verify-code", {
+      body: { code: parsed.data, environment: getStripeEnvironment() },
+    });
     setLoading(false);
     if (error) return toast.error("Não foi possível verificar agora. Tente novamente.");
     const res = data as { ok: boolean; error?: string; retry_after?: number; already?: boolean } | null;
@@ -59,7 +62,9 @@ export default function VerifyEmail() {
   const resend = async () => {
     if (cooldown > 0) return;
     setResending(true);
-    const { data, error } = await supabase.functions.invoke("send-verification-code", { body: {} });
+    const { data, error } = await supabase.functions.invoke("send-verification-code", {
+      body: { environment: getStripeEnvironment() },
+    });
     setResending(false);
     if (error) return toast.error("Não foi possível reenviar agora.");
     const res = data as { ok: boolean; error?: string; retry_after?: number } | null;

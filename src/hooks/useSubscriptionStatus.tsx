@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 export interface SubscriptionStatus {
   plan: string;
@@ -21,8 +22,31 @@ export function useSubscriptionStatus() {
 
   const refetch = useCallback(async () => {
     if (!user) { setStatus(null); setLoading(false); return; }
-    const { data } = await supabase.rpc("get_subscription_status", { _user_id: user.id });
-    setStatus((data as any)?.[0] || null);
+    const { data, error } = await supabase.rpc("compute_subscription_access", {
+      _user_id: user.id,
+      _environment: getStripeEnvironment(),
+    });
+    const access = data?.[0];
+    if (error || !access) {
+      setStatus(null);
+      setLoading(false);
+      return;
+    }
+    const periodEnd = access.current_period_end;
+    const daysRemaining = periodEnd
+      ? Math.max(0, Math.ceil((new Date(periodEnd).getTime() - Date.now()) / 86_400_000))
+      : null;
+    setStatus({
+      plan: access.effective_plan,
+      effective_plan: access.effective_plan,
+      status: access.status || "inactive",
+      approval_status: access.approval_status || "pending_payment",
+      current_period_end: periodEnd,
+      cancel_at_period_end: access.cancel_at_period_end,
+      days_remaining: daysRemaining,
+      is_trial: access.status === "trialing",
+      is_expired: ["expired", "past_due_expired", "refunded", "access_frozen"].includes(access.reason),
+    });
     setLoading(false);
   }, [user]);
 

@@ -23,6 +23,7 @@ import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
 import { RoadmapCard } from "@/components/admin/RoadmapCard";
 import { statusLabelPt } from "@/lib/statusLabels";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 const TokenHealth = lazy(() => import("./TokenHealth"));
 const MetaApiHealth = lazy(() => import("./MetaApiHealth"));
@@ -500,9 +501,14 @@ export default function Admin() {
   };
 
   const setApproval = async (uid: string, status: "approved" | "rejected" | "pending") => {
-    const { error } = await supabase.from("user_subscriptions")
-      .upsert({ user_id: uid, approval_status: status }, { onConflict: "user_id" });
+    const { data, error } = await supabase.from("user_subscriptions")
+      .update({ approval_status: status })
+      .eq("user_id", uid)
+      .eq("environment", getStripeEnvironment())
+      .eq("terminal_state", false)
+      .select("id");
     if (error) toast.error(error.message);
+    else if (!data?.length) toast.error("Assinatura não encontrada neste ambiente.");
     else {
       toast.success(status === "approved" ? "Usuário aprovado" : status === "rejected" ? "Usuário rejeitado" : "Voltou pra pendente");
       load();
@@ -512,19 +518,27 @@ export default function Admin() {
   const bulkApprove = async (status: "approved" | "rejected") => {
     if (selected.size === 0) return;
     const ids = [...selected];
-    const rows = ids.map(id => ({ user_id: id, approval_status: status }));
-    const { error } = await supabase.from("user_subscriptions").upsert(rows, { onConflict: "user_id" });
+    const { data, error } = await supabase.from("user_subscriptions")
+      .update({ approval_status: status })
+      .in("user_id", ids)
+      .eq("environment", getStripeEnvironment())
+      .eq("terminal_state", false)
+      .select("id");
     if (error) toast.error(error.message);
-    else { toast.success(`${ids.length} usuário(s) atualizados`); setSelected(new Set()); load(); }
+    else { toast.success(`${data?.length || 0} usuário(s) atualizados`); setSelected(new Set()); load(); }
   };
 
   const bulkChangePlan = async () => {
     if (selected.size === 0) return;
     const ids = [...selected];
-    const rows = ids.map(id => ({ user_id: id, plan: bulkPlan }));
-    const { error } = await supabase.from("user_subscriptions").upsert(rows, { onConflict: "user_id" });
+    const { data, error } = await supabase.from("user_subscriptions")
+      .update({ plan: bulkPlan })
+      .in("user_id", ids)
+      .eq("environment", getStripeEnvironment())
+      .eq("terminal_state", false)
+      .select("id");
     if (error) toast.error(error.message);
-    else { toast.success(`Plano alterado para ${ids.length} usuário(s)`); setSelected(new Set()); setBulkOpen(false); load(); }
+    else { toast.success(`Plano alterado para ${data?.length || 0} usuário(s)`); setSelected(new Set()); setBulkOpen(false); load(); }
   };
 
   const toggleSelect = (uid: string) => {
@@ -561,14 +575,18 @@ export default function Admin() {
 
   const saveEdit = async () => {
     if (!editing) return;
-    const { error } = await supabase.from("user_subscriptions").upsert({
-      user_id: editing.user_id,
+    const { data, error } = await supabase.from("user_subscriptions").update({
       plan: editPlan,
       status: editStatus,
       expires_at: editExpires ? new Date(editExpires).toISOString() : null,
       notes: editNotes || null,
-    }, { onConflict: "user_id" });
+    })
+      .eq("user_id", editing.user_id)
+      .eq("environment", getStripeEnvironment())
+      .eq("terminal_state", false)
+      .select("id");
     if (error) toast.error(error.message);
+    else if (!data?.length) toast.error("Assinatura não encontrada neste ambiente.");
     else { toast.success("Atualizado"); setEditing(null); load(); }
   };
 

@@ -20,6 +20,17 @@ Deno.serve(async (req) => {
     }
     const body = await req.json().catch(() => ({}));
     const code = typeof body?.code === "string" ? body.code.trim() : "";
+    const environment = body?.environment === "live"
+      ? "live"
+      : body?.environment === "sandbox"
+        ? "sandbox"
+        : null;
+    if (!environment) {
+      return new Response(JSON.stringify({ ok: false, error: "invalid_environment" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (!/^\d{6}$/.test(code)) {
       return new Response(JSON.stringify({ ok: false, error: "invalid_code" }), {
         status: 200,
@@ -31,7 +42,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: auth } } },
     );
-    const { data, error } = await client.rpc("verify_email_code", { _code: code });
+    const { data, error } = await client.rpc("verify_email_code", {
+      _code: code,
+      _environment: environment,
+    });
     if (error) {
       console.error("verify_email_code rpc error", error.message);
       return new Response(JSON.stringify({ ok: false, error: "internal_error" }), {

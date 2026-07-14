@@ -62,6 +62,33 @@ async function tryClaimEffect(
   return { ok: data === true };
 }
 
+async function deliverVerificationCode(userId: string, env: StripeEnv): Promise<void> {
+  const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!internalSecret || !supabaseUrl || !serviceKey) {
+    throw Object.assign(new Error("verification_delivery_not_configured"), {
+      code: "verification_delivery_not_configured",
+    });
+  }
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-verification-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": internalSecret,
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify({ user_id: userId, environment: env }),
+  });
+  const payload = await response.json().catch(() => null) as { ok?: boolean } | null;
+  if (!response.ok || payload?.ok !== true) {
+    throw Object.assign(new Error("verification_delivery_failed"), {
+      code: `verification_delivery_${response.status}`,
+    });
+  }
+}
+
 async function sendMetaConversionEvent(
   eventName: "StartTrial" | "Purchase",
   params: {
@@ -309,33 +336,20 @@ Deno.serve(async (req) => {
         }
 
         if (paidStatus && !alreadyApproved) {
+          // Email delivery must be accepted before the durable effect is marked
+          // completed. A provider failure leaves the webhook failed so Stripe's
+          // normal retry can recover it; no manual replay is needed here.
+          await deliverVerificationCode(userId, env);
           const emailClaim = await tryClaimEffect(env, event.id, "send_verification_code", requestId);
           if (emailClaim.error) {
             const { error_code } = classifyError(emailClaim.error);
             throw Object.assign(new Error("effect_claim_failed"), { code: error_code });
           }
-          if (emailClaim.ok) {
-            try {
-              const internalSecret = Deno.env.get("INTERNAL_CRON_SECRET");
-              if (internalSecret) {
-                await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-verification-code`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "x-internal-secret": internalSecret,
-                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                  },
-                  body: JSON.stringify({ user_id: userId }),
-                });
-              } else {
-                log.warn("internal_cron_secret_missing", { environment: env });
-              }
-            } catch (err) {
-              // Non-fatal for the webhook; the outbox row keeps us from retrying.
-              const { error_code } = classifyError(err);
-              log.error("send_verification_code_failed", { environment: env, error_code });
-            }
-          }
+          log.info("verification_code_delivery_recorded", {
+            environment: env,
+            event_id: event.id,
+            status: emailClaim.ok ? "effect_created" : "effect_already_recorded",
+          });
         }
         break;
       }
@@ -490,4 +504,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

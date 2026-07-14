@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 export default function CheckoutReturn() {
   const [params] = useSearchParams();
@@ -21,13 +22,23 @@ export default function CheckoutReturn() {
     // signal that unblocks the verification code email.
     let cancelled = false;
     const started = Date.now();
+    const environment = getStripeEnvironment();
     const tick = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_subscriptions")
         .select("approval_status")
         .eq("user_id", user.id)
+        .eq("environment", environment)
+        .eq("terminal_state", false)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (cancelled) return;
+      if (error) {
+        if (Date.now() - started > 45_000) { setStatus("timeout"); return; }
+        setTimeout(tick, 2000);
+        return;
+      }
       const s = data?.approval_status;
       if (s === "approved") { setStatus("approved"); setTimeout(() => navigate("/dashboard", { replace: true }), 800); return; }
       if (s === "pending_email_verification") { setStatus("verify"); setTimeout(() => navigate("/verify-email", { replace: true }), 400); return; }

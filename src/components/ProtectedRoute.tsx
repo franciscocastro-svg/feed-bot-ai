@@ -4,12 +4,15 @@ import { Loader2, MailCheck, XCircle, CreditCard, ShieldCheck } from "lucide-rea
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 type SubscriptionAccess = {
-  plan: string;
+  has_access: boolean;
   effective_plan: string;
   status: string;
-  is_expired: boolean;
+  approval_status: string;
+  reason: string;
+  subscription_id: string | null;
 } | null;
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -39,18 +42,21 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        const [{ data: approvalData }, { data: subscriptionData }] = await Promise.all([
-          supabase.from("user_subscriptions").select("approval_status").eq("user_id", user.id).maybeSingle(),
-          supabase.rpc("get_subscription_status", { _user_id: user.id }),
-        ]);
+        const environment = getStripeEnvironment();
+        const { data: subscriptionData, error: subscriptionError } = await supabase.rpc(
+          "compute_subscription_access",
+          { _user_id: user.id, _environment: environment },
+        );
         if (cancelled) return;
+        if (subscriptionError) throw subscriptionError;
 
-        const status = approvalData?.approval_status || "pending_payment";
+        const access = subscriptionData?.[0] || null;
+        const status = access?.approval_status || "pending_payment";
         setApproval(
           status === "approved" ? "approved" :
           status === "rejected" || status === "blocked" ? "rejected" : "pending"
         );
-        setSubscription((subscriptionData as any)?.[0] || null);
+        setSubscription(access);
       } catch {
         if (cancelled) return;
         // Never leave a signed-in customer trapped behind an endless loader.
@@ -85,11 +91,10 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const hasCardBackedAccess =
     isAdmin ||
     (!!subscription &&
-      subscription.plan !== "free" &&
-      subscription.effective_plan !== "free" &&
-      subscription.effective_plan !== "expired" &&
-      !subscription.is_expired &&
-      ["trialing", "active"].includes(subscription.status));
+      (subscription.has_access ||
+        (!!subscription.subscription_id &&
+          ["trialing", "active", "past_due"].includes(subscription.status) &&
+          ["email_not_verified", "pending_approval"].includes(subscription.reason))));
 
   if (!hasCardBackedAccess) {
     return (
