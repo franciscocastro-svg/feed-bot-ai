@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { templateGradientSvg } from "../_shared/template-gradients.js";
+import { protectedPhotoSvg } from "../_shared/image-framing.js";
 import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
 import { loadInterFontBuffers } from "../_shared/font-loading.ts";
 import {
@@ -1046,7 +1047,7 @@ function templateSvg(opts: {
   <text font-family="Inter, Arial, sans-serif" font-size="56" font-weight="900" fill="#000" letter-spacing="-2">${titleTspans}</text>
   <text font-family="Inter, Arial, sans-serif" font-size="24" font-weight="500" fill="#52525B">${teaserTspans}</text>
   ${photoDataUrl
-    ? `<image href="${photoDataUrl}" x="0" y="${photoY}" width="1080" height="${photoH}" preserveAspectRatio="xMidYMid slice"/>`
+    ? protectedPhotoSvg({ href: photoDataUrl, x: 0, y: photoY, width: 1080, height: photoH, id: "feed-photo" })
     : `<rect x="0" y="${photoY}" width="1080" height="${photoH}" fill="url(#fallbackBg)"/>
        <text x="540" y="${photoY + photoH/2 - 20}" font-family="Inter, Arial, sans-serif" font-size="64" font-weight="900" fill="#FFF" text-anchor="middle" letter-spacing="-1">@${escapeXml(handle.toUpperCase())}</text>
        <text x="540" y="${photoY + photoH/2 + 40}" font-family="Inter, monospace" font-size="22" font-weight="700" fill="#FFD400" text-anchor="middle" letter-spacing="4">SIGA PARA MAIS NOTÍCIAS</text>`}
@@ -1135,7 +1136,14 @@ function customTemplateSvg(opts: {
 
   // Foto da notícia encaixada na "caixa de foto" do template
   const photoBlock = (cfg.showPhoto && photoDataUrl)
-    ? `<image href="${photoDataUrl}" x="${cfg.photoX}" y="${cfg.photoY}" width="${cfg.photoW}" height="${cfg.photoH}" preserveAspectRatio="xMidYMid slice"/>`
+    ? protectedPhotoSvg({
+        href: photoDataUrl,
+        x: cfg.photoX,
+        y: cfg.photoY,
+        width: cfg.photoW,
+        height: cfg.photoH,
+        id: `custom-${opts.format || (height === 1080 ? "feed" : "story")}-photo`,
+      })
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -1182,7 +1190,7 @@ function reelCoverSvg(opts: {
     </linearGradient>
   </defs>
   ${photoDataUrl
-    ? `<image href="${photoDataUrl}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice"/>`
+    ? protectedPhotoSvg({ href: photoDataUrl, x: 0, y: 0, width: 1080, height: 1920, id: "reel-photo", blur: 34, backgroundOpacity: 0.76 })
     : `<rect width="1080" height="1920" fill="#0A0A0A"/>`
   }
   <!-- dark gradient overlay for legibility -->
@@ -1382,7 +1390,9 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       const cleanUrl = photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim();
       try {
         assertSafeHttpUrl(cleanUrl);
-        const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1080&h=1080&fit=cover&output=jpg&q=85`;
+        // Preserve the source aspect ratio here. Final framing happens once, in the
+        // editorial renderer, so faces and subjects are not irreversibly cropped.
+        const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1600&we&output=jpg&q=88`;
         const r = await fetch(proxied);
         if (r.ok) rawPhotoBytes = new Uint8Array(await r.arrayBuffer());
       } catch {

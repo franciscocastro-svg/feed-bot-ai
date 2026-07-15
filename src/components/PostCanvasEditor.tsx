@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Save, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
 
 const SIZE = 1080;
 const PREVIEW = 480;
@@ -19,7 +20,7 @@ type Layout = {
   subtitle: string;
   handle: string;
   // foto
-  photoFit: "cover" | "contain";
+  photoFit: "smart" | "cover" | "contain";
   photoY: number; // top da faixa de foto
   photoH: number;
   // texto
@@ -47,7 +48,7 @@ const DEFAULT_LAYOUT: Layout = {
   title: "",
   subtitle: "",
   handle: "",
-  photoFit: "cover",
+  photoFit: "smart",
   photoY: 528,
   photoH: 552,
   titleY: 210,
@@ -96,6 +97,34 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   }
   if (cur) lines.push(cur);
   return lines;
+}
+
+function drawCoverPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const source = coverSourceRect(img.width, img.height, w, h);
+  ctx.drawImage(img, source.x, source.y, source.width, source.height, x, y, w, h);
+}
+
+function drawContainPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const destination = containDestinationRect(img.width, img.height, x, y, w, h);
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
+}
+
+function drawSmartPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#111111";
+  ctx.fillRect(x, y, w, h);
+  ctx.filter = "blur(24px)";
+  ctx.globalAlpha = 0.72;
+  drawCoverPhoto(ctx, img, x - 28, y - 28, w + 56, h + 56);
+  ctx.filter = "none";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(0,0,0,0.16)";
+  ctx.fillRect(x, y, w, h);
+  drawContainPhoto(ctx, img, x, y, w, h);
+  ctx.restore();
 }
 
 interface Props {
@@ -210,20 +239,14 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
     if (photoImg) {
       const dy = layout.photoY;
       const dh = layout.photoH;
-      if (layout.photoFit === "cover") {
-        const ratio = Math.max(SIZE / photoImg.width, dh / photoImg.height);
-        const sw = SIZE / ratio;
-        const sh = dh / ratio;
-        const sx = (photoImg.width - sw) / 2;
-        const sy = (photoImg.height - sh) / 2;
-        ctx.drawImage(photoImg, sx, sy, sw, sh, 0, dy, SIZE, dh);
+      if (layout.photoFit === "smart") {
+        drawSmartPhoto(ctx, photoImg, 0, dy, SIZE, dh);
+      } else if (layout.photoFit === "cover") {
+        drawCoverPhoto(ctx, photoImg, 0, dy, SIZE, dh);
       } else {
-        const ratio = Math.min(SIZE / photoImg.width, dh / photoImg.height);
-        const dw2 = photoImg.width * ratio;
-        const dh2 = photoImg.height * ratio;
         ctx.fillStyle = "#000";
         ctx.fillRect(0, dy, SIZE, dh);
-        ctx.drawImage(photoImg, (SIZE - dw2) / 2, dy + (dh - dh2) / 2, dw2, dh2);
+        drawContainPhoto(ctx, photoImg, 0, dy, SIZE, dh);
       }
       if (layout.overlayOpacity > 0) {
         ctx.fillStyle = `rgba(0,0,0,${layout.overlayOpacity})`;
@@ -402,9 +425,9 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
                 <div className="flex items-center gap-3">
                   <Label>Modo</Label>
                   <div className="flex gap-1">
-                    {(["cover", "contain"] as const).map(m => (
+                    {(["smart", "cover", "contain"] as const).map(m => (
                       <Button key={m} size="sm" variant={layout.photoFit === m ? "default" : "outline"} onClick={() => update("photoFit", m)}>
-                        {m === "cover" ? "Preencher" : "Encaixar"}
+                        {m === "smart" ? "Inteligente" : m === "cover" ? "Preencher" : "Encaixar"}
                       </Button>
                     ))}
                   </div>

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "release": "smart-framing-1a",
+  "description": "Protect editorial subjects from aggressive center crops across automatic Edge, browser and VPS worker renderers.",
+  "affectedFunctions": [
+    {
+      "name": "process-news",
+      "entrypoint": "supabase/functions/process-news/index.ts",
+      "verifyJwt": false
+    }
+  ],
+  "deploymentOrder": [
+    "run npm run ci, secret scanner, npm audit and deno check for process-news",
+    "deploy process-news only",
+    "publish the frontend from the same commit",
+    "pull the same commit and restart the worker on the VPS",
+    "observe only naturally generated new Feed and Reel items"
+  ],
+  "releaseConstraints": {
+    "databaseMigrations": false,
+    "frontendPublish": true,
+    "otherEdgeFunctions": false,
+    "vpsRuntimeChange": true,
+    "manualProcessNewsInvocation": false,
+    "regenerateExistingArtwork": false
+  },
+  "rollback": "Redeploy process-news, frontend and VPS worker from the previous commit; no database rollback is required."
+}

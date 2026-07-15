@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
+import { containDestinationRect, coverSourceRect } from "../supabase/functions/_shared/image-framing.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
 import { resolveCutPreset } from "./cutPresets.js";
 import {
@@ -164,7 +165,7 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.12-local-device-v1";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.15-smart-framing-v1";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -341,19 +342,29 @@ async function loadTemplateForFormat(userId, settings, format) {
 }
 
 function drawCoverImage(ctx, img, x, y, w, h) {
-  const ratio = Math.max(w / img.width, h / img.height);
-  const sw = w / ratio;
-  const sh = h / ratio;
-  const sx = (img.width - sw) / 2;
-  const sy = (img.height - sh) / 2;
-  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  const source = coverSourceRect(img.width, img.height, w, h);
+  ctx.drawImage(img, source.x, source.y, source.width, source.height, x, y, w, h);
 }
 
 function drawContainImage(ctx, img, x, y, w, h) {
-  const ratio = Math.min(w / img.width, h / img.height);
-  const dw = img.width * ratio;
-  const dh = img.height * ratio;
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  const destination = containDestinationRect(img.width, img.height, x, y, w, h);
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
+}
+
+function drawProtectedImage(ctx, img, x, y, w, h) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#111111";
+  ctx.fillRect(x, y, w, h);
+  ctx.globalAlpha = 0.62;
+  drawCoverImage(ctx, img, x - 28, y - 28, w + 56, h + 56);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(x, y, w, h);
+  drawContainImage(ctx, img, x, y, w, h);
+  ctx.restore();
 }
 
 function safeTemplateNumber(value, min, max, fallback) {
@@ -416,7 +427,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 
   if (cfg.showPhoto && item.original_image_url) {
     const photoImg = await loadImageHelper(item.original_image_url);
-    if (photoImg) drawCoverImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+    if (photoImg) drawProtectedImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
   }
 
   if (cfg.overlayOpacity > 0) {
@@ -541,10 +552,7 @@ async function composeAndUploadPostNode(item, settings) {
   // Imagem principal na parte de baixo
   const py = headerH, ph = SIZE - headerH;
   if (photoImg) {
-    const ratio = Math.max(SIZE / photoImg.width, ph / photoImg.height);
-    const sw = SIZE / ratio, sh = ph / ratio;
-    const sx = (photoImg.width - sw) / 2, sy = (photoImg.height - sh) / 2;
-    ctx.drawImage(photoImg, sx, sy, sw, sh, 0, py, SIZE, ph);
+    drawProtectedImage(ctx, photoImg, 0, py, SIZE, ph);
   } else {
     // Gradiente caso não tenha imagem
     const grad = ctx.createLinearGradient(0, py, SIZE, SIZE);
@@ -617,13 +625,9 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
     return url;
   }
 
-  // Imagem fullscreen
+  // Imagem fullscreen com enquadramento protegido
   if (photoImg) {
-    const ratio = Math.max(W / photoImg.width, H / photoImg.height);
-    const sw = W / ratio, sh = H / ratio;
-    const sx = (photoImg.width - sw) / 2;
-    const sy = (photoImg.height - sh) / 2;
-    ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
+    drawProtectedImage(ctx, photoImg, 0, 0, W, H);
   } else {
     const grad = ctx.createLinearGradient(0, 0, W, H);
     grad.addColorStop(0, "#1E1B4B");

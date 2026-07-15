@@ -3,6 +3,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
+import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
 
 const W = 1080;
 const H = 1920;
@@ -22,6 +23,11 @@ function proxify(url: string, w = 1080, h = 1920) {
   return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&h=${h}&fit=cover&output=jpg`;
 }
 
+function proxifyPreserved(url: string, w = 1080) {
+  const clean = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&we&output=jpg`;
+}
+
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxChars = Number.POSITIVE_INFINITY): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
@@ -38,19 +44,31 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, max
 }
 
 function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
-  const ratio = Math.max(w / img.width, h / img.height);
-  const sw = w / ratio;
-  const sh = h / ratio;
-  const sx = (img.width - sw) / 2;
-  const sy = (img.height - sh) / 2;
-  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  const source = coverSourceRect(img.width, img.height, w, h);
+  ctx.drawImage(img, source.x, source.y, source.width, source.height, x, y, w, h);
 }
 
 function drawContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
-  const ratio = Math.min(w / img.width, h / img.height);
-  const dw = img.width * ratio;
-  const dh = img.height * ratio;
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  const destination = containDestinationRect(img.width, img.height, x, y, w, h);
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
+}
+
+function drawProtectedPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#111111";
+  ctx.fillRect(x, y, w, h);
+  ctx.filter = "blur(30px)";
+  ctx.globalAlpha = 0.76;
+  drawCover(ctx, img, x - 36, y - 36, w + 72, h + 72);
+  ctx.filter = "none";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(0,0,0,0.16)";
+  ctx.fillRect(x, y, w, h);
+  drawContain(ctx, img, x, y, w, h);
+  ctx.restore();
 }
 
 function safeNumber(value: unknown, min: number, max: number, fallback: number) {
@@ -116,8 +134,8 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
 
   if (cfg.showPhoto && item.original_image_url) {
     try {
-      const photo = await loadImage(proxify(item.original_image_url, 1080, 1920));
-      drawCover(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+      const photo = await loadImage(proxifyPreserved(item.original_image_url, 1600));
+      drawProtectedPhoto(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
     } catch {}
   }
   if (cfg.overlayOpacity > 0) {
@@ -200,7 +218,7 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   let photoImg: HTMLImageElement | null = null;
   if (item.original_image_url) {
     // 1) tenta via proxy weserv (resolve CORS e hotlink)
-    try { photoImg = await loadImage(proxify(item.original_image_url, 1080, 1920)); } catch {}
+    try { photoImg = await loadImage(proxifyPreserved(item.original_image_url, 1600)); } catch {}
     // 2) fallback: tenta direto (alguns CDNs servem CORS sem proxy)
     if (!photoImg) {
       try { photoImg = await loadImage(item.original_image_url); } catch {}
@@ -228,13 +246,9 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
     return url;
   }
 
-  // ===== Foto fullscreen (cover) =====
+  // ===== Foto fullscreen com enquadramento protegido =====
   if (photoImg) {
-    const ratio = Math.max(W / photoImg.width, H / photoImg.height);
-    const sw = W / ratio, sh = H / ratio;
-    const sx = (photoImg.width - sw) / 2;
-    const sy = (photoImg.height - sh) / 2;
-    ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
+    drawProtectedPhoto(ctx, photoImg, 0, 0, W, H);
   } else {
     const grad = ctx.createLinearGradient(0, 0, W, H);
     grad.addColorStop(0, "#1E1B4B");
