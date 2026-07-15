@@ -166,7 +166,7 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.15-smart-framing-v1";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.15-autopilot-render-worker-1b";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -200,6 +200,7 @@ async function reportWorkerHealth() {
   const capabilities = {
     cuts: queueEnabled("cuts"),
     media: queueEnabled("media"),
+    editorial_render: queueEnabled("media"),
     ffmpeg: await commandExists("ffmpeg"),
     ffprobe: await commandExists("ffprobe"),
     yt_dlp: await commandExists("yt-dlp"),
@@ -2693,7 +2694,56 @@ async function processPost(post) {
     await supabase.from("news_items")
       .update({ error_message: `Worker VPS erro: ${err.message || err}` })
       .eq("id", news.id);
+    throw err;
   }
+}
+
+async function processEditorialRenderQueue() {
+  const { data: jobs, error: claimError } = await supabase.rpc("claim_editorial_render_jobs", {
+    _worker: WORKER_ID,
+    _limit: 1,
+    _lease_seconds: 300,
+  });
+  if (claimError) {
+    if (/claim_editorial_render_jobs|schema cache|does not exist/i.test(claimError.message || "")) {
+      console.warn("[editorial-render] RPC ainda não disponível; aguardando a migration da 1B.");
+      return 0;
+    }
+    throw detailedServiceError("Falha ao reclamar render editorial", claimError);
+  }
+  if (!jobs?.length) return 0;
+
+  for (const job of jobs) {
+    let completionError = null;
+    try {
+      const { data: post, error: postError } = await supabase
+        .from("scheduled_posts")
+        .select("id, user_id, media_type, instagram_account_id, news_item_id, news_items(*)")
+        .eq("id", job.scheduled_post_id)
+        .maybeSingle();
+      if (postError) throw postError;
+      if (!post?.news_items) throw new Error("Notícia do job editorial não encontrada.");
+
+      await processPost(post);
+      console.log(`[editorial-render:${job.scheduled_post_id}] concluído na tentativa ${job.attempt_count}.`);
+    } catch (error) {
+      completionError = String(error?.message || error).slice(0, 500);
+      console.warn(`[editorial-render:${job.scheduled_post_id}] falhou: ${completionError}`);
+    }
+
+    const { data: completed, error: completeError } = await supabase.rpc("complete_editorial_render_job", {
+      _scheduled_post_id: job.scheduled_post_id,
+      _worker: WORKER_ID,
+      _success: completionError === null,
+      _error: completionError,
+    });
+    if (completeError) {
+      console.error(`[editorial-render:${job.scheduled_post_id}] falha ao liberar claim:`, completeError.message || completeError);
+    } else if (!completed) {
+      console.warn(`[editorial-render:${job.scheduled_post_id}] claim expirou ou mudou de dono; conclusão ignorada com segurança.`);
+    }
+  }
+  return jobs.length;
 }
 
 // Loop principal de polling
@@ -2732,38 +2782,7 @@ async function main() {
 
       if (queueEnabled("media")) {
         await processQueuedReelJobs();
-
-        // Busca posts agendados que ainda precisam de geração de mídia.
-        const { data: pending, error } = await supabase
-          .from("scheduled_posts")
-          .select("id, user_id, media_type, instagram_account_id, news_item_id, news_items(*)")
-          .eq("status", "scheduled")
-          .limit(5);
-
-        if (error) {
-          console.error("Erro ao buscar posts da fila:", error);
-        } else if (pending && pending.length > 0) {
-          const todo = pending.filter((p) => {
-            const n = p.news_items;
-            if (!n) return false;
-            // O worker de Cortes IA já gerou o MP4 completo. Esta fila não pode
-            // trocá-lo pelo Reel editorial estático de 6 segundos.
-            if (p.media_type === "reel" && n.content_type === "video_cut") return false;
-            if (!n.rewritten_title || !n.rewritten_summary) return false;
-            if (n.editorial_ready) {
-              if (p.media_type === "reel" && !isManagedReelVideoUrl(n.generated_video_url, n.user_id || p.user_id, n.id, n.content_type)) return true;
-              return false;
-            }
-            return true;
-          });
-
-          if (todo.length > 0) {
-            console.log(`Fila: ${todo.length} posts pendentes encontrados.`);
-            for (const post of todo.slice(0, 1)) {
-              await processPost(post);
-            }
-          }
-        }
+        await processEditorialRenderQueue();
       }
 
     } catch (err) {

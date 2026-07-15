@@ -1,11 +1,5 @@
 // Processes a news item: AI rewrites + image generation, then uploads to storage
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
-import { templateGradientSvg } from "../_shared/template-gradients.js";
-import { protectedPhotoSvg } from "../_shared/image-framing.js";
-import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
-import { loadPublishedTemplate } from "../_shared/template-versioning.js";
-import { loadInterFontBuffers } from "../_shared/font-loading.ts";
 import {
   decideNewsClaim,
   processingErrorMessage,
@@ -13,47 +7,8 @@ import {
 } from "../_shared/news-processing-policy.ts";
 import {
   assertEditorialCopy,
-  fetchRequiredBrandLogo,
   resolveEditorialIdentity,
-  versionPublicAssetUrl,
 } from "../_shared/editorial-integrity.ts";
-
-let wasmReady: Promise<void> | null = null;
-async function ensureWasm() {
-  if (!wasmReady) {
-    wasmReady = fetch("https://esm.sh/@resvg/resvg-wasm@2.6.2/index_bg.wasm")
-      .then((r) => r.arrayBuffer())
-      .then((b) => initWasm(b));
-  }
-  await wasmReady;
-}
-
-let fontBuffersPromise: Promise<Uint8Array[]> | null = null;
-async function loadFonts(): Promise<Uint8Array[]> {
-  if (!fontBuffersPromise) {
-    fontBuffersPromise = loadInterFontBuffers().catch((error) => {
-      // Não guarda uma falha no cache da instância quente: a próxima execução
-      // pode tentar novamente quando o CDN voltar.
-      fontBuffersPromise = null;
-      throw error;
-    });
-  }
-  return fontBuffersPromise;
-}
-
-async function svgToPng(svg: string): Promise<Uint8Array> {
-  await ensureWasm();
-  const fonts = await loadFonts();
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: "width", value: 1080 },
-    font: {
-      fontBuffers: fonts,
-      defaultFontFamily: "Inter",
-      loadSystemFonts: false,
-    },
-  });
-  return resvg.render().asPng();
-}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -863,8 +818,7 @@ function decodeHtmlEntities(s: string): string {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&#39;/g, "'")
+    .replace(/&apos;|&#39;/gi, "'")
     .replace(/&ldquo;|&rdquo;/gi, '"')
     .replace(/&lsquo;|&rsquo;/gi, "'")
     .replace(/&hellip;/gi, "…")
@@ -874,68 +828,6 @@ function decodeHtmlEntities(s: string): string {
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function escapeXml(s: string) {
-  const decoded = decodeHtmlEntities(s || "");
-  return decoded.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-
-function wrapText(text: string, maxChars: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    if ((cur + " " + w).trim().length > maxChars) {
-      if (cur) lines.push(cur);
-      cur = w;
-    } else cur = (cur + " " + w).trim();
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-async function tryFetchImage(url: string): Promise<{ buf: Uint8Array; ct: string } | null> {
-  try {
-    const safeUrl = assertSafeHttpUrl(url);
-    const r = await fetch(safeUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "Referer": new URL(safeUrl).origin + "/",
-      },
-    });
-    if (!r.ok) return null;
-    const ct = r.headers.get("content-type") || "image/jpeg";
-    if (!ct.startsWith("image/")) return null;
-    return { buf: new Uint8Array(await r.arrayBuffer()), ct };
-  } catch { return null; }
-}
-
-async function fetchAsDataUrl(url: string): Promise<string | null> {
-  // Decodifica HTML entities da URL (&amp; -> &, etc.) — RSS frequentemente entrega URL escapada
-  const cleanUrl = url
-    .replace(/&amp;/gi, "&")
-    .replace(/&#38;/g, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .trim();
-  try {
-    assertSafeHttpUrl(cleanUrl);
-  } catch {
-    return null;
-  }
-  // 1) tenta direto
-  let res = await tryFetchImage(cleanUrl);
-  // 2) fallback via proxy weserv.nl (resolve 403/hotlink-block)
-  if (!res) {
-    const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1080&output=jpg`;
-    res = await tryFetchImage(proxied);
-  }
-  if (!res) return null;
-  let bin = "";
-  for (let i = 0; i < res.buf.length; i++) bin += String.fromCharCode(res.buf[i]);
-  return `data:${res.ct};base64,${btoa(bin)}`;
 }
 
 function isLikelyLogo(url: string): boolean {
@@ -1034,242 +926,6 @@ async function findOgImage(pageUrl: string): Promise<string | null> {
   } catch { return null; }
 }
 
-// Default Minimal Editorial template (used when user has no custom template)
-function templateSvg(opts: {
-  title: string;
-  subtitle: string;
-  source: string;
-  brandName: string;
-  brandHandle: string;
-  logoDataUrl: string | null;
-  photoDataUrl: string | null;
-}) {
-  const { title, subtitle, brandName, brandHandle, logoDataUrl, photoDataUrl } = opts;
-  const handle = (brandHandle || brandName || "").replace(/^@/, "");
-  const avatarCX = 70, avatarCY = 80, avatarR = 36;
-  const handleX = avatarCX + avatarR + 22;
-  const dividerY = 140;
-  const upTitle = (title || "").toUpperCase();
-  const titleLines = wrapText(upTitle, 24).slice(0, 4);
-  const titleLineHeight = 60;
-  const titleStartY = 210;
-  const titleTspans = titleLines.map((l, i) => `<tspan x="60" y="${titleStartY + i * titleLineHeight}">${escapeXml(l)}</tspan>`).join("");
-  const teaserLines = wrapText(subtitle || "", 60).slice(0, 2);
-  const teaserStartY = titleStartY + titleLines.length * titleLineHeight + 16;
-  const teaserLineHeight = 32;
-  const teaserTspans = teaserLines.map((l, i) => `<tspan x="60" y="${teaserStartY + i * teaserLineHeight}">${escapeXml(l)}</tspan>`).join("");
-  const headerHeight = 528;
-  const photoY = headerHeight;
-  const photoH = 1080 - photoY;
-  const badgeW = 360, badgeH = 60;
-  const badgeX = 1080 - badgeW - 60;
-  const badgeY = photoY - badgeH / 2;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="1080" viewBox="0 0 1080 1080">
-  <defs>
-    <clipPath id="logoClip"><circle cx="${avatarCX}" cy="${avatarCY}" r="${avatarR}"/></clipPath>
-    <linearGradient id="fallbackBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1E1B4B"/>
-      <stop offset="0.5" stop-color="#7C3AED"/>
-      <stop offset="1" stop-color="#FFD400"/>
-    </linearGradient>
-  </defs>
-  <rect width="1080" height="${headerHeight}" fill="#FFFFFF"/>
-  <circle cx="${avatarCX}" cy="${avatarCY}" r="${avatarR + 2}" fill="#F4F4F5"/>
-  ${logoDataUrl
-    ? `<image href="${logoDataUrl}" x="${avatarCX - avatarR}" y="${avatarCY - avatarR}" width="${avatarR * 2}" height="${avatarR * 2}" clip-path="url(#logoClip)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<text x="${avatarCX}" y="${avatarCY + 10}" font-family="Inter, sans-serif" font-size="26" font-weight="900" fill="#000" text-anchor="middle">${escapeXml(brandName.slice(0, 2).toUpperCase())}</text>`}
-  <text x="${handleX}" y="${avatarCY + 10}" font-family="Inter, monospace" font-size="22" font-weight="800" fill="#000" letter-spacing="2">@${escapeXml(handle.toUpperCase())}</text>
-  <circle cx="1020" cy="${avatarCY}" r="9" fill="#DC2626"/>
-  <rect x="60" y="${dividerY}" width="960" height="1.5" fill="#000"/>
-  <text font-family="Inter, Arial, sans-serif" font-size="56" font-weight="900" fill="#000" letter-spacing="-2">${titleTspans}</text>
-  <text font-family="Inter, Arial, sans-serif" font-size="24" font-weight="500" fill="#52525B">${teaserTspans}</text>
-  ${photoDataUrl
-    ? protectedPhotoSvg({ href: photoDataUrl, x: 0, y: photoY, width: 1080, height: photoH, id: "feed-photo" })
-    : `<rect x="0" y="${photoY}" width="1080" height="${photoH}" fill="url(#fallbackBg)"/>
-       <text x="540" y="${photoY + photoH/2 - 20}" font-family="Inter, Arial, sans-serif" font-size="64" font-weight="900" fill="#FFF" text-anchor="middle" letter-spacing="-1">@${escapeXml(handle.toUpperCase())}</text>
-       <text x="540" y="${photoY + photoH/2 + 40}" font-family="Inter, monospace" font-size="22" font-weight="700" fill="#FFD400" text-anchor="middle" letter-spacing="4">SIGA PARA MAIS NOTÍCIAS</text>`}
-  <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" fill="#FFD400" stroke="#000" stroke-width="1.5"/>
-  <text x="${badgeX + badgeW / 2}" y="${badgeY + 40}" font-family="Inter, monospace" font-size="22" font-weight="900" fill="#000" text-anchor="middle" letter-spacing="3">LEIA A LEGENDA →</text>
-</svg>`;
-}
-
-async function embedTemplateBrandElements(config: any) {
-  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
-  const embedded = await Promise.all(elements.map(async (element: any) => {
-    if (element?.type !== "image" || typeof element.url !== "string") return element;
-    const dataUrl = await fetchAsDataUrl(element.url);
-    return dataUrl ? { ...element, dataUrl } : element;
-  }));
-  return { ...(config || {}), brandElements: embedded };
-}
-
-function templateBrandElementsSvg(config: any, canvasHeight: number) {
-  const elements = Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
-  const number = (value: unknown, min: number, max: number, fallback: number) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
-  };
-  const color = (value: unknown, fallback = "#FFFFFF") =>
-    typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
-
-  return elements.map((element: any) => {
-    const x = number(element?.x, 0, 1080, 0);
-    const y = number(element?.y, 0, canvasHeight, 0);
-    const opacity = number(element?.opacity, 0.1, 1, 1);
-    if (element?.type === "image") {
-      const dataUrl = typeof element.dataUrl === "string" && element.dataUrl.startsWith("data:image/") ? element.dataUrl : "";
-      if (!dataUrl) return "";
-      const width = number(element.width, 20, 1080, 240);
-      const height = number(element.height, 20, canvasHeight, 120);
-      return `<image href="${dataUrl}" x="${x}" y="${y}" width="${width}" height="${height}" opacity="${opacity}" preserveAspectRatio="xMidYMid meet"/>`;
-    }
-    if (element?.type === "text") {
-      const text = typeof element.text === "string" ? element.text.slice(0, 80) : "";
-      if (!text) return "";
-      const width = number(element.width, 40, 1080, 420);
-      const size = number(element.fontSize, 12, 160, 34);
-      const weight = number(element.fontWeight, 300, 900, 700);
-      const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
-      const anchor = textAnchorForAlign(align);
-      const textX = textXForBox(x, width, align);
-      return `<text x="${textX}" y="${y + size}" font-family="Inter, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${color(element.color)}" text-anchor="${anchor}" opacity="${opacity}">${escapeXml(text)}</text>`;
-    }
-    return "";
-  }).join("");
-}
-
-// Custom template renderer: user-uploaded background OR preset, with config overlay
-function customTemplateSvg(opts: {
-  title: string;
-  subtitle: string;
-  brandHandle: string;
-  brandName: string;
-  bgDataUrl: string | null;
-  presetKey: string | null;
-  config: any;
-  photoDataUrl?: string | null;
-  height?: number;
-  format?: string;
-}) {
-  const { title, subtitle, brandHandle, brandName, bgDataUrl, presetKey, config: c, photoDataUrl } = opts;
-  const height = opts.height || 1080;
-  const handle = (brandHandle || brandName || "").replace(/^@/, "");
-  const cfg = normalizeTemplateConfig(c, opts.format || (height === 1080 ? "feed" : "stories"));
-
-  const titleLines = wrapText((title || "").toUpperCase(), cfg.titleMaxChars).slice(0, cfg.titleMaxLines);
-  const titleLH = Math.round(cfg.titleSize * 1.05);
-  const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
-  const titleTspans = titleLines.map((l, i) => `<tspan x="${titleX}" y="${cfg.titleY + i * titleLH}">${escapeXml(l)}</tspan>`).join("");
-  const subLines = wrapText(subtitle || "", Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines);
-  const subLH = Math.round(cfg.subtitleSize * 1.3);
-  const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
-  const subTspans = subLines.map((l, i) => `<tspan x="${subtitleX}" y="${cfg.subtitleY + i * subLH}">${escapeXml(l)}</tspan>`).join("");
-
-  const presetBg = bgDataUrl ? "" : templateGradientSvg(presetKey, cfg, 1080, height);
-  const overlay = cfg.overlayOpacity > 0
-    ? `<rect width="1080" height="${height}" fill="#000000" fill-opacity="${Math.max(0, Math.min(0.9, Number(cfg.overlayOpacity) || 0))}"/>`
-    : "";
-  const brandElements = templateBrandElementsSvg(cfg, height);
-
-  // Foto da notícia encaixada na "caixa de foto" do template
-  const photoBlock = (cfg.showPhoto && photoDataUrl)
-    ? protectedPhotoSvg({
-        href: photoDataUrl,
-        x: cfg.photoX,
-        y: cfg.photoY,
-        width: cfg.photoW,
-        height: cfg.photoH,
-        id: `custom-${opts.format || (height === 1080 ? "feed" : "story")}-photo`,
-      })
-    : "";
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="${height}" viewBox="0 0 1080 ${height}">
-  ${bgDataUrl
-    ? `<image href="${bgDataUrl}" x="0" y="0" width="1080" height="${height}" preserveAspectRatio="xMidYMid slice"/>`
-    : presetBg}
-  ${photoBlock}
-  ${overlay}
-  ${cfg.showHandle ? `<text x="${cfg.handleX}" y="${cfg.handleY}" font-family="Inter, monospace" font-size="${cfg.handleSize}" font-weight="800" fill="${cfg.handleColor}" letter-spacing="2">@${escapeXml(handle.toUpperCase())}</text>` : ""}
-  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.titleSize}" font-weight="900" fill="${cfg.titleColor}" text-anchor="${textAnchorForAlign(cfg.titleAlign)}" letter-spacing="-2">${titleTspans}</text>
-  <text font-family="Inter, Arial, sans-serif" font-size="${cfg.subtitleSize}" font-weight="500" fill="${cfg.subtitleColor}" text-anchor="${textAnchorForAlign(cfg.subtitleAlign)}">${subTspans}</text>
-  ${cfg.showBadge ? `<rect x="${cfg.badgeX}" y="${cfg.badgeY}" width="${cfg.badgeW}" height="${cfg.badgeH}" fill="${cfg.badgeBg}"/>
-  <text x="${cfg.badgeX + cfg.badgeW / 2}" y="${cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35}" font-family="Inter, monospace" font-size="${cfg.badgeSize}" font-weight="900" fill="${cfg.badgeColor}" text-anchor="middle" letter-spacing="3">${escapeXml(cfg.badgeText)}</text>` : ""}
-  ${brandElements}
-</svg>`;
-}
-
-// Vertical Reel cover 1080x1920 with hook + CTA "SIGA @handle"
-function reelCoverSvg(opts: {
-  title: string;
-  hook: string;
-  brandName: string;
-  brandHandle: string;
-  logoDataUrl: string | null;
-  photoDataUrl: string | null;
-}) {
-  const { title, hook, brandName, brandHandle, logoDataUrl, photoDataUrl } = opts;
-  const titleLines = wrapText(title, 22).slice(0, 5);
-  const lh = 88;
-  const titleBlockH = titleLines.length * lh;
-  const titleStartY = 1100;
-  const titleTspans = titleLines.map((l, i) => `<tspan x="60" y="${titleStartY + i * lh}">${escapeXml(l)}</tspan>`).join("");
-  const handle = (brandHandle || brandName || "").replace(/^@/, "");
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="1920" viewBox="0 0 1080 1920">
-  <defs>
-    <clipPath id="logoClip2"><circle cx="100" cy="100" r="50"/></clipPath>
-    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#000" stop-opacity="0"/>
-      <stop offset="0.55" stop-color="#000" stop-opacity="0.85"/>
-      <stop offset="1" stop-color="#000" stop-opacity="1"/>
-    </linearGradient>
-  </defs>
-  ${photoDataUrl
-    ? protectedPhotoSvg({ href: photoDataUrl, x: 0, y: 0, width: 1080, height: 1920, id: "reel-photo", blur: 34, backgroundOpacity: 0.76 })
-    : `<rect width="1080" height="1920" fill="#0A0A0A"/>`
-  }
-  <!-- dark gradient overlay for legibility -->
-  <rect width="1080" height="1920" fill="url(#grad)"/>
-
-  <!-- HOOK badge top (URGENTE / FIQUE LIGADO) -->
-  <rect x="60" y="80" width="auto" height="78" rx="14" fill="#FF1744"/>
-  <rect x="60" y="80" width="${Math.min(900, 60 + hook.length * 28)}" height="78" rx="14" fill="#FF1744"/>
-  <text x="${60 + Math.min(900, 60 + hook.length * 28)/2 - 30}" y="135" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="900" fill="#FFF" text-anchor="middle">🚨 ${escapeXml(hook)}</text>
-
-  <!-- brand mark top right -->
-  <circle cx="1000" cy="100" r="52" fill="#FFD400"/>
-  ${logoDataUrl
-    ? `<image href="${logoDataUrl}" x="950" y="50" width="100" height="100" clip-path="url(#logoClip2)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<text x="1000" y="115" font-family="Inter, sans-serif" font-size="32" font-weight="900" fill="#000" text-anchor="middle">${escapeXml(brandName.slice(0,2).toUpperCase())}</text>`
-  }
-
-  <!-- title block (bottom area) -->
-  <text font-family="Inter, Arial, sans-serif" font-size="78" font-weight="900" fill="#FFF" letter-spacing="-2">${titleTspans}</text>
-
-  <!-- CTA SIGA -->
-  <rect x="60" y="${titleStartY + titleBlockH + 30}" width="960" height="100" rx="50" fill="#FFD400"/>
-  <text x="540" y="${titleStartY + titleBlockH + 95}" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="900" fill="#000" text-anchor="middle">👉 SIGA @${escapeXml(handle)} PARA MAIS</text>
-
-  <!-- swipe hint -->
-  <text x="540" y="${titleStartY + titleBlockH + 180}" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600" fill="#FFF" text-anchor="middle" opacity="0.85">⬇ Veja a legenda completa</text>
-</svg>`;
-}
-
-async function svgToPngSize(svg: string, width: number): Promise<Uint8Array> {
-  await ensureWasm();
-  const fonts = await loadFonts();
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: "width", value: width },
-    font: { fontBuffers: fonts, defaultFontFamily: "Inter", loadSystemFonts: false },
-  });
-  return resvg.render().asPng();
-}
-
-
 async function generateAIImage(prompt: string): Promise<Uint8Array> {
   const key = Deno.env.get("LOVABLE_API_KEY")!;
   const res = await fetch(AI_URL, {
@@ -1292,14 +948,14 @@ async function generateAIImage(prompt: string): Promise<Uint8Array> {
   return arr;
 }
 
-function templateIdForFormat(settings: any, format: string) {
-  if (format === "story" || format === "stories") {
-    return settings?.default_story_template_id || settings?.default_template_id || null;
+function stableTrackIndex(seed: string, length: number): number {
+  if (length <= 1) return 0;
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
-  if (format === "reel" || format === "reels") {
-    return settings?.default_reel_template_id || settings?.default_template_id || null;
-  }
-  return settings?.default_feed_template_id || settings?.default_template_id || null;
+  return Math.abs(hash) % length;
 }
 
 async function doProcessing(supabase: any, item: any, userId: string, image_style: string, requestedMediaType = "") {
@@ -1364,18 +1020,6 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       };
     }
     const intendedMediaType = requestedMediaType || settings?.default_media_type || "feed";
-    const activeFeedTemplate = await loadPublishedTemplate(supabase, {
-      accountId: item.instagram_account_id,
-      userId,
-      fallbackTemplateId: templateIdForFormat(settings, "feed"),
-      format: "feed",
-    });
-    const activeVerticalTemplate = await loadPublishedTemplate(supabase, {
-      accountId: item.instagram_account_id,
-      userId,
-      fallbackTemplateId: templateIdForFormat(settings, intendedMediaType),
-      format: intendedMediaType,
-    });
     let srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {};
     if (item.source_id) {
       const { data: src } = await supabase.from("news_sources").select("source_language, translate_to_pt, cultural_adaptation").eq("id", item.source_id).maybeSingle();
@@ -1415,193 +1059,35 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       ai = fallbackRewrite(item);
     }
 
-    // ── 1. Foto crua da notícia (raw photo — fallback e fundo do template) ────
-    let rawPhotoBytes: Uint8Array | null = null;
-    let rawPhotoDataUrl: string | null = null;
+    // A Edge Function prepara apenas texto e fonte visual. A composição pesada
+    // (Canvas, fontes, templates e vídeo) acontece no worker media do VPS.
+    // Isso mantém o runtime abaixo do limite de CPU e preserva a mesma arte dos
+    // fluxos manual, automático e multi-conta.
+    let photoUrl = item.original_image_url as string | null;
+    if (!photoUrl && item.original_url) {
+      photoUrl = await findOgImage(item.original_url);
+    }
 
     if (image_style === "ai" && !usedFallback) {
       try {
-        rawPhotoBytes = await generateAIImage(`${ai.title}. ${ai.subtitle}`);
+        const generatedPhoto = await generateAIImage(`${ai.title}. ${ai.subtitle}`);
+        const rawPath = `${userId}/${item.id}_raw.png`;
+        const { error: rawErr } = await supabase.storage
+          .from("post-images")
+          .upload(rawPath, generatedPhoto, { contentType: "image/png", upsert: true });
+        if (rawErr) throw rawErr;
+        const { data: rawPub } = supabase.storage.from("post-images").getPublicUrl(rawPath);
+        photoUrl = rawPub.publicUrl;
       } catch (e) {
         if (!isAiCreditError(e)) throw e;
         usedFallback = true;
       }
     }
 
-    let photoUrl = item.original_image_url as string | null;
-    if (!photoUrl && item.original_url) {
-      photoUrl = await findOgImage(item.original_url);
-      if (photoUrl) await supabase.from("news_items").update({ original_image_url: photoUrl }).eq("id", item.id);
-    }
-
-    if (!rawPhotoBytes && photoUrl) {
-      const cleanUrl = photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim();
-      try {
-        assertSafeHttpUrl(cleanUrl);
-        // Preserve the source aspect ratio here. Final framing happens once, in the
-        // editorial renderer, so faces and subjects are not irreversibly cropped.
-        const proxied = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl.replace(/^https?:\/\//, ""))}&w=1600&we&output=jpg&q=88`;
-        const r = await fetch(proxied);
-        if (r.ok) rawPhotoBytes = new Uint8Array(await r.arrayBuffer());
-      } catch {
-        console.warn("[image-fetch] URL de imagem bloqueada por segurança");
-      }
-    }
-
-    if (!rawPhotoBytes) {
-      // Placeholder escuro caso não haja foto alguma
-      const ph = `https://images.weserv.nl/?url=via.placeholder.com/1080x1080/0a0a0a/ffffff.jpg&w=1080&h=1080&output=jpg`;
-      const r = await fetch(ph);
-      if (r.ok) rawPhotoBytes = new Uint8Array(await r.arrayBuffer());
-      else throw new Error("Sem foto disponível para esta notícia");
-    }
-
-    // Converte rawPhotoBytes para data-URL (para incorporar no SVG)
-    if (rawPhotoBytes) {
-      const b64 = btoa(Array.from(rawPhotoBytes).map(b => String.fromCharCode(b)).join(""));
-      rawPhotoDataUrl = `data:image/jpeg;base64,${b64}`;
-    }
-
-    // Upload da foto crua (gerada por IA ou baixada da notícia)
-    const rawExt = image_style === "ai" && !usedFallback ? "png" : "jpg";
-    const rawCt  = image_style === "ai" && !usedFallback ? "image/png" : "image/jpeg";
-    const rawPath = `${userId}/${item.id}_raw.${rawExt}`;
-    const { error: rawErr } = await supabase.storage.from("post-images").upload(rawPath, rawPhotoBytes!, { contentType: rawCt, upsert: true });
-    if (rawErr) throw rawErr;
-    const { data: rawPub } = supabase.storage.from("post-images").getPublicUrl(rawPath);
-
-    // ── 2. Logo da marca (para o template) ────────────────────────────────────
+    if (!photoUrl) throw new Error("Sem foto disponível para esta notícia");
+    const safePhotoUrl = assertSafeHttpUrl(photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim());
     const identity = resolveEditorialIdentity(settings, accountUsername);
-    let logoDataUrl: string | null = null;
-    if (identity.logoUrl) {
-      const safeLogoUrl = assertSafeHttpUrl(identity.logoUrl);
-      const logo = await fetchRequiredBrandLogo(safeLogoUrl);
-      const b64 = btoa(Array.from(logo.bytes).map((byte) => String.fromCharCode(byte)).join(""));
-      logoDataUrl = `data:${logo.contentType};base64,${b64}`;
-    }
-
-    // ── 3. Arte editorial do Feed (1080×1080 PNG com template overlay) ────────
-    let editorialBytes: Uint8Array | null = null;
-    let generatedCoverUrl: string | null = null;
-    let editorialReady = false;
-
-    try {
-      let feedSvg: string;
-      const brandName = identity.brandName;
-      const brandHandle = identity.brandHandle;
-      assertEditorialCopy(ai.title, ai.subtitle);
-
-      if (activeFeedTemplate) {
-        // Template customizado: busca background se houver URL
-        let bgDataUrl: string | null = null;
-        if (activeFeedTemplate.background_url) {
-          try {
-            bgDataUrl = await fetchAsDataUrl(activeFeedTemplate.background_url);
-          } catch (error) {
-            console.warn("[template] Fundo do Feed indisponível; usando o fundo seguro do preset", error);
-          }
-        }
-        const templateConfig = await embedTemplateBrandElements(activeFeedTemplate.config ?? {});
-        feedSvg = customTemplateSvg({
-          title: ai.title,
-          subtitle: ai.subtitle,
-          brandHandle,
-          brandName,
-          bgDataUrl,
-          presetKey: activeFeedTemplate.preset_key ?? null,
-          config: templateConfig,
-          photoDataUrl: rawPhotoDataUrl,
-          height: 1080,
-          format: "feed",
-        });
-      } else {
-        // Template padrão (Minimal Editorial)
-        feedSvg = templateSvg({
-          title: ai.title,
-          subtitle: ai.subtitle,
-          source: "",
-          brandName,
-          brandHandle,
-          logoDataUrl,
-          photoDataUrl: rawPhotoDataUrl,
-        });
-      }
-
-      editorialBytes = await svgToPng(feedSvg);
-      const editPath = `${userId}/${item.id}_editorial.png`;
-      const { error: editErr } = await supabase.storage
-        .from("post-images")
-        .upload(editPath, editorialBytes, { contentType: "image/png", upsert: true });
-      if (!editErr) {
-        const { data: editPub } = supabase.storage.from("post-images").getPublicUrl(editPath);
-        generatedCoverUrl = versionPublicAssetUrl(editPub.publicUrl, Date.now());
-        editorialReady = true;
-        console.log(`[editorial] Feed art gerada: ${editPath}`);
-      } else {
-        throw new Error(`Upload da arte editorial falhou: ${editErr.message}`);
-      }
-    } catch (e) {
-      // Nunca publica uma composição parcial. O estado failed aciona o backoff
-      // existente e uma nova tentativa quando fonte/logo/CDN se recuperarem.
-      const reason = e instanceof Error ? e.message : String(e);
-      console.error("[editorial] Geração bloqueada por integridade:", reason);
-      throw new Error(`Arte editorial incompleta: ${reason}`);
-    }
-
-    // ── 4. Capa do Reel (1080×1920 PNG) ─────────────────────────────────────
-    let reelCoverUrl: string | null = null;
-    try {
-      let rcSvg: string;
-      if (activeVerticalTemplate) {
-        let bgDataUrl: string | null = null;
-        if (activeVerticalTemplate.background_url) {
-          try {
-            bgDataUrl = await fetchAsDataUrl(activeVerticalTemplate.background_url);
-          } catch (error) {
-            console.warn("[template] Fundo vertical indisponível; usando o fundo seguro do preset", error);
-          }
-        }
-        const templateConfig = await embedTemplateBrandElements(activeVerticalTemplate.config ?? {});
-        rcSvg = customTemplateSvg({
-          title: ai.title,
-          subtitle: ai.subtitle,
-          brandHandle: identity.brandHandle,
-          brandName: identity.brandName,
-          bgDataUrl,
-          presetKey: activeVerticalTemplate.preset_key ?? null,
-          config: templateConfig,
-          photoDataUrl: rawPhotoDataUrl,
-          height: 1920,
-          format: intendedMediaType,
-        });
-      } else {
-        rcSvg = reelCoverSvg({
-          title: ai.title,
-          hook: ai.hook || "URGENTE",
-          brandName: identity.brandName,
-          brandHandle: identity.brandHandle,
-          logoDataUrl,
-          photoDataUrl: rawPhotoDataUrl,
-        });
-      }
-      const rcBytes = await svgToPngSize(rcSvg, 1080);
-      const rcPath = `${userId}/${item.id}_reel_cover.png`;
-      const { error: rcErr } = await supabase.storage
-        .from("post-images")
-        .upload(rcPath, rcBytes, { contentType: "image/png", upsert: true });
-      if (!rcErr) {
-        const { data: rcPub } = supabase.storage.from("post-images").getPublicUrl(rcPath);
-        reelCoverUrl = rcPub.publicUrl;
-        console.log(`[editorial] Reel cover gerada: ${rcPath}`);
-      } else {
-        console.warn("[editorial] Reel cover upload falhou:", rcErr);
-      }
-    } catch (e) {
-      console.warn("[editorial] Reel cover falhou (não fatal):", e instanceof Error ? e.message : e);
-    }
-
-    const feedImageUrl = generatedCoverUrl || rawPub.publicUrl;
-
+    assertEditorialCopy(ai.title, ai.subtitle);
     const handle = identity.brandHandle;
     const followCta = handle ? `👉 SIGA @${handle} para mais notícias do dia` : "";
 
@@ -1633,7 +1119,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const usefulReelCaption = ensureUsefulCaption(ai.reel_caption || usefulCaption, item, ai.title, ai.summary);
     const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [followCta], reelHashtagsLine);
 
-    // Escolha automática de trilha sonora pela IA (com base no nome do arquivo + tom da notícia)
+    // Escolha local e determinística de trilha. Uma segunda chamada de IA só
+    // para áudio aumentava latência e consumo sem melhorar a notícia.
     let chosenTrackId: string | null = null;
     let chosenTrackUrl: string | null = null;
     try {
@@ -1657,49 +1144,19 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
           const candidates = tracks.filter((t: any) => !recentIds.has(t.id));
           const pool = candidates.length > 0 ? candidates : tracks;
 
-          const list = pool.map((t: any, i: number) => `${i + 1}. ${t.name}`).join("\n");
-          const avoidLine = candidates.length > 0 && recentIds.size > 0
-            ? `\n\nIMPORTANTE: as últimas trilhas usadas foram excluídas da lista — escolha qualquer uma das disponíveis abaixo (NÃO repita as últimas).`
-            : "";
-          const pickRes = await fetch(AI_URL, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
-              messages: [
-                { role: "system", content: "Você escolhe a trilha sonora ideal para um Reel de notícia, baseando-se SÓ no NOME do arquivo (que descreve o tom/emoção: tenso, feliz, urgente, dramático, esportivo, polêmico, etc.) e no conteúdo da notícia. Varie as escolhas para o feed não ficar repetitivo. Responda apenas com o NÚMERO da trilha escolhida." },
-                { role: "user", content: `Notícia:\nTítulo: ${ai.title}\nResumo: ${ai.summary}\nGancho: ${ai.hook}\n\nTrilhas disponíveis:\n${list}${avoidLine}\n\nResponda apenas com o número da trilha que melhor combina com o tom emocional da notícia.` },
-              ],
-              max_tokens: 10,
-            }),
-          });
-          let pickedIdx = -1;
-          if (pickRes.ok) {
-            const pd = await pickRes.json();
-            const txt = pd.choices?.[0]?.message?.content || "";
-            const num = parseInt((txt.match(/\d+/) || ["0"])[0]);
-            if (Number.isFinite(num) && num >= 1 && num <= pool.length) {
-              pickedIdx = num - 1;
-            }
-          }
-          // Fallback: sorteio aleatório entre as candidatas (não a primeira fixa)
-          if (pickedIdx < 0) {
-            pickedIdx = Math.floor(Math.random() * pool.length);
-          }
+          const pickedIdx = stableTrackIndex(`${item.id}:${ai.title}`, pool.length);
           chosenTrackId = pool[pickedIdx].id;
           chosenTrackUrl = pool[pickedIdx].file_url;
-          console.log(`[audio-pick] "${ai.title.slice(0,40)}" -> ${pool[pickedIdx].name} (pool=${pool.length}/${tracks.length}, recent=${recentIds.size})`);
+          console.log(`[audio-pick-local] "${ai.title.slice(0,40)}" -> ${pool[pickedIdx].name} (pool=${pool.length}/${tracks.length}, recent=${recentIds.size})`);
         }
       }
     } catch (e) {
       console.error("audio pick failed", e);
     }
 
-    // editorial_ready agora é definido aqui no backend quando a arte for
-    // gerada com sucesso. Se a composição SVG/WASM falhar, o campo fica false
-    // e o scheduler ainda aplica o fallback dos 15 min (foto crua).
-    // Isso elimina o "gargalo do canvas" descrito na análise de arquitetura:
-    // o autopiloto não precisa mais que um navegador esteja aberto.
+    // A notícia fica textual e editorialmente pronta, mas a mídia permanece
+    // bloqueada por editorial_ready=false até o worker do VPS terminar a arte.
+    // O publish-scheduler já exige essa flag e nunca publica o arquivo parcial.
     const { data: processedRow, error: updErr } = await supabase.from("news_items").update({
       status: "processed",
       rewritten_title: ai.title,
@@ -1707,10 +1164,12 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       caption: finalCaption,
       reel_caption: reelCaptionFinal,
       hashtags: safeHashtags,
-      generated_image_url: feedImageUrl,
-      generated_cover_url: generatedCoverUrl ?? reelCoverUrl ?? null,
-      generated_reel_cover_url: reelCoverUrl ?? null,
-      editorial_ready: editorialReady,
+      original_image_url: safePhotoUrl,
+      generated_image_url: null,
+      generated_cover_url: null,
+      generated_reel_cover_url: null,
+      generated_video_url: null,
+      editorial_ready: false,
       image_style: usedFallback ? "template" : image_style,
       chosen_audio_track_id: chosenTrackId,
       chosen_audio_url: chosenTrackUrl,
@@ -1725,7 +1184,18 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       throw new Error("Processamento perdeu o claim antes de concluir; resultado descartado com segurança.");
     }
 
-    await supabase.from("activity_logs").insert({ user_id: userId, action: "process_news", entity_type: "news_item", entity_id: item.id, details: { style: image_style, fallback: usedFallback } });
+    await supabase.from("activity_logs").insert({
+      user_id: userId,
+      action: "process_news",
+      entity_type: "news_item",
+      entity_id: item.id,
+      details: {
+        style: image_style,
+        fallback: usedFallback,
+        render_queued: true,
+        media_type: intendedMediaType,
+      },
+    });
     return { status: "processed" as const };
   } catch (e) {
     // Backoff exponencial: tentativa 1 -> +5min, 2 -> +15min, 3 -> +60min.

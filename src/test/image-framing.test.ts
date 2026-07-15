@@ -44,11 +44,11 @@ describe("smart editorial image framing", () => {
     expect(svg).not.toContain("undefined");
   });
 
-  it("does not pre-crop source photos before automatic rendering", () => {
+  it("keeps automatic rendering out of the Edge Function", () => {
     const processNews = readProjectFile("supabase/functions/process-news/index.ts");
-    expect(processNews).toContain("protectedPhotoSvg");
-    expect(processNews).toContain("id: \"feed-photo\"");
-    expect(processNews).toContain("id: \"reel-photo\"");
+    expect(processNews).not.toContain("@resvg/resvg-wasm");
+    expect(processNews).not.toContain("svgToPng(");
+    expect(processNews).toContain("worker media do VPS");
     expect(processNews).not.toContain("w=1080&h=1080&fit=cover&output=jpg&q=85");
   });
 

@@ -1,0 +1,35 @@
+{
+  "phase": "Autopiloto Render Worker 1B",
+  "migration": "20260715170000_autopilot_render_worker_1b.sql",
+  "edgeFunctions": ["process-news"],
+  "workerChanged": true,
+  "frontendChanged": false,
+  "deploymentOrder": [
+    "push commit to GitHub main",
+    "deploy VPS worker from the same commit",
+    "apply migration",
+    "deploy process-news",
+    "observe natural cron cycles"
+  ],
+  "contracts": [
+    "process-news performs bounded text preparation without Resvg or Canvas",
+    "scheduled_posts is the durable editorial render queue",
+    "worker claims jobs with SKIP LOCKED and a five-minute lease",
+    "render completion is fenced by worker identity",
+    "failed rendering uses bounded retry backoff",
+    "publish-scheduler requires editorial_ready and a final media asset",
+    "Feed, Story and Reel continue using shared templates and smart framing"
+  ],
+  "excluded": [
+    "manual function invocation",
+    "manual post publication",
+    "payments",
+    "stripe",
+    "meta",
+    "secrets",
+    "cron changes",
+    "mcp",
+    "types.ts",
+    "lockfiles"
+  ]
+}
