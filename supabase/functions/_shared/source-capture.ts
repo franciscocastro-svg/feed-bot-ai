@@ -34,6 +34,7 @@ export type SourceDiagnostics = {
   items_without_image: number;
   items_created: number;
   items_distributed?: number;
+  images_enriched?: number;
   filtered_old: number;
   filtered_low_score: number;
   filtered_excluded_terms: number;
@@ -55,6 +56,7 @@ export function createDiagnostics(parseType: SourceDiagnostics["parse_type"] = "
     items_without_image: 0,
     items_created: 0,
     items_distributed: 0,
+    images_enriched: 0,
     filtered_old: 0,
     filtered_low_score: 0,
     filtered_excluded_terms: 0,
@@ -266,25 +268,32 @@ function firstTagRaw(block: string, tags: string[]): string {
   return "";
 }
 
-function extractMediaImage(block: string, htmlHints: string[]): string | null {
+function extractMediaImage(block: string, htmlHints: string[], baseUrl = ""): string | null {
   const patterns = [
     /<enclosure[^>]*url=["']([^"']+)["'][^>]*(?:type=["']image\/[^"']+["'])?[^>]*>/i,
     /<media:content[^>]*url=["']([^"']+)["']/i,
     /<media:thumbnail[^>]*url=["']([^"']+)["']/i,
     /<itunes:image[^>]*href=["']([^"']+)["']/i,
+    /<(?:news:)?image(?:\s[^>]*)?>([\s\S]*?)<\/(?:news:)?image>/i,
   ];
   for (const pattern of patterns) {
     const m = block.match(pattern);
-    if (m?.[1]) return decodeEntities(m[1]);
+    if (m?.[1]) {
+      const raw = stripHtml(decodeEntities(m[1])).trim();
+      return baseUrl ? toAbsoluteUrl(raw, baseUrl) : raw;
+    }
   }
   for (const hint of htmlHints) {
     const img = hint.match(/<img[^>]*src=["']([^"']+)["']/i);
-    if (img?.[1]) return decodeEntities(img[1]);
+    if (img?.[1]) {
+      const raw = decodeEntities(img[1]);
+      return baseUrl ? toAbsoluteUrl(raw, baseUrl) : raw;
+    }
   }
   return null;
 }
 
-export function parseRssItems(xml: string): ParsedSourceItem[] {
+export function parseRssItems(xml: string, sourceUrl = ""): ParsedSourceItem[] {
   const items: ParsedSourceItem[] = [];
   const matches = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
   for (const block of matches) {
@@ -293,13 +302,13 @@ export function parseRssItems(xml: string): ParsedSourceItem[] {
     const description = firstTagText(block, ["description", "content:encoded", "summary"]);
     const rawDescription = firstTagRaw(block, ["description", "content:encoded"]);
     const pubDate = firstTagText(block, ["pubDate", "dc:date", "published", "updated"]);
-    const image = extractMediaImage(block, [rawDescription]);
+    const image = extractMediaImage(block, [rawDescription], sourceUrl);
     if (title && link) items.push({ title, link, description, pubDate, image, sourceType: "rss" });
   }
   return items;
 }
 
-export function parseAtomItems(xml: string): ParsedSourceItem[] {
+export function parseAtomItems(xml: string, sourceUrl = ""): ParsedSourceItem[] {
   const items: ParsedSourceItem[] = [];
   const matches = xml.match(/<entry[\s\S]*?<\/entry>/gi) || [];
   for (const block of matches) {
@@ -312,7 +321,7 @@ export function parseAtomItems(xml: string): ParsedSourceItem[] {
     const rawContent = firstTagRaw(block, ["content", "summary"]);
     const description = stripHtml(rawContent);
     const pubDate = firstTagText(block, ["published", "updated", "dc:date"]);
-    const image = extractMediaImage(block, [rawContent]);
+    const image = extractMediaImage(block, [rawContent], sourceUrl);
     if (title && link) items.push({ title, link, description, pubDate, image, sourceType: "atom" });
   }
   return items;
@@ -409,9 +418,9 @@ export function parseHtmlListing(html: string, pageUrl: string): ParsedSourceIte
 }
 
 export function parseSourceItems(raw: string, sourceUrl: string): { items: ParsedSourceItem[]; parseType: SourceDiagnostics["parse_type"] } {
-  const rssItems = parseRssItems(raw);
+  const rssItems = parseRssItems(raw, sourceUrl);
   if (rssItems.length > 0) return { items: rssItems, parseType: "rss" };
-  const atomItems = parseAtomItems(raw);
+  const atomItems = parseAtomItems(raw, sourceUrl);
   if (atomItems.length > 0) return { items: atomItems, parseType: "atom" };
   const htmlItems = parseHtmlListing(raw, sourceUrl);
   if (htmlItems.length > 0) return { items: htmlItems, parseType: "html" };
@@ -844,6 +853,19 @@ export function decodeGoogleNewsArticleUrl(rawUrl: string): string | null {
   return null;
 }
 
+export function decodeBingNewsArticleUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+    if (host !== "bing.com" && !host.endsWith(".bing.com")) return null;
+    if (!/\/news\/apiclick\.aspx$/i.test(url.pathname)) return null;
+    const publisherUrl = url.searchParams.get("url");
+    return publisherUrl ? cleanExtractedUrl(publisherUrl) : null;
+  } catch {
+    return null;
+  }
+}
+
 function extractAllCandidates(html: string): string[] {
   const out: string[] = [];
   const push = (u?: string | null) => {
@@ -930,21 +952,21 @@ function extractGoogleNewsPublisherUrl(html: string): string | null {
   return null;
 }
 
-async function fetchArticleHtml(pageUrl: string): Promise<{ html: string; finalUrl: string } | null> {
-  const page = await fetchTextSmart(pageUrl, 15000);
+async function fetchArticleHtml(pageUrl: string, timeoutMs = 15000): Promise<{ html: string; finalUrl: string } | null> {
+  const page = await fetchTextSmart(pageUrl, timeoutMs);
   return { html: page.text, finalUrl: page.finalUrl };
 }
 
-export async function findArticleImage(pageUrl: string): Promise<string | null> {
+export async function findArticleImage(pageUrl: string, timeoutMs = 15000): Promise<string | null> {
   try {
-    const decodedArticleUrl = decodeGoogleNewsArticleUrl(pageUrl);
-    let page = await fetchArticleHtml(decodedArticleUrl || pageUrl);
+    const decodedArticleUrl = decodeGoogleNewsArticleUrl(pageUrl) || decodeBingNewsArticleUrl(pageUrl);
+    let page = await fetchArticleHtml(decodedArticleUrl || pageUrl, timeoutMs);
     if (!page) return null;
 
     if (/^https?:\/\/news\.google\.com\//i.test(page.finalUrl)) {
       const publisherUrl = extractGoogleNewsPublisherUrl(page.html);
       if (publisherUrl) {
-        const publisherPage = await fetchArticleHtml(publisherUrl);
+        const publisherPage = await fetchArticleHtml(publisherUrl, timeoutMs);
         if (publisherPage) page = publisherPage;
       }
     }
@@ -968,18 +990,53 @@ export async function findArticleImage(pageUrl: string): Promise<string | null> 
   }
 }
 
-export async function resolveArticleUrl(pageUrl: string): Promise<string> {
+export async function resolveArticleUrl(pageUrl: string, timeoutMs = 15000): Promise<string> {
   try {
+    const bingPublisherUrl = decodeBingNewsArticleUrl(pageUrl);
+    if (bingPublisherUrl) return bingPublisherUrl;
     if (!isGoogleNewsUrl(pageUrl)) return assertSafeHttpUrl(pageUrl);
     const decodedArticleUrl = decodeGoogleNewsArticleUrl(pageUrl);
     if (decodedArticleUrl) return decodedArticleUrl;
-    const page = await fetchArticleHtml(pageUrl);
+    const page = await fetchArticleHtml(pageUrl, timeoutMs);
     if (!page) return assertSafeHttpUrl(pageUrl);
     const publisherUrl = extractGoogleNewsPublisherUrl(page.html);
     return publisherUrl || assertSafeHttpUrl(page.finalUrl || pageUrl);
   } catch {
     return pageUrl;
   }
+}
+
+export async function enrichPreviewItemsWithImages(
+  items: ParsedSourceItem[],
+  options: { maxItems?: number; concurrency?: number; budgetMs?: number; perItemTimeoutMs?: number } = {},
+): Promise<{ items: ParsedSourceItem[]; enriched: number }> {
+  const output = items.map((item) => ({ ...item }));
+  const maxItems = Math.max(0, Math.min(output.length, options.maxItems ?? 3));
+  const concurrency = Math.max(1, Math.min(maxItems || 1, options.concurrency ?? 2));
+  const deadline = Date.now() + Math.max(500, options.budgetMs ?? 7000);
+  const perItemTimeoutMs = Math.max(500, options.perItemTimeoutMs ?? 3000);
+  let cursor = 0;
+  let enriched = 0;
+
+  const worker = async () => {
+    while (cursor < maxItems) {
+      const index = cursor++;
+      const item = output[index];
+      if (item.image && !isLikelyLogo(item.image)) continue;
+      item.image = null;
+      const remaining = deadline - Date.now();
+      if (remaining <= 250) return;
+      const timeoutMs = Math.min(perItemTimeoutMs, remaining);
+      const articleUrl = await resolveArticleUrl(item.link, Math.max(500, Math.floor(timeoutMs / 2)));
+      const image = await findArticleImage(articleUrl, Math.max(500, deadline - Date.now()));
+      if (!image || isLikelyLogo(image)) continue;
+      item.image = image;
+      enriched++;
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return { items: output, enriched };
 }
 
 export function canonicalizeArticleUrl(raw: string): string {
@@ -1070,13 +1127,16 @@ async function buildSearchPreviewResponse(
   const filtered = filterItemsForSource(parsed.items, searchSource, parsed.parseType, limit);
   filtered.diagnostics.resolved_provider = provider;
   if (filtered.items.length > 0) {
+    const enriched = await enrichPreviewItemsWithImages(filtered.items);
+    filtered.diagnostics.images_enriched = enriched.enriched;
+    filtered.diagnostics.items_without_image = enriched.items.filter((item) => !item.image).length;
     return buildPreviewResponse(
       true,
       url,
       raw.finalUrl,
       parsed.parseType,
       parsed.items,
-      filtered.items,
+      enriched.items,
       [],
       markDiagnostics(filtered.diagnostics, resolvedVia, query),
     );
@@ -1085,13 +1145,16 @@ async function buildSearchPreviewResponse(
   const relaxed = relaxedSearchPreviewItems(parsed.items, searchSource, parsed.parseType, limit);
   relaxed.diagnostics.resolved_provider = provider;
   if (relaxed.items.length > 0) {
+    const enriched = await enrichPreviewItemsWithImages(relaxed.items);
+    relaxed.diagnostics.images_enriched = enriched.enriched;
+    relaxed.diagnostics.items_without_image = enriched.items.filter((item) => !item.image).length;
     return buildPreviewResponse(
       true,
       url,
       raw.finalUrl,
       parsed.parseType,
       parsed.items,
-      relaxed.items,
+      enriched.items,
       [],
       markDiagnostics(relaxed.diagnostics, resolvedVia, query),
     );
@@ -1169,11 +1232,47 @@ function buildDomainSearchQuery(source: SourceLike, sourceUrl: string): string |
   }
 }
 
+async function previewDomainSearch(
+  source: SourceLike,
+  sourceUrl: string,
+  limit: number,
+  feedCandidates: string[] = [],
+) {
+  const domainQuery = buildDomainSearchQuery(source, sourceUrl);
+  if (!domainQuery) return null;
+
+  for (const provider of ["google_news", "bing_news"] as const) {
+    try {
+      const response = await buildSearchPreviewResponse(source, domainQuery, "domain_search", limit, provider);
+      if (!response.valid) continue;
+      response.feed_candidates = feedCandidates;
+      response.diagnostics.warnings.unshift(
+        provider === "bing_news"
+          ? "A página direta não respondeu; usei uma busca alternativa de notícias para este domínio."
+          : "A página direta não respondeu; usei o Google Notícias como rota alternativa para este domínio.",
+      );
+      return response;
+    } catch {
+      // Try the next public news search route without bypassing the source protections.
+    }
+  }
+  return null;
+}
+
 export async function previewSource(source: SourceLike, limit = 5) {
   if (isSearchSource(source)) return previewSearchSource(source, limit);
 
   const url = buildSourceFetchUrl(source);
-  const raw = await fetchTextSmart(url);
+  let raw: Awaited<ReturnType<typeof fetchTextSmart>>;
+  try {
+    raw = await fetchTextSmart(url);
+  } catch (error) {
+    const fallback = await previewDomainSearch(source, url, limit);
+    if (fallback) return fallback;
+    const diagnostics = createDiagnostics("none");
+    diagnostics.warnings.push(error instanceof Error ? error.message : "A fonte direta não respondeu.");
+    return buildPreviewResponse(false, url, "", "none", [], [], [], markDiagnostics(diagnostics, "direct"));
+  }
   const parsed = parseSourceItems(raw.text, raw.finalUrl || url);
   const filtered = filterItemsForSource(parsed.items, { ...source, url }, parsed.parseType, limit);
   const feedCandidates = parsed.parseType === "html" || parsed.parseType === "none"
@@ -1223,21 +1322,8 @@ export async function previewSource(source: SourceLike, limit = 5) {
     }
   }
 
-  if (!isSearchSource(source)) {
-    const domainQuery = buildDomainSearchQuery(source, raw.finalUrl || url);
-    if (domainQuery) {
-      try {
-        const response = await buildSearchPreviewResponse(source, domainQuery, "domain_search", limit);
-        if (response.valid) {
-          response.feed_candidates = feedCandidates;
-          response.diagnostics.warnings.unshift("Usei o Google Notícias como rota alternativa para este site.");
-          return response;
-        }
-      } catch {
-        // keep the original diagnostics when the domain search also fails
-      }
-    }
-  }
+  const domainFallback = await previewDomainSearch(source, raw.finalUrl || url, limit, feedCandidates);
+  if (domainFallback) return domainFallback;
 
   const diagnostics = filtered.diagnostics;
   if (feedCandidates.length > 0) diagnostics.warnings.push("Esta página possui feeds RSS candidatos que podem ser mais estáveis.");

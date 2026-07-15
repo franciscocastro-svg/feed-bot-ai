@@ -680,12 +680,28 @@ export default function Sources() {
         <div className="space-y-2">
           {(result.sample_items || []).map((item) => (
             <div key={item.url} className="rounded-lg border p-3">
-              <p className="text-sm font-medium">{item.title}</p>
-              <p className="break-all text-xs text-muted-foreground">{item.url}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {item.published_at && <Badge variant="outline" className="text-xs">{new Date(item.published_at).toLocaleString("pt-BR")}</Badge>}
-                <Badge variant="secondary" className="text-xs">Score {item.score || 0}</Badge>
-                {item.image ? <Badge variant="secondary" className="text-xs">Com imagem</Badge> : <Badge variant="outline" className="text-xs">Sem imagem</Badge>}
+              <div className="flex min-w-0 items-start gap-3">
+                {item.image && (
+                  <img
+                    src={item.image}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-20 w-24 shrink-0 rounded-md border bg-muted object-cover sm:h-24 sm:w-32"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-medium">{item.title}</p>
+                  <p className="break-all text-xs text-muted-foreground">{item.url}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.published_at && <Badge variant="outline" className="text-xs">{new Date(item.published_at).toLocaleString("pt-BR")}</Badge>}
+                    <Badge variant="secondary" className="text-xs">Score {item.score || 0}</Badge>
+                    {item.image ? <Badge variant="secondary" className="text-xs">Com imagem</Badge> : <Badge variant="outline" className="text-xs">Sem imagem</Badge>}
+                  </div>
+                </div>
               </div>
             </div>
           ))}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "release": "quality-sources-1a",
+  "affectedFunctions": ["preview-source", "fetch-rss"],
+  "frontendPublish": true,
+  "validation": [
+    "npm run ci",
+    "npm audit --omit=dev --audit-level=moderate",
+    "deno check supabase/functions/preview-source/index.ts",
+    "deno check supabase/functions/fetch-rss/index.ts"
+  ],
+  "constraints": {
+    "databaseMigrations": false,
+    "otherEdgeFunctions": false,
+    "manualFunctionInvocation": false,
+    "reprocessExistingSources": false,
+    "paymentsStripeMetaWorkerSecrets": false
+  }
+}

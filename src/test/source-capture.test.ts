@@ -5,6 +5,7 @@ import {
   buildSearchQueryVariants,
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
+  decodeBingNewsArticleUrl,
   filterItemsForSource,
   fetchTextSmart,
   parseAtomItems,
@@ -36,6 +37,29 @@ describe("source capture utilities", () => {
     expect(items).toHaveLength(1);
     expect(items[0].title).toContain("tecnologia");
     expect(items[0].image).toBe("https://example.com/image.jpg");
+  });
+
+  it("parses and normalizes Bing News image metadata", () => {
+    const xml = `
+      <rss xmlns:News="https://www.bing.com/news/search"><channel>
+        <item>
+          <title>Neymar anuncia novidade importante na carreira</title>
+          <link>https://example.com/esportes/neymar</link>
+          <description>Notícia recente sobre Neymar.</description>
+          <News:Image>/th?id=OVFT.exemplo&amp;pid=News</News:Image>
+        </item>
+      </channel></rss>`;
+
+    const items = parseRssItems(xml, "https://www.bing.com/news/search?q=Neymar");
+
+    expect(items).toHaveLength(1);
+    expect(items[0].image).toBe("https://www.bing.com/th?id=OVFT.exemplo&pid=News");
+  });
+
+  it("extracts the publisher URL from Bing News wrappers", () => {
+    const wrapper = "https://www.bing.com/news/apiclick.aspx?ref=FexRss&url=https%3A%2F%2Fexample.com%2Fnoticias%2Fmateria%3Fid%3D42";
+
+    expect(decodeBingNewsArticleUrl(wrapper)).toBe("https://example.com/noticias/materia?id=42");
   });
 
   it("parses Atom entries", () => {
@@ -252,6 +276,44 @@ describe("source capture utilities", () => {
     expect(result.sample_items?.[0]?.title).toContain("Celebridade");
   });
 
+  it("enriches Google News preview items with the publisher image", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("news.google.com/rss/search")) {
+        return new Response(`
+          <rss><channel>
+            <item>
+              <title>Neymar anuncia novidade importante no Santos</title>
+              <link>https://example.com/esportes/neymar-santos</link>
+              <description>Notícia recente sobre Neymar e o Santos.</description>
+              <pubDate>${new Date().toUTCString()}</pubDate>
+            </item>
+          </channel></rss>
+        `, { status: 200, headers: { "content-type": "application/rss+xml; charset=utf-8" } });
+      }
+      if (url === "https://example.com/esportes/neymar-santos") {
+        return new Response(`
+          <html><head>
+            <meta property="og:image" content="https://cdn.example.com/images/neymar-santos-1200.jpg" />
+          </head><body><article>Notícia</article></body></html>
+        `, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    }));
+
+    const result = await previewSource({
+      source_kind: "person",
+      query: "Neymar",
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.sample_items[0].image).toBe("https://cdn.example.com/images/neymar-santos-1200.jpg");
+    expect(result.diagnostics.images_enriched).toBe(1);
+    expect(result.diagnostics.items_without_image).toBe(0);
+  });
+
   it("retries a transient Google News failure and falls back to Bing News", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -388,5 +450,47 @@ describe("source capture utilities", () => {
     expect(result.url).toContain("news.google.com/rss/search");
     expect(result.diagnostics.resolved_via).toBe("domain_search");
     expect(result.diagnostics.resolved_query).toContain("site:example.com");
+  });
+
+  it("falls back to Bing domain search when the direct URL and Google News fail", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://blocked.example.com/") {
+        return new Response("indisponível", { status: 503 });
+      }
+      if (url.includes("news.google.com/rss/search")) {
+        return new Response("indisponível", { status: 503 });
+      }
+      if (url.includes("bing.com/news/search")) {
+        return new Response(`
+          <rss xmlns:News="https://www.bing.com/news/search"><channel>
+            <item>
+              <title>Portal publica notícia importante e recente</title>
+              <link>https://blocked.example.com/noticias/materia</link>
+              <description>Conteúdo recente publicado pelo portal.</description>
+              <pubDate>${new Date().toUTCString()}</pubDate>
+              <News:Image>https://cdn.example.com/noticias/materia-1200.jpg</News:Image>
+            </item>
+          </channel></rss>
+        `, { status: 200, headers: { "content-type": "application/rss+xml; charset=utf-8" } });
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await previewSource({
+      source_kind: "rss",
+      name: "Portal bloqueado",
+      url: "https://blocked.example.com/",
+      niche: "notícias",
+      country: "BR",
+      language: "pt-BR",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics.resolved_via).toBe("domain_search");
+    expect(result.diagnostics.resolved_provider).toBe("bing_news");
+    expect(result.sample_items[0].image).toContain("materia-1200.jpg");
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://blocked.example.com/")).toHaveLength(2);
   });
 });
