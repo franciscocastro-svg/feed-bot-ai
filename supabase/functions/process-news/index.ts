@@ -4,6 +4,7 @@ import { Resvg, initWasm } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { templateGradientSvg } from "../_shared/template-gradients.js";
 import { protectedPhotoSvg } from "../_shared/image-framing.js";
 import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
+import { loadPublishedTemplate } from "../_shared/template-versioning.js";
 import { loadInterFontBuffers } from "../_shared/font-loading.ts";
 import {
   decideNewsClaim,
@@ -1276,19 +1277,6 @@ function templateIdForFormat(settings: any, format: string) {
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
 
-async function loadTemplate(supabase: any, userId: string, templateId: string | null, format: string) {
-  if (!templateId) return null;
-  const normalized = format === "story" ? "stories" : format === "reel" ? "reels" : "feed";
-  const { data: tpl } = await supabase
-    .from("post_templates")
-    .select("*")
-    .eq("id", templateId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!tpl) return null;
-  return (tpl.format || "feed") === normalized ? tpl : null;
-}
-
 async function doProcessing(supabase: any, item: any, userId: string, image_style: string, requestedMediaType = "") {
   try {
     const cleanTitle = sanitizeNewsTitle(item.original_title);
@@ -1351,8 +1339,18 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       };
     }
     const intendedMediaType = requestedMediaType || settings?.default_media_type || "feed";
-    const activeFeedTemplate = await loadTemplate(supabase, userId, templateIdForFormat(settings, "feed"), "feed");
-    const activeVerticalTemplate = await loadTemplate(supabase, userId, templateIdForFormat(settings, intendedMediaType), intendedMediaType);
+    const activeFeedTemplate = await loadPublishedTemplate(supabase, {
+      accountId: item.instagram_account_id,
+      userId,
+      fallbackTemplateId: templateIdForFormat(settings, "feed"),
+      format: "feed",
+    });
+    const activeVerticalTemplate = await loadPublishedTemplate(supabase, {
+      accountId: item.instagram_account_id,
+      userId,
+      fallbackTemplateId: templateIdForFormat(settings, intendedMediaType),
+      format: intendedMediaType,
+    });
     let srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {};
     if (item.source_id) {
       const { data: src } = await supabase.from("news_sources").select("source_language, translate_to_pt, cultural_adaptation").eq("id", item.source_id).maybeSingle();

@@ -1,0 +1,27 @@
+{
+  "phase": "Template Studio 2A.1",
+  "migration": "20260715063000_template_studio_2a1.sql",
+  "edgeFunctions": ["process-news"],
+  "workerChanged": true,
+  "frontendChanged": true,
+  "manualFunctionInvocationDuringRelease": false,
+  "regenerateExistingArtwork": false,
+  "publishPostsDuringRelease": false,
+  "contracts": [
+    "one assignment per instagram account and format",
+    "one draft per instagram account and format",
+    "explicit publish",
+    "immutable published snapshots",
+    "account-scoped rollback",
+    "legacy fallback before migration"
+  ],
+  "excluded": [
+    "payments",
+    "stripe",
+    "meta configuration",
+    "cron schedules",
+    "secrets",
+    "mcp",
+    "existing generated artwork"
+  ]
+}

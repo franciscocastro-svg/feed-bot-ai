@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
+import { loadPublishedTemplate } from "../../supabase/functions/_shared/template-versioning.js";
 
 const SIZE = 1080;
 
@@ -182,9 +183,11 @@ async function loadEffectiveSettings(item: any) {
 export async function composeAndUploadPost(item: any): Promise<string> {
   const settings = await loadEffectiveSettings(item);
   const templateId = settings?.default_feed_template_id || settings?.default_template_id;
-  const { data: template } = templateId
-    ? await supabase.from("post_templates").select("*").eq("id", templateId).eq("format", "feed").maybeSingle()
-    : { data: null };
+  const template = await loadPublishedTemplate(supabase, {
+    accountId: item?.instagram_account_id,
+    fallbackTemplateId: templateId,
+    format: "feed",
+  });
 
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();

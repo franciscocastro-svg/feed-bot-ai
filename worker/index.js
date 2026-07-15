@@ -10,6 +10,7 @@ import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect } from "../supabase/functions/_shared/image-framing.js";
+import { loadPublishedTemplate } from "../supabase/functions/_shared/template-versioning.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
 import { resolveCutPreset } from "./cutPresets.js";
 import {
@@ -323,22 +324,14 @@ function templateIdForFormat(settings, format) {
   return settings?.default_feed_template_id || settings?.default_template_id || null;
 }
 
-async function loadTemplateForFormat(userId, settings, format) {
+async function loadTemplateForFormat(userId, accountId, settings, format) {
   const templateId = templateIdForFormat(settings, format);
-  if (!templateId) return null;
-  const normalized = format === "story" ? "stories" : format === "reel" ? "reels" : "feed";
-  const { data, error } = await supabase
-    .from("post_templates")
-    .select("*")
-    .eq("id", templateId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    console.warn(`[template] Falha ao buscar template ${templateId}:`, error.message);
-    return null;
-  }
-  if (!data || (data.format || "feed") !== normalized) return null;
-  return data;
+  return loadPublishedTemplate(supabase, {
+    accountId,
+    userId,
+    fallbackTemplateId: templateId,
+    format,
+  });
 }
 
 function drawCoverImage(ctx, img, x, y, w, h) {
@@ -475,7 +468,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 async function composeAndUploadPostNode(item, settings) {
   const SIZE = 1080;
   const { createCanvas } = await getCanvasRuntime();
-  const template = await loadTemplateForFormat(item.user_id, settings, "feed");
+  const template = await loadTemplateForFormat(item.user_id, item.instagram_account_id, settings, "feed");
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
   const subtitle = item.rewritten_summary || "";
@@ -598,7 +591,7 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
   const W = 1080;
   const H = 1920;
   const { createCanvas } = await getCanvasRuntime();
-  const template = await loadTemplateForFormat(item.user_id, settings, opts.withFollowCta ? "reel" : "story");
+  const template = await loadTemplateForFormat(item.user_id, item.instagram_account_id, settings, opts.withFollowCta ? "reel" : "story");
 
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia");
   const subtitle = (item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "");

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
+import { loadPublishedTemplate } from "../../supabase/functions/_shared/template-versioning.js";
 
 const W = 1080;
 const H = 1920;
@@ -206,14 +207,11 @@ export async function composeAndUploadStory(item: any, opts: { withFollowCta?: b
   const templateId = opts.withFollowCta
     ? settings?.default_reel_template_id || settings?.default_template_id
     : settings?.default_story_template_id || settings?.default_template_id;
-  const { data: template } = templateId
-    ? await supabase
-      .from("post_templates")
-      .select("*")
-      .eq("id", templateId)
-      .eq("format", opts.withFollowCta ? "reels" : "stories")
-      .maybeSingle()
-    : { data: null };
+  const template = await loadPublishedTemplate(supabase, {
+    accountId: item?.instagram_account_id,
+    fallbackTemplateId: templateId,
+    format: opts.withFollowCta ? "reels" : "stories",
+  });
 
   let photoImg: HTMLImageElement | null = null;
   if (item.original_image_url) {

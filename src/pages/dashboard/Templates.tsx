@@ -20,6 +20,7 @@ import {
   normalizeTemplateConfig,
 } from "../../../supabase/functions/_shared/template-layouts.js";
 import { resolveAccountTemplateDefaults, type TemplateFormat } from "@/lib/templateDefaults";
+import { materializeTemplateVersion } from "../../../supabase/functions/_shared/template-versioning.js";
 
 type PostFormat = TemplateFormat;
 const GLOBAL_SCOPE = "__global";
@@ -47,6 +48,36 @@ type Template = {
   is_default: boolean;
   format: PostFormat;
 };
+
+type TemplateVersionSnapshot = {
+  id: string;
+  template_id: string;
+  user_id: string;
+  instagram_account_id: string;
+  format: PostFormat;
+  version_number: number;
+  status: "draft" | "published" | "archived";
+  name: string;
+  kind: "custom" | "preset";
+  preset_key: string | null;
+  background_url: string | null;
+  config: Record<string, unknown>;
+};
+
+type TemplateVersionState = {
+  format: PostFormat;
+  published_version_id: string | null;
+  draft_version_id: string | null;
+  published: TemplateVersionSnapshot | null;
+  draft: TemplateVersionSnapshot | null;
+  history?: TemplateVersionSnapshot[];
+};
+
+type DynamicRpcResult = { data: unknown; error: { message: string } | null };
+const callDynamicRpc = supabase.rpc.bind(supabase) as unknown as (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<DynamicRpcResult>;
 
 type BrandTextElement = {
   id: string;
@@ -248,6 +279,7 @@ export default function Templates() {
   const [selectedAccountId, setSelectedAccountId] = useState(GLOBAL_SCOPE);
   const [globalSettings, setGlobalSettings] = useState<TemplateSettings | null>(null);
   const [accountSettings, setAccountSettings] = useState<TemplateSettings[]>([]);
+  const [versionStates, setVersionStates] = useState<TemplateVersionState[]>([]);
   const [editing, setEditing] = useState<Template | null>(null);
   const [previewing, setPreviewing] = useState<Template | null>(null);
   const [brand, setBrand] = useState<{ handle?: string; name?: string; logo?: string }>({});
@@ -290,6 +322,37 @@ export default function Templates() {
   }
   useEffect(() => { load(); }, [user]);
 
+  async function loadVersionStates(accountId = selectedAccountId) {
+    if (!user || accountId === GLOBAL_SCOPE) {
+      setVersionStates([]);
+      return;
+    }
+    const { data, error } = await callDynamicRpc("get_account_template_states", {
+      _account_id: accountId,
+    });
+    // The UI stays compatible while the migration is still pending deployment.
+    if (error) {
+      setVersionStates([]);
+      return;
+    }
+    setVersionStates(Array.isArray(data) ? data as TemplateVersionState[] : []);
+  }
+
+  useEffect(() => { loadVersionStates(); }, [selectedAccountId, user]);
+
+  function stateFor(format: PostFormat) {
+    return versionStates.find(state => state.format === format) || null;
+  }
+
+  function accountTemplateSnapshot(template: Template, preferDraft = false): Template {
+    if (selectedAccountId === GLOBAL_SCOPE) return template;
+    const state = stateFor(template.format || "feed");
+    const candidates = preferDraft ? [state?.draft, state?.published] : [state?.published, state?.draft];
+    const version = candidates.find(candidate => candidate?.template_id === template.id);
+    if (!version) return template;
+    return { ...template, ...(materializeTemplateVersion(version) || {}), is_default: template.is_default } as Template;
+  }
+
   useEffect(() => {
     if (!globalSettings) return;
     const override = selectedAccountId === GLOBAL_SCOPE
@@ -329,6 +392,7 @@ export default function Templates() {
         ...current.filter(item => item.instagram_account_id !== selectedAccountId),
         data as TemplateSettings,
       ]);
+      await loadVersionStates(selectedAccountId);
       const account = accounts.find(item => item.id === selectedAccountId);
       toast.success(`Template de ${format === "feed" ? "Feed" : format === "stories" ? "Stories" : "Reels"} aplicado somente em @${account?.username || "conta"}`);
     }
@@ -464,7 +528,13 @@ export default function Templates() {
   }
 
   async function remove(template: Template) {
-    if (!confirm("Remover este template?")) return;
+    let usageCount = 0;
+    const usageResult = await callDynamicRpc("get_template_account_usage_count", { _template_id: template.id });
+    if (!usageResult.error && typeof usageResult.data === "number") usageCount = usageResult.data;
+    const warning = usageCount > 0
+      ? `Este template está ligado a ${usageCount} conta/formato(s). A exclusão removerá essas versões. Deseja continuar?`
+      : "Remover este template?";
+    if (!confirm(warning)) return;
     const { error } = await supabase.from("post_templates").delete().eq("id", template.id);
     if (error) return toast.error(error.message);
 
@@ -504,8 +574,37 @@ export default function Templates() {
       }).select().single();
       if (error) return toast.error(error.message);
       setTemplates(list => [data as Template, ...list]);
+      if (selectedAccountId !== GLOBAL_SCOPE) {
+        const { error: draftError } = await callDynamicRpc("save_account_template_draft", {
+          _account_id: selectedAccountId,
+          _template_id: data.id,
+          _name: t.name,
+          _config: t.config,
+          _background_url: null,
+          _preset_key: null,
+          _kind: "custom",
+        });
+        if (draftError) return toast.error(draftError.message);
+        await loadVersionStates(selectedAccountId);
+      }
       setEditing(null);
-      toast.success("Template criado com sucesso");
+      toast.success(selectedAccountId === GLOBAL_SCOPE ? "Template criado com sucesso" : "Template criado como rascunho desta conta");
+      return;
+    }
+    if (selectedAccountId !== GLOBAL_SCOPE) {
+      const { error } = await callDynamicRpc("save_account_template_draft", {
+        _account_id: selectedAccountId,
+        _template_id: t.id,
+        _name: t.name,
+        _config: t.config,
+        _background_url: t.background_url,
+        _preset_key: t.preset_key,
+        _kind: t.kind,
+      });
+      if (error) return toast.error(error.message);
+      await loadVersionStates(selectedAccountId);
+      setEditing(null);
+      toast.success("Rascunho salvo somente para esta conta");
       return;
     }
     const { error } = await supabase.from("post_templates").update({
@@ -515,6 +614,55 @@ export default function Templates() {
     setTemplates(list => list.map(x => x.id === t.id ? t : x));
     setEditing(null);
     toast.success("Salvo");
+  }
+
+  async function publishDraft(format: PostFormat) {
+    if (selectedAccountId === GLOBAL_SCOPE) return;
+    const { data: rawData, error } = await callDynamicRpc("publish_account_template_draft", {
+      _account_id: selectedAccountId,
+      _format: format,
+    });
+    if (error) return toast.error(error.message);
+    const data = rawData && typeof rawData === "object" ? rawData as Record<string, unknown> : null;
+    const templateId = typeof data?.template_id === "string" ? data.template_id : undefined;
+    if (templateId) {
+      const column = DEFAULT_COLUMN_BY_FORMAT[format];
+      setDefaultIds(current => ({ ...current, [format]: templateId }));
+      setAccountSettings(current => current.map(item => item.instagram_account_id === selectedAccountId
+        ? { ...item, [column]: templateId }
+        : item));
+    }
+    await loadVersionStates(selectedAccountId);
+    toast.success("Nova versão publicada somente nesta conta");
+  }
+
+  async function discardDraft(format: PostFormat) {
+    if (selectedAccountId === GLOBAL_SCOPE || !confirm("Descartar o rascunho desta conta?")) return;
+    const { error } = await callDynamicRpc("discard_account_template_draft", {
+      _account_id: selectedAccountId,
+      _format: format,
+    });
+    if (error) return toast.error(error.message);
+    await loadVersionStates(selectedAccountId);
+    toast.success("Rascunho descartado");
+  }
+
+  async function restorePreviousVersion(format: PostFormat) {
+    if (selectedAccountId === GLOBAL_SCOPE) return;
+    const previous = stateFor(format)?.history?.[0];
+    if (!previous?.id || !confirm(`Restaurar a versão ${previous.version_number} nesta conta?`)) return;
+    const { error } = await callDynamicRpc("restore_account_template_version", {
+      _account_id: selectedAccountId,
+      _version_id: previous.id,
+    });
+    if (error) return toast.error(error.message);
+    const column = DEFAULT_COLUMN_BY_FORMAT[format];
+    setDefaultIds(current => ({ ...current, [format]: previous.template_id }));
+    setAccountSettings(current => current.map(item => item.instagram_account_id === selectedAccountId
+      ? { ...item, [column]: previous.template_id }
+      : item));
+    await loadVersionStates(selectedAccountId);
+    toast.success("Versão anterior restaurada somente nesta conta");
   }
 
   return (
@@ -808,26 +956,34 @@ export default function Templates() {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {list.map(t => (
+                  {list.map(t => {
+                    const rendered = accountTemplateSnapshot(t);
+                    const versionState = stateFor(fmt.key);
+                    const draft = versionState?.draft?.template_id === t.id ? versionState.draft : null;
+                    const draftPreview = draft ? accountTemplateSnapshot(t, true) : rendered;
+                    return (
                     <Card key={t.id} className="overflow-hidden">
                       <div className={`${fmt.aspect} bg-muted relative`}>
-                        {t.background_url ? (
-                          <img src={t.background_url} alt={t.name} className="w-full h-full object-cover" />
+                        {rendered.background_url ? (
+                          <img src={rendered.background_url} alt={rendered.name} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full" style={{ background: templateGradientCss(t.preset_key, t.config) }} />
+                          <div className="w-full h-full" style={{ background: templateGradientCss(rendered.preset_key, rendered.config) }} />
                         )}
                         {activeDefaultId === t.id && (
                           <Badge className="absolute top-2 left-2 bg-primary"><Star className="h-3 w-3 mr-1" />Padrão</Badge>
                         )}
+                        {draft && (
+                          <Badge variant="secondary" className="absolute top-2 right-2">Rascunho</Badge>
+                        )}
                       </div>
                       <div className="p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium truncate">{t.name}</div>
-                          <Badge variant="outline" className="text-xs">{t.kind === "custom" ? "Custom" : "Preset"}</Badge>
+                          <div className="font-medium truncate">{rendered.name}</div>
+                          <Badge variant="outline" className="text-xs">{rendered.kind === "custom" ? "Custom" : "Preset"}</Badge>
                         </div>
                         <div className="flex gap-2 flex-wrap">
-                          <Button size="sm" variant="outline" className="flex-1 min-w-[80px]" onClick={() => setEditing(t)}>Ajustar</Button>
-                          <Button size="sm" variant="secondary" className="flex-1 min-w-[80px]" onClick={() => setPreviewing(t)}>
+                          <Button size="sm" variant="outline" className="flex-1 min-w-[80px]" onClick={() => setEditing(draftPreview)}>Ajustar</Button>
+                          <Button size="sm" variant="secondary" className="flex-1 min-w-[80px]" onClick={() => setPreviewing(draftPreview)}>
                             <Eye className="h-4 w-4 mr-1" /> Prévia
                           </Button>
                           {activeDefaultId !== t.id && (
@@ -836,11 +992,21 @@ export default function Templates() {
                               {selectedAccountId === GLOBAL_SCOPE ? "Usar globalmente" : "Usar nesta conta"}
                             </Button>
                           )}
+                          {draft && selectedAccountId !== GLOBAL_SCOPE && (
+                            <>
+                              <Button size="sm" onClick={() => publishDraft(fmt.key)}>Publicar versão</Button>
+                              <Button size="sm" variant="ghost" onClick={() => discardDraft(fmt.key)}>Descartar</Button>
+                            </>
+                          )}
+                          {activeDefaultId === t.id && !draft && selectedAccountId !== GLOBAL_SCOPE && (versionState?.history?.length || 0) > 0 && (
+                            <Button size="sm" variant="ghost" onClick={() => restorePreviousVersion(fmt.key)}>Restaurar anterior</Button>
+                          )}
                           <Button size="sm" variant="ghost" title="Remover template" onClick={() => remove(t)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
