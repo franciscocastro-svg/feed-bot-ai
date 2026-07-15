@@ -1,0 +1,27 @@
+{
+  "phase": "Autopiloto Recuperação 1A",
+  "migration": null,
+  "edgeFunctions": ["process-news", "retry-failed-news", "autopilot"],
+  "workerChanged": false,
+  "frontendChanged": false,
+  "manualFunctionInvocationDuringRelease": false,
+  "contracts": [
+    "asynchronous process-news dispatch",
+    "three-minute stale processing recovery",
+    "fenced recovery by status and updated_at",
+    "bounded AI provider attempts",
+    "Groq authentication circuit breaker",
+    "fenced processed transition"
+  ],
+  "excluded": [
+    "migrations",
+    "cron changes",
+    "secrets",
+    "frontend",
+    "worker",
+    "payments",
+    "stripe",
+    "meta",
+    "mcp"
+  ]
+}

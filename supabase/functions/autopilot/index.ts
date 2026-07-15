@@ -3,6 +3,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { PENDING_NEWS_MAX_AGE_HOURS } from "../_shared/autopilot-policy.ts";
 import {
+  decideStaleNewsRecovery,
+  STALE_NEWS_PROCESSING_MS,
+} from "../_shared/news-processing-policy.ts";
+import {
   compareEditorialNews,
   editorialNewsScore,
   MIN_POST_INTERVAL_MINUTES,
@@ -137,28 +141,6 @@ function sameScheduledFingerprint(item: any, row: any, targetIg?: string, global
   const itemTitle = normalizeDuplicateTitle(item.rewritten_title || item.original_title);
   const rowTitle = normalizeDuplicateTitle(rowNews.rewritten_title || rowNews.original_title);
   return itemTitle.length >= 18 && rowTitle.length >= 18 && itemTitle === rowTitle;
-}
-
-async function waitForProcessedNews(supabase: any, userId: string, newsItemId: string, timeoutMs = 120_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
-    const { data, error } = await supabase
-      .from("news_items")
-      .select("id, status, error_message")
-      .eq("user_id", userId)
-      .eq("id", newsItemId)
-      .maybeSingle();
-    
-    if (error) {
-      console.warn(`[wait] error fetching news ${newsItemId}:`, error);
-      continue;
-    }
-
-    if (data && ["processed", "failed", "rejected", "scheduled", "posted"].includes(String(data.status))) return data;
-  }
-  console.warn(`[wait] timeout waiting for news ${newsItemId} to process after ${timeoutMs}ms`);
-  return null;
 }
 
 // Próximo slot livre respeitando: cooldown do canal, horários permitidos, limite diário
@@ -593,40 +575,36 @@ Deno.serve(async (req) => {
         }).sort((a, b) => b.score - a.score);
 
         // Antes de pegar mais, verifica se há notícia ainda em
-        // "processing" (sendo trabalhada nos últimos 15 min) — se houver,
-        // pula apenas a conta correspondente. Notícias presas há >15 min são reenfileiradas
+        // "processing" recente — se houver,
+        // pula apenas a conta correspondente. Notícias além da janela comum de
+        // abandono são reenfileiradas
         // com limite de tentativas. Assim uma falha transitória do process-news
         // não descarta conteúdo bom nem trava uma conta o dia inteiro.
-        const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const stuckCutoff = new Date(Date.now() - STALE_NEWS_PROCESSING_MS).toISOString();
         const { data: stuckProcessing } = await supabase
           .from("news_items")
-          .select("id, retry_count")
+          .select("id, retry_count, updated_at")
           .eq("user_id", userId)
           .eq("status", "processing")
           .lt("updated_at", stuckCutoff);
+        let recoveredStuckProcessing = 0;
         for (const stuck of stuckProcessing || []) {
-          const nextRetry = Number((stuck as any).retry_count || 0) + 1;
-          if (nextRetry >= 4) {
-            await supabase
-              .from("news_items")
-              .update({
-                status: "failed",
-                retry_count: nextRetry,
-                error_message: "Processamento travou repetidas vezes. Verifique logs da Edge Function process-news.",
-              })
-              .eq("id", (stuck as any).id)
-              .eq("user_id", userId);
-          } else {
-            await supabase
-              .from("news_items")
-              .update({
-                status: "pending",
-                retry_count: nextRetry,
-                error_message: `Processamento travou >15min. Reenfileirado automaticamente (tentativa ${nextRetry}/3).`,
-              })
-              .eq("id", (stuck as any).id)
-              .eq("user_id", userId);
-          }
+          const recovery = decideStaleNewsRecovery((stuck as any).retry_count);
+          const { data: recovered } = await supabase
+            .from("news_items")
+            .update({
+              status: recovery.terminal ? "failed" : "pending",
+              retry_count: recovery.retryCount,
+              next_retry_at: null,
+              error_message: recovery.errorMessage,
+            })
+            .eq("id", (stuck as any).id)
+            .eq("user_id", userId)
+            .eq("status", "processing")
+            .eq("updated_at", (stuck as any).updated_at)
+            .select("id")
+            .maybeSingle();
+          if (recovered) recoveredStuckProcessing++;
         }
         const { data: inFlightRows, count: inFlight } = await supabase
           .from("news_items")
@@ -664,20 +642,25 @@ Deno.serve(async (req) => {
           if (pending.length >= maxPerRun) break;
         }
 
+        // process-news responde 202 e conclui em background. O autopiloto não
+        // deve aguardar o resultado dentro da mesma execução: o próximo ciclo
+        // agenda os itens que já chegaram a processed.
         const results = await Promise.all(pending.map(async (it) => {
           const r = await callFn("process-news", {
             user_id: userId,
             news_item_id: it.id,
             image_style: u.default_image_style || "template",
             media_type: u.default_media_type || "feed",
-            sync: true,
           });
-          if (!r.ok) return null;
-          const done = await waitForProcessedNews(supabase, userId, it.id);
-          return done?.status === "processed" ? it.id : null;
+          if (!r.ok) {
+            await recordFunctionFailure(supabase, userId, "process-news", r);
+            return null;
+          }
+          return r.status === 202 || r.data?.status === "processing" ? it.id : null;
         }));
-        const processed = results.filter((x): x is string => !!x);
-        userSummary.steps.processed = processed.length;
+        const processingStarted = results.filter((x): x is string => !!x);
+        userSummary.steps.processed = 0;
+        userSummary.steps.processing_started = processingStarted.length;
         userSummary.steps.active_queue = activeQueueCount || 0;
         userSummary.steps.active_queue_accounts = Array.from(activeQueueIgIds);
         userSummary.steps.active_queue_by_account = Object.fromEntries(activeQueueCountByIg);
@@ -688,7 +671,7 @@ Deno.serve(async (req) => {
           id: p.id,
           instagram_account_id: p.instagram_account_id,
         }));
-        userSummary.steps.requeued_stuck_processing = (stuckProcessing || []).length;
+        userSummary.steps.requeued_stuck_processing = recoveredStuckProcessing;
 
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase

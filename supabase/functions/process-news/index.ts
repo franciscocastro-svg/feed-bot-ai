@@ -73,6 +73,9 @@ const GROQ_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const GEMINI_CIRCUIT_BREAKER_MS = 60_000;
 let geminiUnavailableUntil = 0;
+let groqUnavailableUntil = 0;
+const GROQ_AUTH_CIRCUIT_BREAKER_MS = 6 * 60 * 60_000;
+const AI_PROVIDER_TIMEOUT_MS = 25_000;
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -267,14 +270,25 @@ const AI_FEED_CAPTION_MAX = 1950;
 const AI_REEL_CAPTION_MIN = 550;
 const AI_REEL_CAPTION_MAX = 1200;
 
-function assertCaptionQuality(parsed: any, provider: string, attempt: number) {
+type CaptionQualityPayload = {
+  caption?: string | null;
+  reel_caption?: string | null;
+};
+
+function hasShortCaption(parsed: CaptionQualityPayload) {
   const feedLength = parsed?.caption?.length || 0;
   const reelLength = parsed?.reel_caption?.length || 0;
-  const short = feedLength < AI_FEED_CAPTION_MIN || reelLength < AI_REEL_CAPTION_MIN;
-  if (short && attempt >= 2) {
-    throw new Error(`${provider} retornou legendas curtas após nova tentativa (feed=${feedLength}, reel=${reelLength})`);
+  return feedLength < AI_FEED_CAPTION_MIN || reelLength < AI_REEL_CAPTION_MIN;
+}
+
+function acceptCaptionWithoutQualityRetry<T extends CaptionQualityPayload>(parsed: T, provider: string): T {
+  if (hasShortCaption(parsed)) {
+    console.warn(
+      `[${provider.toLowerCase()}] legenda abaixo da meta; seguindo com expansão determinística ` +
+        `(feed=${parsed?.caption?.length || 0}, reel=${parsed?.reel_caption?.length || 0})`,
+    );
   }
-  return short;
+  return parsed;
 }
 
 function buildGroqRewriteMessages(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1) {
@@ -310,6 +324,9 @@ Responda APENAS um JSON valido com estas chaves:
 async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
   const key = Deno.env.get("GROQ_API_KEY");
   if (!key) throw new Error("GROQ_API_KEY ausente");
+  if (Date.now() < groqUnavailableUntil) {
+    throw new Error("Groq temporariamente indisponível; usando próximo provedor");
+  }
 
   const res = await fetch(GROQ_AI_URL, {
     method: "POST",
@@ -321,17 +338,21 @@ async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string
       max_tokens: 3600,
       response_format: { type: "json_object" },
     }),
+    signal: AbortSignal.timeout(AI_PROVIDER_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`Groq AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
+  if (!res.ok) {
+    const errorBody = (await res.text()).slice(0, 500);
+    if (res.status === 401 || res.status === 403) {
+      groqUnavailableUntil = Date.now() + GROQ_AUTH_CIRCUIT_BREAKER_MS;
+      throw new Error(`Groq AI ${res.status}: credencial inválida ou expirada`);
+    }
+    throw new Error(`Groq AI ${res.status}: ${errorBody}`);
+  }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(content), item);
-  if (assertCaptionQuality(parsed, "Groq", attempt) && attempt < 2) {
-    console.log(`[groq] legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
-    return await rewriteWithGroq(item, tone, srcOpts, attempt + 1);
-  }
-  return parsed;
+  return acceptCaptionWithoutQualityRetry(parsed, "Groq");
 }
 
 function readGeminiUsage(data: any) {
@@ -425,7 +446,9 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
     reasoning_effort: "none",
     response_format: { type: "json_object" },
   });
-  const maxApiAttempts = 3;
+  // Uma nova chamada por falha transitória é suficiente. Repetições de
+  // qualidade são tratadas localmente para preservar o orçamento de CPU.
+  const maxApiAttempts = 2;
   let data: any = null;
 
   for (let apiAttempt = 1; apiAttempt <= maxApiAttempts; apiAttempt++) {
@@ -434,6 +457,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: requestBody,
+      signal: AbortSignal.timeout(AI_PROVIDER_TIMEOUT_MS),
     });
 
     if (res.ok) {
@@ -482,11 +506,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
   if (!data) throw new Error("Gemini AI não retornou conteúdo após as tentativas");
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(content), item);
-  if (assertCaptionQuality(parsed, "Gemini", attempt) && attempt < 2) {
-    console.log(`[gemini] legendas curtas (caption=${parsed?.caption?.length}, reel=${parsed?.reel_caption?.length}), tentando novamente...`);
-    return await rewriteWithGemini(item, tone, srcOpts, attempt + 1);
-  }
-  return parsed;
+  return acceptCaptionWithoutQualityRetry(parsed, "Gemini");
 }
 
 async function rewriteWithLovableFactLocked(
@@ -507,15 +527,13 @@ async function rewriteWithLovableFactLocked(
       max_tokens: 5000,
       response_format: { type: "json_object" },
     }),
+    signal: AbortSignal.timeout(AI_PROVIDER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content || "{}";
   const parsed = normalizeRewritePayload(extractJsonObject(raw), item);
-  if (assertCaptionQuality(parsed, "Lovable/Gemini", attempt) && attempt < 2) {
-    return await rewriteWithLovableFactLocked(item, tone, srcOpts, attempt + 1);
-  }
-  return parsed;
+  return acceptCaptionWithoutQualityRetry(parsed, "Lovable/Gemini");
 }
 
 async function fetchArticleBody(url: string): Promise<string> {
@@ -660,7 +678,14 @@ async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: strin
     try {
       return await rewriteWithGroq(item, tone, srcOpts, attempt);
     } catch (e) {
-      console.warn("[groq] falhou; voltando para provedor Lovable/Gemini", e);
+      console.warn("[groq] falhou; tentando Gemini direto", e);
+      if (Deno.env.get("GEMINI_API_KEY")) {
+        try {
+          return await rewriteWithGemini(item, tone, srcOpts, attempt);
+        } catch (geminiError) {
+          console.warn("[gemini] reserva falhou; tentando Lovable/Gemini", geminiError);
+        }
+      }
       if (!Deno.env.get("LOVABLE_API_KEY")) throw e;
     }
   }
@@ -1605,7 +1630,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       ["💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
       hashtagsLine,
     );
-    const usefulReelCaption = normalizeCaptionText(ai.reel_caption || usefulCaption);
+    const usefulReelCaption = ensureUsefulCaption(ai.reel_caption || usefulCaption, item, ai.title, ai.summary);
     const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [followCta], reelHashtagsLine);
 
     // Escolha automática de trilha sonora pela IA (com base no nome do arquivo + tom da notícia)
@@ -1675,7 +1700,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     // e o scheduler ainda aplica o fallback dos 15 min (foto crua).
     // Isso elimina o "gargalo do canvas" descrito na análise de arquitetura:
     // o autopiloto não precisa mais que um navegador esteja aberto.
-    const { error: updErr } = await supabase.from("news_items").update({
+    const { data: processedRow, error: updErr } = await supabase.from("news_items").update({
       status: "processed",
       rewritten_title: ai.title,
       rewritten_summary: ai.summary,
@@ -1690,11 +1715,14 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       chosen_audio_track_id: chosenTrackId,
       chosen_audio_url: chosenTrackUrl,
       error_message: usedFallback ? "Sem créditos de IA: processado com fallback gratuito." : null,
-    }).eq("id", item.id);
+    }).eq("id", item.id).eq("user_id", userId).eq("status", "processing").select("id").maybeSingle();
 
     if (updErr) {
       console.error(`[process-news] update to processed failed for ${item.id}:`, updErr);
       throw new Error(`Failed to update news status to processed: ${updErr.message}`);
+    }
+    if (!processedRow) {
+      throw new Error("Processamento perdeu o claim antes de concluir; resultado descartado com segurança.");
     }
 
     await supabase.from("activity_logs").insert({ user_id: userId, action: "process_news", entity_type: "news_item", entity_id: item.id, details: { style: image_style, fallback: usedFallback } });

@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  decideStaleNewsRecovery,
   decideNewsClaim,
+  MAX_NEWS_PROCESSING_ATTEMPTS,
   processingErrorMessage,
   STALE_NEWS_PROCESSING_MS,
 } from "../../supabase/functions/_shared/news-processing-policy.ts";
@@ -26,6 +28,19 @@ describe("manual news processing recovery", () => {
       .toBe("reclaim_stale");
   });
 
+  it("accounts for interrupted attempts and stops after the recovery budget", () => {
+    expect(decideStaleNewsRecovery(0)).toEqual({
+      retryCount: 1,
+      terminal: false,
+      errorMessage: expect.stringContaining("tentativa 1/3"),
+    });
+    expect(decideStaleNewsRecovery(2)).toEqual({
+      retryCount: MAX_NEWS_PROCESSING_ATTEMPTS,
+      terminal: true,
+      errorMessage: expect.stringContaining("interrompido repetidamente"),
+    });
+  });
+
   it("returns actionable and sanitized messages", () => {
     expect(processingErrorMessage(new Error("Identidade da conta indisponível para compor a arte")))
       .toContain("Configure o nome ou @");
@@ -46,6 +61,8 @@ describe("manual news processing recovery", () => {
     const news = readProjectFile("src/pages/dashboard/News.tsx");
     expect(retry).toContain('.eq("status", "processing")');
     expect(retry).toContain('.lt("updated_at", staleIso)');
+    expect(retry).toContain('.eq("updated_at", stale.updated_at)');
+    expect(retry).toContain("decideStaleNewsRecovery");
     expect(news).toContain("already_processing");
     expect(news).toContain("duplicate_ignored");
     expect(news).toContain("sync: true");
