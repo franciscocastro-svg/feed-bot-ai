@@ -1653,6 +1653,11 @@ export type Database = {
           insights_updated_at: string | null
           instagram_account_id: string | null
           likes: number | null
+          media_render_attempt_count: number
+          media_render_claimed_at: string | null
+          media_render_claimed_by: string | null
+          media_render_last_error: string | null
+          media_render_next_retry_at: string | null
           media_type: string
           news_item_id: string
           permalink: string | null
@@ -1678,6 +1683,11 @@ export type Database = {
           insights_updated_at?: string | null
           instagram_account_id?: string | null
           likes?: number | null
+          media_render_attempt_count?: number
+          media_render_claimed_at?: string | null
+          media_render_claimed_by?: string | null
+          media_render_last_error?: string | null
+          media_render_next_retry_at?: string | null
           media_type?: string
           news_item_id: string
           permalink?: string | null
@@ -1703,6 +1713,11 @@ export type Database = {
           insights_updated_at?: string | null
           instagram_account_id?: string | null
           likes?: number | null
+          media_render_attempt_count?: number
+          media_render_claimed_at?: string | null
+          media_render_claimed_by?: string | null
+          media_render_last_error?: string | null
+          media_render_next_retry_at?: string | null
           media_type?: string
           news_item_id?: string
           permalink?: string | null
@@ -2764,6 +2779,17 @@ export type Database = {
         Args: { _resource: string; _user_id: string }
         Returns: Json
       }
+      claim_editorial_render_jobs: {
+        Args: { _lease_seconds?: number; _limit?: number; _worker: string }
+        Returns: {
+          attempt_count: number
+          instagram_account_id: string
+          media_type: string
+          news_item_id: string
+          scheduled_post_id: string
+          user_id: string
+        }[]
+      }
       claim_expired_video_cut_sources: {
         Args: { _limit?: number }
         Returns: {
@@ -2898,6 +2924,15 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      complete_editorial_render_job: {
+        Args: {
+          _error?: string
+          _scheduled_post_id: string
+          _success: boolean
+          _worker: string
+        }
+        Returns: boolean
       }
       complete_payment_reconcile_run: {
         Args: {
