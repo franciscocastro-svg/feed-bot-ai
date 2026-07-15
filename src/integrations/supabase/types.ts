@@ -119,6 +119,61 @@ export type Database = {
           },
         ]
       }
+      account_template_assignments: {
+        Row: {
+          created_at: string
+          draft_version_id: string | null
+          format: string
+          id: string
+          instagram_account_id: string
+          published_version_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          draft_version_id?: string | null
+          format: string
+          id?: string
+          instagram_account_id: string
+          published_version_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          draft_version_id?: string | null
+          format?: string
+          id?: string
+          instagram_account_id?: string
+          published_version_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_template_assignments_draft_version_id_fkey"
+            columns: ["draft_version_id"]
+            isOneToOne: false
+            referencedRelation: "post_template_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_template_assignments_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_template_assignments_published_version_id_fkey"
+            columns: ["published_version_id"]
+            isOneToOne: false
+            referencedRelation: "post_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_logs: {
         Row: {
           action: string
@@ -1301,6 +1356,75 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      post_template_versions: {
+        Row: {
+          background_url: string | null
+          config: Json
+          created_at: string
+          format: string
+          id: string
+          instagram_account_id: string
+          kind: string
+          name: string
+          preset_key: string | null
+          published_at: string | null
+          status: string
+          template_id: string
+          updated_at: string
+          user_id: string
+          version_number: number
+        }
+        Insert: {
+          background_url?: string | null
+          config?: Json
+          created_at?: string
+          format: string
+          id?: string
+          instagram_account_id: string
+          kind?: string
+          name: string
+          preset_key?: string | null
+          published_at?: string | null
+          status: string
+          template_id: string
+          updated_at?: string
+          user_id: string
+          version_number: number
+        }
+        Update: {
+          background_url?: string | null
+          config?: Json
+          created_at?: string
+          format?: string
+          id?: string
+          instagram_account_id?: string
+          kind?: string
+          name?: string
+          preset_key?: string | null
+          published_at?: string | null
+          status?: string
+          template_id?: string
+          updated_at?: string
+          user_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_template_versions_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "post_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       post_templates: {
         Row: {
@@ -3515,6 +3639,10 @@ export type Database = {
         Args: { _confirmation_code: string; _meta_user_id: string }
         Returns: Json
       }
+      discard_account_template_draft: {
+        Args: { _account_id: string; _format: string }
+        Returns: boolean
+      }
       dispatch_payment_reconcile: {
         Args: { p_environment: string }
         Returns: string
@@ -3556,6 +3684,10 @@ export type Database = {
       finalize_video_cut_job_usage: {
         Args: { _generated_count?: number; _job_id: string }
         Returns: undefined
+      }
+      get_account_template_states: {
+        Args: { _account_id: string }
+        Returns: Json
       }
       get_current_usage: {
         Args: { _user_id: string }
@@ -3612,6 +3744,10 @@ export type Database = {
           plan: string
           status: string
         }[]
+      }
+      get_template_account_usage_count: {
+        Args: { _template_id: string }
+        Returns: number
       }
       get_unseen_releases: {
         Args: never
@@ -3707,6 +3843,10 @@ export type Database = {
       }
       normalize_dedupe_text: { Args: { _value: string }; Returns: string }
       normalize_dedupe_url: { Args: { _value: string }; Returns: string }
+      publish_account_template_draft: {
+        Args: { _account_id: string; _format: string }
+        Returns: Json
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
@@ -3790,6 +3930,22 @@ export type Database = {
           _transcript_text?: string
         }
         Returns: string
+      }
+      restore_account_template_version: {
+        Args: { _account_id: string; _version_id: string }
+        Returns: Json
+      }
+      save_account_template_draft: {
+        Args: {
+          _account_id: string
+          _background_url?: string
+          _config: Json
+          _kind?: string
+          _name: string
+          _preset_key?: string
+          _template_id: string
+        }
+        Returns: Json
       }
       set_account_template_default: {
         Args: { _account_id: string; _format: string; _template_id: string }
