@@ -14,13 +14,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
 import {
   getDefaultTemplateConfig,
-  getPresetTemplateConfig,
   getPresetTemplateLayout,
   getTemplateLayoutOptions,
   normalizeTemplateConfig,
 } from "../../../supabase/functions/_shared/template-layouts.js";
 import { resolveAccountTemplateDefaults, type TemplateFormat } from "@/lib/templateDefaults";
 import { materializeTemplateVersion } from "../../../supabase/functions/_shared/template-versioning.js";
+import type { Json } from "@/integrations/supabase/types";
+import {
+  PROFESSIONAL_TEMPLATE_NICHES,
+  PROFESSIONAL_TEMPLATE_PRESETS,
+  PROFESSIONAL_TEMPLATE_STYLES,
+  buildProfessionalTemplateConfig,
+  filterProfessionalTemplates,
+  type ProfessionalTemplatePreset,
+  type ProfessionalTemplateStyle,
+} from "@/lib/professionalTemplateCatalog";
 
 type PostFormat = TemplateFormat;
 const GLOBAL_SCOPE = "__global";
@@ -129,129 +138,16 @@ const DEFAULT_COLUMN_BY_FORMAT: Record<PostFormat, string> = {
   reels: "default_reel_template_id",
 };
 
-type NichePreset = {
-  key: string;
-  name: string;
-  description: string;
-  config: Record<string, any>;
+const NICHE_ICONS: Record<string, typeof Newspaper> = {
+  noticias: Newspaper,
+  economia: TrendingUp,
+  futebol: Trophy,
+  fofoca: Sparkles,
+  advogados: Scale,
+  medicos: Stethoscope,
+  tecnologia: Cpu,
+  religiao: Church,
 };
-
-type Niche = {
-  key: string;
-  label: string;
-  icon: any;
-  accent: string;
-  presets: NichePreset[];
-};
-
-// Biblioteca profissional de templates organizados por nicho.
-// Cada preset traz paleta e selo apropriados ao tema — tudo editável depois.
-const NICHES: Niche[] = [
-  {
-    key: "noticias", label: "Notícias", icon: Newspaper, accent: "#DC2626",
-    presets: [
-      { key: "news_minimal", name: "Minimal Editorial", description: "Header branco, foto embaixo, selo amarelo",
-        config: { titleColor: "#0A0A0A", subtitleColor: "#52525B", badgeBg: "#FFD400", badgeColor: "#000000", badgeText: "LEIA A LEGENDA →", overlayOpacity: 0 } },
-      { key: "news_breaking", name: "Breaking News", description: "Vermelho urgente, fundo escuro",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "URGENTE", overlayOpacity: 0.55 } },
-      { key: "news_classic", name: "Jornal Clássico", description: "Bege papel, ar de autoridade",
-        config: { titleColor: "#1F2937", subtitleColor: "#6B7280", badgeBg: "#1F2937", badgeColor: "#F5F1E8", badgeText: "EDIÇÃO DE HOJE", overlayOpacity: 0.3 } },
-      { key: "news_yellow", name: "Bold Stripe", description: "Faixa amarela no topo, título grande",
-        config: { titleColor: "#000000", subtitleColor: "#27272A", badgeBg: "#000000", badgeColor: "#FFD400", badgeText: "DESTAQUE", overlayOpacity: 0 } },
-    ],
-  },
-  {
-    key: "economia", label: "Economia", icon: TrendingUp, accent: "#047857",
-    presets: [
-      { key: "econ_bull", name: "Mercado em Alta", description: "Verde dinheiro, otimismo",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#A7F3D0", badgeBg: "#10B981", badgeColor: "#022C22", badgeText: "↑ ALTA", overlayOpacity: 0.4 } },
-      { key: "econ_bear", name: "Mercado em Baixa", description: "Vermelho/preto, queda da bolsa",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "↓ QUEDA", overlayOpacity: 0.5 } },
-      { key: "econ_corp", name: "Corporativo Premium", description: "Azul marinho + dourado",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FBBF24", badgeColor: "#0F172A", badgeText: "MERCADO", overlayOpacity: 0.35 } },
-      { key: "econ_fintech", name: "Fintech Minimal", description: "Branco + verde menta",
-        config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#0F172A", badgeColor: "#10B981", badgeText: "ECONOMIA", overlayOpacity: 0 } },
-    ],
-  },
-  {
-    key: "futebol", label: "Futebol & Esportes", icon: Trophy, accent: "#16A34A",
-    presets: [
-      { key: "soc_stadium", name: "Estádio Noturno", description: "Preto + verde grama",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#86EFAC", badgeBg: "#16A34A", badgeColor: "#000000", badgeText: "GOL!", overlayOpacity: 0.5 } },
-      { key: "soc_brasil", name: "Verde-Amarelo BR", description: "Cores da seleção",
-        config: { titleColor: "#0F172A", subtitleColor: "#1F2937", badgeBg: "#15803D", badgeColor: "#FACC15", badgeText: "SELEÇÃO", overlayOpacity: 0.2 } },
-      { key: "soc_derby", name: "Clássico", description: "Vermelho × preto, rivalidade",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FCA5A5", badgeBg: "#FFFFFF", badgeColor: "#DC2626", badgeText: "CLÁSSICO", overlayOpacity: 0.45 } },
-      { key: "soc_champ", name: "Champions Premium", description: "Azul + estrela dourada",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#C7D2FE", badgeBg: "#FBBF24", badgeColor: "#1E1B4B", badgeText: "★ FINAL", overlayOpacity: 0.4 } },
-    ],
-  },
-  {
-    key: "fofoca", label: "Fofoca & Celebridades", icon: Sparkles, accent: "#EC4899",
-    presets: [
-      { key: "gos_pink", name: "Rosa Glamour", description: "Rosa choque, chamativo",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FCE7F3", badgeBg: "#FBBF24", badgeColor: "#831843", badgeText: "🔥 EXCLUSIVO", overlayOpacity: 0.35 } },
-      { key: "gos_tab", name: "Tabloide Sensação", description: "Amarelo neon + manchete grande",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FDE68A", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "BOMBA!", overlayOpacity: 0.5 } },
-      { key: "gos_carpet", name: "Tapete Vermelho", description: "Vermelho + dourado, luxo",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FEF3C7", badgeBg: "#FBBF24", badgeColor: "#7F1D1D", badgeText: "★ CELEB", overlayOpacity: 0.4 } },
-      { key: "gos_pastel", name: "Pastel Casual", description: "Lilás + rosa, leve e atual",
-        config: { titleColor: "#5B21B6", subtitleColor: "#9333EA", badgeBg: "#5B21B6", badgeColor: "#FBCFE8", badgeText: "DEU O QUE FALAR", overlayOpacity: 0 } },
-    ],
-  },
-  {
-    key: "advogados", label: "Direito & Advocacia", icon: Scale, accent: "#1E3A8A",
-    presets: [
-      { key: "law_classic", name: "Sóbrio Institucional", description: "Azul marinho + dourado",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FBBF24", badgeColor: "#0F172A", badgeText: "DIREITO", overlayOpacity: 0.4 } },
-      { key: "law_serif", name: "Serifa Editorial", description: "Bege + preto, manual jurídico",
-        config: { titleColor: "#1F2937", subtitleColor: "#4B5563", badgeBg: "#1F2937", badgeColor: "#F5F1E8", badgeText: "§ ENTENDA", overlayOpacity: 0.3 } },
-      { key: "law_premium", name: "Vinho & Marfim", description: "Vinho profundo, premium",
-        config: { titleColor: "#FEF3C7", subtitleColor: "#FCA5A5", badgeBg: "#FEF3C7", badgeColor: "#7F1D1D", badgeText: "JURISPRUDÊNCIA", overlayOpacity: 0.4 } },
-      { key: "law_modern", name: "Moderno Minimal", description: "Cinza grafite + branco",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#D1D5DB", badgeBg: "#1E3A8A", badgeColor: "#FFFFFF", badgeText: "ART. LEI", overlayOpacity: 0.3 } },
-    ],
-  },
-  {
-    key: "medicos", label: "Saúde & Medicina", icon: Stethoscope, accent: "#0891B2",
-    presets: [
-      { key: "med_clean", name: "Clínico Limpo", description: "Branco + azul ciano, confiança",
-        config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#0891B2", badgeColor: "#FFFFFF", badgeText: "+ SAÚDE", overlayOpacity: 0 } },
-      { key: "med_alert", name: "Alerta Saúde", description: "Laranja + branco, atenção",
-        config: { titleColor: "#9A3412", subtitleColor: "#C2410C", badgeBg: "#DC2626", badgeColor: "#FFFFFF", badgeText: "ALERTA", overlayOpacity: 0 } },
-      { key: "med_research", name: "Pesquisa Científica", description: "Azul escuro + grafismo",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#BAE6FD", badgeBg: "#FFFFFF", badgeColor: "#082F49", badgeText: "ESTUDO", overlayOpacity: 0.4 } },
-      { key: "med_wellness", name: "Bem-estar Verde", description: "Verde sálvia + creme",
-        config: { titleColor: "#14532D", subtitleColor: "#166534", badgeBg: "#14532D", badgeColor: "#F0FDF4", badgeText: "BEM-ESTAR", overlayOpacity: 0.2 } },
-    ],
-  },
-  {
-    key: "tecnologia", label: "Tecnologia", icon: Cpu, accent: "#8B5CF6",
-    presets: [
-      { key: "tec_dark", name: "Dark Mode", description: "Preto + roxo neon",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#C4B5FD", badgeBg: "#A78BFA", badgeColor: "#0A0A0A", badgeText: "TECH", overlayOpacity: 0.4 } },
-      { key: "tec_ai", name: "AI Gradient", description: "Roxo → azul, vibe IA",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#E0E7FF", badgeBg: "#FFFFFF", badgeColor: "#6366F1", badgeText: "★ IA", overlayOpacity: 0.3 } },
-      { key: "tec_startup", name: "Startup Branco", description: "Branco + acento ciano",
-        config: { titleColor: "#0F172A", subtitleColor: "#475569", badgeBg: "#06B6D4", badgeColor: "#FFFFFF", badgeText: "LANÇAMENTO", overlayOpacity: 0 } },
-      { key: "tec_cyber", name: "Cyberpunk", description: "Magenta + ciano, neon",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FBCFE8", badgeBg: "#FACC15", badgeColor: "#831843", badgeText: "FUTURO", overlayOpacity: 0.45 } },
-    ],
-  },
-  {
-    key: "religiao", label: "Religião & Fé", icon: Church, accent: "#7C2D12",
-    presets: [
-      { key: "rel_golden", name: "Dourado Sagrado", description: "Marrom + dourado, solene",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#FEF3C7", badgeBg: "#FBBF24", badgeColor: "#451A03", badgeText: "✝ PALAVRA", overlayOpacity: 0.45 } },
-      { key: "rel_peace", name: "Azul Celeste", description: "Azul céu + branco, paz",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#BFDBFE", badgeBg: "#FFFFFF", badgeColor: "#1E40AF", badgeText: "FÉ", overlayOpacity: 0.3 } },
-      { key: "rel_minimal", name: "Salmo Minimal", description: "Creme + serifa, versículo",
-        config: { titleColor: "#1F2937", subtitleColor: "#6B7280", badgeBg: "#7C2D12", badgeColor: "#FAF7F0", badgeText: "VERSÍCULO", overlayOpacity: 0.1 } },
-      { key: "rel_revival", name: "Avivamento", description: "Roxo + amarelo glória",
-        config: { titleColor: "#FFFFFF", subtitleColor: "#DDD6FE", badgeBg: "#FBBF24", badgeColor: "#4C1D95", badgeText: "🔥 AVIVA", overlayOpacity: 0.35 } },
-    ],
-  },
-];
 
 function wrapPreviewText(text: string, maxChars: number, maxLines: number) {
   const words = text.trim().split(/\s+/).filter(Boolean);
@@ -287,7 +183,10 @@ export default function Templates() {
   const [criteriaOpen, setCriteriaOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createFormat, setCreateFormat] = useState<PostFormat>("feed");
-  const [selectedNiche, setSelectedNiche] = useState<string>(NICHES[0].key);
+  const [selectedNiche, setSelectedNiche] = useState<string>(PROFESSIONAL_TEMPLATE_NICHES[0].key);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState<"all" | ProfessionalTemplateStyle>("all");
+  const [catalogPreview, setCatalogPreview] = useState<{ preset: ProfessionalTemplatePreset; format: PostFormat } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -437,22 +336,21 @@ export default function Templates() {
     }
   }
 
-  async function addPreset(p: NichePreset, format: PostFormat) {
+  async function addPreset(p: ProfessionalTemplatePreset, format: PostFormat) {
     try {
       await ensureTemplateLimit();
     } catch (e: any) {
       return toast.error(e.message);
     }
-    const mergedConfig = {
-      ...getPresetTemplateConfig(p.key, format, p.config),
-      backgroundGradient: resolveTemplateGradient(p.key, p.config),
-    };
+    const mergedConfig = buildProfessionalTemplateConfig(p, format);
     const { data, error } = await supabase.from("post_templates").insert({
-      user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig, format,
+      user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig as unknown as Json, format,
     }).select().single();
     if (error) return toast.error(error.message);
     setTemplates(t => [data as Template, ...t]);
-    toast.success(`${p.name} adicionado em ${format}`);
+    setCatalogPreview(null);
+    setEditing(data as Template);
+    toast.success(`${p.name} adicionado. Personalize e salve o rascunho antes de publicar.`);
   }
 
   const uploadFormatRef = useRef<PostFormat>("feed");
@@ -665,6 +563,17 @@ export default function Templates() {
     toast.success("Versão anterior restaurada somente nesta conta");
   }
 
+  const catalogPreviewTemplate: Template | null = catalogPreview ? {
+    id: `catalog-${catalogPreview.preset.key}-${catalogPreview.format}`,
+    name: catalogPreview.preset.name,
+    kind: "preset",
+    preset_key: catalogPreview.preset.key,
+    background_url: null,
+    config: buildProfessionalTemplateConfig(catalogPreview.preset, catalogPreview.format),
+    is_default: false,
+    format: catalogPreview.format,
+  } : null;
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -856,6 +765,11 @@ export default function Templates() {
         const Icon = fmt.icon;
         const list = templates.filter(t => (t.format || "feed") === fmt.key);
         const activeDefaultId = defaultIds[fmt.key];
+        const catalogItems = filterProfessionalTemplates({
+          niche: selectedNiche === "all" || templateSearch.trim() ? undefined : selectedNiche,
+          style: selectedStyle,
+          query: templateSearch,
+        });
         return (
           <section key={fmt.key} className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border pb-2">
@@ -882,23 +796,59 @@ export default function Templates() {
               </Button>
             </div>
 
-            {/* Biblioteca de modelos por nicho */}
+            {/* Biblioteca profissional de modelos */}
             <div className="rounded-xl border border-border bg-gradient-to-br from-background to-muted/30 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Biblioteca de modelos por nicho
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Layers className="h-4 w-4 text-primary" />
+                    Biblioteca profissional
+                    <Badge variant="secondary">{PROFESSIONAL_TEMPLATE_PRESETS.length} modelos</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Visualize com a marca da conta selecionada. Nenhum modelo é ativado sem sua confirmação.
+                  </p>
                 </div>
-                <span className="text-xs text-muted-foreground">Clique em um modelo para adicionar à sua coleção</span>
+                <Badge variant="outline">{catalogItems.length} disponíveis em {fmt.label}</Badge>
               </div>
 
-              {/* Abas de nicho */}
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_210px]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={templateSearch}
+                    onChange={event => setTemplateSearch(event.target.value)}
+                    placeholder="Buscar por nome, nicho ou estilo"
+                    className="pl-9"
+                    aria-label="Buscar modelos profissionais"
+                  />
+                </div>
+                <Select value={selectedStyle} onValueChange={value => setSelectedStyle(value as "all" | ProfessionalTemplateStyle)}>
+                  <SelectTrigger aria-label="Filtrar modelos por estilo">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROFESSIONAL_TEMPLATE_STYLES.map(style => (
+                      <SelectItem key={style.key} value={style.key}>{style.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
-                {NICHES.map(n => {
-                  const NIcon = n.icon;
+                <button
+                  type="button"
+                  onClick={() => setSelectedNiche("all")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all ${selectedNiche === "all" ? "border-primary bg-primary text-primary-foreground" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Layers className="h-3.5 w-3.5" /> Todos
+                </button>
+                {PROFESSIONAL_TEMPLATE_NICHES.map(n => {
+                  const NIcon = NICHE_ICONS[n.key] || Layers;
                   const active = selectedNiche === n.key;
                   return (
                     <button
+                      type="button"
                       key={n.key}
                       onClick={() => setSelectedNiche(n.key)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all ${
@@ -915,16 +865,17 @@ export default function Templates() {
                 })}
               </div>
 
-              {/* Modelos do nicho selecionado */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {(NICHES.find(n => n.key === selectedNiche)?.presets || []).map(p => {
-                  const preview = getPresetTemplateConfig(p.key, fmt.key, p.config);
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                {catalogItems.map(p => {
+                  const preview = buildProfessionalTemplateConfig(p, fmt.key);
                   const previewH = fmt.key === "feed" ? 1080 : 1920;
                   return (
                   <button
+                    type="button"
                     key={p.key}
-                    onClick={() => addPreset(p, fmt.key)}
-                    className="group text-left rounded-lg border border-border bg-card p-2 hover:border-primary hover:shadow-md transition-all"
+                    onClick={() => setCatalogPreview({ preset: p, format: fmt.key })}
+                    className="group text-left rounded-lg border border-border bg-card p-2 hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Visualizar modelo ${p.name} para ${fmt.label}`}
                   >
                     <div className={`${fmt.aspect} rounded-md mb-2 relative overflow-hidden`} style={{ background: templateGradientCss(p.key, p.config) }}>
                       <div className="absolute border border-white/20 bg-black/10" style={{ left: `${preview.photoX / 10.8}%`, top: `${preview.photoY / previewH * 100}%`, width: `${preview.photoW / 10.8}%`, height: `${preview.photoH / previewH * 100}%` }} />
@@ -935,15 +886,26 @@ export default function Templates() {
                         {preview.badgeText}
                       </div>
                     </div>
-                    <div className="font-semibold text-xs truncate">{p.name}</div>
-                    <div className="text-[10px] text-muted-foreground line-clamp-1">{p.description}</div>
-                    <div className="mt-1.5 flex items-center justify-center gap-1 text-[10px] text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Plus className="h-3 w-3" /> Adicionar
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="min-w-0 font-semibold text-xs truncate">{p.name}</div>
+                      {p.popular && <Badge className="h-4 px-1 text-[8px]">Popular</Badge>}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2 min-h-7">{p.description}</div>
+                    <div className="mt-1.5 flex items-center justify-between gap-1 text-[10px]">
+                      <span className="capitalize text-muted-foreground">{p.style}</span>
+                      <span className="flex items-center gap-1 font-medium text-primary">
+                        <Eye className="h-3 w-3" /> Visualizar
+                      </span>
                     </div>
                   </button>
                   );
                 })}
               </div>
+              {catalogItems.length === 0 && (
+                <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Nenhum modelo corresponde aos filtros. Limpe a busca ou escolha outro estilo.
+                </div>
+              )}
             </div>
 
             {/* Templates do usuário */}
@@ -1025,6 +987,14 @@ export default function Templates() {
       )}
 
       <InstagramPreviewDialog
+        template={catalogPreviewTemplate}
+        brand={brand}
+        onClose={() => setCatalogPreview(null)}
+        onUse={catalogPreview ? () => addPreset(catalogPreview.preset, catalogPreview.format) : undefined}
+        useLabel={catalogPreview ? `Usar ${catalogPreview.preset.name}` : undefined}
+      />
+
+      <InstagramPreviewDialog
         template={previewing}
         brand={brand}
         onClose={() => setPreviewing(null)}
@@ -1033,10 +1003,12 @@ export default function Templates() {
   );
 }
 
-function InstagramPreviewDialog({ template, brand, onClose }: {
+function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
   template: Template | null;
   brand: { handle?: string; name?: string; logo?: string };
   onClose: () => void;
+  onUse?: () => unknown | Promise<unknown>;
+  useLabel?: string;
 }) {
   const [samplePhoto, setSamplePhoto] = useState<string>(
     "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=900&q=80"
@@ -1219,6 +1191,14 @@ function InstagramPreviewDialog({ template, brand, onClose }: {
             <div className="text-[11px] text-zinc-500 border-t border-zinc-200 pt-3">
               Para mover o título, foto, badge ou trocar cores, use o botão <strong>Ajustar</strong> do template.
             </div>
+            {onUse && (
+              <div className="sticky bottom-0 -mx-4 -mb-4 space-y-2 border-t border-zinc-200 bg-white p-4 shadow-[0_-8px_20px_rgba(0,0,0,0.06)]">
+                <Button className="w-full" onClick={() => void onUse()}>{useLabel || "Usar este modelo"}</Button>
+                <p className="text-center text-[10px] text-zinc-500">
+                  Será adicionado à sua coleção para personalização. O modelo ativo não será alterado.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Mock do Instagram */}

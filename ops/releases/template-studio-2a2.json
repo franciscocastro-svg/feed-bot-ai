@@ -1,0 +1,31 @@
+{
+  "phase": "Template Studio 2A.2",
+  "catalogModels": 32,
+  "niches": 8,
+  "formats": ["feed", "stories", "reels"],
+  "formatVariants": 96,
+  "frontendChanged": true,
+  "workerChanged": false,
+  "edgeFunctions": [],
+  "migration": null,
+  "contracts": [
+    "preview before copy",
+    "no automatic activation",
+    "account-scoped draft after edit",
+    "explicit publication through Template Studio 2A.1",
+    "catalog browsing does not consume plan quota",
+    "existing templates remain compatible"
+  ],
+  "excluded": [
+    "database schema",
+    "edge functions",
+    "VPS worker",
+    "payments",
+    "stripe",
+    "meta configuration",
+    "cron schedules",
+    "secrets",
+    "mcp"
+  ],
+  "rollback": "Redeploy the previous frontend; copied presets remain valid user templates."
+}
