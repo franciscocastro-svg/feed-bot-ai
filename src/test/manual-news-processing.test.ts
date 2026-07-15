@@ -33,10 +33,9 @@ describe("manual news processing recovery", () => {
       .toContain("provedor de IA de reserva");
   });
 
-  it("persists a terminal result before returning and no longer uses waitUntil", () => {
+  it("persists a terminal result before logging and runs processing in background", () => {
     const source = readProjectFile("supabase/functions/process-news/index.ts");
-    expect(source).not.toContain("EdgeRuntime.waitUntil");
-    expect(source).toContain("await doProcessing(adminClient, claimed");
+    expect(source).toContain("runtime.waitUntil(task)");
     expect(source).toContain('.from("account_settings")');
     expect(source).toContain('decision === "reclaim_stale"');
     expect(source.indexOf("failureUpdateError")).toBeLessThan(source.indexOf('console.error("processing error"'));
