@@ -1,6 +1,5 @@
-// Re-enfileira notícias com status=failed que ainda têm tentativas restantes
-// (retry_count < 3) e cujo next_retry_at já passou.
-// Backoff exponencial é aplicado pelo process-news ao falhar de novo.
+// Reprocessa falhas elegíveis e recupera execuções abandonadas em processing.
+// O claim atômico e o fencing temporal permanecem dentro de process-news.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -13,6 +12,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET = Deno.env.get("INTERNAL_CRON_SECRET") || "";
 const MAX_ATTEMPTS = 3;
 const BATCH = 20;
+const STALE_PROCESSING_MS = 3 * 60_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -37,28 +37,39 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
   const nowIso = new Date().toISOString();
+  const staleIso = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
 
-  const { data: items, error } = await supabase
-    .from("news_items")
-    .select("id, user_id, retry_count")
-    .eq("status", "failed")
-    .lt("retry_count", MAX_ATTEMPTS)
-    .or(`next_retry_at.is.null,next_retry_at.lte.${nowIso}`)
-    .order("next_retry_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH);
+  const [failedResult, staleResult] = await Promise.all([
+    supabase
+      .from("news_items")
+      .select("id, user_id, retry_count, status")
+      .eq("status", "failed")
+      .lt("retry_count", MAX_ATTEMPTS)
+      .or(`next_retry_at.is.null,next_retry_at.lte.${nowIso}`)
+      .order("next_retry_at", { ascending: true, nullsFirst: true })
+      .limit(BATCH),
+    supabase
+      .from("news_items")
+      .select("id, user_id, retry_count, status")
+      .eq("status", "processing")
+      .lt("updated_at", staleIso)
+      .order("updated_at", { ascending: true })
+      .limit(BATCH),
+  ]);
 
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (failedResult.error || staleResult.error) {
+    return new Response(JSON.stringify({ error: failedResult.error?.message || staleResult.error?.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
+
+  const items = [...(staleResult.data || []), ...(failedResult.data || [])]
+    .filter((item, index, rows) => rows.findIndex((row) => row.id === item.id) === index)
+    .slice(0, BATCH);
 
   let processed = 0;
   const results: Array<{ id: string; ok: boolean; status?: number; error?: string }> = [];
 
-  for (const item of items || []) {
+  for (const item of items) {
     try {
-      // Marca como pending para evitar requeue duplicado se a chamada demorar.
-      await supabase.from("news_items").update({ status: "pending", next_retry_at: null }).eq("id", item.id);
-
       const r = await fetch(`${SUPABASE_URL}/functions/v1/process-news`, {
         method: "POST",
         headers: {

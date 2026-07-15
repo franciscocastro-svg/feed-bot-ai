@@ -6,6 +6,11 @@ import { protectedPhotoSvg } from "../_shared/image-framing.js";
 import { normalizeTemplateConfig, textAnchorForAlign, textXForBox } from "../_shared/template-layouts.js";
 import { loadInterFontBuffers } from "../_shared/font-loading.ts";
 import {
+  decideNewsClaim,
+  processingErrorMessage,
+  STALE_NEWS_PROCESSING_MS,
+} from "../_shared/news-processing-policy.ts";
+import {
   assertEditorialCopy,
   fetchRequiredBrandLogo,
   resolveEditorialIdentity,
@@ -51,8 +56,16 @@ async function svgToPng(svg: string): Promise<Uint8Array> {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
+  "Access-Control-Expose-Headers": "x-request-id",
 };
+
+function jsonResponse(payload: unknown, status: number, requestId: string) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json", "x-request-id": requestId },
+  });
+}
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const GROQ_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -1300,6 +1313,18 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     if (item.instagram_account_id) {
       const { data: eff } = await supabase.rpc("get_effective_account_settings", { _account_id: item.instagram_account_id });
       if (eff) settings = eff;
+      // Algumas instalações antigas restringem a RPC ao role authenticated.
+      // Como a propriedade do item já foi validada, o cliente interno pode ler
+      // diretamente os overrides sem perder a identidade ou o template da conta.
+      if (!settings) {
+        const { data: accountOverrides } = await supabase
+          .from("account_settings")
+          .select("*")
+          .eq("instagram_account_id", item.instagram_account_id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (accountOverrides) settings = accountOverrides;
+      }
       const { data: account } = await supabase
         .from("instagram_accounts")
         .select("username")
@@ -1675,93 +1700,104 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     }
 
     await supabase.from("activity_logs").insert({ user_id: userId, action: "process_news", entity_type: "news_item", entity_id: item.id, details: { style: image_style, fallback: usedFallback } });
+    return { status: "processed" as const };
   } catch (e) {
-    console.error("background processing error", e);
     // Backoff exponencial: tentativa 1 -> +5min, 2 -> +15min, 3 -> +60min.
     // Após 3 tentativas, fica como "failed" definitivo (sem next_retry_at).
     const prevAttempts = (item as any).retry_count ?? 0;
     const nextAttempt = prevAttempts + 1;
     const backoffMin = nextAttempt === 1 ? 5 : nextAttempt === 2 ? 15 : nextAttempt === 3 ? 60 : null;
     const nextRetryAt = backoffMin ? new Date(Date.now() + backoffMin * 60_000).toISOString() : null;
-    await supabase.from("news_items").update({
+    const failureMessage = processingErrorMessage(e);
+    const { error: failureUpdateError } = await supabase.from("news_items").update({
       status: "failed",
-      error_message: e instanceof Error ? e.message : String(e),
+      error_message: failureMessage,
       retry_count: nextAttempt,
       next_retry_at: nextRetryAt,
-    }).eq("id", item.id);
+    }).eq("id", item.id).eq("user_id", userId).eq("status", "processing");
+    if (failureUpdateError) {
+      console.error("[process-news] failed to persist processing failure", failureUpdateError.message);
+    }
+    // Persiste o estado antes de registrar o erro: em encerramentos do runtime a
+    // notícia não permanece indefinidamente em processing.
+    console.error("processing error", failureMessage);
+    return { status: "failed" as const, error: failureMessage };
   }
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const requestId = req.headers.get("x-request-id")?.trim().slice(0, 100) || crypto.randomUUID();
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: { ...corsHeaders, "x-request-id": requestId } });
+  }
   try {
     const auth = req.headers.get("Authorization") || "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
     // Fix segurança: verificar secret ANTES de ler o body
     const internalSecretEnv = Deno.env.get("INTERNAL_CRON_SECRET");
     const providedSecret = req.headers.get("x-internal-secret");
     const isInternal = !!internalSecretEnv && providedSecret === internalSecretEnv;
     const body = await req.json();
-    const { news_item_id, image_style = "template", media_type = "", sync = false } = body;
+    const { news_item_id, image_style = "template", media_type = "" } = body;
     let userId: string;
-    let supabase;
+    let accessClient;
     if (isInternal) {
       if (!body?.user_id) {
-        return new Response(JSON.stringify({ error: "user_id required for internal calls" }), { status: 400, headers: corsHeaders });
+        return jsonResponse({ error: "user_id required for internal calls", request_id: requestId }, 400, requestId);
       }
       userId = body.user_id;
-      supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+      accessClient = adminClient;
     } else {
-      if (!auth) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
-      supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
+      if (!auth) return jsonResponse({ error: "unauthorized", request_id: requestId }, 401, requestId);
+      accessClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+      const { data: { user } } = await accessClient.auth.getUser();
+      if (!user) return jsonResponse({ error: "unauthorized", request_id: requestId }, 401, requestId);
       userId = user.id;
-      const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
       const { data: approved } = await adminClient.rpc("is_approved", { _uid: userId });
-      if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: corsHeaders });
+      if (approved === false) return jsonResponse({ error: "account_not_approved", request_id: requestId }, 403, requestId);
     }
 
-    const { data: item, error } = await supabase.from("news_items").select("*").eq("id", news_item_id).eq("user_id", userId).maybeSingle();
-    if (error || !item) return new Response(JSON.stringify({ error: "news item not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // A leitura com o cliente autenticado valida o vínculo antes de promover o
+    // restante do trabalho para o cliente interno, necessário no background.
+    const { data: item, error } = await accessClient.from("news_items").select("*").eq("id", news_item_id).eq("user_id", userId).maybeSingle();
+    if (error || !item) return jsonResponse({ error: "news item not found", request_id: requestId }, 404, requestId);
 
-    // Claim atômico: duas execuções sobrepostas não podem processar a mesma
-    // notícia nem consumir IA duas vezes.
-    const { data: claimed, error: claimError } = await supabase
+    const decision = decideNewsClaim(item.status, item.updated_at);
+    if (decision === "already_processing") {
+      return jsonResponse({ ok: false, already_processing: true, request_id: requestId }, 200, requestId);
+    }
+    if (decision === "ignore") {
+      return jsonResponse({ ok: true, duplicate_ignored: true, request_id: requestId }, 200, requestId);
+    }
+
+    // Claim atômico. Falhas podem ser retomadas; processing só é recuperado
+    // após a janela de abandono, mantendo a proteção contra consumo duplicado.
+    let claimQuery = adminClient
       .from("news_items")
-      .update({ status: "processing", error_message: null })
+      .update({ status: "processing", error_message: null, next_retry_at: null })
       .eq("id", item.id)
-      .eq("user_id", userId)
-      .eq("status", "pending")
-      .select("id")
+      .eq("user_id", userId);
+    claimQuery = decision === "reclaim_stale"
+      ? claimQuery.eq("status", "processing").lt("updated_at", new Date(Date.now() - STALE_NEWS_PROCESSING_MS).toISOString())
+      : claimQuery.in("status", ["pending", "failed"]);
+    const { data: claimed, error: claimError } = await claimQuery
+      .select("*")
       .maybeSingle();
     if (claimError) {
-      return new Response(JSON.stringify({ error: `claim_failed: ${claimError.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: `claim_failed: ${claimError.message}`, request_id: requestId }, 500, requestId);
     }
     if (!claimed) {
-      return new Response(JSON.stringify({ ok: true, duplicate_ignored: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ ok: false, already_processing: true, request_id: requestId }, 200, requestId);
     }
 
-    // Chamadas internas do autopilot precisam de processamento confirmado.
-    // O modo background pode ser interrompido depois que a resposta HTTP volta,
-    // deixando a notícia presa em "processing". Para o cron, processa síncrono.
-    if (sync || isInternal) {
-      await doProcessing(supabase, item, userId, image_style, media_type);
-    } else {
-      // Manual pelo painel continua em background para não travar a interface.
-      // @ts-ignore EdgeRuntime existe no Supabase Edge Functions
-      EdgeRuntime.waitUntil(doProcessing(supabase, item, userId, image_style, media_type));
-    }
-
-    return new Response(JSON.stringify({ ok: true, queued: !sync && !isInternal }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Processamento confirmado: a resposta só retorna depois que processed ou
+    // failed foi persistido. Evita shutdown do background deixando processing.
+    const result = await doProcessing(adminClient, claimed, userId, image_style, media_type);
+    return jsonResponse({ ok: result.status === "processed", ...result, request_id: requestId }, 200, requestId);
   } catch (e) {
     console.error(e);
     const msg = e instanceof Error ? e.message : "unknown";
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return jsonResponse({ error: processingErrorMessage(msg), request_id: requestId }, 500, requestId);
   }
 });

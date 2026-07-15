@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "release": "manual-news-processing-1a",
+  "description": "Recover abandoned manual news processing without concurrent AI consumption and persist terminal outcomes before returning.",
+  "affectedFunctions": [
+    {
+      "name": "process-news",
+      "entrypoint": "supabase/functions/process-news/index.ts",
+      "config": "supabase/functions/process-news/deno.json",
+      "lock": "supabase/functions/process-news/deno.lock",
+      "verifyJwt": false
+    },
+    {
+      "name": "retry-failed-news",
+      "entrypoint": "supabase/functions/retry-failed-news/index.ts",
+      "verifyJwt": false
+    }
+  ],
+  "deploymentOrder": [
+    "run all quality and security gates",
+    "deploy process-news",
+    "deploy retry-failed-news",
+    "publish the frontend from the same commit",
+    "observe natural or user-initiated processing only after deployment"
+  ],
+  "releaseConstraints": {
+    "databaseMigrations": false,
+    "frontendPublish": true,
+    "otherEdgeFunctions": false,
+    "cronChanges": false,
+    "manualFunctionInvocationDuringRelease": false,
+    "paymentChanges": false,
+    "secretChanges": false
+  },
+  "rollback": "Redeploy both functions and the frontend from the previous commit; no database rollback is required."
+}

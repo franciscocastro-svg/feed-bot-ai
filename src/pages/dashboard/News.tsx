@@ -34,6 +34,7 @@ const NEWS_LIST_COLUMNS = [
   "status",
   "source_name",
   "created_at",
+  "updated_at",
   "original_title",
   "original_url",
   "original_image_url",
@@ -47,6 +48,8 @@ const NEWS_LIST_COLUMNS = [
   "generated_video_url",
   "instagram_account_id",
   "error_message",
+  "retry_count",
+  "next_retry_at",
   "editorial_ready",
   "content_type",
   "content_format",
@@ -63,6 +66,20 @@ function friendlyDatabaseMessage(error: unknown) {
     return "Essa publicação já está agendada para este Instagram.";
   }
   return message || "Não foi possível concluir a ação.";
+}
+
+function friendlyProcessingMessage(value: unknown) {
+  const message = typeof value === "string" ? value : "";
+  if (/identidade da conta indisponível|configure o nome ou @/i.test(message)) {
+    return "Configure o nome ou @ da conta do Instagram e tente novamente.";
+  }
+  if (/expired_api_key|invalid api key|provedor de ia de reserva/i.test(message)) {
+    return "O provedor de IA de reserva está indisponível. Verifique a chave configurada.";
+  }
+  if (/402|créditos|credits|payment_required/i.test(message)) {
+    return "Sem créditos de IA disponíveis. Regularize o saldo e tente novamente.";
+  }
+  return message || "Não foi possível processar a notícia. Tente novamente.";
 }
 
 function feedPreviewUrl(item: any) {
@@ -171,15 +188,29 @@ export default function News() {
 
   const process = async (item: any, style: "template" | "ai" = "template") => {
     setLoad(item.id, true);
-    const { error } = await supabase.functions.invoke("process-news", { body: { news_item_id: item.id, image_style: style, media_type: item.content_format || "" } });
+    const { data, error } = await supabase.functions.invoke("process-news", {
+      body: { news_item_id: item.id, image_style: style, media_type: item.content_format || "", sync: true },
+    });
     if (error) {
       setLoad(item.id, false);
-      const msg = error.message.includes("402") || error.message.includes("credits")
-        ? "Sem créditos de IA. Adicione saldo em Cloud & AI balance ou tente novamente para usar o modo gratuito."
-        : error.message;
-      return toast.error(msg);
+      return toast.error(friendlyProcessingMessage(error.message));
     }
-    toast.info("Processando em segundo plano... aguarde ~15s");
+    if (data?.already_processing) {
+      setLoad(item.id, false);
+      await load();
+      return toast.info("Esta notícia ainda está sendo processada. Aguarde alguns minutos antes de tentar novamente.");
+    }
+    if (data?.duplicate_ignored) {
+      setLoad(item.id, false);
+      await load();
+      return toast.info("Esta notícia já foi concluída ou não pode ser reprocessada neste estado.");
+    }
+    if (data?.status === "failed") {
+      setLoad(item.id, false);
+      await load();
+      return toast.error(friendlyProcessingMessage(data?.error));
+    }
+    toast.info(data?.status === "processed" ? "Processamento concluído. Finalizando a prévia..." : "Processando... aguarde.");
     // Polling: recarrega até ficar processed/failed (max 60s)
     const start = Date.now();
     const poll = async () => {
@@ -209,7 +240,7 @@ export default function News() {
       }
       setTimeout(poll, 3000);
     };
-    setTimeout(poll, 4000);
+    setTimeout(poll, data?.status === "processed" ? 250 : 4000);
   };
 
   const reject = async (id: string) => {
