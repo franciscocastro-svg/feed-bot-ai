@@ -1791,10 +1791,18 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, already_processing: true, request_id: requestId }, 200, requestId);
     }
 
-    // Processamento confirmado: a resposta só retorna depois que processed ou
-    // failed foi persistido. Evita shutdown do background deixando processing.
-    const result = await doProcessing(adminClient, claimed, userId, image_style, media_type);
-    return jsonResponse({ ok: result.status === "processed", ...result, request_id: requestId }, 200, requestId);
+    // Executa em background para não estourar o limite de CPU do runtime.
+    // O catch de doProcessing persiste "failed" antes de qualquer log, então
+    // um shutdown não deixa a notícia presa em processing (retry-failed-news
+    // recupera via janela de abandono). A UI faz polling do estado final.
+    const task = doProcessing(adminClient, claimed, userId, image_style, media_type)
+      .catch((err) => console.error("background processing error", err));
+    // deno-lint-ignore no-explicit-any
+    const runtime = (globalThis as any).EdgeRuntime;
+    if (runtime && typeof runtime.waitUntil === "function") {
+      runtime.waitUntil(task);
+    }
+    return jsonResponse({ ok: true, status: "processing", claimed: true, request_id: requestId }, 202, requestId);
   } catch (e) {
     console.error(e);
     const msg = e instanceof Error ? e.message : "unknown";
