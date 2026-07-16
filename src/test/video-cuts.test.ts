@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { formatCutTime, isSupportedYoutubeUrl, splitHashtags, videoCutRequestBounds, viralBadgeTone, viralBadgeLabel } from "@/lib/videoCuts";
+import { formatCutTime, isSupportedYoutubeUrl, normalizeYoutubeUrl, splitHashtags, videoCutRequestBounds, viralBadgeTone, viralBadgeLabel, youtubeVideoId } from "@/lib/videoCuts";
 
 describe("video cuts helpers", () => {
   it("accepts public YouTube URL shapes", () => {
-    expect(isSupportedYoutubeUrl("https://www.youtube.com/watch?v=abc")).toBe(true);
-    expect(isSupportedYoutubeUrl("https://youtu.be/abc")).toBe(true);
-    expect(isSupportedYoutubeUrl("https://m.youtube.com/watch?v=abc")).toBe(true);
+    expect(isSupportedYoutubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(true);
+    expect(isSupportedYoutubeUrl("https://youtu.be/dQw4w9WgXcQ?t=10")).toBe(true);
+    expect(isSupportedYoutubeUrl("https://m.youtube.com/shorts/dQw4w9WgXcQ")).toBe(true);
+    expect(isSupportedYoutubeUrl("https://www.youtube.com/live/dQw4w9WgXcQ")).toBe(true);
+    expect(youtubeVideoId("https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=abc")).toBe("dQw4w9WgXcQ");
+    expect(normalizeYoutubeUrl("https://youtu.be/dQw4w9WgXcQ?t=10")).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
   });
 
   it("rejects non-YouTube URLs", () => {
     expect(isSupportedYoutubeUrl("https://example.com/video")).toBe(false);
-    expect(isSupportedYoutubeUrl("https://studio.youtube.com/video/abc/edit")).toBe(false);
+    expect(isSupportedYoutubeUrl("https://studio.youtube.com/video/dQw4w9WgXcQ/edit")).toBe(false);
+    expect(isSupportedYoutubeUrl("https://www.youtube.com/playlist?list=PL123")).toBe(false);
+    expect(isSupportedYoutubeUrl("https://www.youtube.com/watch?v=curto")).toBe(false);
     expect(isSupportedYoutubeUrl("nota solta")).toBe(false);
   });
 

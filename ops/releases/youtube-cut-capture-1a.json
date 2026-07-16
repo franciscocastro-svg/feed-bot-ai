@@ -1,0 +1,21 @@
+{
+  "phase": "Cortes IA por Link 1A",
+  "migration": "20260717003000_youtube_cut_capture_resilience_1a.sql",
+  "frontend": true,
+  "edgeFunctions": [],
+  "vpsProcesses": ["feedbot-cuts"],
+  "workerInstall": "npm --prefix worker ci --omit=dev",
+  "checks": [
+    "npm run ci",
+    "node scripts/check-secrets.mjs",
+    "npm audit --omit=dev --audit-level=moderate",
+    "node --check worker/index.js",
+    "vitest src/test/video-cuts.test.ts src/test/youtube-cut-capture-1a.test.ts"
+  ],
+  "guardrails": {
+    "noManualJob": true,
+    "noManualPublish": true,
+    "noSecretsChanged": true,
+    "naturalCutSeconds": { "min": 8, "idealMax": 90, "technicalMax": 180 }
+  }
+}

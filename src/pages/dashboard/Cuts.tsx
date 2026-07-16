@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
 import {
   formatCutTime,
-  isSupportedYoutubeUrl,
+  normalizeYoutubeUrl,
   splitHashtags,
   videoCutRequestBounds,
   viralBadgeTone,
@@ -84,6 +84,9 @@ type VideoCutJob = {
   created_at: string;
   error_message?: string | null;
   fallback_required?: boolean | null;
+  capture_error_code?: string | null;
+  requested_clips?: number | null;
+  formats?: CutFormat[] | null;
   preset_key?: CutPresetKey | null;
   custom_prompt?: string | null;
   processing_mode?: "cloud" | "local_device" | null;
@@ -182,6 +185,9 @@ function humanVideoCutError(message?: string | null) {
   if (/sign in to confirm|not a bot|precondition check failed|yt-dlp|youtube said|unable to download api page/i.test(text)) {
     return "O YouTube bloqueou o acesso automático a esse vídeo. Envie o MP4 autorizado para gerar os cortes sem depender do YouTube.";
   }
+  if (/private video|video unavailable|members-only/i.test(text)) return "Esse vídeo não está público ou não está disponível para captura.";
+  if (/live event|is live|transmissão ao vivo/i.test(text)) return "Aguarde a transmissão terminar e tente novamente com o vídeo gravado.";
+  if (/copyright|geo.?restricted|not available in your country/i.test(text)) return "O YouTube restringiu esse vídeo por região ou direitos. Use o MP4 autorizado.";
   return text.length > 320 ? `${text.slice(0, 320)}...` : text;
 }
 
@@ -508,7 +514,8 @@ export default function Cuts() {
   }, [jobs, localJobId, videoFile, localRendering]);
 
   const createJob = async () => {
-    if (inputMode === "youtube" && !isSupportedYoutubeUrl(youtubeUrl)) return toast.error("Cole um link público válido do YouTube.");
+    const canonicalYoutubeUrl = inputMode === "youtube" ? normalizeYoutubeUrl(youtubeUrl) : null;
+    if (inputMode === "youtube" && !canonicalYoutubeUrl) return toast.error("Cole um link direto de vídeo, Short ou live gravada do YouTube.");
     if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
     if (!accountId) return toast.error("Escolha uma conta do Instagram.");
     if (!rightsConfirmed) return toast.error("Confirme que você tem direito/autorização sobre o vídeo.");
@@ -549,7 +556,7 @@ export default function Cuts() {
       } else {
         const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_job", {
           _instagram_account_id: accountId,
-          _youtube_url: youtubeUrl.trim(),
+          _youtube_url: canonicalYoutubeUrl,
           _requested_clips: requestClips,
           _rights_confirmed: rightsConfirmed,
           _format: formats[0],
@@ -622,6 +629,18 @@ export default function Cuts() {
     if (error) return toast.error(error.message || "Não foi possível regenerar este vídeo.");
     toast.success("Nova versão enviada para a fila usando o mesmo vídeo original.");
     await Promise.all([load(), refetchUsage()]);
+  };
+
+  const prepareUploadFallback = (job: VideoCutJob) => {
+    setInputMode("upload");
+    setProcessingMode("cloud");
+    setAccountId(job.instagram_account_id);
+    setRequestedClips(Math.max(1, Math.min(5, Number(job.requested_clips || 1))));
+    if (job.formats?.length) setFormats(job.formats);
+    setRightsConfirmed(false);
+    setVideoFile(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast.info("Configurações preservadas. Selecione o MP4 autorizado e confirme os direitos.");
   };
 
   const rerenderClip = async () => {
@@ -972,7 +991,7 @@ export default function Cuts() {
                 <>
                   <Label>Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-                  <p className="text-xs text-muted-foreground">O vídeo é capturado e processado no servidor; você não precisa baixá-lo nem enviá-lo manualmente.</p>
+                  <p className="text-xs text-muted-foreground">Aceita vídeo, Short e live já encerrada. A duração do corte é flexível: a IA preserva a ideia completa, sem encerrar no meio da fala.</p>
                 </>
               ) : (
                 <>
@@ -1288,7 +1307,14 @@ export default function Cuts() {
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
-                {job.fallback_required && <p className="mt-1 text-muted-foreground">Crie um novo corte usando a opção Enviar MP4.</p>}
+                {job.fallback_required && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="text-muted-foreground">O MP4 autorizado evita o bloqueio do YouTube e mantém as configurações deste trabalho.</p>
+                    <Button size="sm" variant="outline" onClick={() => prepareUploadFallback(job)}>
+                      <Upload className="h-4 w-4 mr-1" /> Usar MP4 com estas configurações
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
             {job.analysis_warning && job.status !== "failed" && (

@@ -1,12 +1,33 @@
-export function isSupportedYoutubeUrl(value: string) {
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+export function youtubeVideoId(value: string) {
   try {
     const url = new URL(value.trim());
-    if (!["http:", "https:"].includes(url.protocol)) return false;
+    if (!["http:", "https:"].includes(url.protocol)) return null;
     const host = url.hostname.replace(/^www\./, "").toLowerCase();
-    return host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be";
+    let id = "";
+    if (host === "youtu.be") {
+      id = url.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (["youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
+      if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
+      else {
+        const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/?#]+)/i);
+        id = match?.[1] || "";
+      }
+    }
+    return YOUTUBE_VIDEO_ID.test(id) ? id : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function normalizeYoutubeUrl(value: string) {
+  const id = youtubeVideoId(value);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
+export function isSupportedYoutubeUrl(value: string) {
+  return Boolean(normalizeYoutubeUrl(value));
 }
 
 export function videoCutRequestBounds(input: {

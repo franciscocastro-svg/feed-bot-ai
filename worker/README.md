@@ -62,6 +62,15 @@ O adapter usa a API compatível de Chat Completions da xAI e aceita resposta JSO
 
 O worker tenta, nesta ordem: cliente público padrão do yt-dlp, clientes públicos compatíveis, configuração personalizada e, por último, cookies válidos quando disponíveis. Um cookies.txt inválido não bloqueia mais os vídeos públicos.
 
+O contrato da Fase Cortes IA por Link 1A também:
+
+- canonicaliza links `watch`, `youtu.be`, `shorts` e `live` já encerrada;
+- recusa playlist sem vídeo, transmissão ainda ativa, vídeo privado ou indisponível com motivo sanitizado;
+- aplica retry e timeout controlados no `yt-dlp`;
+- mantém heartbeat enquanto um vídeo longo está em processamento;
+- usa duração editorial flexível de 8 a 180 segundos, priorizando começo e fim naturais em vez de cortar uma boa fala por tempo fixo;
+- preserva um fallback guiado para MP4 quando o YouTube exigir anti-bot/PO Token.
+
 Configurações opcionais para instalações que usam um provedor de PO Token:
 
 ```bash
@@ -70,6 +79,9 @@ YT_DLP_EXTRACTOR_ARGS=youtube:player_client=mweb
 ```
 
 Essas opções são deliberadamente opt-in. Mantenha o yt-dlp atualizado e configure um provedor de PO Token compatível antes de ativá-las.
+`YT_DLP_USER_AGENT` também é opcional; por padrão o próprio yt-dlp escolhe o cliente compatível, evitando deixar uma versão antiga de navegador fixa no código.
+
+As dependências do worker são travadas em `worker/package-lock.json`. No VPS use `npm --prefix worker ci --omit=dev`; o script `scripts/deploy-vps.sh` já faz essa instalação e reinicia os processos PM2.
 
 ### Recursos do Cortes IA Studio
 

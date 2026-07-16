@@ -23,6 +23,9 @@ import {
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
+const MIN_NATURAL_CUT_SECONDS = 8;
+const IDEAL_NATURAL_CUT_SECONDS = 90;
+const MAX_NATURAL_CUT_SECONDS = 180;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let canvasRuntimePromise = null;
@@ -198,13 +201,26 @@ function queueEnabled(queue) {
 }
 
 async function reportWorkerHealth() {
+  const [ffmpeg, ffprobe, ytDlp, canvas] = await Promise.all([
+    commandVersion("ffmpeg", "-version"),
+    commandVersion("ffprobe", "-version"),
+    commandVersion("yt-dlp", "--version"),
+    getCanvasRuntime().then(() => ({ installed: true, version: "loaded" })).catch(() => ({ installed: false, version: null })),
+  ]);
   const capabilities = {
     cuts: queueEnabled("cuts"),
     media: queueEnabled("media"),
     editorial_render: queueEnabled("media"),
-    ffmpeg: await commandExists("ffmpeg"),
-    ffprobe: await commandExists("ffprobe"),
-    yt_dlp: await commandExists("yt-dlp"),
+    ffmpeg: ffmpeg.installed,
+    ffprobe: ffprobe.installed,
+    yt_dlp: ytDlp.installed,
+    capture_runtime: {
+      ffmpeg_version: ffmpeg.version,
+      ffprobe_version: ffprobe.version,
+      yt_dlp_version: ytDlp.version,
+      canvas: canvas.installed,
+      natural_cut_max_seconds: MAX_NATURAL_CUT_SECONDS,
+    },
     transcription: Boolean(GEMINI_API_KEY || GROQ_API_KEY),
     ai_providers: providerCapabilities(),
   };
@@ -1014,6 +1030,17 @@ async function commandExists(command) {
   }
 }
 
+async function commandVersion(command, versionFlag) {
+  if (!(await commandExists(command))) return { installed: false, version: null };
+  try {
+    const { stdout, stderr } = await execAsync(`${shellQuote(command)} ${versionFlag}`, { maxBuffer: 1024 * 1024, timeout: 10000 });
+    const firstLine = String(stdout || stderr || "").split(/\r?\n/).find(Boolean) || null;
+    return { installed: true, version: firstLine?.slice(0, 180) || null };
+  } catch {
+    return { installed: true, version: "unknown" };
+  }
+}
+
 async function hasAudioStream(videoPath) {
   if (!(await commandExists("ffprobe"))) return true;
   try {
@@ -1077,11 +1104,11 @@ function clampScore(value, fallback = null) {
 
 function clampClipSuggestion(clip, index, durationSeconds) {
   const start = Math.max(0, toSeconds(clip?.start_seconds ?? clip?.start ?? clip?.inicio));
-  let end = Math.max(start + 8, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
+  let end = Math.max(start + MIN_NATURAL_CUT_SECONDS, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
   const videoDuration = Math.max(0, Number(durationSeconds || 0));
   if (videoDuration > 0) end = Math.min(end, videoDuration);
-  if (end - start > 90) end = start + 90;
-  if (end - start < 8) end = start + 20;
+  if (end - start > MAX_NATURAL_CUT_SECONDS) end = start + MAX_NATURAL_CUT_SECONDS;
+  if (end - start < MIN_NATURAL_CUT_SECONDS) end = start + 20;
 
   const hookScore = clampScore(clip?.hook_score ?? clip?.gancho_score, null);
   const emotionScore = clampScore(clip?.emotion_score ?? clip?.emocao_score, null);
@@ -1163,15 +1190,40 @@ function buildYtDlpCookieFlags() {
 }
 
 function buildYtDlpCommonFlags() {
-  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
   const flags = [
     "--no-warnings",
     "--geo-bypass",
-    "--user-agent", shellQuote(ua),
+    "--no-playlist",
+    "--socket-timeout", "30",
+    "--retries", "3",
+    "--fragment-retries", "3",
+    "--sleep-requests", "1",
   ];
+  const userAgent = String(process.env.YT_DLP_USER_AGENT || "").trim();
+  if (userAgent) flags.push("--user-agent", shellQuote(userAgent));
   const remoteComponents = String(process.env.YT_DLP_REMOTE_COMPONENTS || "").trim();
   if (remoteComponents) flags.push("--remote-components", shellQuote(remoteComponents));
   return flags;
+}
+
+function youtubeCaptureFailure(code, message) {
+  const error = new Error(message);
+  error.captureCode = code;
+  return error;
+}
+
+function classifyYoutubeCaptureError(error) {
+  if (error?.captureCode) return { code: error.captureCode, message: error.message };
+  const raw = String(error?.stderr || error?.message || error || "");
+  const text = raw.toLowerCase();
+  if (/private video|members-only|join this channel/.test(text)) return { code: "private_video", message: "O vídeo é privado ou exclusivo para membros." };
+  if (/live event|is live|premiere will begin|not currently available/.test(text)) return { code: "live_not_finished", message: "A transmissão ainda não terminou ou não está disponível como gravação." };
+  if (/copyright|geo.?restricted|not available in your country|blocked in your country/.test(text)) return { code: "restricted_video", message: "O vídeo está restrito por região ou direitos." };
+  if (/sign in to confirm|not a bot|precondition check failed|po token|http error 403/.test(text)) return { code: "youtube_antibot", message: "O YouTube exigiu uma validação adicional e bloqueou a captura automática." };
+  if (/http error 429|too many requests|rate.?limit/.test(text)) return { code: "youtube_rate_limited", message: "O YouTube limitou temporariamente as capturas deste servidor." };
+  if (/video unavailable|removed by the uploader|this video is unavailable/.test(text)) return { code: "video_unavailable", message: "O vídeo foi removido ou não está disponível." };
+  if (/timed out|timeout|econnreset|network|temporary failure/.test(text)) return { code: "capture_network", message: "A conexão com o YouTube falhou temporariamente." };
+  return { code: "capture_failed", message: "Não foi possível capturar esse vídeo do YouTube." };
 }
 
 function buildYtDlpStrategies() {
@@ -1220,10 +1272,16 @@ async function probeYoutubeMetadata(youtubeUrl) {
   }
 
   const { stdout } = await runYtDlpWithStrategies("metadados", ({ flags }) => execAsync(
-    ["yt-dlp", ...flags, "--dump-json", "--skip-download", "--no-playlist", shellQuote(youtubeUrl)].join(" "),
-    { maxBuffer: 15 * 1024 * 1024 },
+    ["yt-dlp", ...flags, "--dump-single-json", "--skip-download", shellQuote(youtubeUrl)].join(" "),
+    { maxBuffer: 15 * 1024 * 1024, timeout: 120000 },
   ));
   const data = JSON.parse(stdout);
+  if (data.is_live || ["is_live", "is_upcoming"].includes(data.live_status)) {
+    throw youtubeCaptureFailure("live_not_finished", "A transmissão ainda está ao vivo. Aguarde terminar para gerar os cortes.");
+  }
+  if (data.availability && !["public", "unlisted"].includes(data.availability)) {
+    throw youtubeCaptureFailure("private_video", "O vídeo não está público para captura.");
+  }
   return {
     duration_seconds: Number(data.duration || 0),
     title: cleanCutText(data.title, "Vídeo do YouTube"),
@@ -1251,7 +1309,8 @@ Priorize trechos com:
 
 Regras:
 - Retorne APENAS JSON válido, sem markdown, sem comentários.
-- Cortes de 15 a 60 segundos.
+- Use duração FLEXÍVEL. Mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos, mas preserve de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando isso for necessário para concluir a ideia.
+- A coerência vence a duração: nunca encerre no meio de frase, raciocínio, resposta, demonstração ou revelação.
 - Dê para cada corte 3 notas separadas (0-100): hook_score (força do gancho), emotion_score (intensidade emocional), clarity_score (clareza da mensagem).
 - Calcule viral_score = round(hook_score*0.5 + emotion_score*0.3 + clarity_score*0.2).
 ${wantsHook ? '- Escreva um hook_text CURTO (máximo 6 palavras, MAIÚSCULAS, sem pontuação final) que aparecerá em texto grande sobreposto nos primeiros 3s. Exemplos: "VOCÊ NÃO VAI ACREDITAR", "OLHA ISSO", "3 COISAS QUE MUDAM TUDO".' : '- Deixe hook_text como string vazia "".'}
@@ -1379,23 +1438,18 @@ async function downloadYoutubeVideo(youtubeUrl, outputPath) {
       return execAsync([
         "yt-dlp",
         ...flags,
-        "--no-playlist",
         "-f", shellQuote("bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
         "--merge-output-format", "mp4",
         "-o", shellQuote(outputPath),
         shellQuote(youtubeUrl),
-      ].join(" "), { maxBuffer: 30 * 1024 * 1024 });
+      ].join(" "), { maxBuffer: 30 * 1024 * 1024, timeout: 30 * 60 * 1000 });
     });
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
       throw new Error(`Vídeo original não foi baixado. ${stderr || ""}`.trim());
     }
   } catch (err) {
-    const msg = String(err?.stderr || err?.message || err || "");
-    // Repropaga com mensagem mais clara pro humanVideoCutError detectar
-    if (/sign in to confirm|not a bot|precondition check failed|unable to download api page|HTTP Error 403|HTTP Error 429/i.test(msg)) {
-      throw new Error(`YouTube bloqueou o download automático (anti-bot). ${msg}`);
-    }
-    throw err;
+    const classified = classifyYoutubeCaptureError(err);
+    throw youtubeCaptureFailure(classified.code, `${classified.message} Detalhe técnico: ${String(err?.message || err || "").slice(0, 500)}`);
   }
 }
 
@@ -1653,7 +1707,7 @@ async function analyzeTranscriptForCuts(job, metadata, words) {
   const requested = Math.min(5, Number(job.requested_clips || 1));
   const prompt = `Você é um editor de vídeos curtos. Escolha os ${requested} melhores trechos desta TRANSCRIÇÃO COM TIMESTAMPS.
 
-Use somente o que está na transcrição. Priorize começo e fim naturais, gancho forte, emoção, clareza e uma ideia completa. Não comece no meio de frase. Cada corte deve ter entre 15 e 60 segundos. Não invente falas.
+Use somente o que está na transcrição. Priorize começo e fim naturais, gancho forte, emoção, clareza e uma ideia completa. Não comece nem termine no meio de frase. A duração é flexível: mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos e use de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando a fala completa exigir. A coerência vence a duração. Não invente falas.
 
 PRESET DE EDIÇÃO (${preset.label}): ${preset.analysisInstruction}
 ${job.custom_prompt ? `ORIENTAÇÃO DO CLIENTE: ${String(job.custom_prompt).slice(0, 1200)}` : ""}
@@ -2134,18 +2188,37 @@ async function finishVideoCutUsage(jobId, generatedCount) {
   if (error) console.warn(`[cuts:${jobId}] Falha ao finalizar uso diário:`, error.message || error);
 }
 
-async function failVideoCutJob(job, message, fallbackRequired = false, generatedCount = 0) {
+async function failVideoCutJob(job, message, fallbackRequired = false, generatedCount = 0, captureErrorCode = null) {
+  const capture = job?.source_kind === "upload" ? null : classifyYoutubeCaptureError(message);
   await supabase.from("video_cut_jobs")
     .update({
       status: "failed",
       progress: 100,
       error_message: message,
       fallback_required: fallbackRequired,
+      capture_status: capture ? "failed" : "not_applicable",
+      capture_error_code: captureErrorCode || capture?.code || null,
+      capture_checked_at: capture ? new Date().toISOString() : null,
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", job.id);
   await finishVideoCutUsage(job.id, generatedCount);
+}
+
+function startVideoCutClaimHeartbeat(jobId) {
+  const timer = setInterval(() => {
+    const now = new Date().toISOString();
+    supabase.from("video_cut_jobs")
+      .update({ claimed_at: now, updated_at: now })
+      .eq("id", jobId)
+      .eq("claimed_by", WORKER_ID)
+      .then(({ error }) => {
+        if (error) console.warn(`[cuts:${jobId}] heartbeat falhou:`, error.message || error);
+      });
+  }, 60_000);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 function shouldSuggestUploadFallback(job, message) {
@@ -2256,6 +2329,7 @@ async function processVideoCutJob(job) {
   const sourcePath = path.join(tempDir, "source.mp4");
   let generatedCount = 0;
   const isUploadJob = job.source_kind === "upload";
+  const stopHeartbeat = startVideoCutClaimHeartbeat(job.id);
 
   try {
     await fs.promises.mkdir(tempDir, { recursive: true });
@@ -2275,6 +2349,8 @@ async function processVideoCutJob(job) {
         progress: 10,
         error_message: null,
         fallback_required: false,
+        capture_status: isUploadJob ? "not_applicable" : "checking",
+        capture_error_code: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
@@ -2287,24 +2363,40 @@ async function processVideoCutJob(job) {
       await downloadStoredVideo(job, sourcePath);
       metadata = await probeLocalVideoMetadata(sourcePath, job.source_title || job.source_file_name || "Vídeo enviado");
     } else {
-      metadata = await probeYoutubeMetadata(job.youtube_url);
+      try {
+        metadata = await probeYoutubeMetadata(job.youtube_url);
+      } catch (error) {
+        const capture = classifyYoutubeCaptureError(error);
+        await failVideoCutJob(job, capture.message, true, 0, capture.code);
+        return;
+      }
+
+      const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
+      const maxMinutes = Math.max(1, Number(limits?.max_cut_video_minutes || 60));
+      if (metadata.duration_seconds > maxMinutes * 60) {
+        throw new Error(`Este vídeo tem ${Math.ceil(metadata.duration_seconds / 60)} min. O limite do plano é ${maxMinutes} min por link.`);
+      }
       try {
         await downloadYoutubeVideo(job.youtube_url, sourcePath);
       } catch (err) {
+        const capture = classifyYoutubeCaptureError(err);
         await failVideoCutJob(
           job,
-          `Não foi possível baixar o vídeo público do YouTube. Envie o MP4 autorizado como alternativa. Detalhe: ${err?.message || err}`,
+          `${capture.message} Envie o MP4 autorizado como alternativa.`,
           true,
           0,
+          capture.code,
         );
         return;
       }
     }
 
-    const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
-    const maxMinutes = Math.max(1, Number(limits?.max_cut_video_minutes || 60));
-    if (metadata.duration_seconds > maxMinutes * 60) {
-      throw new Error(`Este vídeo tem ${Math.ceil(metadata.duration_seconds / 60)} min. O limite do plano é ${maxMinutes} min por link.`);
+    if (isUploadJob) {
+      const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: job.user_id });
+      const maxMinutes = Math.max(1, Number(limits?.max_cut_video_minutes || 60));
+      if (metadata.duration_seconds > maxMinutes * 60) {
+        throw new Error(`Este vídeo tem ${Math.ceil(metadata.duration_seconds / 60)} min. O limite do plano é ${maxMinutes} min por arquivo.`);
+      }
     }
 
     await supabase.from("video_cut_jobs")
@@ -2312,6 +2404,9 @@ async function processVideoCutJob(job) {
         source_title: metadata.title,
         duration_seconds: metadata.duration_seconds,
         source_video_url: isUploadJob ? null : job.source_video_url,
+        capture_status: isUploadJob ? "not_applicable" : "ready",
+        capture_error_code: null,
+        capture_checked_at: isUploadJob ? null : new Date().toISOString(),
         progress: 25,
         updated_at: new Date().toISOString(),
       })
@@ -2464,8 +2559,10 @@ async function processVideoCutJob(job) {
   } catch (err) {
     const message = err?.message || String(err);
     console.error(`[cuts:${job.id}] Falha no processamento:`, message);
-    await failVideoCutJob(job, message, shouldSuggestUploadFallback(job, message), generatedCount);
+    const capture = isUploadJob ? null : classifyYoutubeCaptureError(err);
+    await failVideoCutJob(job, message, shouldSuggestUploadFallback(job, message), generatedCount, capture?.code || null);
   } finally {
+    stopHeartbeat();
     try { await fs.promises.rm(tempDir, { recursive: true, force: true }); } catch {}
   }
 }
