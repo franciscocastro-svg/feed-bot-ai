@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_brand_kits: {
+        Row: {
+          accent_color: string
+          background_color: string
+          body_font: string
+          created_at: string
+          heading_font: string
+          id: string
+          instagram_account_id: string
+          logo_dark_url: string | null
+          logo_light_url: string | null
+          primary_color: string
+          secondary_color: string
+          text_color: string
+          updated_at: string
+          user_id: string
+          version: number
+          visual_style: string
+        }
+        Insert: {
+          accent_color?: string
+          background_color?: string
+          body_font?: string
+          created_at?: string
+          heading_font?: string
+          id?: string
+          instagram_account_id: string
+          logo_dark_url?: string | null
+          logo_light_url?: string | null
+          primary_color?: string
+          secondary_color?: string
+          text_color?: string
+          updated_at?: string
+          user_id: string
+          version?: number
+          visual_style?: string
+        }
+        Update: {
+          accent_color?: string
+          background_color?: string
+          body_font?: string
+          created_at?: string
+          heading_font?: string
+          id?: string
+          instagram_account_id?: string
+          logo_dark_url?: string | null
+          logo_light_url?: string | null
+          primary_color?: string
+          secondary_color?: string
+          text_color?: string
+          updated_at?: string
+          user_id?: string
+          version?: number
+          visual_style?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_brand_kits_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: true
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       account_settings: {
         Row: {
           ai_tone: string | null
@@ -3720,6 +3785,7 @@ export type Database = {
         Args: { _generated_count?: number; _job_id: string }
         Returns: undefined
       }
+      get_account_brand_kit: { Args: { _account_id: string }; Returns: Json }
       get_account_template_states: {
         Args: { _account_id: string }
         Returns: Json
@@ -3968,6 +4034,10 @@ export type Database = {
       }
       restore_account_template_version: {
         Args: { _account_id: string; _version_id: string }
+        Returns: Json
+      }
+      save_account_brand_kit: {
+        Args: { _account_id: string; _kit: Json }
         Returns: Json
       }
       save_account_template_draft: {
