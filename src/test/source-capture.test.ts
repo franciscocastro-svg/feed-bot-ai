@@ -276,6 +276,35 @@ describe("source capture utilities", () => {
     expect(result.sample_items?.[0]?.title).toContain("Celebridade");
   });
 
+  it("never returns relaxed or stale search results to automatic capture", async () => {
+    const oldDate = new Date(Date.now() - 72 * 3600000).toUTCString();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <rss><channel>
+        <item>
+          <title>Ronaldo aconselha Neymar sobre a Copa de 2030</title>
+          <link>https://example.com/esportes/neymar-copa-2030</link>
+          <description>Matéria antiga encontrada pela busca.</description>
+          <pubDate>${oldDate}</pubDate>
+        </item>
+      </channel></rss>
+    `, { status: 200, headers: { "content-type": "application/rss+xml; charset=utf-8" } })));
+
+    const result = await previewSource({
+      source_kind: "person",
+      query: "Neymar",
+      country: "BR",
+      language: "pt-BR",
+    }, 5, {
+      allowRelaxedSearch: false,
+      maxAgeHours: 48,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.sample_items).toHaveLength(0);
+    expect(result.diagnostics.filtered_old).toBeGreaterThan(0);
+    expect(result.diagnostics.relaxed_preview).not.toBe(true);
+  });
+
   it("enriches Google News preview items with the publisher image", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

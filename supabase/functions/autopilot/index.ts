@@ -371,10 +371,10 @@ Deno.serve(async (req) => {
         const cutoffIso = new Date(Date.now() - PENDING_NEWS_MAX_AGE_HOURS * 3600 * 1000).toISOString();
         const { data: stale } = await supabase
           .from("news_items")
-          .select("id")
+          .select("id, created_at")
           .eq("user_id", userId)
           .in("status", ["pending", "processed"])
-          .lt("published_at", cutoffIso);
+          .lt("created_at", cutoffIso);
         const staleIds = (stale || []).map((s: any) => s.id);
         if (staleIds.length) {
           await supabase.from("news_items").update({

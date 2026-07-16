@@ -24,6 +24,8 @@ const corsHeaders = {
 
 const ACTIVE_NEWS_STATUSES = ["pending", "processing", "processed", "approved", "scheduled"];
 const ACTIVE_SCHEDULE_STATUSES = ["scheduled", "posting", "awaiting_container"];
+const AUTOMATIC_SEARCH_MAX_AGE_HOURS = 48;
+const SOURCE_DEDUPE_LOOKBACK_HOURS = 7 * 24;
 
 function emptyDiagnostics(message?: string): SourceDiagnostics {
   return {
@@ -180,7 +182,7 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
   const selectCols = "id, original_image_url, original_url, original_canonical_url, original_title, rewritten_title, dedupe_url_key, dedupe_title_key";
   const urlKey = duplicateUrlKey(canonicalUrl, articleUrl);
   const titleKey = duplicateTitleKey(title);
-  const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const since = new Date(Date.now() - SOURCE_DEDUPE_LOOKBACK_HOURS * 3600 * 1000).toISOString();
 
   if (urlKey) {
     const urlMatch = await supabase
@@ -188,7 +190,6 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
       .select(selectCols)
       .eq("user_id", userId)
       .eq("dedupe_url_key", urlKey)
-      .not("status", "in", "(rejected,failed)")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -202,7 +203,6 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
       .select(selectCols)
       .eq("user_id", userId)
       .eq("original_canonical_url", canonicalUrl)
-      .not("status", "in", "(rejected,failed)")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -216,7 +216,6 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
       .select(selectCols)
       .eq("user_id", userId)
       .eq("original_url", articleUrl)
-      .not("status", "in", "(rejected,failed)")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -230,7 +229,6 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
     .select(`${selectCols}, created_at`)
     .eq("user_id", userId)
     .eq("dedupe_title_key", titleKey)
-    .not("status", "in", "(rejected,failed)")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -241,7 +239,6 @@ async function findDuplicate(supabase: any, userId: string, canonicalUrl: string
     .from("news_items")
     .select(`${selectCols}, created_at`)
     .eq("user_id", userId)
-    .not("status", "in", "(rejected,failed)")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -355,7 +352,10 @@ Deno.serve(async (req) => {
 
         const sourceKind = inferSourceKind(source);
         if (["person", "topic", "google_news"].includes(sourceKind)) {
-          const searchResult = await previewSource(source, 5);
+          const searchResult = await previewSource(source, 5, {
+            allowRelaxedSearch: false,
+            maxAgeHours: AUTOMATIC_SEARCH_MAX_AGE_HOURS,
+          });
           fetchUrl = searchResult.final_url || searchResult.url || buildSourceFetchUrl(source);
           diagnostics = searchResult.diagnostics;
           selectedItems = (searchResult.sample_items || []).map((item) => ({

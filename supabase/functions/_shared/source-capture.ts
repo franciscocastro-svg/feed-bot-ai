@@ -46,6 +46,11 @@ export type SourceDiagnostics = {
   resolved_provider?: "google_news" | "bing_news";
 };
 
+export type SourceCaptureOptions = {
+  allowRelaxedSearch?: boolean;
+  maxAgeHours?: number;
+};
+
 export function createDiagnostics(parseType: SourceDiagnostics["parse_type"] = "none"): SourceDiagnostics {
   return {
     parse_type: parseType,
@@ -652,10 +657,19 @@ function isSearchSource(source: SourceLike): boolean {
   return kind === "person" || kind === "topic" || kind === "google_news";
 }
 
-function freshnessWindowHours(source: SourceLike, profile: RelevanceProfile): number {
+function freshnessWindowHours(
+  source: SourceLike,
+  profile: RelevanceProfile,
+  options: SourceCaptureOptions = {},
+): number {
   const configured = Number(source.source_config?.max_age_hours);
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  return isSearchSource(source) ? Math.max(profile.maxAgeH, 168) : profile.maxAgeH;
+  const sourceWindow = Number.isFinite(configured) && configured > 0
+    ? configured
+    : isSearchSource(source) ? Math.max(profile.maxAgeH, 168) : profile.maxAgeH;
+  const enforcedMaximum = Number(options.maxAgeHours);
+  return Number.isFinite(enforcedMaximum) && enforcedMaximum > 0
+    ? Math.min(sourceWindow, enforcedMaximum)
+    : sourceWindow;
 }
 
 function relevanceScore(item: ParsedSourceItem, profile: RelevanceProfile): number {
@@ -682,13 +696,14 @@ export function filterItemsForSource(
   source: SourceLike,
   parseType: SourceDiagnostics["parse_type"],
   limit = 5,
+  options: SourceCaptureOptions = {},
 ): { items: ParsedSourceItem[]; diagnostics: SourceDiagnostics } {
   const diagnostics = createDiagnostics(parseType);
   const profile = getProfile(source);
   const includeTerms = normalizeTerms(source.include_terms).map(normalizedText);
   const excludeTerms = normalizeTerms(source.exclude_terms).map(normalizedText);
   const searchSource = isSearchSource(source);
-  const maxAgeH = freshnessWindowHours(source, profile);
+  const maxAgeH = freshnessWindowHours(source, profile, options);
   const minScore = searchSource ? Math.min(profile.minScore, 0) : profile.minScore;
   diagnostics.items_found = items.length;
 
@@ -1117,6 +1132,7 @@ async function buildSearchPreviewResponse(
   resolvedVia: NonNullable<SourceDiagnostics["resolved_via"]>,
   limit: number,
   provider: "google_news" | "bing_news" = "google_news",
+  options: SourceCaptureOptions = {},
 ) {
   const url = provider === "bing_news"
     ? buildBingNewsSearchUrl(query, source.country || "BR", source.language || "pt-BR")
@@ -1124,7 +1140,7 @@ async function buildSearchPreviewResponse(
   const raw = await fetchTextSmart(url);
   const parsed = parseSourceItems(raw.text, raw.finalUrl || url);
   const searchSource = { ...source, source_kind: "google_news" as SourceKind, query, url };
-  const filtered = filterItemsForSource(parsed.items, searchSource, parsed.parseType, limit);
+  const filtered = filterItemsForSource(parsed.items, searchSource, parsed.parseType, limit, options);
   filtered.diagnostics.resolved_provider = provider;
   if (filtered.items.length > 0) {
     const enriched = await enrichPreviewItemsWithImages(filtered.items);
@@ -1137,6 +1153,19 @@ async function buildSearchPreviewResponse(
       parsed.parseType,
       parsed.items,
       enriched.items,
+      [],
+      markDiagnostics(filtered.diagnostics, resolvedVia, query),
+    );
+  }
+
+  if (options.allowRelaxedSearch === false) {
+    return buildPreviewResponse(
+      false,
+      url,
+      raw.finalUrl,
+      parsed.parseType,
+      parsed.items,
+      [],
       [],
       markDiagnostics(filtered.diagnostics, resolvedVia, query),
     );
@@ -1172,7 +1201,7 @@ async function buildSearchPreviewResponse(
   );
 }
 
-async function previewSearchSource(source: SourceLike, limit: number) {
+async function previewSearchSource(source: SourceLike, limit: number, options: SourceCaptureOptions = {}) {
   const queries = buildSearchQueryVariants(source);
   const firstQuery = queries[0] || buildSearchQuery(source);
   if (!firstQuery) throw new Error("Fonte precisa de uma busca");
@@ -1187,7 +1216,7 @@ async function previewSearchSource(source: SourceLike, limit: number) {
         const resolvedVia = provider === "bing_news"
           ? "search_fallback"
           : queryIndex === 0 ? "direct" : "search_variant";
-        const response = await buildSearchPreviewResponse(source, query, resolvedVia, limit, provider);
+        const response = await buildSearchPreviewResponse(source, query, resolvedVia, limit, provider, options);
         lastResponse = response;
         if (!response.valid) continue;
         if (provider === "bing_news") {
@@ -1259,8 +1288,8 @@ async function previewDomainSearch(
   return null;
 }
 
-export async function previewSource(source: SourceLike, limit = 5) {
-  if (isSearchSource(source)) return previewSearchSource(source, limit);
+export async function previewSource(source: SourceLike, limit = 5, options: SourceCaptureOptions = {}) {
+  if (isSearchSource(source)) return previewSearchSource(source, limit, options);
 
   const url = buildSourceFetchUrl(source);
   let raw: Awaited<ReturnType<typeof fetchTextSmart>>;

@@ -36,4 +36,11 @@ describe("autopilot freshness policy", () => {
     expect(isNewsOlderThan(null, PENDING_NEWS_MAX_AGE_HOURS, now)).toBe(false);
     expect(isScheduledBeyondFreshnessWindow("invalid", "2026-07-11T12:00:00.000Z")).toBe(false);
   });
+
+  it("expires queue waiting time by created_at instead of the publisher date", async () => {
+    const source = await import("../../supabase/functions/autopilot/index.ts?raw");
+    const code = String(source.default);
+    expect(code).toContain('.lt("created_at", cutoffIso)');
+    expect(code).not.toContain('.lt("published_at", cutoffIso)');
+  });
 });

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "release": "quality-sources-1b",
+  "affectedFunctions": ["fetch-rss", "autopilot"],
+  "migrations": ["20260716211500_quality_sources_1b_dedup_freshness.sql"],
+  "frontendPublish": false,
+  "validation": [
+    "npm run ci",
+    "npm audit --omit=dev --audit-level=moderate",
+    "deno check supabase/functions/fetch-rss/index.ts",
+    "deno check supabase/functions/autopilot/index.ts"
+  ],
+  "constraints": {
+    "otherEdgeFunctions": false,
+    "manualFunctionInvocation": false,
+    "reprocessExistingSources": false,
+    "deleteExistingDuplicates": false,
+    "frontendPublish": false,
+    "paymentsStripeMetaWorkerSecrets": false
+  }
+}
