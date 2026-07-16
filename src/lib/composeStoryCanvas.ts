@@ -20,9 +20,9 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function proxify(url: string, w = 1080, h = 1920) {
+function proxify(url: string, w = 1080, h = 1920, output: "jpg" | "png" = "jpg") {
   const clean = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&h=${h}&fit=cover&output=jpg`;
+  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&h=${h}&fit=cover&output=${output}`;
 }
 
 function proxifyPreserved(url: string, w = 1080) {
@@ -120,16 +120,18 @@ async function drawBrandElements(ctx: CanvasRenderingContext2D, config: any) {
 async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: any, template: any, opts: { withFollowCta?: boolean }) {
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const cfg = normalizeTemplateConfig(template.config, opts.withFollowCta ? "reels" : "stories");
+  const usesOverlayFrame = cfg.backgroundLayer === "overlay" && Boolean(template.background_url);
   const title = (item.rewritten_title?.trim() || item.original_title?.trim() || "Notícia").toUpperCase();
   const subtitle = item.rewritten_summary?.trim() || item.original_content?.replace(/<[^>]+>/g, " ").trim().slice(0, 220) || "";
 
+  let templateBackground: HTMLImageElement | null = null;
   if (template.background_url) {
     try {
-      const bg = await loadImage(proxify(template.background_url, 1080, 1920));
-      drawCover(ctx, bg, 0, 0, W, H);
-    } catch {
-      drawTemplateGradient(ctx, template.preset_key, template.config, W, H);
-    }
+      templateBackground = await loadImage(proxify(template.background_url, 1080, 1920, usesOverlayFrame ? "png" : "jpg"));
+    } catch {}
+  }
+  if (!usesOverlayFrame && templateBackground) {
+    drawCover(ctx, templateBackground, 0, 0, W, H);
   } else {
     drawTemplateGradient(ctx, template.preset_key, template.config, W, H);
   }
@@ -145,6 +147,9 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
   if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, W, H);
+  }
+  if (usesOverlayFrame && templateBackground) {
+    drawCover(ctx, templateBackground, 0, 0, W, H);
   }
   if (cfg.showBrandLogo && cfg.brandLogoUrl) {
     try {

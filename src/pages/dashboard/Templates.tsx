@@ -45,6 +45,7 @@ import {
 } from "@/lib/templateRecommendations";
 
 type PostFormat = TemplateFormat;
+type TemplateBackgroundLayer = "base" | "overlay";
 const GLOBAL_SCOPE = "__global";
 
 type InstagramAccount = { id: string; username: string; niche?: string | null; active: boolean };
@@ -388,10 +389,41 @@ export default function Templates() {
     });
   }
 
-  async function validateTemplateFile(file: File, format: PostFormat) {
+  async function detectPngTransparency(file: File): Promise<boolean> {
+    if (file.type !== "image/png") return false;
+    const url = URL.createObjectURL(file);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const candidate = new Image();
+        candidate.onload = () => resolve(candidate);
+        candidate.onerror = () => reject(new Error("Não consegui analisar a transparência desta imagem."));
+        candidate.src = url;
+      });
+      const sampleSize = 96;
+      const canvas = document.createElement("canvas");
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return false;
+      context.drawImage(image, 0, 0, sampleSize, sampleSize);
+      const pixels = context.getImageData(0, 0, sampleSize, sampleSize).data;
+      let transparentPixels = 0;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (pixels[index] < 250) transparentPixels += 1;
+      }
+      return transparentPixels / (pixels.length / 4) >= 0.01;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function validateTemplateFile(file: File, format: PostFormat, layer: TemplateBackgroundLayer) {
     const req = TEMPLATE_REQUIREMENTS[format];
     if (!["image/png", "image/jpeg"].includes(file.type)) {
       throw new Error("Use apenas PNG ou JPG.");
+    }
+    if (layer === "overlay" && file.type !== "image/png") {
+      throw new Error("Molduras precisam ser PNG com transparência.");
     }
     if (file.size > 5 * 1024 * 1024) {
       throw new Error("O arquivo precisa ter até 5 MB.");
@@ -400,6 +432,11 @@ export default function Templates() {
     if (size.width !== req.width || size.height !== req.height) {
       throw new Error(`Este formato precisa ser ${req.label}. Sua imagem tem ${size.width}x${size.height}.`);
     }
+    const hasTransparency = await detectPngTransparency(file);
+    if (layer === "overlay" && !hasTransparency) {
+      throw new Error("Este PNG não possui transparência suficiente para funcionar como moldura.");
+    }
+    return { hasTransparency };
   }
 
   async function ensureTemplateLimit() {
@@ -429,13 +466,14 @@ export default function Templates() {
   }
 
   const uploadFormatRef = useRef<PostFormat>("feed");
+  const uploadLayerRef = useRef<TemplateBackgroundLayer>("base");
   async function uploadBackground(file: File) {
     if (!user) return;
     setUploading(true);
     let uploadedPath: string | null = null;
     try {
       await ensureTemplateLimit();
-      await validateTemplateFile(file, uploadFormatRef.current);
+      const { hasTransparency } = await validateTemplateFile(file, uploadFormatRef.current, uploadLayerRef.current);
       const ext = file.name.split(".").pop() || "png";
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("template-backgrounds").upload(path, file, { upsert: false });
@@ -444,8 +482,17 @@ export default function Templates() {
       const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
       const config = {
         ...getDefaultTemplateConfig(uploadFormatRef.current),
+        backgroundLayer: uploadLayerRef.current,
         overlayOpacity: 0,
-        ...(uploadFormatRef.current === "feed" ? {} : { showPhoto: false }),
+        ...(uploadLayerRef.current === "overlay"
+          ? {
+              showPhoto: true,
+              photoX: 0,
+              photoY: 0,
+              photoW: 1080,
+              photoH: uploadFormatRef.current === "feed" ? 1080 : 1920,
+            }
+          : uploadFormatRef.current === "feed" ? {} : { showPhoto: false }),
       };
       const { data, error } = await supabase.from("post_templates").insert({
         user_id: user.id, name: file.name.replace(/\.[^.]+$/, ""), kind: "custom",
@@ -454,7 +501,10 @@ export default function Templates() {
       if (error) throw error;
       uploadedPath = null;
       setTemplates(t => [data as Template, ...t]);
-      toast.success("Template enviado e validado");
+      if (hasTransparency && uploadLayerRef.current === "base") {
+        toast.warning("Transparência detectada. Se a foto deve ficar atrás da arte, importe como moldura.");
+      }
+      toast.success(uploadLayerRef.current === "overlay" ? "Moldura transparente enviada e validada" : "Template enviado e validado");
       setEditing(data as Template);
     } catch (e: any) {
       if (uploadedPath) await supabase.storage.from("template-backgrounds").remove([uploadedPath]);
@@ -464,8 +514,9 @@ export default function Templates() {
       if (fileRef.current) fileRef.current.value = "";
     }
   }
-  function triggerUpload(format: PostFormat) {
+  function triggerUpload(format: PostFormat, layer: TemplateBackgroundLayer) {
     uploadFormatRef.current = format;
+    uploadLayerRef.current = layer;
     setCreateOpen(false);
     fileRef.current?.click();
   }
@@ -841,7 +892,7 @@ export default function Templates() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <button
               type="button"
               onClick={() => startBlankTemplate(createFormat)}
@@ -859,25 +910,43 @@ export default function Templates() {
 
             <button
               type="button"
-              onClick={() => triggerUpload(createFormat)}
+              onClick={() => triggerUpload(createFormat, "base")}
               disabled={uploading}
               className="group rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
             >
               <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Upload className="h-5 w-5" />
               </div>
-              <div className="font-semibold">Usar arte como base</div>
+              <div className="font-semibold">Usar como fundo</div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Envie um PNG ou JPG validado e depois marque exatamente onde cada conteúdo automático deve aparecer.
+                Envie um PNG ou JPG opaco. A foto e os textos automáticos serão desenhados por cima.
               </p>
               <div className="mt-4 text-xs font-medium text-primary">
                 {TEMPLATE_REQUIREMENTS[createFormat].label} · até 5 MB →
               </div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => triggerUpload(createFormat, "overlay")}
+              disabled={uploading}
+              className="group rounded-xl border border-border bg-card p-5 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+            >
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div className="font-semibold">Usar como moldura</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Envie um PNG transparente. A foto fica atrás da moldura, preservando faixas, bordas e elementos fixos.
+              </p>
+              <div className="mt-4 text-xs font-medium text-primary">
+                PNG transparente · {TEMPLATE_REQUIREMENTS[createFormat].label} →
+              </div>
+            </button>
           </div>
 
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-muted-foreground">
-            <strong className="text-foreground">Importante:</strong> enviar uma arte não publica a imagem diretamente. Ela vira o fundo do template e será combinada com os textos e fotos de cada notícia.
+            <strong className="text-foreground">Importante:</strong> escolha “fundo” para artes opacas e “moldura” quando houver áreas transparentes destinadas à foto da notícia.
           </div>
         </DialogContent>
       </Dialog>
@@ -1384,6 +1453,7 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
 
   const TemplateArt = ({ aspect }: { aspect: string }) => {
     const cfg = normalizeTemplateConfig(template.config, fmt);
+    const usesOverlayFrame = cfg.backgroundLayer === "overlay" && Boolean(template.background_url);
     const xP = (px: number) => `${(px / CANVAS_W) * 100}%`;
     const yP = (px: number) => `${(px / CANVAS_H) * 100}%`;
     const wP = (px: number) => `${(px / CANVAS_W) * 100}%`;
@@ -1395,8 +1465,8 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
         className={`relative w-full ${aspect} overflow-hidden bg-zinc-900`}
         style={{ containerType: "inline-size" }}
       >
-        {/* Fundo do template */}
-        {template.background_url ? (
+        {/* Fundo do template. Molduras transparentes são desenhadas depois da foto. */}
+        {template.background_url && !usesOverlayFrame ? (
           <img src={template.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
         ) : (
           <div className="absolute inset-0" style={{ background: templateGradientCss(template.preset_key, template.config) }} />
@@ -1407,13 +1477,17 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
           <img
             src={samplePhoto}
             alt="exemplo"
-            className="absolute object-cover"
+            className="absolute z-[1] object-cover"
             style={{ left: xP(cfg.photoX), top: yP(cfg.photoY), width: wP(cfg.photoW), height: hP(cfg.photoH) }}
           />
         )}
 
         {cfg.overlayOpacity > 0 && (
-          <div className="absolute inset-0 pointer-events-none" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
+          <div className="pointer-events-none absolute inset-0 z-[2]" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
+        )}
+
+        {usesOverlayFrame && (
+          <img src={template.background_url!} className="pointer-events-none absolute inset-0 z-[3] h-full w-full object-cover" alt="Moldura transparente do template" />
         )}
 
         {cfg.showBrandLogo && cfg.brandLogoUrl && (
@@ -1421,24 +1495,24 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
         )}
 
         {cfg.showHandle && (
-          <div className="absolute font-mono font-bold tracking-wider"
+          <div className="absolute z-10 font-mono font-bold tracking-wider"
             style={{ left: xP(cfg.handleX), top: yP(cfg.handleY - cfg.handleSize), color: cfg.handleColor, fontSize: fontPct(cfg.handleSize), fontFamily: cfg.handleFontFamily }}>
             @{handle.toUpperCase()}
           </div>
         )}
 
-        <div className="absolute whitespace-pre-line font-black uppercase leading-[1.05]"
+        <div className="absolute z-10 whitespace-pre-line font-black uppercase leading-[1.05]"
           style={{ left: xP(cfg.titleX), width: wP(cfg.titleW), top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize), textAlign: cfg.titleAlign, fontFamily: cfg.titleFontFamily }}>
           {wrapPreviewText(sampleTitle, cfg.titleMaxChars, cfg.titleMaxLines)}
         </div>
 
-        <div className="absolute whitespace-pre-line leading-snug"
+        <div className="absolute z-10 whitespace-pre-line leading-snug"
           style={{ left: xP(cfg.subtitleX), width: wP(cfg.subtitleW), top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize), textAlign: cfg.subtitleAlign, fontFamily: cfg.subtitleFontFamily }}>
           {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), cfg.subtitleMaxLines)}
         </div>
 
         {cfg.showBadge && (
-          <div className="absolute font-bold"
+          <div className="absolute z-10 font-bold"
             style={{
               left: xP(cfg.badgeX), top: yP(cfg.badgeY), width: wP(cfg.badgeW), height: hP(cfg.badgeH),
               background: cfg.badgeBg, color: cfg.badgeColor,
@@ -1454,7 +1528,7 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
             key={element.id}
             src={element.url}
             alt={element.name || "Elemento de marca"}
-            className="absolute object-contain"
+            className="absolute z-10 object-contain"
             style={{
               left: xP(element.x), top: yP(element.y), width: wP(element.width), height: hP(element.height),
               opacity: element.opacity ?? 1,
@@ -1463,7 +1537,7 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
         ) : (
           <div
             key={element.id}
-            className="absolute whitespace-pre-line leading-tight"
+            className="absolute z-10 whitespace-pre-line leading-tight"
             style={{
               left: xP(element.x), top: yP(element.y), width: wP(element.width), color: element.color,
               fontSize: fontPct(element.fontSize), fontWeight: element.fontWeight, textAlign: element.align,
@@ -1855,7 +1929,7 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
           </div>
           <div className="flex max-h-[calc(92vh-160px)] min-h-[420px] items-start justify-center overflow-auto rounded-xl border border-border bg-background/60 p-3">
           <div ref={canvasRef} className={`${aspectClass} w-full max-w-[360px] relative overflow-hidden rounded-lg border border-border bg-zinc-900 shadow-card select-none`} style={{ containerType: "inline-size", touchAction: "none" }}>
-            {draft.background_url ? (
+            {draft.background_url && cfg.backgroundLayer !== "overlay" ? (
               <img src={draft.background_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
               <div className="absolute inset-0" style={{ background: templateGradientCss(draft.preset_key, draft.config) }} />
@@ -1873,6 +1947,9 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
             )}
             {cfg.overlayOpacity > 0 && (
               <div className="pointer-events-none absolute inset-0 z-[2]" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
+            )}
+            {draft.background_url && cfg.backgroundLayer === "overlay" && (
+              <img src={draft.background_url} className="pointer-events-none absolute inset-0 z-[3] h-full w-full object-cover" alt="Moldura transparente do template" />
             )}
             {cfg.showBrandLogo && cfg.brandLogoUrl && (
               <img src={cfg.brandLogoUrl} alt="Logo do Kit de Marca" className="absolute z-10 object-contain" style={{ left: `${((cfg.brandLogoX ?? 60) / 1080) * 100}%`, top: `${((cfg.brandLogoY ?? 30) / canvasH) * 100}%`, width: `${((cfg.brandLogoSize ?? 52) / 1080) * 100}%`, height: `${((cfg.brandLogoSize ?? 52) / canvasH) * 100}%` }} />
@@ -2081,6 +2158,21 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
               <ColorRow label="Cor texto" value={cfg.badgeColor} onChange={v => update({ badgeColor: v })} />
             </>}
           </Section>
+
+          {draft.background_url && (
+            <Section title="Camada da arte enviada">
+              <Select value={cfg.backgroundLayer} onValueChange={value => update({ backgroundLayer: value as TemplateBackgroundLayer })}>
+                <SelectTrigger aria-label="Camada da arte enviada"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="base">Fundo — foto e textos ficam por cima</SelectItem>
+                  <SelectItem value="overlay">Moldura — foto fica atrás do PNG transparente</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Use “Moldura” apenas com PNG transparente. Faixas, bordas e marcas fixas serão preservadas sobre a foto.
+              </p>
+            </Section>
+          )}
 
           <Section title="Caixa da foto da notícia">
             <Toggle label="Mostrar foto da notícia" value={cfg.showPhoto} onChange={v => update({ showPhoto: v })} />

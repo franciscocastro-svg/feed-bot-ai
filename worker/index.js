@@ -403,14 +403,14 @@ async function drawBrandElementsNode(ctx, config, width, height) {
 
 async function drawConfiguredTemplate(ctx, item, settings, template, width, height, opts = {}) {
   const cfg = normalizeTemplateConfig(template.config, height === 1080 ? "feed" : opts.withFollowCta ? "reels" : "stories");
+  const usesOverlayFrame = cfg.backgroundLayer === "overlay" && Boolean(template.background_url);
   const title = (item.rewritten_title || item.original_title || "Notícia").toUpperCase();
   const subtitle = item.rewritten_summary || "";
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
 
-  if (template.background_url) {
-    const bgImg = await loadImageHelper(template.background_url);
-    if (bgImg) drawCoverImage(ctx, bgImg, 0, 0, width, height);
-    else drawTemplateGradient(ctx, template.preset_key, template.config, width, height);
+  const templateBackground = template.background_url ? await loadImageHelper(template.background_url) : null;
+  if (!usesOverlayFrame && templateBackground) {
+    drawCoverImage(ctx, templateBackground, 0, 0, width, height);
   } else {
     drawTemplateGradient(ctx, template.preset_key, template.config, width, height);
   }
@@ -423,6 +423,10 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, width, height);
+  }
+
+  if (usesOverlayFrame && templateBackground) {
+    drawCoverImage(ctx, templateBackground, 0, 0, width, height);
   }
 
   if (cfg.showBrandLogo && cfg.brandLogoUrl) {

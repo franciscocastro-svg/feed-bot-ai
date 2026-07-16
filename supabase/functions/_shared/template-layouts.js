@@ -1,4 +1,5 @@
 const FEED_DEFAULTS = {
+  backgroundLayer: "base",
   titleX: 60,
   titleY: 180,
   titleW: 960,
@@ -228,6 +229,7 @@ export function normalizeTemplateConfig(config, format = "feed") {
   const safeFont = value => supportedFonts.includes(value) ? value : "Inter";
   return {
     ...normalized,
+    backgroundLayer: normalized.backgroundLayer === "overlay" ? "overlay" : "base",
     titleFontFamily: safeFont(normalized.titleFontFamily),
     subtitleFontFamily: safeFont(normalized.subtitleFontFamily),
     handleFontFamily: safeFont(normalized.handleFontFamily),

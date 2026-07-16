@@ -1,6 +1,7 @@
 export type TemplateFormat = "feed" | "story" | "stories" | "reel" | "reels";
 export type TemplateTextAlign = "left" | "center" | "right";
 export type TemplateConfig = Record<string, any> & {
+  backgroundLayer?: "base" | "overlay";
   titleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
   subtitleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
   handleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";

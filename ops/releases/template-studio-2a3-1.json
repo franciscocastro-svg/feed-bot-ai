@@ -1,0 +1,29 @@
+{
+  "phase": "Template Studio 2A.3.1",
+  "name": "Transparent overlay importer",
+  "frontendChanged": true,
+  "workerChanged": true,
+  "migration": null,
+  "edgeFunctions": [],
+  "contracts": [
+    "legacy templates normalize to the base background layer",
+    "overlay imports require PNG transparency",
+    "browser proxy preserves overlay alpha as PNG",
+    "photo renders before the transparent frame",
+    "preview, browser canvas and VPS worker share the same layer order",
+    "activation still requires explicit draft publication"
+  ],
+  "excluded": [
+    "database migrations",
+    "edge function deployments",
+    "cron schedules",
+    "payments",
+    "stripe",
+    "meta configuration",
+    "secrets",
+    "mcp",
+    "types.ts",
+    "lockfiles"
+  ],
+  "rollback": "Redeploy the previous frontend and VPS worker. Stored template versions remain compatible and inert."
+}
