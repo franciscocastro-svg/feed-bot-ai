@@ -2485,6 +2485,9 @@ export type Database = {
           analysis_warning: string | null
           attempts: number
           auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -2518,6 +2521,7 @@ export type Database = {
           source_storage_bucket: string | null
           source_storage_path: string | null
           source_title: string | null
+          source_video_id: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
@@ -2533,6 +2537,9 @@ export type Database = {
           analysis_warning?: string | null
           attempts?: number
           auto_publish?: boolean
+          capture_checked_at?: string | null
+          capture_error_code?: string | null
+          capture_status?: string
           claimed_at?: string | null
           claimed_by?: string | null
           completed_at?: string | null
@@ -2566,6 +2573,7 @@ export type Database = {
           source_storage_bucket?: string | null
           source_storage_path?: string | null
           source_title?: string | null
+          source_video_id?: string | null
           source_video_url?: string | null
           started_at?: string | null
           status?: string
@@ -2581,6 +2589,9 @@ export type Database = {
           analysis_warning?: string | null
           attempts?: number
           auto_publish?: boolean
+          capture_checked_at?: string | null
+          capture_error_code?: string | null
+          capture_status?: string
           claimed_at?: string | null
           claimed_by?: string | null
           completed_at?: string | null
@@ -2614,6 +2625,7 @@ export type Database = {
           source_storage_bucket?: string | null
           source_storage_path?: string | null
           source_title?: string | null
+          source_video_id?: string | null
           source_video_url?: string | null
           started_at?: string | null
           status?: string
@@ -2919,6 +2931,9 @@ export type Database = {
           analysis_warning: string | null
           attempts: number
           auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -2952,6 +2967,7 @@ export type Database = {
           source_storage_bucket: string | null
           source_storage_path: string | null
           source_title: string | null
+          source_video_id: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
@@ -3079,6 +3095,9 @@ export type Database = {
           analysis_warning: string | null
           attempts: number
           auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -3112,6 +3131,7 @@ export type Database = {
           source_storage_bucket: string | null
           source_storage_path: string | null
           source_title: string | null
+          source_video_id: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
@@ -3142,6 +3162,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3175,6 +3198,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3205,6 +3229,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3238,6 +3265,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3273,6 +3301,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3306,6 +3337,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3343,6 +3375,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3376,6 +3411,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3407,6 +3443,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3440,6 +3479,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3471,6 +3511,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3504,6 +3547,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3540,6 +3584,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3573,6 +3620,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3611,6 +3659,9 @@ export type Database = {
               analysis_warning: string | null
               attempts: number
               auto_publish: boolean
+              capture_checked_at: string | null
+              capture_error_code: string | null
+              capture_status: string
               claimed_at: string | null
               claimed_by: string | null
               completed_at: string | null
@@ -3644,6 +3695,7 @@ export type Database = {
               source_storage_bucket: string | null
               source_storage_path: string | null
               source_title: string | null
+              source_video_id: string | null
               source_video_url: string | null
               started_at: string | null
               status: string
@@ -3682,6 +3734,9 @@ export type Database = {
           analysis_warning: string | null
           attempts: number
           auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -3715,6 +3770,7 @@ export type Database = {
           source_storage_bucket: string | null
           source_storage_path: string | null
           source_title: string | null
+          source_video_id: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
@@ -3944,6 +4000,7 @@ export type Database = {
       }
       normalize_dedupe_text: { Args: { _value: string }; Returns: string }
       normalize_dedupe_url: { Args: { _value: string }; Returns: string }
+      normalize_youtube_video_url: { Args: { _url: string }; Returns: string }
       publish_account_template_draft: {
         Args: { _account_id: string; _format: string }
         Returns: Json
@@ -3972,6 +4029,9 @@ export type Database = {
           analysis_warning: string | null
           attempts: number
           auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
           claimed_at: string | null
           claimed_by: string | null
           completed_at: string | null
@@ -4005,6 +4065,7 @@ export type Database = {
           source_storage_bucket: string | null
           source_storage_path: string | null
           source_title: string | null
+          source_video_id: string | null
           source_video_url: string | null
           started_at: string | null
           status: string
