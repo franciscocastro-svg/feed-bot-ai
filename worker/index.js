@@ -11,6 +11,7 @@ import { drawTemplateGradient } from "../supabase/functions/_shared/template-gra
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect } from "../supabase/functions/_shared/image-framing.js";
 import { loadPublishedTemplate } from "../supabase/functions/_shared/template-versioning.js";
+import { brandFontStack } from "../supabase/functions/_shared/brand-kit.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
 import { resolveCutPreset } from "./cutPresets.js";
 import {
@@ -237,37 +238,32 @@ async function downloadFile(url, destPath) {
   });
 }
 
-// Configura as fontes Inter (Regular e Bold)
+// Mantém no VPS as mesmas famílias oferecidas pelo Kit de Marca do navegador.
 async function setupFonts() {
-  const fontRegularPath = path.join(FONTS_DIR, "Inter-Regular.ttf");
-  const fontBoldPath = path.join(FONTS_DIR, "Inter-Bold.ttf");
   const { GlobalFonts } = await getCanvasRuntime();
-
-  if (!fs.existsSync(fontRegularPath)) {
-    console.log("Baixando fonte Inter-Regular.ttf...");
-    try {
-      await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Regular.ttf", fontRegularPath);
-    } catch (err) {
-      console.warn("Aviso: não foi possível baixar Inter-Regular.ttf; usando fonte padrão do sistema.", err);
+  const fonts = [
+    ["Inter", "inter/static/Inter-Regular.ttf", "inter/static/Inter-Bold.ttf"],
+    ["Montserrat", "montserrat/static/Montserrat-Regular.ttf", "montserrat/static/Montserrat-Bold.ttf"],
+    ["Poppins", "poppins/Poppins-Regular.ttf", "poppins/Poppins-Bold.ttf"],
+    ["Lora", "lora/static/Lora-Regular.ttf", "lora/static/Lora-Bold.ttf"],
+  ];
+  for (const [family, regularSource, boldSource] of fonts) {
+    for (const [suffix, source, alias] of [
+      ["Regular", regularSource, family],
+      ["Bold", boldSource, `${family}Bold`],
+    ]) {
+      const filePath = path.join(FONTS_DIR, `${family}-${suffix}.ttf`);
+      if (!fs.existsSync(filePath)) {
+        try {
+          await downloadFile(`https://github.com/google/fonts/raw/main/ofl/${source}`, filePath);
+        } catch (error) {
+          console.warn(`Fonte ${family} ${suffix} indisponível; será usado fallback.`, error?.message || error);
+        }
+      }
+      if (fs.existsSync(filePath)) GlobalFonts.registerFromPath(filePath, alias);
     }
   }
-  if (!fs.existsSync(fontBoldPath)) {
-    console.log("Baixando fonte Inter-Bold.ttf...");
-    try {
-      await downloadFile("https://github.com/google/fonts/raw/main/ofl/inter/static/Inter-Bold.ttf", fontBoldPath);
-    } catch (err) {
-      console.warn("Aviso: não foi possível baixar Inter-Bold.ttf; usando fonte padrão do sistema.", err);
-    }
-  }
-
-  // Registra as fontes no Canvas global
-  if (fs.existsSync(fontRegularPath)) {
-    GlobalFonts.registerFromPath(fontRegularPath, "Inter");
-  }
-  if (fs.existsSync(fontBoldPath)) {
-    GlobalFonts.registerFromPath(fontBoldPath, "InterBold");
-  }
-  console.log("Fontes Inter carregadas com sucesso!");
+  console.log("Fontes do Kit de Marca carregadas no worker.");
 }
 
 // Carrega imagem localmente para evitar problemas de CORS
@@ -394,7 +390,7 @@ async function drawBrandElementsNode(ctx, config, width, height) {
         const weight = safeTemplateNumber(element.fontWeight, 300, 900, 700);
         const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
         ctx.fillStyle = safeTemplateColor(element.color);
-        ctx.font = `${weight} ${size}px InterBold, Inter, sans-serif`;
+        ctx.font = `${weight} ${size}px ${brandFontStack(config.bodyFontFamily || config.subtitleFontFamily, weight >= 700)}`;
         ctx.textAlign = align;
         ctx.fillText(text, textXForBox(x, textWidth, align), y + size);
       }
@@ -429,14 +425,19 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
     ctx.fillRect(0, 0, width, height);
   }
 
+  if (cfg.showBrandLogo && cfg.brandLogoUrl) {
+    const brandLogo = await loadImageHelper(cfg.brandLogoUrl);
+    if (brandLogo) drawContainImage(ctx, brandLogo, cfg.brandLogoX, cfg.brandLogoY, cfg.brandLogoSize, cfg.brandLogoSize);
+  }
+
   if (cfg.showHandle && handle) {
     ctx.fillStyle = cfg.handleColor;
-    ctx.font = `800 ${cfg.handleSize}px InterBold, Inter, sans-serif`;
+    ctx.font = `800 ${cfg.handleSize}px ${brandFontStack(cfg.handleFontFamily, true)}`;
     ctx.fillText(`@${handle.toUpperCase()}`, cfg.handleX, cfg.handleY);
   }
 
   ctx.fillStyle = cfg.titleColor;
-  ctx.font = `900 ${cfg.titleSize}px InterBold, Inter, sans-serif`;
+  ctx.font = `900 ${cfg.titleSize}px ${brandFontStack(cfg.titleFontFamily, true)}`;
   ctx.textAlign = cfg.titleAlign;
   const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
   wrapText(ctx, title, cfg.titleW, cfg.titleMaxChars).slice(0, cfg.titleMaxLines).forEach((line, i) => {
@@ -445,7 +446,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
-    ctx.font = `500 ${cfg.subtitleSize}px Inter, sans-serif`;
+    ctx.font = `500 ${cfg.subtitleSize}px ${brandFontStack(cfg.subtitleFontFamily)}`;
     ctx.textAlign = cfg.subtitleAlign;
     const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
     wrapText(ctx, subtitle, cfg.subtitleW, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines).forEach((line, i) => {
@@ -457,7 +458,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
     ctx.fillStyle = cfg.badgeBg;
     ctx.fillRect(cfg.badgeX, cfg.badgeY, cfg.badgeW, cfg.badgeH);
     ctx.fillStyle = cfg.badgeColor;
-    ctx.font = `900 ${cfg.badgeSize}px InterBold, Inter, sans-serif`;
+    ctx.font = `900 ${cfg.badgeSize}px ${brandFontStack(cfg.badgeFontFamily, true)}`;
     ctx.textAlign = "center";
     ctx.fillText(cfg.badgeText, cfg.badgeX + cfg.badgeW / 2, cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35);
     ctx.textAlign = "left";

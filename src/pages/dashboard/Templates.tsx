@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
-import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Upload, Star, Trash2, Plus, Image as ImageIcon, Check, Newspaper, Camera, Film, Eye, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Search, Home, PlusSquare, User, Music2, Info, TrendingUp, Trophy, Sparkles, Scale, Stethoscope, Cpu, Church, Layers, ShieldCheck, AlertTriangle, Palette, WandSparkles } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { resolveTemplateGradient, templateGradientCss } from "../../../supabase/functions/_shared/template-gradients.js";
@@ -27,14 +27,27 @@ import {
   PROFESSIONAL_TEMPLATE_STYLES,
   buildProfessionalTemplateConfig,
   filterProfessionalTemplates,
+  type ProfessionalTemplateConfig,
   type ProfessionalTemplatePreset,
   type ProfessionalTemplateStyle,
 } from "@/lib/professionalTemplateCatalog";
+import {
+  BRAND_KIT_FONTS,
+  BRAND_KIT_STYLES,
+  applyBrandKitToTemplateConfig,
+  contrastRatio,
+  normalizeBrandKit,
+  type BrandKit,
+} from "../../../supabase/functions/_shared/brand-kit.js";
+import {
+  recommendProfessionalTemplates,
+  type TemplateGoal,
+} from "@/lib/templateRecommendations";
 
 type PostFormat = TemplateFormat;
 const GLOBAL_SCOPE = "__global";
 
-type InstagramAccount = { id: string; username: string; active: boolean };
+type InstagramAccount = { id: string; username: string; niche?: string | null; active: boolean };
 type TemplateSettings = {
   user_id?: string;
   instagram_account_id?: string;
@@ -116,6 +129,15 @@ type BrandImageElement = {
 
 type BrandElement = BrandTextElement | BrandImageElement;
 
+const DEFAULT_BRAND_KIT = normalizeBrandKit({});
+const TEMPLATE_GOALS: { key: TemplateGoal; label: string }[] = [
+  { key: "noticia", label: "Notícia" },
+  { key: "urgencia", label: "Urgência" },
+  { key: "autoridade", label: "Autoridade" },
+  { key: "educativo", label: "Educativo" },
+  { key: "oferta", label: "Oferta" },
+];
+
 function templateBrandElements(config: any): BrandElement[] {
   return Array.isArray(config?.brandElements) ? config.brandElements.slice(0, 12) : [];
 }
@@ -186,7 +208,11 @@ export default function Templates() {
   const [selectedNiche, setSelectedNiche] = useState<string>(PROFESSIONAL_TEMPLATE_NICHES[0].key);
   const [templateSearch, setTemplateSearch] = useState("");
   const [selectedStyle, setSelectedStyle] = useState<"all" | ProfessionalTemplateStyle>("all");
-  const [catalogPreview, setCatalogPreview] = useState<{ preset: ProfessionalTemplatePreset; format: PostFormat } | null>(null);
+  const [catalogPreview, setCatalogPreview] = useState<{ preset: ProfessionalTemplatePreset; format: PostFormat; config?: Record<string, unknown> } | null>(null);
+  const [brandKit, setBrandKit] = useState<BrandKit>(DEFAULT_BRAND_KIT);
+  const [brandKitOpen, setBrandKitOpen] = useState(false);
+  const [brandKitLoading, setBrandKitLoading] = useState(false);
+  const [templateGoal, setTemplateGoal] = useState<TemplateGoal>("noticia");
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -198,7 +224,7 @@ export default function Templates() {
         .select("default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url")
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabase.from("instagram_accounts").select("id, username, active").order("username"),
+      supabase.from("instagram_accounts").select("id, username, niche, active").order("username"),
       supabase.from("account_settings").select("user_id, instagram_account_id, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id, brand_handle, brand_name, brand_logo_url"),
     ]);
     let settings = settingsRes.data;
@@ -220,6 +246,41 @@ export default function Templates() {
     setBrand({ handle: settings?.brand_handle ?? undefined, name: settings?.brand_name ?? undefined, logo: settings?.brand_logo_url ?? undefined });
   }
   useEffect(() => { load(); }, [user]);
+
+  async function loadBrandKit(accountId = selectedAccountId) {
+    if (!user || accountId === GLOBAL_SCOPE) {
+      const globalKit = normalizeBrandKit({
+        brandName: globalSettings?.brand_name,
+        brandHandle: globalSettings?.brand_handle,
+        logoPrimaryUrl: globalSettings?.brand_logo_url,
+      });
+      setBrandKit(globalKit);
+      setBrand({ name: globalKit.brandName, handle: globalKit.brandHandle, logo: globalKit.logoPrimaryUrl || undefined });
+      return;
+    }
+    setBrandKitLoading(true);
+    const { data, error } = await callDynamicRpc("get_account_brand_kit", { _account_id: accountId });
+    if (!error && data && typeof data === "object") {
+      const kit = normalizeBrandKit(data as Record<string, unknown>);
+      setBrandKit(kit);
+      setBrand({ name: kit.brandName, handle: kit.brandHandle, logo: kit.logoPrimaryUrl || undefined });
+    } else {
+      // Compatibility while the migration is waiting for deployment. Never
+      // inherit another account's global identity implicitly.
+      const account = accounts.find(item => item.id === accountId);
+      const override = accountSettings.find(item => item.instagram_account_id === accountId);
+      const kit = normalizeBrandKit({
+        brandName: override?.brand_name || account?.username,
+        brandHandle: override?.brand_handle || account?.username,
+        logoPrimaryUrl: override?.brand_logo_url,
+      });
+      setBrandKit(kit);
+      setBrand({ name: kit.brandName, handle: kit.brandHandle, logo: kit.logoPrimaryUrl || undefined });
+    }
+    setBrandKitLoading(false);
+  }
+
+  useEffect(() => { void loadBrandKit(); }, [selectedAccountId, user, globalSettings, accounts.length, accountSettings.length]);
 
   async function loadVersionStates(accountId = selectedAccountId) {
     if (!user || accountId === GLOBAL_SCOPE) {
@@ -260,16 +321,30 @@ export default function Templates() {
     const resolved = resolveAccountTemplateDefaults(templates, globalSettings, override, selectedAccountId !== GLOBAL_SCOPE);
     setDefaultIds(resolved.ids);
 
-    if (selectedAccountId === GLOBAL_SCOPE) {
-      setBrand({ handle: globalSettings.brand_handle ?? undefined, name: globalSettings.brand_name ?? undefined, logo: globalSettings.brand_logo_url ?? undefined });
-    } else {
-      setBrand({
-        handle: override?.brand_handle || globalSettings.brand_handle || undefined,
-        name: override?.brand_name || globalSettings.brand_name || undefined,
-        logo: override?.brand_logo_url || globalSettings.brand_logo_url || undefined,
-      });
-    }
   }, [selectedAccountId, templates, globalSettings, accountSettings]);
+
+  async function saveBrandKit(nextKit: BrandKit) {
+    if (selectedAccountId === GLOBAL_SCOPE) throw new Error("Selecione uma conta Instagram para salvar o Kit de Marca.");
+    const { data, error } = await callDynamicRpc("save_account_brand_kit", {
+      _account_id: selectedAccountId,
+      _kit: nextKit as unknown as Record<string, unknown>,
+    });
+    if (error) throw new Error(error.message);
+    const saved = normalizeBrandKit((data || nextKit) as Record<string, unknown>);
+    setBrandKit(saved);
+    setBrand({ name: saved.brandName, handle: saved.brandHandle, logo: saved.logoPrimaryUrl || undefined });
+    setAccountSettings(current => [
+      ...current.filter(item => item.instagram_account_id !== selectedAccountId),
+      {
+        instagram_account_id: selectedAccountId,
+        user_id: user?.id,
+        brand_name: saved.brandName,
+        brand_handle: saved.brandHandle,
+        brand_logo_url: saved.logoPrimaryUrl,
+      },
+    ]);
+    toast.success("Kit de Marca salvo somente nesta conta");
+  }
 
   async function setDefault(id: string, format: PostFormat) {
     const column = DEFAULT_COLUMN_BY_FORMAT[format];
@@ -336,13 +411,13 @@ export default function Templates() {
     }
   }
 
-  async function addPreset(p: ProfessionalTemplatePreset, format: PostFormat) {
+  async function addPreset(p: ProfessionalTemplatePreset, format: PostFormat, recommendedConfig?: Record<string, unknown>) {
     try {
       await ensureTemplateLimit();
     } catch (e: any) {
       return toast.error(e.message);
     }
-    const mergedConfig = buildProfessionalTemplateConfig(p, format);
+    const mergedConfig = recommendedConfig || buildProfessionalTemplateConfig(p, format);
     const { data, error } = await supabase.from("post_templates").insert({
       user_id: user!.id, name: p.name, kind: "preset", preset_key: p.key, config: mergedConfig as unknown as Json, format,
     }).select().single();
@@ -563,13 +638,18 @@ export default function Templates() {
     toast.success("Versão anterior restaurada somente nesta conta");
   }
 
+  function brandAwareCatalogConfig(preset: ProfessionalTemplatePreset, format: PostFormat) {
+    const base = buildProfessionalTemplateConfig(preset, format);
+    return selectedAccountId === GLOBAL_SCOPE ? base : applyBrandKitToTemplateConfig(base, brandKit);
+  }
+
   const catalogPreviewTemplate: Template | null = catalogPreview ? {
     id: `catalog-${catalogPreview.preset.key}-${catalogPreview.format}`,
     name: catalogPreview.preset.name,
     kind: "preset",
     preset_key: catalogPreview.preset.key,
     background_url: null,
-    config: buildProfessionalTemplateConfig(catalogPreview.preset, catalogPreview.format),
+    config: catalogPreview.config || brandAwareCatalogConfig(catalogPreview.preset, catalogPreview.format),
     is_default: false,
     format: catalogPreview.format,
   } : null;
@@ -609,6 +689,47 @@ export default function Templates() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </Card>
+
+      <Card className="p-4 border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-background">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="rounded-xl bg-violet-500/15 p-2.5 text-violet-300">
+              <Palette className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold">Kit de Marca</h2>
+                <Badge variant="outline" className="capitalize">{brandKit.visualStyle}</Badge>
+                {contrastRatio(brandKit.primaryColor, brandKit.textColor) >= 4.5 ? (
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-400">Contraste aprovado</Badge>
+                ) : (
+                  <Badge variant="outline" className="border-amber-500/30 text-amber-400">Contraste será ajustado</Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selectedAccountId === GLOBAL_SCOPE
+                  ? "Selecione uma conta Instagram para criar um kit isolado."
+                  : `Identidade exclusiva de @${accounts.find(item => item.id === selectedAccountId)?.username || "conta"}. Nenhuma outra conta será alterada.`}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {[brandKit.primaryColor, brandKit.secondaryColor, brandKit.accentColor, brandKit.backgroundColor, brandKit.textColor].map((color, index) => (
+                  <span key={`${color}-${index}`} className="h-6 w-6 rounded-full border border-white/20 shadow-sm" style={{ background: color }} title={color} />
+                ))}
+                <span className="ml-1">Títulos: {brandKit.headingFont}</span>
+                <span>•</span>
+                <span>Textos: {brandKit.bodyFont}</span>
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            disabled={selectedAccountId === GLOBAL_SCOPE || brandKitLoading}
+            onClick={() => setBrandKitOpen(true)}
+          >
+            <Palette className="mr-2 h-4 w-4" /> {brandKitLoading ? "Carregando..." : "Configurar Kit de Marca"}
+          </Button>
         </div>
       </Card>
 
@@ -770,6 +891,12 @@ export default function Templates() {
           style: selectedStyle,
           query: templateSearch,
         });
+        const recommendations = selectedAccountId === GLOBAL_SCOPE ? [] : recommendProfessionalTemplates({
+          format: fmt.key,
+          kit: brandKit,
+          niche: accounts.find(item => item.id === selectedAccountId)?.niche,
+          goal: templateGoal,
+        });
         return (
           <section key={fmt.key} className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border pb-2">
@@ -795,6 +922,57 @@ export default function Templates() {
                 <Plus className="h-4 w-4 mr-2" /> Criar template
               </Button>
             </div>
+
+            {selectedAccountId !== GLOBAL_SCOPE && (
+              <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <WandSparkles className="h-4 w-4 text-violet-300" />
+                      Recomendados para sua marca
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Análise local por nicho, objetivo, estilo e contraste — sem consumir créditos de IA.</p>
+                  </div>
+                  <Select value={templateGoal} onValueChange={value => setTemplateGoal(value as TemplateGoal)}>
+                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="Objetivo da recomendação">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TEMPLATE_GOALS.map(goal => <SelectItem key={goal.key} value={goal.key}>{goal.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {recommendations.map((recommendation, index) => {
+                    const preview = recommendation.config as ProfessionalTemplateConfig;
+                    const previewH = fmt.key === "feed" ? 1080 : 1920;
+                    return (
+                      <button
+                        type="button"
+                        key={recommendation.preset.key}
+                        onClick={() => setCatalogPreview({ preset: recommendation.preset, format: fmt.key, config: recommendation.config })}
+                        className="rounded-lg border border-violet-500/20 bg-card p-3 text-left transition hover:border-violet-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <Badge className="bg-violet-600">#{index + 1}</Badge>
+                          <span className="text-[10px] text-muted-foreground">compatibilidade {recommendation.score}</span>
+                        </div>
+                        <div className={`${fmt.aspect} relative mb-2 overflow-hidden rounded-md`} style={{ background: templateGradientCss(recommendation.preset.key, recommendation.config) }}>
+                          <div className="absolute border border-white/20 bg-black/10" style={{ left: `${preview.photoX / 10.8}%`, top: `${preview.photoY / previewH * 100}%`, width: `${preview.photoW / 10.8}%`, height: `${preview.photoH / previewH * 100}%` }} />
+                          <div className="absolute text-[8px] font-black uppercase leading-tight" style={{ left: `${preview.titleX / 10.8}%`, top: `${(preview.titleY - preview.titleSize) / previewH * 100}%`, width: `${preview.titleW / 10.8}%`, color: preview.titleColor, textAlign: preview.titleAlign, fontFamily: preview.titleFontFamily }}>
+                            Título da marca
+                          </div>
+                        </div>
+                        <div className="font-semibold text-sm">{recommendation.preset.name}</div>
+                        <ul className="mt-1.5 space-y-1 text-[11px] text-muted-foreground">
+                          {recommendation.reasons.map(reason => <li key={reason}>• {reason}</li>)}
+                        </ul>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Biblioteca profissional de modelos */}
             <div className="rounded-xl border border-border bg-gradient-to-br from-background to-muted/30 p-4 space-y-3">
@@ -867,7 +1045,7 @@ export default function Templates() {
 
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
                 {catalogItems.map(p => {
-                  const preview = buildProfessionalTemplateConfig(p, fmt.key);
+                  const preview = brandAwareCatalogConfig(p, fmt.key) as ProfessionalTemplateConfig;
                   const previewH = fmt.key === "feed" ? 1080 : 1920;
                   return (
                   <button
@@ -986,11 +1164,20 @@ export default function Templates() {
         />
       )}
 
+      <BrandKitDialog
+        open={brandKitOpen}
+        onOpenChange={setBrandKitOpen}
+        kit={brandKit}
+        accountId={selectedAccountId}
+        userId={user?.id || ""}
+        onSave={saveBrandKit}
+      />
+
       <InstagramPreviewDialog
         template={catalogPreviewTemplate}
         brand={brand}
         onClose={() => setCatalogPreview(null)}
-        onUse={catalogPreview ? () => addPreset(catalogPreview.preset, catalogPreview.format) : undefined}
+        onUse={catalogPreview ? () => addPreset(catalogPreview.preset, catalogPreview.format, catalogPreview.config || brandAwareCatalogConfig(catalogPreview.preset, catalogPreview.format)) : undefined}
         useLabel={catalogPreview ? `Usar ${catalogPreview.preset.name}` : undefined}
       />
 
@@ -1000,6 +1187,175 @@ export default function Templates() {
         onClose={() => setPreviewing(null)}
       />
     </div>
+  );
+}
+
+function BrandKitDialog({ open, onOpenChange, kit, accountId, userId, onSave }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  kit: BrandKit;
+  accountId: string;
+  userId: string;
+  onSave: (kit: BrandKit) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<BrandKit>(kit);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  useEffect(() => { if (open) setDraft(normalizeBrandKit(kit)); }, [open, kit]);
+
+  const patch = (next: Partial<BrandKit>) => setDraft(current => normalizeBrandKit({ ...current, ...next }));
+  type BrandColorKey = "primaryColor" | "secondaryColor" | "accentColor" | "backgroundColor" | "textColor";
+  const colorFields: { key: BrandColorKey; label: string }[] = [
+    { key: "primaryColor", label: "Cor principal" },
+    { key: "secondaryColor", label: "Cor secundária" },
+    { key: "accentColor", label: "Cor de destaque" },
+    { key: "backgroundColor", label: "Cor de fundo" },
+    { key: "textColor", label: "Cor do texto" },
+  ];
+
+  async function uploadLogo(file: File, field: "logoPrimaryUrl" | "logoLightUrl" | "logoDarkUrl") {
+    if (!userId || !accountId || accountId === GLOBAL_SCOPE) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return toast.error("Use PNG, JPG ou WebP.");
+    if (file.size > 2 * 1024 * 1024) return toast.error("Cada logo precisa ter até 2 MB.");
+    setUploading(field);
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${userId}/brand-kits/${accountId}/${field}-${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from("template-backgrounds").upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from("template-backgrounds").getPublicUrl(path);
+      patch({ [field]: publicUrl });
+      toast.success("Logo adicionada ao Kit de Marca");
+    } catch (error: any) {
+      toast.error(error.message || "Não foi possível enviar a logo.");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function submit() {
+    setSaving(true);
+    try {
+      await onSave(normalizeBrandKit(draft));
+      onOpenChange(false);
+    } catch (error: any) {
+      toast.error(error.message || "Não foi possível salvar o Kit de Marca.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const ratio = contrastRatio(draft.primaryColor, draft.textColor);
+  const logoFields: { key: "logoPrimaryUrl" | "logoLightUrl" | "logoDarkUrl"; label: string; hint: string }[] = [
+    { key: "logoPrimaryUrl", label: "Logo principal", hint: "Uso geral" },
+    { key: "logoLightUrl", label: "Logo clara", hint: "Fundos escuros" },
+    { key: "logoDarkUrl", label: "Logo escura", hint: "Fundos claros" },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Kit de Marca desta conta</DialogTitle>
+          <DialogDescription>As escolhas ficam isoladas nesta conta. Templates já publicados não serão modificados.</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div><Label>Nome da marca</Label><Input value={draft.brandName} maxLength={100} onChange={event => patch({ brandName: event.target.value })} /></div>
+              <div><Label>@ da marca</Label><Input value={draft.brandHandle} maxLength={80} onChange={event => patch({ brandHandle: event.target.value.replace(/^@/, "") })} /></div>
+            </div>
+
+            <div>
+              <Label>Variações da logo</Label>
+              <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                {logoFields.map(item => (
+                  <div key={item.key} className="rounded-lg border p-3 text-center">
+                    <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border bg-white/90">
+                      {draft[item.key] ? <img src={draft[item.key] || ""} alt={item.label} className="h-full w-full object-contain" /> : <ImageIcon className="h-5 w-5 text-zinc-500" />}
+                    </div>
+                    <div className="text-xs font-medium">{item.label}</div>
+                    <div className="mb-2 text-[10px] text-muted-foreground">{item.hint}</div>
+                    <label className="inline-flex cursor-pointer items-center rounded-md border px-2 py-1 text-xs hover:bg-muted">
+                      <Upload className="mr-1 h-3 w-3" /> {uploading === item.key ? "Enviando..." : "Escolher"}
+                      <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={!!uploading} onChange={event => event.target.files?.[0] && void uploadLogo(event.target.files[0], item.key)} />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label>Paleta</Label>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {colorFields.map(item => (
+                  <div key={String(item.key)} className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={String(draft[item.key])}
+                      aria-label={item.label}
+                      onChange={event => patch({ [item.key]: event.target.value } as Partial<BrandKit>)}
+                      className="h-10 w-12 cursor-pointer rounded border bg-transparent p-1"
+                    />
+                    <div className="min-w-0 flex-1"><Label className="text-xs">{item.label}</Label><Input value={String(draft[item.key])} maxLength={7} onChange={event => patch({ [item.key]: event.target.value } as Partial<BrandKit>)} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <Label>Fonte dos títulos</Label>
+                <Select value={draft.headingFont} onValueChange={value => patch({ headingFont: value as BrandKit["headingFont"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{BRAND_KIT_FONTS.map(font => <SelectItem key={font} value={font}>{font}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Fonte dos textos</Label>
+                <Select value={draft.bodyFont} onValueChange={value => patch({ bodyFont: value as BrandKit["bodyFont"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{BRAND_KIT_FONTS.map(font => <SelectItem key={font} value={font}>{font}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Personalidade visual</Label>
+                <Select value={draft.visualStyle} onValueChange={value => patch({ visualStyle: value as BrandKit["visualStyle"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{BRAND_KIT_STYLES.map(style => <SelectItem key={style} value={style} className="capitalize">{style}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Prévia rápida</Label>
+            <div className="relative aspect-square overflow-hidden rounded-xl border p-6" style={{ background: `linear-gradient(135deg, ${draft.primaryColor}, ${draft.secondaryColor} 70%, ${draft.backgroundColor})` }}>
+              <div className="flex items-center gap-3" style={{ color: draft.textColor }}>
+                {draft.logoPrimaryUrl ? <img src={draft.logoPrimaryUrl} alt="" className="h-12 w-12 rounded-full object-contain bg-white/90" /> : <div className="h-12 w-12 rounded-full bg-white/15" />}
+                <span style={{ fontFamily: draft.headingFont }} className="font-bold">@{draft.brandHandle || "suamarca"}</span>
+              </div>
+              <div className="mt-10 text-3xl font-black uppercase leading-tight" style={{ color: draft.textColor, fontFamily: draft.headingFont }}>Sua marca com identidade própria</div>
+              <div className="mt-4 text-sm" style={{ color: draft.textColor, fontFamily: draft.bodyFont }}>Prévia de cores, fontes e contraste do Kit de Marca.</div>
+              <div className="absolute bottom-6 left-6 rounded px-4 py-2 text-xs font-bold" style={{ background: draft.accentColor, color: ratio >= 4.5 ? draft.backgroundColor : "#000000", fontFamily: draft.headingFont }}>DESTAQUE</div>
+            </div>
+            <div className={`rounded-lg border p-3 text-xs ${ratio >= 4.5 ? "border-emerald-500/30 text-emerald-400" : "border-amber-500/30 text-amber-400"}`}>
+              Contraste principal: {ratio.toFixed(2)}:1 — {ratio >= 4.5 ? "aprovado" : "será corrigido automaticamente nos modelos"}.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button disabled={saving || !!uploading} onClick={() => void submit()}>{saving ? "Salvando..." : "Salvar Kit de Marca"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1060,20 +1416,24 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
           <div className="absolute inset-0 pointer-events-none" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
         )}
 
+        {cfg.showBrandLogo && cfg.brandLogoUrl && (
+          <img src={cfg.brandLogoUrl} alt="Logo do Kit de Marca" className="absolute z-10 object-contain" style={{ left: xP(cfg.brandLogoX ?? 60), top: yP(cfg.brandLogoY ?? 30), width: wP(cfg.brandLogoSize ?? 52), height: hP(cfg.brandLogoSize ?? 52) }} />
+        )}
+
         {cfg.showHandle && (
           <div className="absolute font-mono font-bold tracking-wider"
-            style={{ left: xP(cfg.handleX), top: yP(cfg.handleY - cfg.handleSize), color: cfg.handleColor, fontSize: fontPct(cfg.handleSize) }}>
+            style={{ left: xP(cfg.handleX), top: yP(cfg.handleY - cfg.handleSize), color: cfg.handleColor, fontSize: fontPct(cfg.handleSize), fontFamily: cfg.handleFontFamily }}>
             @{handle.toUpperCase()}
           </div>
         )}
 
         <div className="absolute whitespace-pre-line font-black uppercase leading-[1.05]"
-          style={{ left: xP(cfg.titleX), width: wP(cfg.titleW), top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize), textAlign: cfg.titleAlign }}>
+          style={{ left: xP(cfg.titleX), width: wP(cfg.titleW), top: yP(cfg.titleY - cfg.titleSize * 0.8), color: cfg.titleColor, fontSize: fontPct(cfg.titleSize), textAlign: cfg.titleAlign, fontFamily: cfg.titleFontFamily }}>
           {wrapPreviewText(sampleTitle, cfg.titleMaxChars, cfg.titleMaxLines)}
         </div>
 
         <div className="absolute whitespace-pre-line leading-snug"
-          style={{ left: xP(cfg.subtitleX), width: wP(cfg.subtitleW), top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize), textAlign: cfg.subtitleAlign }}>
+          style={{ left: xP(cfg.subtitleX), width: wP(cfg.subtitleW), top: yP(cfg.subtitleY - cfg.subtitleSize * 0.8), color: cfg.subtitleColor, fontSize: fontPct(cfg.subtitleSize), textAlign: cfg.subtitleAlign, fontFamily: cfg.subtitleFontFamily }}>
           {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), cfg.subtitleMaxLines)}
         </div>
 
@@ -1082,7 +1442,7 @@ function InstagramPreviewDialog({ template, brand, onClose, onUse, useLabel }: {
             style={{
               left: xP(cfg.badgeX), top: yP(cfg.badgeY), width: wP(cfg.badgeW), height: hP(cfg.badgeH),
               background: cfg.badgeBg, color: cfg.badgeColor,
-              fontSize: fontPct(cfg.badgeSize), display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: fontPct(cfg.badgeSize), display: "flex", alignItems: "center", justifyContent: "center", fontFamily: cfg.badgeFontFamily,
               borderRadius: 4,
             }}>
             {cfg.badgeText}
@@ -1514,23 +1874,26 @@ function EditorPanel({ template, brand, onClose, onSave, isNew = false }: {
             {cfg.overlayOpacity > 0 && (
               <div className="pointer-events-none absolute inset-0 z-[2]" style={{ background: `rgba(0,0,0,${cfg.overlayOpacity})` }} />
             )}
+            {cfg.showBrandLogo && cfg.brandLogoUrl && (
+              <img src={cfg.brandLogoUrl} alt="Logo do Kit de Marca" className="absolute z-10 object-contain" style={{ left: `${((cfg.brandLogoX ?? 60) / 1080) * 100}%`, top: `${((cfg.brandLogoY ?? 30) / canvasH) * 100}%`, width: `${((cfg.brandLogoSize ?? 52) / 1080) * 100}%`, height: `${((cfg.brandLogoSize ?? 52) / canvasH) * 100}%` }} />
+            )}
             {cfg.showHandle && (
               <div onPointerDown={e => beginDrag(e, "handleX", "handleY", cfg.handleX, cfg.handleY, 260, 0)} className="absolute z-10 cursor-move font-mono font-bold tracking-wider outline outline-1 outline-transparent hover:outline-primary"
-                style={{ left: `${(cfg.handleX / 1080) * 100}%`, top: `${((cfg.handleY - cfg.handleSize) / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `${(cfg.handleSize / 1080) * 100}cqw` }}>
+                style={{ left: `${(cfg.handleX / 1080) * 100}%`, top: `${((cfg.handleY - cfg.handleSize) / canvasH) * 100}%`, color: cfg.handleColor, fontSize: `${(cfg.handleSize / 1080) * 100}cqw`, fontFamily: cfg.handleFontFamily }}>
                 @SUAMARCA
               </div>
             )}
             <div onPointerDown={e => beginDrag(e, "titleX", "titleY", cfg.titleX, cfg.titleY, cfg.titleW, 0)} className="absolute z-10 cursor-move whitespace-pre-line font-black uppercase leading-[1.05] outline outline-1 outline-transparent hover:outline-primary"
-              style={{ left: `${(cfg.titleX / 1080) * 100}%`, width: `${(cfg.titleW / 1080) * 100}%`, top: `${((cfg.titleY - cfg.titleSize * 0.8) / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw`, textAlign: cfg.titleAlign }}>
+              style={{ left: `${(cfg.titleX / 1080) * 100}%`, width: `${(cfg.titleW / 1080) * 100}%`, top: `${((cfg.titleY - cfg.titleSize * 0.8) / canvasH) * 100}%`, color: cfg.titleColor, fontSize: `${(cfg.titleSize / 1080) * 100}cqw`, textAlign: cfg.titleAlign, fontFamily: cfg.titleFontFamily }}>
               {wrapPreviewText(sampleTitle, cfg.titleMaxChars, cfg.titleMaxLines)}
             </div>
             <div onPointerDown={e => beginDrag(e, "subtitleX", "subtitleY", cfg.subtitleX, cfg.subtitleY, cfg.subtitleW, 0)} className="absolute z-10 cursor-move whitespace-pre-line leading-[1.3] outline outline-1 outline-transparent hover:outline-primary"
-              style={{ left: `${(cfg.subtitleX / 1080) * 100}%`, width: `${(cfg.subtitleW / 1080) * 100}%`, top: `${((cfg.subtitleY - cfg.subtitleSize * 0.8) / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw`, textAlign: cfg.subtitleAlign }}>
+              style={{ left: `${(cfg.subtitleX / 1080) * 100}%`, width: `${(cfg.subtitleW / 1080) * 100}%`, top: `${((cfg.subtitleY - cfg.subtitleSize * 0.8) / canvasH) * 100}%`, color: cfg.subtitleColor, fontSize: `${(cfg.subtitleSize / 1080) * 100}cqw`, textAlign: cfg.subtitleAlign, fontFamily: cfg.subtitleFontFamily }}>
               {wrapPreviewText(sampleSub, Math.floor(cfg.titleMaxChars * 2.2), cfg.subtitleMaxLines)}
             </div>
             {cfg.showBadge && (
               <div onPointerDown={e => beginDrag(e, "badgeX", "badgeY", cfg.badgeX, cfg.badgeY, cfg.badgeW, cfg.badgeH)} className="absolute z-10 flex cursor-move items-center justify-center overflow-hidden px-2 font-bold outline outline-1 outline-transparent hover:outline-primary"
-                style={{ left: `${(cfg.badgeX / 1080) * 100}%`, top: `${(cfg.badgeY / canvasH) * 100}%`, width: `${(cfg.badgeW / 1080) * 100}%`, height: `${(cfg.badgeH / canvasH) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor, fontSize: `${(cfg.badgeSize / 1080) * 100}cqw` }}>
+                style={{ left: `${(cfg.badgeX / 1080) * 100}%`, top: `${(cfg.badgeY / canvasH) * 100}%`, width: `${(cfg.badgeW / 1080) * 100}%`, height: `${(cfg.badgeH / canvasH) * 100}%`, background: cfg.badgeBg, color: cfg.badgeColor, fontSize: `${(cfg.badgeSize / 1080) * 100}cqw`, fontFamily: cfg.badgeFontFamily }}>
                 {cfg.badgeText}
               </div>
             )}

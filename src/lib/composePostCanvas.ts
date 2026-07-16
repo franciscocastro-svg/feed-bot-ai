@@ -5,6 +5,7 @@ import { drawTemplateGradient } from "../../supabase/functions/_shared/template-
 import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
 import { loadPublishedTemplate } from "../../supabase/functions/_shared/template-versioning.js";
+import { brandFontStack } from "../../supabase/functions/_shared/brand-kit.js";
 
 const SIZE = 1080;
 
@@ -99,7 +100,7 @@ async function drawBrandElements(ctx: CanvasRenderingContext2D, config: any, can
         const weight = safeNumber(element.fontWeight, 300, 900, 700);
         const align = ["left", "center", "right"].includes(element.align) ? element.align : "left";
         ctx.fillStyle = safeColor(element.color);
-        ctx.font = `${weight} ${size}px Inter, system-ui, sans-serif`;
+        ctx.font = `${weight} ${size}px ${brandFontStack(config.bodyFontFamily || config.subtitleFontFamily)}`;
         ctx.textAlign = align;
         ctx.fillText(text, textXForBox(x, width, align), y + size);
       }
@@ -131,25 +132,35 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
     try {
       const photo = await loadImage(proxify(item.original_image_url, 1080));
       drawProtectedPhoto(ctx, photo, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
-    } catch {}
+    } catch {
+      // A logo é opcional; a identidade textual ainda mantém a arte válida.
+    }
   }
   if (cfg.overlayOpacity > 0) {
     ctx.fillStyle = `rgba(0,0,0,${cfg.overlayOpacity})`;
     ctx.fillRect(0, 0, SIZE, SIZE);
   }
+  if (cfg.showBrandLogo && cfg.brandLogoUrl) {
+    try {
+      const logo = await loadImage(cfg.brandLogoUrl);
+      drawContain(ctx, logo, cfg.brandLogoX ?? 60, cfg.brandLogoY ?? 30, cfg.brandLogoSize ?? 52, cfg.brandLogoSize ?? 52);
+    } catch {
+      // A logo é opcional; a identidade textual ainda mantém a arte válida.
+    }
+  }
   if (cfg.showHandle && handle) {
     ctx.fillStyle = cfg.handleColor;
-    ctx.font = `800 ${cfg.handleSize}px Inter, system-ui, sans-serif`;
+    ctx.font = `800 ${cfg.handleSize}px ${brandFontStack(cfg.handleFontFamily, true)}`;
     ctx.fillText(`@${handle.toUpperCase()}`, cfg.handleX, cfg.handleY);
   }
   ctx.fillStyle = cfg.titleColor;
-  ctx.font = `900 ${cfg.titleSize}px Inter, system-ui, sans-serif`;
+  ctx.font = `900 ${cfg.titleSize}px ${brandFontStack(cfg.titleFontFamily, true)}`;
   ctx.textAlign = cfg.titleAlign;
   const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
   wrapText(ctx, title, cfg.titleW, cfg.titleMaxChars).slice(0, cfg.titleMaxLines).forEach((l, i) => ctx.fillText(l, titleX, cfg.titleY + i * Math.round(cfg.titleSize * 1.05)));
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
-    ctx.font = `500 ${cfg.subtitleSize}px Inter, system-ui, sans-serif`;
+    ctx.font = `500 ${cfg.subtitleSize}px ${brandFontStack(cfg.subtitleFontFamily)}`;
     ctx.textAlign = cfg.subtitleAlign;
     const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
     wrapText(ctx, subtitle, cfg.subtitleW, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines).forEach((l, i) => ctx.fillText(l, subtitleX, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3)));
@@ -158,7 +169,7 @@ async function drawTemplate(ctx: CanvasRenderingContext2D, item: any, settings: 
     ctx.fillStyle = cfg.badgeBg;
     ctx.fillRect(cfg.badgeX, cfg.badgeY, cfg.badgeW, cfg.badgeH);
     ctx.fillStyle = cfg.badgeColor;
-    ctx.font = `900 ${cfg.badgeSize}px Inter, system-ui, sans-serif`;
+    ctx.font = `900 ${cfg.badgeSize}px ${brandFontStack(cfg.badgeFontFamily, true)}`;
     ctx.textAlign = "center";
     ctx.fillText(cfg.badgeText, cfg.badgeX + cfg.badgeW / 2, cfg.badgeY + cfg.badgeH / 2 + cfg.badgeSize * 0.35);
     ctx.textAlign = "left";

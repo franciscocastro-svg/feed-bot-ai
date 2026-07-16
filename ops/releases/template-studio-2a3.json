@@ -1,0 +1,29 @@
+{
+  "phase": "Template Studio 2A.3",
+  "migration": "20260716013000_template_studio_2a3_brand_kits.sql",
+  "frontendChanged": true,
+  "workerChanged": true,
+  "edgeFunctions": [],
+  "brandFonts": ["Inter", "Montserrat", "Poppins", "Lora"],
+  "recommendationMode": "deterministic-no-ai",
+  "contracts": [
+    "one isolated brand kit per Instagram account",
+    "owner-checked writes through security-definer RPC",
+    "recommendations never activate or publish automatically",
+    "brand kit is snapshotted into the account-format draft",
+    "published versions and historical artwork remain immutable",
+    "browser and VPS worker render the same font and logo fields"
+  ],
+  "excluded": [
+    "edge function deployments",
+    "cron schedules",
+    "payments",
+    "stripe",
+    "meta configuration",
+    "secrets",
+    "mcp",
+    "types.ts",
+    "lockfiles"
+  ],
+  "rollback": "Redeploy the previous frontend and VPS worker; keep the additive table/RPCs inert or remove them later with a corrective migration."
+}

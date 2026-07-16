@@ -202,7 +202,7 @@ export function normalizeTemplateConfig(config, format = "feed") {
   const legacyLayout =
     merged.titleY === 540 && merged.subtitleY === 800 && merged.badgeY === 980 &&
     merged.photoX === 90 && merged.photoY === 600 && merged.photoW === 420 && merged.photoH === 280;
-  return legacyLayout ? {
+  const normalized = legacyLayout ? {
     ...merged,
     titleX: base.titleX,
     titleY: base.titleY,
@@ -224,6 +224,22 @@ export function normalizeTemplateConfig(config, format = "feed") {
     photoH: base.photoH,
     overlayOpacity: base.overlayOpacity,
   } : merged;
+  const supportedFonts = ["Inter", "Montserrat", "Poppins", "Lora"];
+  const safeFont = value => supportedFonts.includes(value) ? value : "Inter";
+  return {
+    ...normalized,
+    titleFontFamily: safeFont(normalized.titleFontFamily),
+    subtitleFontFamily: safeFont(normalized.subtitleFontFamily),
+    handleFontFamily: safeFont(normalized.handleFontFamily),
+    badgeFontFamily: safeFont(normalized.badgeFontFamily),
+    showBrandLogo: Boolean(normalized.showBrandLogo && normalized.brandLogoUrl),
+    brandLogoUrl: typeof normalized.brandLogoUrl === "string" ? normalized.brandLogoUrl : null,
+    brandLogoX: Math.max(0, Math.min(1000, Number(normalized.brandLogoX ?? normalized.handleX ?? 60))),
+    brandLogoY: Math.max(0, Math.min(1840, Number(normalized.brandLogoY ?? 30))),
+    brandLogoSize: Math.max(32, Math.min(180, Number(normalized.brandLogoSize ?? 52))),
+    brandKitVersion: Math.max(0, Number(normalized.brandKitVersion || 0) || 0),
+    brandKitStyle: typeof normalized.brandKitStyle === "string" ? normalized.brandKitStyle : null,
+  };
 }
 
 export function textAnchorForAlign(align) {

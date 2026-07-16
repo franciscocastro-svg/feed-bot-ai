@@ -1,0 +1,27 @@
+export type BrandKitStyle = "editorial" | "impacto" | "minimalista" | "premium" | "tipografico";
+export type BrandKitFont = "Inter" | "Montserrat" | "Poppins" | "Lora";
+export type BrandKit = {
+  brandName: string;
+  brandHandle: string;
+  logoPrimaryUrl: string | null;
+  logoLightUrl: string | null;
+  logoDarkUrl: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  textColor: string;
+  headingFont: BrandKitFont;
+  bodyFont: BrandKitFont;
+  visualStyle: BrandKitStyle;
+  version: number;
+};
+export const BRAND_KIT_STYLES: BrandKitStyle[];
+export const BRAND_KIT_FONTS: BrandKitFont[];
+export function safeBrandColor(value: unknown, fallback: string): string;
+export function safeBrandFont(value: unknown, fallback?: BrandKitFont): BrandKitFont;
+export function normalizeBrandKit(value?: Record<string, unknown>): BrandKit;
+export function contrastRatio(first: string, second: string): number;
+export function readableTextColor(background: string, preferred?: string): string;
+export function brandFontStack(font: unknown, bold?: boolean): string;
+export function applyBrandKitToTemplateConfig(config?: Record<string, unknown>, kit?: Record<string, unknown>): Record<string, unknown>;

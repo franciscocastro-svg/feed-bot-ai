@@ -27,6 +27,15 @@ export type ProfessionalTemplateConfig = Record<string, unknown> & {
   badgeBg: string;
   badgeColor: string;
   badgeText: string;
+  titleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  subtitleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  handleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  badgeFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  showBrandLogo?: boolean;
+  brandLogoUrl?: string | null;
+  brandLogoX?: number;
+  brandLogoY?: number;
+  brandLogoSize?: number;
   professionalCatalogVersion: number;
   professionalStyle: ProfessionalTemplateStyle;
 };

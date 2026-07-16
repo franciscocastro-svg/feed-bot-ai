@@ -1,6 +1,18 @@
 export type TemplateFormat = "feed" | "story" | "stories" | "reel" | "reels";
 export type TemplateTextAlign = "left" | "center" | "right";
-export type TemplateConfig = Record<string, any>;
+export type TemplateConfig = Record<string, any> & {
+  titleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  subtitleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  handleFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  badgeFontFamily?: "Inter" | "Montserrat" | "Poppins" | "Lora";
+  showBrandLogo?: boolean;
+  brandLogoUrl?: string | null;
+  brandLogoX?: number;
+  brandLogoY?: number;
+  brandLogoSize?: number;
+  brandKitVersion?: number;
+  brandKitStyle?: string | null;
+};
 
 export function getDefaultTemplateConfig(format?: TemplateFormat): TemplateConfig;
 export function getTemplateLayoutOptions(format?: TemplateFormat): Array<{ index: number; name: string; values: TemplateConfig }>;
