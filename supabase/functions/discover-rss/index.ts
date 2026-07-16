@@ -1,10 +1,27 @@
-// Descobre feeds RSS automaticamente a partir de um nicho usando Lovable AI
+// Descobre fontes por nicho com catálogo, IA opcional e busca temática determinística.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { previewSource } from "../_shared/source-capture.ts";
+import {
+  googleNewsTopicUrl,
+  measureNicheRelevance,
+  resolveNicheDiscoveryProfile,
+} from "../_shared/niche-discovery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+type DiscoveryMethod = "ai_rss" | "curated_rss" | "topic_search";
+
+type FeedSuggestion = {
+  name: string;
+  url: string;
+  niche: string;
+  source_kind: "rss" | "topic";
+  query?: string | null;
+  include_terms: string[];
+  discovery_method: DiscoveryMethod;
 };
 
 function isDuplicateSourceError(error: unknown): boolean {
@@ -37,6 +54,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "niche required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const targetIgIds: string[] = Array.isArray(ig_ids) ? ig_ids.filter((x: unknown): x is string => typeof x === "string") : [];
+    const profile = resolveNicheDiscoveryProfile(niche);
 
     // Catálogo de fallback de feeds RSS brasileiros conhecidos (usado se IA estiver sem créditos)
     const FALLBACK_FEEDS: Record<string, { name: string; url: string }[]> = {
@@ -83,25 +101,80 @@ Deno.serve(async (req) => {
       ],
     };
 
-    function getFallback(n: string) {
-      const key = n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      // tenta match direto, depois parcial
-      if (FALLBACK_FEEDS[key]) return FALLBACK_FEEDS[key];
-      for (const k of Object.keys(FALLBACK_FEEDS)) {
-        if (key.includes(k) || k.includes(key)) return FALLBACK_FEEDS[k];
-      }
-      // genérico — devolve G1 geral
-      return [
-        { name: "G1 Últimas", url: "https://g1.globo.com/rss/g1/" },
-        { name: "UOL Notícias", url: "https://rss.uol.com.br/feed/noticias.xml" },
-      ];
+    function curatedFeeds(): FeedSuggestion[] {
+      return (FALLBACK_FEEDS[profile.key] || []).map((feed) => ({
+        ...feed,
+        niche: profile.label,
+        source_kind: "rss" as const,
+        query: null,
+        include_terms: profile.terms,
+        discovery_method: "curated_rss" as const,
+      }));
     }
 
-    let suggestions: any[] = [];
+    function topicSuggestion(): FeedSuggestion {
+      return {
+        name: `Monitoramento: ${profile.label}`,
+        url: googleNewsTopicUrl(profile.query),
+        niche: profile.label,
+        source_kind: "topic",
+        query: profile.query,
+        include_terms: profile.terms,
+        discovery_method: "topic_search",
+      };
+    }
+
+    function selectedSuggestions(value: unknown): FeedSuggestion[] {
+      if (!Array.isArray(value)) return [];
+      return value.flatMap((candidate): FeedSuggestion[] => {
+        if (typeof candidate === "string" && /^https:\/\//i.test(candidate.trim())) {
+          let hostname = "Fonte selecionada";
+          try {
+            hostname = new URL(candidate).hostname.replace(/^www\./, "");
+          } catch {
+            return [];
+          }
+          return [{
+            name: hostname,
+            url: candidate.trim(),
+            niche: profile.label,
+            source_kind: "rss",
+            query: null,
+            include_terms: profile.terms,
+            discovery_method: "ai_rss",
+          }];
+        }
+        if (!candidate || typeof candidate !== "object") return [];
+        const record = candidate as Record<string, unknown>;
+        const sourceKind = record.source_kind === "topic" ? "topic" : "rss";
+        const discoveryMethod: DiscoveryMethod = sourceKind === "topic"
+          ? "topic_search"
+          : record.discovery_method === "curated_rss" ? "curated_rss" : "ai_rss";
+        const url = sourceKind === "topic"
+          ? googleNewsTopicUrl(profile.query)
+          : typeof record.url === "string" ? record.url.trim() : "";
+        if (!url || !/^https:\/\//i.test(url)) return [];
+        return [{
+          name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : `Fonte: ${profile.label}`,
+          url,
+          niche: profile.label,
+          source_kind: sourceKind,
+          query: sourceKind === "topic" ? profile.query : null,
+          include_terms: profile.terms,
+          discovery_method: discoveryMethod,
+        }];
+      });
+    }
+
+    let suggestions: FeedSuggestion[] = [];
     let usedFallback = false;
 
-    const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
+    if (insert) suggestions = selectedSuggestions(selected_feeds);
+
+    const apiKey = Deno.env.get("LOVABLE_API_KEY") || "";
     try {
+      if (suggestions.length > 0) throw new Error("selected_candidates_ready");
+      if (!apiKey) throw new Error("lovable_api_key_unavailable");
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -118,22 +191,41 @@ Deno.serve(async (req) => {
       if (aiRes.ok) {
         const aiData = await aiRes.json();
         const content = aiData.choices?.[0]?.message?.content || "{}";
-        suggestions = JSON.parse(content).feeds || [];
+        const parsedContent = JSON.parse(content);
+        const aiFeeds = Array.isArray(parsedContent.feeds) ? parsedContent.feeds : [];
+        suggestions = aiFeeds.flatMap((feed: Record<string, unknown>): FeedSuggestion[] => {
+          const url = typeof feed?.url === "string" ? feed.url.trim() : "";
+          if (!/^https:\/\//i.test(url)) return [];
+          return [{
+            name: typeof feed?.name === "string" && feed.name.trim() ? feed.name.trim() : `Fonte: ${profile.label}`,
+            url,
+            niche: profile.label,
+            source_kind: "rss",
+            query: null,
+            include_terms: profile.terms,
+            discovery_method: "ai_rss",
+          }];
+        });
       } else {
         console.warn("AI indisponível, usando fallback. Status:", aiRes.status);
         usedFallback = true;
-        suggestions = getFallback(niche).map(f => ({ ...f, niche }));
+        suggestions = curatedFeeds();
       }
     } catch (e) {
-      console.warn("AI erro, usando fallback:", e);
-      usedFallback = true;
-      suggestions = getFallback(niche).map(f => ({ ...f, niche }));
+      if (!(e instanceof Error && e.message === "selected_candidates_ready")) {
+        console.warn("AI erro, usando descoberta deterministica:", e);
+        usedFallback = true;
+        suggestions = curatedFeeds();
+      }
     }
 
-    if (suggestions.length === 0) {
+    if (!insert && suggestions.length === 0) {
       usedFallback = true;
-      suggestions = getFallback(niche).map(f => ({ ...f, niche }));
+      suggestions = curatedFeeds();
     }
+
+    if (!insert || suggestions.length === 0) suggestions.push(topicSuggestion());
+    suggestions = [...new Map(suggestions.map((suggestion) => [suggestion.url, suggestion])).values()].slice(0, 9);
 
     const validated = await Promise.all(
       suggestions.map(async (s) => {
@@ -141,23 +233,33 @@ Deno.serve(async (req) => {
           const preview = await previewSource({
             name: s.name,
             url: s.url,
-            niche: s.niche || niche,
-            source_kind: "rss",
-          }, 5);
+            niche: s.niche,
+            source_kind: s.source_kind,
+            query: s.query,
+            include_terms: s.include_terms,
+          }, 5, {
+            allowRelaxedSearch: false,
+            maxAgeHours: 48,
+          });
+          const relevance = measureNicheRelevance(preview.sample_items || [], profile);
+          const valid = preview.valid && relevance.relevant;
           return {
             ...s,
-            source_kind: "rss",
-            valid: preview.valid,
+            valid,
             preview,
-            quality_score: preview.valid ? Math.min(100, 50 + (preview.sample_items?.length || 0) * 10) : 0,
+            relevance,
+            error: valid ? null : preview.valid
+              ? "A fonte respondeu, mas as notícias recentes não correspondem ao nicho informado."
+              : preview.diagnostics?.warnings?.[0] || "Fonte sem conteúdo recente aproveitável.",
+            quality_score: valid ? Math.min(100, 55 + relevance.matching * 10) : 0,
           };
         } catch (e) {
           return {
             ...s,
-            source_kind: "rss",
             valid: false,
             error: e instanceof Error ? e.message : "Falha ao validar fonte",
             preview: null,
+            relevance: { total: 0, matching: 0, ratio: 0, relevant: false },
             quality_score: 0,
           };
         }
@@ -173,6 +275,7 @@ Deno.serve(async (req) => {
           inserted: 0,
           feeds: validated,
           usedFallback,
+          discovery_profile: { key: profile.key, label: profile.label, recognized: profile.recognized },
           preview_only: true,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -187,23 +290,22 @@ Deno.serve(async (req) => {
     const existingByUrl = new Map<string, string>(
       (existing || []).map((e: { url: string; id: string }) => [e.url, e.id])
     );
-    const selectedUrls = Array.isArray(selected_feeds) && selected_feeds.length > 0
-      ? new Set<string>(
-        selected_feeds
-          .map((s: string | { url?: string }) => typeof s === "string" ? s : s?.url)
-          .filter((url: unknown): url is string => typeof url === "string" && url.length > 0)
-      )
-      : null;
-
     const toInsert = valid
-      .filter((s) => !selectedUrls || selectedUrls.has(s.url))
       .map((s) => ({
         user_id: user.id,
         name: s.name,
         url: s.url,
-        source_kind: "rss",
-        niche: s.niche || niche,
-        source_config: { discovered_by: "discover-rss", preview: s.preview },
+        source_kind: s.source_kind,
+        query: s.query || null,
+        include_terms: s.include_terms,
+        niche: s.source_kind === "topic" ? `Tema: ${profile.label}` : `RSS: ${profile.label}`,
+        source_config: {
+          discovered_by: "discover-rss",
+          discovery_method: s.discovery_method,
+          discovery_profile: { key: profile.key, label: profile.label, recognized: profile.recognized },
+          relevance: s.relevance,
+          preview: s.preview,
+        },
         quality_score: s.quality_score || 0,
         fetch_interval_minutes: 60,
         active: true,

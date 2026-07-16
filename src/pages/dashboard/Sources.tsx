@@ -62,10 +62,15 @@ type DiscoverCandidate = {
   name: string;
   url: string;
   niche?: string;
+  source_kind?: "rss" | "topic";
+  query?: string | null;
+  include_terms?: string[];
+  discovery_method?: "ai_rss" | "curated_rss" | "topic_search";
   valid: boolean;
   error?: string;
   preview?: PreviewResult | null;
   quality_score?: number;
+  relevance?: { total: number; matching: number; ratio: number; relevant: boolean };
 };
 
 const duplicateSourceMessage = (error: unknown) => {
@@ -575,7 +580,16 @@ export default function Sources() {
         niche: discoverNiche.trim(),
         ig_ids: discoverIgIds,
         insert: true,
-        selected_feeds: selectedDiscoverUrls,
+        selected_feeds: discoverCandidates
+          .filter((candidate) => selectedDiscoverUrls.includes(candidate.url))
+          .map(({ name, url, source_kind, query, include_terms, discovery_method }) => ({
+            name,
+            url,
+            source_kind,
+            query,
+            include_terms,
+            discovery_method,
+          })),
       },
     });
     setDiscoverSaving(false);
@@ -933,12 +947,20 @@ export default function Sources() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="min-w-0 break-words font-medium">{candidate.name}</p>
                                 {candidate.valid ? <Badge variant="secondary">Válida</Badge> : <Badge variant="outline">Sem prévia</Badge>}
+                                {candidate.discovery_method === "topic_search" && <Badge variant="outline">Busca temática</Badge>}
+                                {candidate.discovery_method === "curated_rss" && <Badge variant="outline">Catálogo verificado</Badge>}
+                                {candidate.discovery_method === "ai_rss" && <Badge variant="outline">Sugestão por IA</Badge>}
                               </div>
                               <p className="break-all text-xs text-muted-foreground">{candidate.url}</p>
                               {candidate.preview?.sample_items?.[0] && (
                                 <p className="text-xs text-muted-foreground mt-2">Exemplo: {candidate.preview.sample_items[0].title}</p>
                               )}
-                              {!candidate.valid && candidate.error && <p className="text-xs text-destructive mt-2">{candidate.error}</p>}
+                              {candidate.valid && candidate.relevance && (
+                                <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                                  {candidate.relevance.matching} de {candidate.relevance.total} exemplos correspondem ao nicho
+                                </p>
+                              )}
+                              {!candidate.valid && candidate.error && <p className="mt-2 text-xs text-destructive">{candidate.error}</p>}
                             </div>
                           </div>
                         </div>

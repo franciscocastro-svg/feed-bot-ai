@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "release": "quality-sources-1c",
+  "affectedFunctions": ["discover-rss"],
+  "migrations": [],
+  "frontendPublish": true,
+  "validation": [
+    "npm run ci",
+    "npm audit --omit=dev --audit-level=moderate",
+    "deno check supabase/functions/discover-rss/index.ts",
+    "vitest src/test/source-discovery-1c.test.ts"
+  ],
+  "constraints": {
+    "otherEdgeFunctions": false,
+    "manualFunctionInvocation": false,
+    "insertSourcesDuringRelease": false,
+    "databaseMigration": false,
+    "workerVps": false,
+    "paymentsStripeMetaCronSecrets": false
+  }
+}
