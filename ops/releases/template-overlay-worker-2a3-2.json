@@ -1,0 +1,30 @@
+{
+  "phase": "Template Overlay Worker 2A.3.2",
+  "name": "Preserve transparent overlays in automatic rendering",
+  "frontendChanged": false,
+  "workerChanged": true,
+  "migration": null,
+  "edgeFunctions": [],
+  "contracts": [
+    "overlay frames preserve PNG alpha in the VPS worker",
+    "news photos and opaque backgrounds remain optimized as JPEG",
+    "transparent logos and brand elements remain PNG",
+    "photo renders before the transparent frame",
+    "required photos and template artwork fail safely into durable retry",
+    "asset download errors do not expose source URLs"
+  ],
+  "excluded": [
+    "frontend publication",
+    "database migrations",
+    "edge function deployments",
+    "cron schedules",
+    "payments",
+    "stripe",
+    "meta configuration",
+    "secrets",
+    "mcp",
+    "types.ts",
+    "lockfiles"
+  ],
+  "rollback": "Redeploy the previous feedbot-media worker. Stored templates remain compatible."
+}

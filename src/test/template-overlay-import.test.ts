@@ -38,7 +38,7 @@ describe("Template Studio 2A.3.1 transparent overlay importer", () => {
       expect(photo).toBeGreaterThan(-1);
       expect(frame).toBeGreaterThan(photo);
     }
-    const workerPhoto = worker.indexOf("if (cfg.showPhoto && item.original_image_url)");
+    const workerPhoto = worker.indexOf("if (cfg.showPhoto)");
     const workerFrame = worker.indexOf("if (usesOverlayFrame && templateBackground)", workerPhoto);
     expect(workerPhoto).toBeGreaterThan(-1);
     expect(workerFrame).toBeGreaterThan(workerPhoto);

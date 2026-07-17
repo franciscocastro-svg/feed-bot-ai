@@ -15,6 +15,11 @@ import { brandFontStack } from "../supabase/functions/_shared/brand-kit.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
 import { resolveCutPreset } from "./cutPresets.js";
 import {
+  buildWorkerImageProxyUrl,
+  normalizeWorkerImageOutput,
+  requireWorkerImage,
+} from "./image-loading.js";
+import {
   normalizeTimedWords,
   providerCapabilities,
   requestStructuredAnalysis,
@@ -286,28 +291,26 @@ async function setupFonts() {
 }
 
 // Carrega imagem localmente para evitar problemas de CORS
-async function loadImageHelper(url) {
+async function loadImageHelper(url, { output = "jpg", assetLabel = "imagem" } = {}) {
   if (!url) return null;
   const { loadImage } = await getCanvasRuntime();
-  // Proxy de imagem do weserv (igual ao front)
-  const cleanUrl = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
-  const proxiedUrl = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&output=jpg`;
-  
-  const tempFile = path.join(TEMP_DIR, `img_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+  const safeOutput = normalizeWorkerImageOutput(output);
+  const proxiedUrl = buildWorkerImageProxyUrl(url, { output: safeOutput });
+  const tempFile = path.join(TEMP_DIR, `img_${Date.now()}_${Math.random().toString(36).substring(7)}.${safeOutput}`);
   try {
     await downloadFile(proxiedUrl, tempFile);
     const img = await loadImage(tempFile);
     try { await fs.promises.unlink(tempFile); } catch {}
     return img;
   } catch (e) {
-    console.warn(`Aviso: falha ao carregar imagem via proxy: ${url}. Tentando direto...`);
+    console.warn(`Aviso: falha ao carregar ${assetLabel} via proxy. Tentando acesso direto...`);
     try {
       await downloadFile(url, tempFile);
       const img = await loadImage(tempFile);
       try { await fs.promises.unlink(tempFile); } catch {}
       return img;
     } catch (err) {
-      console.error(`Erro ao carregar imagem: ${url}`, err);
+      console.error(`Erro ao carregar ${assetLabel}:`, err?.message || err);
       try { if (fs.existsSync(tempFile)) await fs.promises.unlink(tempFile); } catch {}
       return null;
     }
@@ -394,7 +397,7 @@ async function drawBrandElementsNode(ctx, config, width, height) {
     ctx.save();
     ctx.globalAlpha = opacity;
     if (element?.type === "image" && typeof element.url === "string") {
-      const image = await loadImageHelper(element.url);
+      const image = await loadImageHelper(element.url, { output: "png", assetLabel: "elemento de marca" });
       if (image) {
         const elementWidth = safeTemplateNumber(element.width, 20, width, 240);
         const elementHeight = safeTemplateNumber(element.height, 20, height, 120);
@@ -427,16 +430,30 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   const subtitle = item.rewritten_summary || "";
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "");
 
-  const templateBackground = template.background_url ? await loadImageHelper(template.background_url) : null;
+  const templateBackground = template.background_url
+    ? await loadImageHelper(template.background_url, {
+      output: usesOverlayFrame ? "png" : "jpg",
+      assetLabel: usesOverlayFrame ? "moldura transparente do template" : "fundo do template",
+    })
+    : null;
+  if (template.background_url) {
+    requireWorkerImage(templateBackground, "Arte configurada do template indisponível; renderização será tentada novamente.");
+  }
   if (!usesOverlayFrame && templateBackground) {
     drawCoverImage(ctx, templateBackground, 0, 0, width, height);
   } else {
     drawTemplateGradient(ctx, template.preset_key, template.config, width, height);
   }
 
-  if (cfg.showPhoto && item.original_image_url) {
-    const photoImg = await loadImageHelper(item.original_image_url);
-    if (photoImg) drawProtectedImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
+  if (cfg.showPhoto) {
+    if (!item.original_image_url) {
+      throw new Error("Template exige foto, mas a notícia não possui imagem; renderização será tentada novamente.");
+    }
+    const photoImg = requireWorkerImage(
+      await loadImageHelper(item.original_image_url, { output: "jpg", assetLabel: "foto da notícia" }),
+      "Foto da notícia indisponível; renderização será tentada novamente.",
+    );
+    drawProtectedImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
   }
 
   if (cfg.overlayOpacity > 0) {
@@ -449,7 +466,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   }
 
   if (cfg.showBrandLogo && cfg.brandLogoUrl) {
-    const brandLogo = await loadImageHelper(cfg.brandLogoUrl);
+    const brandLogo = await loadImageHelper(cfg.brandLogoUrl, { output: "png", assetLabel: "logo da marca" });
     if (brandLogo) drawContainImage(ctx, brandLogo, cfg.brandLogoX, cfg.brandLogoY, cfg.brandLogoSize, cfg.brandLogoSize);
   }
 
@@ -498,11 +515,6 @@ async function composeAndUploadPostNode(item, settings) {
   const title = (item.rewritten_title || item.original_title || "").toUpperCase();
   const subtitle = item.rewritten_summary || "";
 
-  let photoImg = null;
-  let logoImg = null;
-  if (item.original_image_url) photoImg = await loadImageHelper(item.original_image_url);
-  if (settings?.brand_logo_url) logoImg = await loadImageHelper(settings.brand_logo_url);
-
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
 
@@ -519,6 +531,11 @@ async function composeAndUploadPostNode(item, settings) {
     await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
     return url;
   }
+
+  let photoImg = null;
+  let logoImg = null;
+  if (item.original_image_url) photoImg = await loadImageHelper(item.original_image_url, { output: "jpg", assetLabel: "foto da notícia" });
+  if (settings?.brand_logo_url) logoImg = await loadImageHelper(settings.brand_logo_url, { output: "png", assetLabel: "logo da marca" });
 
   // Fundo branco no topo
   const headerH = 528;
@@ -623,9 +640,6 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
   const sourceName = (item.source_name || "").trim();
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
 
-  let photoImg = null;
-  if (item.original_image_url) photoImg = await loadImageHelper(item.original_image_url);
-
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
 
@@ -642,6 +656,9 @@ async function composeAndUploadStoryNode(item, settings, opts = {}) {
     await supabase.from("news_items").update({ generated_cover_url: url }).eq("id", item.id);
     return url;
   }
+
+  let photoImg = null;
+  if (item.original_image_url) photoImg = await loadImageHelper(item.original_image_url, { output: "jpg", assetLabel: "foto da notícia" });
 
   // Imagem fullscreen com enquadramento protegido
   if (photoImg) {
