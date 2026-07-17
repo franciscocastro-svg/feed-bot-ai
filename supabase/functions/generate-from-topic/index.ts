@@ -2,6 +2,11 @@
 // Não substitui o fluxo de notícias; insere em news_items com content_type='topic'.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { generateTopicJson } from "../_shared/topic-ai.ts";
+import {
+  assertCreatorProfileCompliance,
+  creatorProfilePrompt,
+  loadEffectiveCreatorProfile,
+} from "../_shared/creator-profile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,18 +43,7 @@ PLANEJAMENTO DESTA PAUTA:
 - Palavras-chave: ${Array.isArray(topic.keywords) && topic.keywords.length ? topic.keywords.join(", ") : "livres"}
 `;
 
-  const profileBlock = profile ? `
-PERFIL DO CRIADOR (use isso pra personalizar TUDO):
-- Nicho: ${profile.niche_detail || "—"}
-- Público-alvo: ${profile.target_audience || "—"}
-- Tom de voz: ${profile.voice_tone || tone}
-- Expertise/autoridade: ${profile.expertise_summary || "—"}
-${profile.signature_phrases?.length ? `- Frases de assinatura (use 1 quando fizer sentido): ${profile.signature_phrases.join(" | ")}` : ""}
-${profile.forbidden_words?.length ? `- NUNCA use/mencione: ${profile.forbidden_words.join(", ")}` : ""}
-${profile.cta_style ? `- Estilo de CTA preferido: ${profile.cta_style}` : ""}
-${profile.example_posts?.length ? `- Exemplos do estilo do criador:\n${profile.example_posts.slice(0, 3).map((x: string, i: number) => `  [${i + 1}] ${x.slice(0, 300)}`).join("\n")}` : ""}
-${profile.extra_notes ? `- Observações: ${profile.extra_notes}` : ""}
-` : "";
+  const profileBlock = creatorProfilePrompt(profile);
 
   const systemPrompt = `Você é o ghostwriter pessoal de um criador de conteúdo de Instagram, nicho "${niche}". Tom de voz base: ${tone}.
 Você produz conteúdo PERENE (não notícia) baseado em uma pauta dada.
@@ -70,6 +64,12 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
 
   const generated = await generateTopicJson({ systemPrompt, userPrompt });
   const parsed = generated.content;
+  assertCreatorProfileCompliance([
+    String(parsed.title || ""),
+    String(parsed.caption || ""),
+    String(parsed.cover_text || ""),
+    ...(Array.isArray(parsed.hashtags) ? parsed.hashtags : []),
+  ], profile);
   return {
     title: String(parsed.title || topic.title).slice(0, 200),
     caption: String(parsed.caption || ""),
@@ -109,9 +109,8 @@ Deno.serve(async (req) => {
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Settings + Perfil de criador
+    // Settings globais; o Perfil do Criador efetivo depende da conta da pauta.
     const { data: settings } = await supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle();
-    const { data: profile } = await supabase.from("creator_profiles").select("*").eq("user_id", userId).maybeSingle();
 
     // Seleciona pauta: específica ou menos usada recentemente
     let topicQuery = supabase.from("content_topics").select("*").eq("user_id", userId).eq("active", true);
@@ -150,6 +149,8 @@ Deno.serve(async (req) => {
       return (a.use_count || 0) - (b.use_count || 0);
     });
     const topic = sorted[0];
+    const profile = await loadEffectiveCreatorProfile(supabase, userId!, topic.instagram_account_id);
+    assertCreatorProfileCompliance([topic.title || "", topic.notes || ""], profile);
 
     // Escolhe formato
     const allowed: string[] = (topic.formats && topic.formats.length > 0) ? topic.formats : ["dica"];
@@ -209,6 +210,7 @@ Deno.serve(async (req) => {
     // Fix: status HTTP semântico (não retornar 200 para erros)
     const status = code === "no_credits" ? 402
       : code === "rate_limited" ? 429
+      : code === "creator_profile_forbidden" ? 422
       : code === "no_provider" || code === "ai_unavailable" ? 503
       : 500;
     return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -6,9 +6,7 @@
 // - Fase B: liberar para 3-5 clientes beta selecionados (TODO: lista por user_id).
 // - Fase C: liberar para todos os planos pagos.
 
-export const ADMIN_ONLY_PATHS: string[] = [
-  "/dashboard/creator-profile",
-];
+export const ADMIN_ONLY_PATHS: string[] = [];
 
 // IDs de usuários liberados como beta-testers, mesmo sem ser admin.
 // Quando uma feature passar pra Fase B, copiar o path daqui e listar os user_ids.

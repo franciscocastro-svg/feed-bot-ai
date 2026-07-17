@@ -9,6 +9,13 @@ import {
   assertEditorialCopy,
   resolveEditorialIdentity,
 } from "../_shared/editorial-integrity.ts";
+import {
+  assertCreatorProfileCompliance,
+  creatorCaptionExtras,
+  creatorProfileFingerprint,
+  creatorProfilePrompt,
+  loadEffectiveCreatorProfile,
+} from "../_shared/creator-profile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -258,6 +265,7 @@ function buildGroqRewriteMessages(item: any, tone: string, srcOpts: { lang?: str
     ? `\nA resposta anterior ficou curta e foi rejeitada. Desta vez entregue a caption com ${AI_FEED_CAPTION_MIN}-${AI_FEED_CAPTION_MAX} caracteres e a reel_caption com ${AI_REEL_CAPTION_MIN}-${AI_REEL_CAPTION_MAX} caracteres.`
     : "";
 
+  const profileBlock = creatorProfilePrompt(item?._creator_profile);
   const system = `Voce e um redator jornalistico viral para Instagram em PT-BR. Tom: ${tone}.
 Gere texto informativo, natural, sem copiar frases literais da noticia.
 Nao cite fonte, nao use link na bio, nao use leia mais, nao invente fatos.
@@ -266,7 +274,8 @@ Cada paragrafo deve acrescentar uma informacao nova. Nao repita o titulo, o resu
 Proibido usar preenchimentos genericos como "O ponto central", "O que se sabe ate agora", "Por que isso importa", "quando uma informacao ganha forca" ou "observe os proximos capitulos".
 Caption do feed: longa, util, com paragrafos curtos, entre ${AI_FEED_CAPTION_MIN} e ${AI_FEED_CAPTION_MAX} caracteres.
 Caption do reel: rica e direta, entre ${AI_REEL_CAPTION_MIN} e ${AI_REEL_CAPTION_MAX} caracteres.
-Hashtags: exatamente 15, sem #, minusculas, relevantes ao tema.${srcOpts.translate ? `\nA fonte pode estar em ${LANG_NAMES[srcOpts.lang || "auto"] || "outro idioma"}; traduza tudo para PT-BR natural.` : ""}${srcOpts.cultural ? "\nExplique referencias culturais somente com informacoes presentes na fonte. Nao estime cotacoes, conversoes, datas ou contexto ausente." : ""}${retryNote}
+Hashtags: exatamente 15, sem #, minusculas, relevantes ao tema.
+${profileBlock}${srcOpts.translate ? `\nA fonte pode estar em ${LANG_NAMES[srcOpts.lang || "auto"] || "outro idioma"}; traduza tudo para PT-BR natural.` : ""}${srcOpts.cultural ? "\nExplique referencias culturais somente com informacoes presentes na fonte. Nao estime cotacoes, conversoes, datas ou contexto ausente." : ""}${retryNote}
 Responda APENAS um JSON valido com estas chaves:
 {"title":"...","subtitle":"...","hook":"...","summary":"...","caption":"...","reel_caption":"...","hashtags":["..."]}`;
 
@@ -590,9 +599,10 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
         l: srcOpts.lang || "auto",
         tr: !!srcOpts.translate,
         c: !!srcOpts.cultural,
+        p: creatorProfileFingerprint(item?._creator_profile),
         provider: getTextAiProvider(),
         model: getTextAiModel(),
-        v: 6, // invalida textos anteriores à trava factual
+        v: 7, // perfil por conta participa da chave; não cruza vozes no cache
       }))
     : null;
   if (cacheKey) {
@@ -1020,6 +1030,12 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       };
     }
     const intendedMediaType = requestedMediaType || settings?.default_media_type || "feed";
+    const creatorProfile = await loadEffectiveCreatorProfile(
+      supabase,
+      userId,
+      item.instagram_account_id || null,
+    );
+    (item as any)._creator_profile = creatorProfile;
     let srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {};
     if (item.source_id) {
       const { data: src } = await supabase.from("news_sources").select("source_language, translate_to_pt, cultural_adaptation").eq("id", item.source_id).maybeSingle();
@@ -1046,8 +1062,17 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         console.warn(`[article-body] ${item.original_url} -> apenas ${body?.length || 0} chars extraídos (insuficiente, usando só RSS)`);
       }
     }
+    assertCreatorProfileCompliance([
+      item.original_title || "",
+      item.original_content || "",
+      (item as any)._article_body || "",
+    ], creatorProfile);
     try {
-      ai = await rewriteWithAI(item, settings?.ai_tone || "engajante e descontraído", srcOpts);
+      ai = await rewriteWithAI(
+        item,
+        creatorProfile?.voice_tone || settings?.ai_tone || "engajante e descontraído",
+        srcOpts,
+      );
     } catch (e) {
       if (!isAiCreditError(e)) throw e;
       // Se a fonte exige tradução, NÃO usar fallback (geraria post em inglês misturado com PT).
@@ -1058,6 +1083,15 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       usedFallback = true;
       ai = fallbackRewrite(item);
     }
+    assertCreatorProfileCompliance([
+      ai.title || "",
+      ai.subtitle || "",
+      ai.hook || "",
+      ai.summary || "",
+      ai.caption || "",
+      ai.reel_caption || "",
+      ...(Array.isArray(ai.hashtags) ? ai.hashtags : []),
+    ], creatorProfile);
 
     // A Edge Function prepara apenas texto e fonte visual. A composição pesada
     // (Canvas, fontes, templates e vídeo) acontece no worker media do VPS.
@@ -1111,13 +1145,14 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const hashtagsLine = safeHashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const reelHashtagsLine = safeHashtags.slice(0, 5).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const usefulCaption = ensureUsefulCaption(ai.caption, item, ai.title, ai.summary);
+    const creatorExtras = creatorCaptionExtras(creatorProfile);
     const finalCaption = buildCaptionWithExtras(
       usefulCaption,
-      ["💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
+      [...creatorExtras, "💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
       hashtagsLine,
     );
     const usefulReelCaption = ensureUsefulCaption(ai.reel_caption || usefulCaption, item, ai.title, ai.summary);
-    const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [followCta], reelHashtagsLine);
+    const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [...creatorExtras, followCta], reelHashtagsLine);
 
     // Escolha local e determinística de trilha. Uma segunda chamada de IA só
     // para áudio aumentava latência e consumo sem melhorar a notícia.
@@ -1198,6 +1233,19 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     });
     return { status: "processed" as const };
   } catch (e) {
+    const isCreatorProfileBlock = (e as Error & { code?: string })?.code === "creator_profile_forbidden";
+    if (isCreatorProfileBlock) {
+      const failureMessage = processingErrorMessage(e);
+      const { error: failureUpdateError } = await supabase.from("news_items").update({
+        status: "rejected",
+        error_message: failureMessage,
+        next_retry_at: null,
+      }).eq("id", item.id).eq("user_id", userId).eq("status", "processing");
+      if (failureUpdateError) {
+        console.error("[process-news] failed to persist creator profile rejection", failureUpdateError.message);
+      }
+      return { status: "rejected" as const, error: failureMessage };
+    }
     // Backoff exponencial: tentativa 1 -> +5min, 2 -> +15min, 3 -> +60min.
     // Após 3 tentativas, fica como "failed" definitivo (sem next_retry_at).
     const prevAttempts = (item as any).retry_count ?? 0;

@@ -2,6 +2,11 @@
 // Não cadastra pauta, vai direto pra news_items com content_type='topic'.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { generateTopicJson } from "../_shared/topic-ai.ts";
+import {
+  assertCreatorProfileCompliance,
+  creatorProfilePrompt,
+  loadEffectiveCreatorProfile,
+} from "../_shared/creator-profile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,24 +43,31 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Tema obrigatório (mín. 3 caracteres)." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const [{ data: settings }, { data: profile }] = await Promise.all([
+    if (instagramAccountId) {
+      const { data: ownedAccount } = await supabase
+        .from("instagram_accounts")
+        .select("id")
+        .eq("id", instagramAccountId)
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .maybeSingle();
+      if (!ownedAccount) {
+        return new Response(JSON.stringify({ error: "Conta Instagram inválida." }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const [{ data: settings }, profile] = await Promise.all([
       supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
-      supabase.from("creator_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+      loadEffectiveCreatorProfile(supabase, user.id, instagramAccountId),
     ]);
+
+    assertCreatorProfileCompliance(theme, profile);
 
     const tone = profile?.voice_tone || settings?.ai_tone || "engajante e descontraído";
     const niche = profile?.niche_detail || settings?.default_niche || "";
     const guide = FORMAT_GUIDE[format];
 
-    const profileBlock = profile ? `
-PERFIL DO CRIADOR:
-- Público-alvo: ${profile.target_audience || "—"}
-- Expertise: ${profile.expertise_summary || "—"}
-${profile.signature_phrases?.length ? `- Frases de assinatura: ${profile.signature_phrases.join(" | ")}` : ""}
-${profile.forbidden_words?.length ? `- NUNCA use: ${profile.forbidden_words.join(", ")}` : ""}
-${profile.cta_style ? `- CTA preferido: ${profile.cta_style}` : ""}
-${profile.extra_notes ? `- Observações: ${profile.extra_notes}` : ""}
-` : "";
+    const profileBlock = creatorProfilePrompt(profile);
 
     const systemPrompt = `Você é o ghostwriter pessoal de um criador no Instagram. Nicho: "${niche}". Tom: ${tone}.
 Formato: ${format.toUpperCase()}. ${guide}
@@ -73,6 +85,12 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
       userPrompt: `Tema: "${theme}"\nGere o post no formato ${format}.`,
     });
     const parsed = generated.content;
+    assertCreatorProfileCompliance([
+      String(parsed.title || ""),
+      String(parsed.caption || ""),
+      String(parsed.cover_text || ""),
+      ...(Array.isArray(parsed.hashtags) ? parsed.hashtags : []),
+    ], profile);
 
     const insertRow: any = {
       user_id: user.id,
@@ -113,6 +131,7 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
     console.error(e);
     const code = typeof e?.code === "string" ? e.code : null;
     const expected = code === "no_provider" || code === "no_credits" || code === "ai_unavailable";
-    return new Response(JSON.stringify({ error: e?.message || "unknown", code }), { status: expected ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const status = code === "creator_profile_forbidden" ? 422 : expected ? 200 : 500;
+    return new Response(JSON.stringify({ error: e?.message || "unknown", code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

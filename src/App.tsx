@@ -104,7 +104,7 @@ const App = () => (
               <Route path="news" element={<News />} />
               <Route path="sources" element={<Sources />} />
               <Route path="topics" element={<Topics />} />
-              <Route path="creator-profile" element={<AdminOnlyRoute><CreatorProfile /></AdminOnlyRoute>} />
+              <Route path="creator-profile" element={<CreatorProfile />} />
               <Route path="scheduled" element={<Scheduled />} />
               <Route path="accounts" element={<Accounts />} />
               <Route path="accounts/:id/settings" element={<AccountSettings />} />

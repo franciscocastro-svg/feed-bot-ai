@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Save, UserCircle2 } from "lucide-react";
+import { Loader2, RotateCcw, Save, UserCircle2 } from "lucide-react";
 
 type Profile = {
   niche_detail: string;
@@ -34,31 +36,98 @@ const empty: Profile = {
 
 const toArr = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 const fromArr = (a: string[] | null | undefined) => (a || []).join("\n");
+const GLOBAL_PROFILE = "global";
+
+type InstagramAccount = { id: string; username: string };
+type ProfilePayload = Partial<Profile> & { _inherited?: boolean; _exists?: boolean };
+type ProfileRpcResult = { data: ProfilePayload | null; error: { message: string } | null };
+type ProfileRpc = (name: string, args: Record<string, unknown>) => Promise<ProfileRpcResult>;
+
+const callProfileRpc = supabase.rpc.bind(supabase) as unknown as ProfileRpc;
 
 export default function CreatorProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [p, setP] = useState<Profile>(empty);
+  const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
+  const [selectedScope, setSelectedScope] = useState(GLOBAL_PROFILE);
+  const [inherited, setInherited] = useState(false);
+  const [profileExists, setProfileExists] = useState(false);
 
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase.from("creator_profiles").select("*").eq("user_id", user.id).maybeSingle();
-      if (data) setP({ ...empty, ...(data as any) });
-      setLoading(false);
+      if (!user) { setLoading(false); return; }
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id,username")
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .order("username");
+      const nextAccounts = (data || []) as InstagramAccount[];
+      setAccounts(nextAccounts);
+      setSelectedScope(nextAccounts[0]?.id || GLOBAL_PROFILE);
     })();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const accountId = selectedScope === GLOBAL_PROFILE ? null : selectedScope;
+      const { data, error } = await callProfileRpc("get_creator_profile_for_account", {
+        _account_id: accountId,
+      });
+      if (!active) return;
+      if (error) {
+        toast.error("Não foi possível carregar o Perfil do Criador.");
+        setP(empty);
+        setInherited(false);
+        setProfileExists(false);
+      } else {
+        setP({ ...empty, ...(data || {}) });
+        setInherited(Boolean(data?._inherited));
+        setProfileExists(Boolean(data?._exists) && !data?._inherited);
+      }
+      setLoading(false);
+    })();
+    return () => { active = false; };
+  }, [selectedScope]);
+
   const save = async () => {
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
-    const row = { user_id: user.id, ...p };
-    const { error } = await supabase.from("creator_profiles").upsert(row, { onConflict: "user_id" });
+    const accountId = selectedScope === GLOBAL_PROFILE ? null : selectedScope;
+    const { error } = await callProfileRpc("save_creator_profile_for_account", {
+      _account_id: accountId,
+      _profile: p,
+    });
     setSaving(false);
     if (error) toast.error("Erro ao salvar: " + error.message);
-    else toast.success("Perfil salvo. A IA vai usar isso nas próximas gerações.");
+    else {
+      setInherited(false);
+      setProfileExists(true);
+      toast.success("Perfil salvo. A IA usará esta voz nas próximas gerações desta conta.");
+    }
+  };
+
+  const resetToGlobal = async () => {
+    if (selectedScope === GLOBAL_PROFILE) return;
+    setSaving(true);
+    const { error } = await callProfileRpc("reset_creator_profile_for_account", {
+      _account_id: selectedScope,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error("Não foi possível restaurar o perfil geral: " + error.message);
+      return;
+    }
+    const { data } = await callProfileRpc("get_creator_profile_for_account", {
+      _account_id: selectedScope,
+    });
+    setP({ ...empty, ...(data || {}) });
+    setInherited(Boolean(data?._inherited));
+    setProfileExists(false);
+    toast.success("Esta conta voltou a herdar o Perfil do Criador geral.");
   };
 
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="animate-spin" /></div>;
@@ -72,6 +141,41 @@ export default function CreatorProfile() {
           <p className="text-sm text-muted-foreground">A IA usa esse perfil pra personalizar tom, linguagem e estilo de todo conteúdo gerado.</p>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Conta que receberá esta voz</CardTitle>
+          <CardDescription>Cada Instagram pode ter nicho, público, tom, frases e restrições próprios.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={selectedScope} onValueChange={setSelectedScope}>
+            <SelectTrigger aria-label="Selecionar conta do Perfil do Criador">
+              <SelectValue placeholder="Selecione uma conta" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GLOBAL_PROFILE}>Perfil geral (herança)</SelectItem>
+              {accounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            {selectedScope === GLOBAL_PROFILE ? (
+              <Badge variant="secondary">Perfil geral</Badge>
+            ) : inherited ? (
+              <Badge variant="outline">Herdando o perfil geral</Badge>
+            ) : (
+              <Badge variant="secondary">Personalizado para esta conta</Badge>
+            )}
+            <span>Notícias automáticas, pautas e posts avulsos usarão exatamente este perfil.</span>
+          </div>
+          {selectedScope !== GLOBAL_PROFILE && profileExists && (
+            <Button variant="outline" onClick={resetToGlobal} disabled={saving}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Usar novamente o perfil geral
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

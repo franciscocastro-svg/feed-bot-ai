@@ -1,0 +1,31 @@
+{
+  "phase": "Perfil do Criador 1A",
+  "migration": "20260717143000_creator_profile_1a.sql",
+  "frontendChanged": true,
+  "workerChanged": false,
+  "edgeFunctions": [
+    "process-news",
+    "generate-from-topic",
+    "generate-from-prompt"
+  ],
+  "contracts": [
+    "legacy creator profile remains the global inheritance source",
+    "one isolated override per Instagram account",
+    "all browser mutations validate auth.uid and account ownership",
+    "automatic news, recurring topics and one-off posts use the effective account profile",
+    "AI cache keys include the creator profile fingerprint",
+    "forbidden terms are deterministically blocked before delivery"
+  ],
+  "excluded": [
+    "VPS worker",
+    "cron schedules",
+    "payments",
+    "stripe",
+    "meta configuration",
+    "secrets",
+    "mcp",
+    "types.ts",
+    "lockfiles"
+  ],
+  "rollback": "Redeploy the previous frontend and three Edge Functions; keep the additive account-scoped schema inert until a corrective migration can preserve account profiles safely."
+}
