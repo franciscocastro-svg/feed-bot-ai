@@ -776,14 +776,14 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
               </button>
               <button type="button" onClick={() => setMediaType("reel")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "reel" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                🎬 Reel<div className="text-xs text-muted-foreground font-normal">Vídeo 9:16, 6s</div>
+                🎬 Reel<div className="text-xs text-muted-foreground font-normal">Vídeo dinâmico 9:16, 20s</div>
               </button>
               <button type="button" onClick={() => setMediaType("story")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "story" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
                 ⭐ Story<div className="text-xs text-muted-foreground font-normal">9:16, 24h</div>
               </button>
             </div>
-            {mediaType === "reel" && <p className="text-xs text-muted-foreground mt-2">O vídeo é gerado a partir da imagem (estático, 6s, 1080×1920) ao agendar.</p>}
+            {mediaType === "reel" && <p className="text-xs text-muted-foreground mt-2">O vídeo é gerado em 1080×1920 com movimento contínuo durante 20 segundos. Cortes IA preservam sua duração original.</p>}
             {mediaType === "story" && (
               <div className="mt-2 space-y-2">
                 <div className="flex gap-2">

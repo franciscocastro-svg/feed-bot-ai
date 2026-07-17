@@ -114,7 +114,9 @@ function isManagedReelVideoUrl(url, userId, itemId, contentType) {
   return decoded.includes(`/post-images/${expectedPath}`) || decoded.endsWith(`/${expectedPath}`);
 }
 
-const STANDARD_NEWS_REEL_DURATION_SECONDS = 6;
+const STANDARD_NEWS_REEL_DURATION_SECONDS = 20;
+const STANDARD_NEWS_REEL_FRAME_RATE = 30;
+const STANDARD_NEWS_REEL_TOTAL_FRAMES = STANDARD_NEWS_REEL_DURATION_SECONDS * STANDARD_NEWS_REEL_FRAME_RATE;
 
 function buildStandardNewsReelCommand(imagePath, audioPath, outputPath) {
   const audioInput = audioPath
@@ -122,11 +124,12 @@ function buildStandardNewsReelCommand(imagePath, audioPath, outputPath) {
     : `-f lavfi -i ${shellQuote("anullsrc=r=48000:cl=stereo")}`;
   return [
     "ffmpeg -y",
-    `-loop 1 -framerate 30 -i ${shellQuote(imagePath)}`,
+    `-loop 1 -framerate ${STANDARD_NEWS_REEL_FRAME_RATE} -i ${shellQuote(imagePath)}`,
     audioInput,
     `-t ${STANDARD_NEWS_REEL_DURATION_SECONDS}`,
-    `-vf ${shellQuote("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p")}`,
-    "-r 30 -c:v libx264 -preset medium -crf 20 -profile:v high -level 4.1",
+    `-vf ${shellQuote(`scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,zoompan=z='min(zoom+0.000067,1.04)':x='iw/2-(iw/zoom/2)+12*sin(on/${STANDARD_NEWS_REEL_TOTAL_FRAMES}*PI)':y='ih/2-(ih/zoom/2)-16*sin(on/${STANDARD_NEWS_REEL_TOTAL_FRAMES}*PI)':d=1:s=1080x1920:fps=${STANDARD_NEWS_REEL_FRAME_RATE},trim=duration=${STANDARD_NEWS_REEL_DURATION_SECONDS},setpts=PTS-STARTPTS,format=yuv420p`)}`,
+    `-frames:v ${STANDARD_NEWS_REEL_TOTAL_FRAMES}`,
+    `-r ${STANDARD_NEWS_REEL_FRAME_RATE} -c:v libx264 -preset medium -crf 20 -profile:v high -level 4.1`,
     "-g 60 -keyint_min 60 -sc_threshold 0",
     "-c:a aac -ar 48000 -b:a 128k",
     "-movflags +faststart -shortest",
@@ -142,7 +145,7 @@ async function validateStandardNewsReel(filePath) {
   const duration = Number(probe?.format?.duration || 0);
   const video = (probe?.streams || []).find((stream) => stream.codec_type === "video");
   const audio = (probe?.streams || []).find((stream) => stream.codec_type === "audio");
-  if (duration < 5.5 || duration > 6.5) throw new Error(`Duração inválida do Reel normalizado: ${duration}s`);
+  if (duration < 19 || duration > 21) throw new Error(`Duração inválida do Reel normalizado: ${duration}s`);
   if (video?.codec_name !== "h264" || video?.width !== 1080 || video?.height !== 1920 || video?.pix_fmt !== "yuv420p") {
     throw new Error(`Vídeo fora do padrão Meta: ${video?.codec_name || "sem codec"} ${video?.width || 0}x${video?.height || 0} ${video?.pix_fmt || ""}`);
   }
@@ -890,7 +893,7 @@ async function generateReelVideoFromJob(job) {
 
       // Jobs criados antes da proteção de Cortes IA podem continuar na fila.
       // Recupere o MP4 original do corte e finalize o job sem gerar o Reel
-      // editorial estático de 6 segundos.
+      // editorial dinâmico de 20 segundos.
       if (item.content_type === "video_cut") {
         const { data: clip, error: clipError } = await supabase
           .from("video_cut_clips")
@@ -920,7 +923,7 @@ async function generateReelVideoFromJob(job) {
           })
           .eq("id", job.id);
 
-        console.log(`[job:${job.id}] Corte IA preservado; geração de 6s ignorada.`);
+        console.log(`[job:${job.id}] Corte IA preservado; geração editorial de 20s ignorada.`);
         return originalVideoUrl;
       }
 

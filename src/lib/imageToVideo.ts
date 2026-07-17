@@ -5,9 +5,32 @@
  *
  * Se audioUrl for fornecido, mixa a trilha sonora (cortada/loop até durationSeconds).
  */
+export const STANDARD_NEWS_REEL_DURATION_SECONDS = 20;
+
+export type ReelMotionFrame = {
+  zoom: number;
+  driftX: number;
+  driftY: number;
+};
+
+/**
+ * Movimento editorial contínuo e não repetitivo para o Reel inteiro.
+ * O deslocamento é propositalmente sutil para preservar a leitura da arte.
+ */
+export function reelMotionFrame(progress: number): ReelMotionFrame {
+  const safeProgress = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+  const eased = safeProgress * safeProgress * (3 - 2 * safeProgress);
+  const arc = Math.sin(Math.PI * eased);
+  return {
+    zoom: 1 + (0.04 * eased),
+    driftX: 6 * arc,
+    driftY: -8 * arc,
+  };
+}
+
 export async function imageToReelVideo(
   imageUrl: string,
-  durationSeconds = 6,
+  durationSeconds = STANDARD_NEWS_REEL_DURATION_SECONDS,
   audioUrl?: string | null,
 ): Promise<Blob> {
   const W = 1080, H = 1920, FPS = 30;
@@ -29,16 +52,21 @@ export async function imageToReelVideo(
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // Fundo preto + imagem em "cover"
-  const draw = () => {
+  // Fundo preto + imagem em "cover" com aproximação e deslocamento contínuos.
+  const draw = (progress = 0) => {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, W, H);
     const ir = img.width / img.height;
     const cr = W / H;
-    let dw = W, dh = H, dx = 0, dy = 0;
-    if (ir > cr) { dh = H; dw = H * ir; dx = (W - dw) / 2; }
-    else { dw = W; dh = W / ir; dy = (H - dh) / 2; }
-    ctx.drawImage(img, dx, dy, dw, dh);
+    let dw = W, dh = H;
+    if (ir > cr) { dh = H; dw = H * ir; }
+    else { dw = W; dh = W / ir; }
+    const motion = reelMotionFrame(progress);
+    const animatedWidth = dw * motion.zoom;
+    const animatedHeight = dh * motion.zoom;
+    const animatedX = ((W - animatedWidth) / 2) + motion.driftX;
+    const animatedY = ((H - animatedHeight) / 2) + motion.driftY;
+    ctx.drawImage(img, animatedX, animatedY, animatedWidth, animatedHeight);
   };
   draw();
 
@@ -111,7 +139,7 @@ export async function imageToReelVideo(
   await new Promise<void>((resolve) => {
     const tick = () => {
       const t = performance.now() - start;
-      draw();
+      draw(Math.min(1, t / totalMs));
       if (t < totalMs) requestAnimationFrame(tick);
       else resolve();
     };

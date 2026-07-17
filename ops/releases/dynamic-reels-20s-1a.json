@@ -1,0 +1,31 @@
+{
+  "phase": "Reels Dinâmicos 20s — 1A",
+  "frontend": true,
+  "edgeFunctions": [],
+  "migrations": [],
+  "vpsProcesses": ["feedbot-media"],
+  "workerInstall": "npm --prefix worker ci --omit=dev",
+  "checks": [
+    "npm run ci",
+    "node scripts/check-secrets.mjs",
+    "npm audit --omit=dev --audit-level=moderate",
+    "node --check worker/index.js",
+    "vitest src/test/dynamic-reels-20s-1a.test.ts"
+  ],
+  "contract": {
+    "editorialReelSeconds": 20,
+    "durationToleranceSeconds": [19, 21],
+    "resolution": "1080x1920",
+    "frameRate": 30,
+    "motion": "single-continuous-zoom",
+    "storyVideoSeconds": 6,
+    "preserveAiCutDuration": true,
+    "monetizationGuaranteed": false
+  },
+  "guardrails": {
+    "noMigration": true,
+    "noEdgeDeploy": true,
+    "noManualPublish": true,
+    "noSecretsChanged": true
+  }
+}

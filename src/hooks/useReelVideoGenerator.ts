@@ -93,14 +93,14 @@ export function useReelVideoGenerator() {
               const sourceUrl = await composeAndUploadStory(news, { withFollowCta: true });
               // 2) MP4
               if (!isManagedReelVideoUrl(news.generated_video_url, user.id, news.id, news.content_type) && sourceUrl) {
-                const { imageToReelVideo } = await import("@/lib/imageToVideo");
+                const { imageToReelVideo, STANDARD_NEWS_REEL_DURATION_SECONDS } = await import("@/lib/imageToVideo");
                 let accountAudio = null;
                 if (accountId) {
                   const { data: effective } = await supabase.rpc("get_effective_account_settings", { _account_id: accountId });
                   accountAudio = (effective as any)?.reel_audio_url || null;
                 }
                 const audioUrl = news.chosen_audio_url || accountAudio || fallbackAudio;
-                const blob = await imageToReelVideo(sourceUrl, 6, audioUrl);
+                const blob = await imageToReelVideo(sourceUrl, STANDARD_NEWS_REEL_DURATION_SECONDS, audioUrl);
                 if (!(blob.type || "").includes("mp4")) {
                   console.warn("[reel-bg] navegador não gera mp4, pulando", news.id);
                   continue;
