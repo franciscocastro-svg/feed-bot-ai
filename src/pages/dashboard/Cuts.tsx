@@ -231,8 +231,8 @@ export default function Cuts() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [workerHealth, setWorkerHealth] = useState<WorkerHealth[]>([]);
-  const [inputMode, setInputMode] = useState<InputMode>("youtube");
-  const [processingMode, setProcessingMode] = useState<ProcessingMode>("local_device");
+  const [inputMode, setInputMode] = useState<InputMode>("upload");
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>("cloud");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [accountId, setAccountId] = useState("");
@@ -944,7 +944,7 @@ export default function Cuts() {
           </div>
           <h1 className="text-4xl font-bold">Cortes IA</h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            Cole um link autorizado do YouTube ou envie um MP4, gere até 5 cortes por vídeo e revise tudo antes de agendar no Instagram.
+            Baixe o vídeo que você tem autorização para usar, envie o MP4 e gere até 5 cortes para revisar antes de agendar no Instagram.
           </p>
         </div>
         <Button variant="outline" onClick={() => load()} disabled={loading}>
@@ -972,17 +972,17 @@ export default function Cuts() {
           <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
             <button
               type="button"
-              onClick={() => setInputMode("youtube")}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Link do YouTube
-            </button>
-            <button
-              type="button"
               onClick={() => setInputMode("upload")}
               className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
-              Enviar MP4
+              Enviar MP4 · recomendado
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode("youtube")}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Link do YouTube · experimental
             </button>
           </div>
           <div className="grid md:grid-cols-[1fr_220px] gap-3">
@@ -991,6 +991,9 @@ export default function Cuts() {
                 <>
                   <Label>Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-muted-foreground">
+                    O YouTube pode bloquear capturas automáticas mesmo quando o link é válido. Para maior confiabilidade, baixe o vídeo autorizado e use <strong className="text-foreground">Enviar MP4</strong>.
+                  </div>
                   <p className="text-xs text-muted-foreground">Aceita vídeo, Short e live já encerrada. A duração do corte é flexível: a IA preserva a ideia completa, sem encerrar no meio da fala.</p>
                 </>
               ) : (
@@ -1002,7 +1005,7 @@ export default function Cuts() {
                     onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Selecione o original. No modo local somente o áudio leve e os cortes finais são enviados.
+                    Baixe o vídeo de uma fonte em que você tenha direito de uso e envie o arquivo MP4 de até 1 GB. A nuvem é o modo recomendado e não depende do acesso do servidor ao YouTube.
                   </p>
                   <div className="grid sm:grid-cols-2 gap-2 pt-2">
                     <button
@@ -1018,8 +1021,8 @@ export default function Cuts() {
                       onClick={() => setProcessingMode("cloud")}
                       className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
                     >
-                      <span className="block text-sm font-medium">Na nuvem</span>
-                      <span className="block text-xs text-muted-foreground mt-1">Envia o MP4 completo e usa o worker do servidor.</span>
+                      <span className="block text-sm font-medium">Na nuvem · recomendado</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Envia o MP4 completo e usa o worker do servidor, sem depender do YouTube.</span>
                     </button>
                   </div>
                   {processingMode === "local_device" && videoFile && (
@@ -1183,8 +1186,8 @@ export default function Cuts() {
         <Card className="p-5 space-y-4">
           <h2 className="font-semibold text-lg">Como funciona</h2>
           <div className="space-y-3 text-sm text-muted-foreground">
-            <p><span className="text-foreground font-medium">1.</span> A IA encontra trechos com gancho, contexto e potencial.</p>
-            <p><span className="text-foreground font-medium">2.</span> Se o YouTube bloquear, envie o MP4 autorizado e o worker processa pelo arquivo.</p>
+            <p><span className="text-foreground font-medium">1.</span> Baixe o vídeo que você tem autorização para reutilizar e envie o MP4.</p>
+            <p><span className="text-foreground font-medium">2.</span> A IA encontra trechos com gancho, contexto e potencial sem depender da captura do YouTube.</p>
             <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
           </div>
           {brandProfile && (
@@ -1309,9 +1312,9 @@ export default function Cuts() {
                 {humanVideoCutError(job.error_message)}
                 {job.fallback_required && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <p className="text-muted-foreground">O MP4 autorizado evita o bloqueio do YouTube e mantém as configurações deste trabalho.</p>
+                    <p className="text-muted-foreground">Envie o MP4 autorizado para evitar o bloqueio do YouTube e manter as configurações deste trabalho.</p>
                     <Button size="sm" variant="outline" onClick={() => prepareUploadFallback(job)}>
-                      <Upload className="h-4 w-4 mr-1" /> Usar MP4 com estas configurações
+                      <Upload className="h-4 w-4 mr-1" /> Selecionar MP4 com estas configurações
                     </Button>
                   </div>
                 )}

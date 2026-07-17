@@ -39,7 +39,7 @@ describe("Cortes IA por Link 1A", () => {
 
   it("orienta fallback MP4 sem obrigar o cliente a reconfigurar o trabalho", () => {
     expect(cuts).toContain("prepareUploadFallback");
-    expect(cuts).toContain("Usar MP4 com estas configurações");
+    expect(cuts).toContain("Selecionar MP4 com estas configurações");
     expect(cuts).toContain("normalizeYoutubeUrl(youtubeUrl)");
   });
 

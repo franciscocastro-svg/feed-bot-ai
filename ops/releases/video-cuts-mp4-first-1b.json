@@ -1,0 +1,22 @@
+{
+  "phase": "video-cuts-mp4-first-1b",
+  "title": "Cortes IA MP4 Primeiro 1B",
+  "files": [
+    "src/pages/dashboard/Cuts.tsx",
+    "src/test/video-cuts-mp4-first-1b.test.ts",
+    "src/test/youtube-cut-capture-1a.test.ts",
+    "docs/CORTES-IA-MP4-FIRST-1B.md",
+    "ops/releases/video-cuts-mp4-first-1b.json"
+  ],
+  "tests": [
+    "npm run ci",
+    "npx vitest run src/test/video-cuts-mp4-first-1b.test.ts src/test/youtube-cut-capture-1a.test.ts src/test/video-cuts.test.ts"
+  ],
+  "deploy": {
+    "frontend": true,
+    "edge_functions": [],
+    "migrations": [],
+    "worker": false
+  },
+  "rollback": "Reverter os quatro arquivos desta fase e publicar novamente o frontend."
+}
