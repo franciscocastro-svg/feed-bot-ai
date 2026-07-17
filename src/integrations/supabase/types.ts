@@ -545,6 +545,7 @@ export type Database = {
           extra_notes: string | null
           forbidden_words: string[]
           id: string
+          instagram_account_id: string | null
           niche_detail: string | null
           signature_phrases: string[]
           target_audience: string | null
@@ -560,6 +561,7 @@ export type Database = {
           extra_notes?: string | null
           forbidden_words?: string[]
           id?: string
+          instagram_account_id?: string | null
           niche_detail?: string | null
           signature_phrases?: string[]
           target_audience?: string | null
@@ -575,6 +577,7 @@ export type Database = {
           extra_notes?: string | null
           forbidden_words?: string[]
           id?: string
+          instagram_account_id?: string | null
           niche_detail?: string | null
           signature_phrases?: string[]
           target_audience?: string | null
@@ -582,7 +585,15 @@ export type Database = {
           user_id?: string
           voice_tone?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "creator_profiles_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       data_deletion_requests: {
         Row: {
@@ -3846,6 +3857,10 @@ export type Database = {
         Args: { _account_id: string }
         Returns: Json
       }
+      get_creator_profile_for_account: {
+        Args: { _account_id?: string }
+        Returns: Json
+      }
       get_current_usage: {
         Args: { _user_id: string }
         Returns: {
@@ -4093,6 +4108,10 @@ export type Database = {
         }
         Returns: string
       }
+      reset_creator_profile_for_account: {
+        Args: { _account_id: string }
+        Returns: boolean
+      }
       restore_account_template_version: {
         Args: { _account_id: string; _version_id: string }
         Returns: Json
@@ -4112,6 +4131,10 @@ export type Database = {
           _template_id: string
         }
         Returns: Json
+      }
+      save_creator_profile_for_account: {
+        Args: { _account_id: string; _profile: Json }
+        Returns: string
       }
       set_account_template_default: {
         Args: { _account_id: string; _format: string; _template_id: string }
