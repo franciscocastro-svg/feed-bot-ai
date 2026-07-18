@@ -960,6 +960,8 @@ export type Database = {
       news_items: {
         Row: {
           caption: string | null
+          carousel_media_urls: string[] | null
+          carousel_slides: Json | null
           chosen_audio_track_id: string | null
           chosen_audio_url: string | null
           content_format: string | null
@@ -998,6 +1000,8 @@ export type Database = {
         }
         Insert: {
           caption?: string | null
+          carousel_media_urls?: string[] | null
+          carousel_slides?: Json | null
           chosen_audio_track_id?: string | null
           chosen_audio_url?: string | null
           content_format?: string | null
@@ -1036,6 +1040,8 @@ export type Database = {
         }
         Update: {
           caption?: string | null
+          carousel_media_urls?: string[] | null
+          carousel_slides?: Json | null
           chosen_audio_track_id?: string | null
           chosen_audio_url?: string | null
           content_format?: string | null
