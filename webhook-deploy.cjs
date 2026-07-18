@@ -201,12 +201,17 @@ function createWebhookServer(options = {}) {
   });
 }
 
-if (require.main === module) {
+function shouldStartWebhook(environment = process.env) {
+  return environment.DEPLOY_WEBHOOK_NO_LISTEN !== "1";
+}
+
+if (shouldStartWebhook()) {
   createWebhookServer();
 }
 
 module.exports = {
   classifyWebhook,
   createWebhookServer,
+  shouldStartWebhook,
   verifySignature,
 };
