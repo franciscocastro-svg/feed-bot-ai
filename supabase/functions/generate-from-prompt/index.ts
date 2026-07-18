@@ -7,6 +7,7 @@ import {
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
 } from "../_shared/creator-profile.ts";
+import { carouselPromptContract, normalizeTopicCarousel } from "../_shared/topic-carousel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +18,7 @@ const FORMAT_GUIDE: Record<string, string> = {
   dica: "DICA RÁPIDA: gancho curto + 3 a 5 dicas práticas numeradas + CTA.",
   mini_aula: "MINI-AULA: conceito explicado em linguagem simples, com exemplo prático e takeaway final.",
   pergunta: "ENGAJAMENTO: pergunta provocativa que faça o público comentar.",
-  carrossel: "CARROSSEL: divida em 5-7 slides. Use marcadores '— Slide N —'.",
+  carrossel: "CARROSSEL: crie 5-7 slides estruturados, com capa, desenvolvimento e CTA final.",
   frase: "FRASE/CITAÇÃO: frase curta impactante + 1-2 linhas de contexto.",
 };
 
@@ -69,6 +70,7 @@ Deno.serve(async (req) => {
 
     const profileBlock = creatorProfilePrompt(profile);
 
+    const carouselContract = format === "carrossel" ? `\n${carouselPromptContract()}` : "";
     const systemPrompt = `Você é o ghostwriter pessoal de um criador no Instagram. Nicho: "${niche}". Tom: ${tone}.
 Formato: ${format.toUpperCase()}. ${guide}
 ${profileBlock}
@@ -76,20 +78,24 @@ REGRAS:
 - Conteúdo PERENE, ensine algo concreto.
 - NÃO invente estatísticas.
 - Hashtags: 8-15, pt-BR.
-- Título até 80 chars.
+- Título até 80 chars.${carouselContract}
 
-Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"..."}`;
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"...","slides":[{"title":"...","body":"..."}]}`;
 
     const generated = await generateTopicJson({
       systemPrompt,
       userPrompt: `Tema: "${theme}"\nGere o post no formato ${format}.`,
     });
     const parsed = generated.content;
+    const slides = format === "carrossel"
+      ? normalizeTopicCarousel(parsed.slides, String(parsed.title || theme))
+      : null;
     assertCreatorProfileCompliance([
       String(parsed.title || ""),
       String(parsed.caption || ""),
       String(parsed.cover_text || ""),
       ...(Array.isArray(parsed.hashtags) ? parsed.hashtags : []),
+      ...(slides || []).flatMap((slide) => [slide.title, slide.body]),
     ], profile);
 
     const insertRow: any = {
@@ -103,7 +109,7 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
       original_image_url: null,
       published_at: new Date().toISOString(),
       niche: settings?.default_niche || null,
-      status: "pending",
+      status: format === "carrossel" ? "processed" : "pending",
       rewritten_title: String(parsed.title || theme).slice(0, 200),
       rewritten_summary: String(parsed.cover_text || parsed.title || theme).slice(0, 240),
       caption: String(parsed.caption || ""),
@@ -111,7 +117,9 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
       content_type: "topic",
       topic_id: null,
       content_format: format,
-      editorial_ready: true,
+      editorial_ready: format !== "carrossel",
+      carousel_slides: slides,
+      carousel_media_urls: null,
     };
     const { data: inserted, error: insErr } = await supabase.from("news_items").insert(insertRow).select("id").single();
     if (insErr) throw insErr;

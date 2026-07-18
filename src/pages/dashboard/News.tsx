@@ -27,6 +27,19 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ["all", "pending", "processed", "approved", "scheduled", "posted", "failed", "rejected"];
 type MediaType = "feed" | "reel" | "story";
 
+type CarouselSlide = {
+  title?: string;
+  body?: string;
+};
+
+type CarouselNewsItem = {
+  id: string;
+  content_format: "carrossel";
+  carousel_slides: CarouselSlide[];
+  carousel_media_urls?: string[] | null;
+  editorial_ready?: boolean;
+};
+
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 const NEWS_PAGE_SIZE = 150;
 const NEWS_LIST_COLUMNS = [
@@ -53,6 +66,8 @@ const NEWS_LIST_COLUMNS = [
   "editorial_ready",
   "content_type",
   "content_format",
+  "carousel_slides",
+  "carousel_media_urls",
 ].join(",");
 
 function friendlyDatabaseMessage(error: unknown) {
@@ -83,7 +98,18 @@ function friendlyProcessingMessage(value: unknown) {
 }
 
 function feedPreviewUrl(item: any) {
+  if (Array.isArray(item?.carousel_media_urls) && item.carousel_media_urls.length) return item.carousel_media_urls[0];
   return item?.generated_image_url || item?.generated_cover_url || "";
+}
+
+function isCarouselItem(item: unknown): item is CarouselNewsItem {
+  if (!item || typeof item !== "object") return false;
+  const candidate = item as { content_format?: unknown; carousel_slides?: unknown };
+  return candidate.content_format === "carrossel" && Array.isArray(candidate.carousel_slides);
+}
+
+function hasNewsPreview(item: unknown) {
+  return Boolean(feedPreviewUrl(item) || (isCarouselItem(item) && item.carousel_slides.length));
 }
 
 function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings: any, channelSettings: any) {
@@ -249,6 +275,10 @@ export default function News() {
     load();
   };
   const approve = async (item: any, mediaType: MediaType) => {
+    if (isCarouselItem(item) && mediaType !== "feed") {
+      toast.error("Carrosséis são publicados no Feed. Escolha Carrossel/Feed.");
+      return;
+    }
     // Respeita o IG vinculado à notícia (definido pela fonte/processamento).
     // Só cai no primeiro como último recurso (notícias antigas sem vínculo).
     const acc =
@@ -262,6 +292,17 @@ export default function News() {
     try {
       item.instagram_account_id = acc.id;
       await supabase.from("news_items").update({ instagram_account_id: acc.id }).eq("id", item.id);
+
+      if (isCarouselItem(item)) {
+        item.carousel_media_urls = null;
+        item.editorial_ready = false;
+        await supabase.from("news_items").update({
+          carousel_media_urls: null,
+          generated_image_url: null,
+          editorial_ready: false,
+          error_message: null,
+        } as never).eq("id", item.id);
+      }
 
       // Para Story OU Reel, compõe a arte editorial 9:16 (1080×1920) no navegador
       if (mediaType === "story" || mediaType === "reel") {
@@ -435,6 +476,11 @@ export default function News() {
                     <img src={feedPreviewUrl(n)} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center transition"><Eye className="h-5 w-5 text-white" /></div>
                   </button>
+                ) : isCarouselItem(n) ? (
+                  <button onClick={() => setPreviewing(n)} className="w-20 h-20 md:w-24 md:h-24 rounded-lg border border-primary/30 bg-primary/5 shrink-0 flex flex-col items-center justify-center text-center p-2">
+                    <FileText className="h-5 w-5 text-primary mb-1" />
+                    <span className="text-[10px]">{n.carousel_slides.length} slides</span>
+                  </button>
                 ) : n.original_image_url ? (
                   <img src={n.original_image_url} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover shrink-0 opacity-70" />
                 ) : (
@@ -467,18 +513,18 @@ export default function News() {
                     {n.error_message && <p className="basis-full text-xs text-muted-foreground">{n.error_message}</p>}
                     {n.status === "processed" && (
                       <>
-                        {feedPreviewUrl(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
-                        <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> Editar visual</Button>
+                        {hasNewsPreview(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
+                        {!isCarouselItem(n) && <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> Editar visual</Button>}
                         <Button size="sm" variant="outline" onClick={() => setEditing(n)}>Editar legenda</Button>
                         <Button size="sm" onClick={() => approve(n, "feed")} disabled={loading[n.id]}>
-                          {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}📷 Feed
+                          {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}{isCarouselItem(n) ? "📚 Carrossel" : "📷 Feed"}
                         </Button>
-                        <Button size="sm" onClick={() => approve(n, "reel")} disabled={loading[n.id]}>
+                        {!isCarouselItem(n) && <Button size="sm" onClick={() => approve(n, "reel")} disabled={loading[n.id]}>
                           {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}🎬 Reel
-                        </Button>
-                        <Button size="sm" onClick={() => approve(n, "story")} disabled={loading[n.id]}>
+                        </Button>}
+                        {!isCarouselItem(n) && <Button size="sm" onClick={() => approve(n, "story")} disabled={loading[n.id]}>
                           {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}⭐ Story
-                        </Button>
+                        </Button>}
                         <Button size="sm" variant="outline" onClick={() => setScheduleFor(n)}><Calendar className="h-3 w-3 mr-1" /> Horário custom</Button>
                       </>
                     )}
@@ -518,9 +564,28 @@ export default function News() {
       <Dialog open={!!previewing} onOpenChange={v => !v && setPreviewing(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Pré-visualização</DialogTitle><DialogDescription>Como o post vai aparecer no Instagram (1080×1080).</DialogDescription></DialogHeader>
-          {previewImageUrl && (
+          {previewing && (
             <div className="space-y-4">
-              <img src={previewImageUrl} alt="" className="w-full rounded-lg border" />
+              {Array.isArray(previewing.carousel_media_urls) && previewing.carousel_media_urls.length ? (
+                <div className="flex snap-x gap-3 overflow-x-auto pb-3">
+                  {previewing.carousel_media_urls.map((url: string, index: number) => (
+                    <figure key={url} className="min-w-[85%] snap-center space-y-1 sm:min-w-[60%]">
+                      <img src={url} alt={`Slide ${index + 1}`} className="w-full rounded-lg border" />
+                      <figcaption className="text-center text-xs text-muted-foreground">Slide {index + 1} de {previewing.carousel_media_urls.length}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : isCarouselItem(previewing) ? (
+                <div className="grid max-h-[60vh] gap-3 overflow-y-auto sm:grid-cols-2">
+                  {previewing.carousel_slides.map((slide: CarouselSlide, index: number) => (
+                    <article key={`${previewing.id}-${index}`} className="rounded-lg border bg-muted/20 p-4">
+                      <p className="mb-2 text-xs font-medium text-primary">Slide {index + 1} de {previewing.carousel_slides.length}</p>
+                      <h3 className="font-display text-lg font-bold">{slide.title}</h3>
+                      {slide.body && <p className="mt-2 text-sm text-muted-foreground">{slide.body}</p>}
+                    </article>
+                  ))}
+                </div>
+              ) : previewImageUrl ? <img src={previewImageUrl} alt="" className="w-full rounded-lg border" /> : null}
               {previewing.caption && (
                 <div className="text-sm whitespace-pre-wrap p-4 rounded-lg bg-muted/30 border">
                   <p className="font-medium text-xs text-muted-foreground mb-2">Legenda:</p>
@@ -717,6 +782,10 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   const [storyAsVideo, setStoryAsVideo] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (item?.content_format === "carrossel") setMediaType("feed");
+  }, [item?.id, item?.content_format]);
+
   const ensureStoryVideo = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Sessão expirada");
@@ -733,6 +802,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
 
   const submit = async () => {
     if (!item || !when) return toast.error("Defina a data");
+    if (isCarouselItem(item) && mediaType !== "feed") return toast.error("Carrosséis só podem ser agendados no Feed.");
     setBusy(true);
     try {
       if (mediaType === "reel" && item.content_type !== "video_cut") {
@@ -743,6 +813,14 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
           .eq("id", item.id);
       }
       if (mediaType === "story" && storyAsVideo) await ensureStoryVideo();
+      if (isCarouselItem(item)) {
+        await supabase.from("news_items").update({
+          carousel_media_urls: null,
+          generated_image_url: null,
+          editorial_ready: false,
+          error_message: null,
+        } as never).eq("id", item.id);
+      }
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from("scheduled_posts").insert({
         user_id: user!.id,
@@ -774,15 +852,16 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "feed" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
                 📷 Feed<div className="text-xs text-muted-foreground font-normal">Imagem 1:1</div>
               </button>
-              <button type="button" onClick={() => setMediaType("reel")}
+              <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("reel")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "reel" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
                 🎬 Reel<div className="text-xs text-muted-foreground font-normal">Vídeo dinâmico 9:16, 20s</div>
               </button>
-              <button type="button" onClick={() => setMediaType("story")}
+              <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("story")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "story" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
                 ⭐ Story<div className="text-xs text-muted-foreground font-normal">9:16, 24h</div>
               </button>
             </div>
+            {isCarouselItem(item) && <p className="mt-2 text-xs text-muted-foreground">Este conteúdo será publicado como carrossel nativo de {item.carousel_slides.length} slides no Feed.</p>}
             {mediaType === "reel" && <p className="text-xs text-muted-foreground mt-2">O vídeo é gerado em 1080×1920 com movimento contínuo durante 20 segundos. Cortes IA preservam sua duração original.</p>}
             {mediaType === "story" && (
               <div className="mt-2 space-y-2">

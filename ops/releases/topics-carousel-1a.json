@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "release": "topics-carousel-1a",
+  "affectedFunctions": [
+    "generate-from-topic",
+    "generate-from-prompt",
+    "autopilot",
+    "publish-scheduler"
+  ],
+  "migrations": [
+    "20260717153000_topics_carousel_1a.sql"
+  ],
+  "frontendPublish": true,
+  "workerVps": ["feedbot-media"],
+  "validation": [
+    "npm run ci",
+    "node scripts/check-secrets.mjs",
+    "npm audit --omit=dev --audit-level=moderate",
+    "deno check generate-from-topic/index.ts",
+    "deno check generate-from-prompt/index.ts",
+    "deno check autopilot/index.ts",
+    "deno check publish-scheduler/index.ts",
+    "node --check worker/index.js",
+    "vitest src/test/topics-carousel-1a.test.ts"
+  ],
+  "constraints": {
+    "manualFunctionInvocation": false,
+    "generateRealCarouselDuringRelease": false,
+    "publishRealCarouselDuringRelease": false,
+    "paymentsStripeMetaCronSecrets": false,
+    "typesLockfilesMcp": false
+  }
+}

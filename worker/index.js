@@ -446,14 +446,16 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   }
 
   if (cfg.showPhoto) {
-    if (!item.original_image_url) {
-      throw new Error("Template exige foto, mas a notícia não possui imagem; renderização será tentada novamente.");
+    if (!(opts.allowMissingPhoto && !item.original_image_url)) {
+      if (!item.original_image_url) {
+        throw new Error("Template exige foto, mas a notícia não possui imagem; renderização será tentada novamente.");
+      }
+      const photoImg = requireWorkerImage(
+        await loadImageHelper(item.original_image_url, { output: "jpg", assetLabel: "foto da notícia" }),
+        "Foto da notícia indisponível; renderização será tentada novamente.",
+      );
+      drawProtectedImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
     }
-    const photoImg = requireWorkerImage(
-      await loadImageHelper(item.original_image_url, { output: "jpg", assetLabel: "foto da notícia" }),
-      "Foto da notícia indisponível; renderização será tentada novamente.",
-    );
-    drawProtectedImage(ctx, photoImg, cfg.photoX, cfg.photoY, cfg.photoW, cfg.photoH);
   }
 
   if (cfg.overlayOpacity > 0) {
@@ -507,7 +509,7 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
 }
 
 // 1. Renderiza e faz upload do Post (1080x1080)
-async function composeAndUploadPostNode(item, settings) {
+async function composeAndUploadPostNode(item, settings, opts = {}) {
   const SIZE = 1080;
   const { createCanvas } = await getCanvasRuntime();
   const template = await loadTemplateForFormat(item.user_id, item.instagram_account_id, settings, "feed");
@@ -519,16 +521,18 @@ async function composeAndUploadPostNode(item, settings) {
   const ctx = canvas.getContext("2d");
 
   if (template) {
-    await drawConfiguredTemplate(ctx, item, settings, template, SIZE, SIZE);
+    await drawConfiguredTemplate(ctx, item, settings, template, SIZE, SIZE, opts);
     const buffer = await encodeCanvas(canvas, "png");
-    const pathStorage = `${item.user_id}/${item.id}.png`;
+    const pathStorage = `${item.user_id}/${item.id}${opts.storageSuffix || ""}.png`;
     await uploadPostAsset(pathStorage, buffer, {
       contentType: "image/png",
       upsert: true,
     });
     const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
     const url = `${pub.publicUrl}?t=${Date.now()}`;
-    await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+    if (opts.updateNewsItem !== false) {
+      await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+    }
     return url;
   }
 
@@ -614,7 +618,7 @@ async function composeAndUploadPostNode(item, settings) {
   ctx.textAlign = "left";
 
   const buffer = await encodeCanvas(canvas, "png");
-  const pathStorage = `${item.user_id}/${item.id}.png`;
+  const pathStorage = `${item.user_id}/${item.id}${opts.storageSuffix || ""}.png`;
 
   await uploadPostAsset(pathStorage, buffer, {
     contentType: "image/png",
@@ -624,8 +628,53 @@ async function composeAndUploadPostNode(item, settings) {
   const { data: pub } = supabase.storage.from("post-images").getPublicUrl(pathStorage);
   const url = `${pub.publicUrl}?t=${Date.now()}`;
 
-  await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+  if (opts.updateNewsItem !== false) {
+    await supabase.from("news_items").update({ generated_image_url: url }).eq("id", item.id);
+  }
   return url;
+}
+
+function normalizeCarouselSlidesForWorker(value) {
+  if (!Array.isArray(value) || value.length < 5 || value.length > 7) {
+    throw new Error("Carrossel sem contrato válido de 5 a 7 slides.");
+  }
+  return value.map((slide, index) => {
+    const title = String(slide?.title || "").trim();
+    const body = String(slide?.body || "").trim();
+    if (!title || (index > 0 && !body)) {
+      throw new Error(`Slide ${index + 1} do carrossel está incompleto.`);
+    }
+    return { title, body, position: index + 1 };
+  });
+}
+
+async function composeAndUploadCarouselNode(item, settings) {
+  const slides = normalizeCarouselSlidesForWorker(item.carousel_slides);
+  const urls = [];
+  for (const slide of slides) {
+    const slideItem = {
+      ...item,
+      rewritten_title: slide.title,
+      rewritten_summary: slide.body,
+    };
+    const url = await composeAndUploadPostNode(slideItem, settings, {
+      storageSuffix: `-carousel-${slide.position}`,
+      updateNewsItem: false,
+      allowMissingPhoto: true,
+    });
+    urls.push(url);
+  }
+  if (urls.length !== slides.length) {
+    throw new Error("O worker não concluiu todas as imagens do carrossel.");
+  }
+  const { error } = await supabase.from("news_items").update({
+    carousel_media_urls: urls,
+    generated_image_url: urls[0],
+    editorial_ready: true,
+    error_message: null,
+  }).eq("id", item.id);
+  if (error) throw detailedServiceError("Falha ao finalizar carrossel", error);
+  return urls;
 }
 
 // 2. Renderiza e faz upload do Story Cover (1080x1920)
@@ -2793,9 +2842,14 @@ async function processPost(post) {
   try {
     const settings = await loadEffectivePostSettings(post);
     if (post.media_type === "feed") {
-      const url = await composeAndUploadPostNode(news, settings);
-      await supabase.from("news_items").update({ editorial_ready: true }).eq("id", news.id);
-      console.log(`[OK] Post no Feed processado: ${url}`);
+      if (news.content_format === "carrossel") {
+        const urls = await composeAndUploadCarouselNode(news, settings);
+        console.log(`[OK] Carrossel processado: ${urls.length} slides`);
+      } else {
+        const url = await composeAndUploadPostNode(news, settings);
+        await supabase.from("news_items").update({ editorial_ready: true }).eq("id", news.id);
+        console.log(`[OK] Post no Feed processado: ${url}`);
+      }
     } else if (post.media_type === "story") {
       const url = await composeAndUploadStoryNode(news, settings);
       await supabase.from("news_items").update({ editorial_ready: true }).eq("id", news.id);

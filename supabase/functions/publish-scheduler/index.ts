@@ -512,6 +512,16 @@ function graphHost(accessToken: string) {
   return /^IG/i.test(accessToken.trim()) ? "https://graph.instagram.com" : "https://graph.facebook.com";
 }
 
+function cleanMetaMediaUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.search = "";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 async function publishContainer(igUserId: string, creationId: string, accessToken: string, usageCtx?: UsageCtx) {
   // Retry quando a Meta ainda diz "Media ID is not available" (9007) — container acabou de ficar pronto
   let lastErr: any = null;
@@ -548,10 +558,7 @@ async function publishToInstagram(
   // Limpa query strings (?t=cache-buster, etc) — a Meta às vezes recusa essas
   // URLs e devolve "Application request limit reached (4/2207051)" — mensagem
   // enganosa. Como o Storage do Supabase ignora a query, removê-la é seguro.
-  const cleanUrl = (u: string) => {
-    try { const x = new URL(u); x.search = ""; return x.toString(); } catch { return u; }
-  };
-  const finalMediaUrl = cleanUrl(mediaUrl);
+  const finalMediaUrl = cleanMetaMediaUrl(mediaUrl);
 
   // 1. create container
   const createBody: Record<string, unknown> = { access_token: accessToken };
@@ -586,6 +593,51 @@ async function publishToInstagram(
   }
 
   return await publishContainer(igUserId, creationId, accessToken, usageCtx);
+}
+
+async function publishCarouselToInstagram(
+  igUserId: string,
+  accessToken: string,
+  mediaUrls: string[],
+  caption: string,
+  usageCtx?: UsageCtx,
+) {
+  if (mediaUrls.length < 2 || mediaUrls.length > 10) {
+    throw new Error("Carrossel precisa ter entre 2 e 10 imagens prontas.");
+  }
+  const graph = graphHost(accessToken);
+  const children: string[] = [];
+  for (const mediaUrl of mediaUrls) {
+    const childRes = await fetch(`${graph}/${GRAPH_VERSION}/${igUserId}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url: cleanMetaMediaUrl(mediaUrl),
+        is_carousel_item: true,
+        access_token: accessToken,
+      }),
+    });
+    if (usageCtx) await persistMetaUsage(usageCtx.supabase, usageCtx.userId, usageCtx.accountId, usageCtx.igUserId, childRes);
+    const childData = await childRes.json();
+    if (!childRes.ok) throw new Error(getInstagramErrorMessage("Erro ao criar slide do carrossel", childData));
+    children.push(childData.id);
+  }
+
+  const parentRes = await fetch(`${graph}/${GRAPH_VERSION}/${igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "CAROUSEL",
+      children,
+      caption,
+      access_token: accessToken,
+    }),
+  });
+  if (usageCtx) await persistMetaUsage(usageCtx.supabase, usageCtx.userId, usageCtx.accountId, usageCtx.igUserId, parentRes);
+  const parentData = await parentRes.json();
+  if (!parentRes.ok) throw new Error(getInstagramErrorMessage("Erro ao criar carrossel no Instagram", parentData));
+  await waitForContainer(parentData.id, accessToken, 20, usageCtx);
+  return publishContainer(igUserId, parentData.id, accessToken, usageCtx);
 }
 
 Deno.serve(async (req) => {
@@ -1283,6 +1335,11 @@ Deno.serve(async (req) => {
 
         const mediaType: "feed" | "reel" | "story" =
           p.media_type === "reel" ? "reel" : p.media_type === "story" ? "story" : "feed";
+        const isCarouselContent = mediaType === "feed" && news?.content_format === "carrossel";
+        const carouselUrls = isCarouselContent && Array.isArray(news?.carousel_media_urls)
+          ? news.carousel_media_urls.filter((value: unknown): value is string => typeof value === "string" && /^https?:\/\//i.test(value))
+          : [];
+        const isCarousel = carouselUrls.length >= 5 && carouselUrls.length <= 7;
         let isVideo = mediaType === "reel";
         let mediaUrl: string | null | undefined;
         const waitedMs = Date.now() - new Date(p.created_at).getTime();
@@ -1300,7 +1357,7 @@ Deno.serve(async (req) => {
           if (news?.generated_video_url) { mediaUrl = news.generated_video_url; isVideo = true; }
           else { mediaUrl = news?.generated_cover_url || news?.generated_image_url; isVideo = false; }
         } else {
-          mediaUrl = news?.generated_image_url || news?.generated_cover_url;
+          mediaUrl = isCarouselContent ? (isCarousel ? carouselUrls[0] : null) : news?.generated_image_url || news?.generated_cover_url;
         }
         // Feed nunca publica foto crua: precisa da arte/template pronta.
         // Stories podem usar fallback depois da janela; Reels precisam do MP4 final.
@@ -1358,10 +1415,12 @@ Deno.serve(async (req) => {
           });
         }
         const usageCtx = { supabase, userId: userId!, accountId: acc.id, igUserId: acc.ig_user_id };
-        const mediaId = await publishToInstagram(acc.ig_user_id, acc.access_token, mediaUrl, captionToUse, mediaType, isVideo, usageCtx);
+        const mediaId = isCarousel
+          ? await publishCarouselToInstagram(acc.ig_user_id, acc.access_token, carouselUrls, captionToUse, usageCtx)
+          : await publishToInstagram(acc.ig_user_id, acc.access_token, mediaUrl, captionToUse, mediaType, isVideo, usageCtx);
         await supabase.from("scheduled_posts").update({ status: "posted", posted_at: new Date().toISOString(), ig_media_id: mediaId, error_message: null }).eq("id", p.id);
         await supabase.from("news_items").update({ status: "posted" }).eq("id", news.id);
-        await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_instagram", entity_type: "scheduled_post", entity_id: p.id, details: { media_id: mediaId, caption_length: captionToUse.length } });
+        await supabase.from("activity_logs").insert({ user_id: userId, action: "publish_instagram", entity_type: "scheduled_post", entity_id: p.id, details: { media_id: mediaId, caption_length: captionToUse.length, media_type: isCarousel ? "carousel" : mediaType, slide_count: isCarousel ? carouselUrls.length : 1 } });
         processed++;
       } catch (e) {
         const rawMsg = e instanceof Error ? e.message : "unknown";

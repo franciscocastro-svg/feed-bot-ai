@@ -676,7 +676,7 @@ Deno.serve(async (req) => {
         // 3) agendar processadas que ainda não estão agendadas — usando channel_settings
         const { data: ready } = await supabase
           .from("news_items")
-          .select("id, rewritten_title, rewritten_summary, original_title, original_content, original_image_url, generated_image_url, generated_cover_url, generated_video_url, original_url, original_canonical_url, published_at, instagram_account_id")
+          .select("id, rewritten_title, rewritten_summary, original_title, original_content, original_image_url, generated_image_url, generated_cover_url, generated_video_url, original_url, original_canonical_url, published_at, instagram_account_id, content_format, carousel_slides, carousel_media_urls, editorial_ready")
           .eq("user_id", userId)
           .eq("status", "processed");
         const readyRankingNowMs = Date.now();
@@ -815,7 +815,9 @@ Deno.serve(async (req) => {
             }
             if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
             const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
-            const cfg = pickChannel(text, channels);
+            const cfg = it.content_format === "carrossel"
+              ? channels.find((channel) => channel.channel === "feed" && channel.active) || null
+              : pickChannel(text, channels);
             if (!cfg) continue;
             const slot = nextSlotForChannel(cfg, takenByCh[cfg.channel], allTaken, masterMinInterval);
             if (!slot) continue;

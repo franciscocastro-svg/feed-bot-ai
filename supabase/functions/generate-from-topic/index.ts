@@ -7,6 +7,7 @@ import {
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
 } from "../_shared/creator-profile.ts";
+import { carouselPromptContract, normalizeTopicCarousel } from "../_shared/topic-carousel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +18,7 @@ const FORMAT_GUIDE: Record<string, string> = {
   dica: "DICA RÁPIDA: gancho curto + 3 a 5 dicas práticas numeradas + CTA. Tom direto, útil.",
   mini_aula: "MINI-AULA: conceito explicado em linguagem simples, com exemplo prático e takeaway final.",
   pergunta: "ENGAJAMENTO: pergunta provocativa que faça o público comentar. Comece com a pergunta forte, contexto curto, peça opinião.",
-  carrossel: "CARROSSEL: divida o conteúdo em 5-7 slides (slide 1 gancho, slides 2-6 desenvolvimento, slide final CTA). Use marcadores '— Slide N —'.",
+  carrossel: "CARROSSEL: crie 5-7 slides estruturados (capa, desenvolvimento e CTA final).",
   frase: "FRASE/CITAÇÃO: uma frase curta e impactante sobre o tema + 1-2 linhas explicando o porquê.",
   bastidor: "BASTIDOR: mostre processo, decisão, erro ou aprendizado real. Crie proximidade sem perder a utilidade.",
   lista: "LISTA: gancho objetivo + itens claros, escaneáveis e acionáveis + conclusão curta.",
@@ -45,6 +46,7 @@ PLANEJAMENTO DESTA PAUTA:
 
   const profileBlock = creatorProfilePrompt(profile);
 
+  const carouselContract = format === "carrossel" ? `\n${carouselPromptContract()}` : "";
   const systemPrompt = `Você é o ghostwriter pessoal de um criador de conteúdo de Instagram, nicho "${niche}". Tom de voz base: ${tone}.
 Você produz conteúdo PERENE (não notícia) baseado em uma pauta dada.
 Formato solicitado: ${format.toUpperCase()}.
@@ -56,25 +58,30 @@ REGRAS:
 - Escreva COMO O CRIADOR escreveria, não como uma IA genérica.
 - NÃO invente dados estatísticos. Use conhecimento amplamente aceito.
 - Hashtags: 8-15, mix de nicho e amplas, em pt-BR.
-- Título curto (até 80 chars) para usar em capa.
+- Título curto (até 80 chars) para usar em capa.${carouselContract}
 
-Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa"}`;
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa","slides":[{"title":"...","body":"..."}]}`;
 
   const userPrompt = `Pauta: "${topic.title}"\nGere o conteúdo no formato ${format}.`;
 
   const generated = await generateTopicJson({ systemPrompt, userPrompt });
   const parsed = generated.content;
+  const slides = format === "carrossel"
+    ? normalizeTopicCarousel(parsed.slides, parsed.title || topic.title, topic.call_to_action)
+    : null;
   assertCreatorProfileCompliance([
     String(parsed.title || ""),
     String(parsed.caption || ""),
     String(parsed.cover_text || ""),
     ...(Array.isArray(parsed.hashtags) ? parsed.hashtags : []),
+    ...(slides || []).flatMap((slide) => [slide.title, slide.body]),
   ], profile);
   return {
     title: String(parsed.title || topic.title).slice(0, 200),
     caption: String(parsed.caption || ""),
     hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 20) : [],
     cover_text: String(parsed.cover_text || parsed.title || topic.title).slice(0, 120),
+    slides,
     ai_provider: generated.provider,
     ai_model: generated.model,
   };
@@ -173,7 +180,7 @@ Deno.serve(async (req) => {
       original_image_url: null,
       published_at: new Date().toISOString(),
       niche: settings?.default_niche || null,
-      status: "pending",
+      status: format === "carrossel" ? "processed" : "pending",
       rewritten_title: generated.title,
       rewritten_summary: generated.cover_text,
       caption: generated.caption,
@@ -181,7 +188,9 @@ Deno.serve(async (req) => {
       content_type: "topic",
       topic_id: topic.id,
       content_format: format,
-      editorial_ready: true,
+      editorial_ready: format !== "carrossel",
+      carousel_slides: generated.slides,
+      carousel_media_urls: null,
     };
     const { data: inserted, error: insErr } = await supabase.from("news_items").insert(insertRow).select("id").single();
     if (insErr) throw insErr;
