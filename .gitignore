@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.deploy-state/
+.deploy-trash/
 
 # Editor directories and files
 .vscode/*

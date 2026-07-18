@@ -1,13 +1,18 @@
-const crypto = require("crypto");
-const { execFile } = require("child_process");
-const fs = require("fs");
-const http = require("http");
-const path = require("path");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const http = require("node:http");
+const path = require("node:path");
 
-const PORT = Number(process.env.WEBHOOK_PORT || 9000);
-const APP_DIR = process.env.APP_DIR || __dirname;
-const DEPLOY_SCRIPT = process.env.DEPLOY_SCRIPT || path.join(APP_DIR, "scripts", "deploy-vps.sh");
-const DEPLOY_BRANCH = process.env.DEPLOY_BRANCH || "main";
+const {
+  approveWorkflowRun,
+  ensureRunner,
+  getQueueStatus,
+  rejectWorkflowRun,
+  registerPush,
+} = require("./scripts/deploy-queue.cjs");
+
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const MAX_BODY_BYTES = Number(process.env.WEBHOOK_MAX_BODY_BYTES || 1024 * 1024);
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -23,23 +28,16 @@ function loadEnvFile(filePath) {
   }
 }
 
-loadEnvFile(path.join(APP_DIR, ".env"));
-
-const SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
-
-let deploying = false;
-
 function send(res, status, payload) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(payload));
 }
 
-function verifySignature(rawBody, signature) {
-  if (!SECRET) return false;
-  if (!signature?.startsWith("sha256=")) return false;
+function verifySignature(rawBody, signature, secret) {
+  if (!secret || !signature?.startsWith("sha256=")) return false;
 
   const expected = `sha256=${crypto
-    .createHmac("sha256", SECRET)
+    .createHmac("sha256", secret)
     .update(rawBody)
     .digest("hex")}`;
 
@@ -49,77 +47,166 @@ function verifySignature(rawBody, signature) {
     && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
-function runDeploy() {
-  deploying = true;
-  console.log(`[deploy] Starting ${DEPLOY_SCRIPT}`);
+function classifyWebhook(eventName, payload, branch, workflowName) {
+  if (eventName === "push") {
+    if (payload.ref !== `refs/heads/${branch}`) {
+      return { kind: "ignored", reason: "different_branch", ref: payload.ref };
+    }
 
-  const child = execFile(
-    "bash",
-    [DEPLOY_SCRIPT],
-    {
-      cwd: APP_DIR,
-      env: {
-        ...process.env,
-        APP_DIR,
-        DEPLOY_BRANCH,
-      },
-      maxBuffer: 1024 * 1024 * 20,
-    },
-    (error, stdout, stderr) => {
-      if (stdout) console.log(stdout.trim());
-      if (stderr) console.error(stderr.trim());
-      if (error) {
-        console.error(`[deploy] Failed: ${error.message}`);
-      } else {
-        console.log("[deploy] Finished successfully");
-      }
-      deploying = false;
-    },
-  );
+    const sha = String(payload.after || "").toLowerCase();
+    if (!SHA_PATTERN.test(sha)) {
+      return { kind: "invalid", reason: "invalid_push_sha" };
+    }
 
-  child.stdout?.on("data", (chunk) => process.stdout.write(chunk));
-  child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+    return { kind: "push", sha };
+  }
+
+  if (eventName === "workflow_run") {
+    const run = payload.workflow_run || {};
+    if (payload.action !== "completed" || run.status !== "completed") {
+      return { kind: "ignored", reason: "workflow_not_completed" };
+    }
+    if (run.name !== workflowName) {
+      return { kind: "ignored", reason: "different_workflow", workflow: run.name };
+    }
+    if (run.event !== "push" || run.head_branch !== branch) {
+      return { kind: "ignored", reason: "workflow_not_main_push" };
+    }
+    const sha = String(run.head_sha || "").toLowerCase();
+    if (!SHA_PATTERN.test(sha)) {
+      return { kind: "invalid", reason: "invalid_workflow_sha" };
+    }
+
+    if (run.conclusion !== "success") {
+      return {
+        kind: "ci_rejected",
+        reason: "ci_not_successful",
+        conclusion: run.conclusion,
+        sha,
+        runId: run.id,
+      };
+    }
+
+    return { kind: "ci_success", sha, runId: run.id };
+  }
+
+  return { kind: "ignored", reason: "unsupported_event", event: eventName };
 }
 
-const server = http.createServer((req, res) => {
-  if (req.method === "GET" && req.url === "/deploy-health") {
-    return send(res, 200, { ok: true, service: "feedbot-deploy-webhook" });
-  }
+function createWebhookServer(options = {}) {
+  const appDir = options.appDir || process.env.APP_DIR || __dirname;
+  loadEnvFile(path.join(appDir, ".env"));
 
-  if (req.method !== "POST" || req.url !== "/deploy") {
-    return send(res, 404, { error: "not_found" });
-  }
+  const port = Number(options.port || process.env.WEBHOOK_PORT || 9000);
+  const branch = options.branch || process.env.DEPLOY_BRANCH || "main";
+  const workflowName = options.workflowName || process.env.DEPLOY_WORKFLOW || "CI";
+  const secret = options.secret || process.env.GITHUB_WEBHOOK_SECRET || "";
+  const stateDir = options.stateDir || process.env.DEPLOY_STATE_DIR || path.join(appDir, ".deploy-state");
+  const queueScript = options.queueScript || path.join(appDir, "scripts", "deploy-queue.cjs");
 
-  const chunks = [];
-  req.on("data", (chunk) => chunks.push(chunk));
-  req.on("end", () => {
-    const rawBody = Buffer.concat(chunks);
-    const signature = req.headers["x-hub-signature-256"];
-
-    if (!verifySignature(rawBody, signature)) {
-      return send(res, 401, { error: "invalid_signature" });
+  return http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/deploy-health") {
+      try {
+        return send(res, 200, {
+          ok: true,
+          service: "feedbot-deploy-webhook",
+          ...getQueueStatus(stateDir),
+        });
+      } catch (error) {
+        console.error(`[deploy] Health state failed: ${error.message}`);
+        return send(res, 503, { ok: false, error: "deploy_state_unavailable" });
+      }
     }
 
-    let payload;
-    try {
-      payload = JSON.parse(rawBody.toString("utf8"));
-    } catch {
-      return send(res, 400, { error: "invalid_json" });
+    if (req.method !== "POST" || req.url !== "/deploy") {
+      return send(res, 404, { error: "not_found" });
     }
 
-    if (payload.ref !== `refs/heads/${DEPLOY_BRANCH}`) {
-      return send(res, 202, { ok: true, ignored: true, ref: payload.ref });
-    }
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
 
-    if (deploying) {
-      return send(res, 202, { ok: true, queued: false, reason: "deploy_in_progress" });
-    }
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
 
-    runDeploy();
-    return send(res, 202, { ok: true, deploying: true });
+    req.on("error", (error) => {
+      console.error(`[deploy] Request failed: ${error.message}`);
+      if (!res.headersSent) send(res, 400, { error: "request_failed" });
+    });
+
+    req.on("end", () => {
+      if (tooLarge) return send(res, 413, { error: "payload_too_large" });
+
+      const rawBody = Buffer.concat(chunks);
+      const signature = req.headers["x-hub-signature-256"];
+      if (!verifySignature(rawBody, signature, secret)) {
+        return send(res, 401, { error: "invalid_signature" });
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(rawBody.toString("utf8"));
+      } catch {
+        return send(res, 400, { error: "invalid_json" });
+      }
+
+      const eventName = String(req.headers["x-github-event"] || "");
+      const event = classifyWebhook(eventName, payload, branch, workflowName);
+
+      if (event.kind === "invalid") {
+        return send(res, 400, { error: event.reason });
+      }
+
+      if (event.kind === "ignored") {
+        return send(res, 202, { ok: true, ignored: true, ...event });
+      }
+
+      try {
+        if (event.kind === "push") {
+          const result = registerPush(stateDir, event.sha, {
+            deliveryId: req.headers["x-github-delivery"] || null,
+          });
+          return send(res, 202, { ok: true, status: "awaiting_ci", ...result });
+        }
+
+        const metadata = {
+          runId: event.runId,
+          deliveryId: req.headers["x-github-delivery"] || null,
+        };
+        const result = event.kind === "ci_success"
+          ? approveWorkflowRun(stateDir, event.sha, metadata)
+          : rejectWorkflowRun(stateDir, event.sha, {
+            ...metadata,
+            conclusion: event.conclusion,
+          });
+
+        if (result.runnerRequired) {
+          ensureRunner({ appDir, stateDir, queueScript });
+        }
+
+        return send(res, 202, { ok: true, ...result });
+      } catch (error) {
+        console.error(`[deploy] Queue operation failed: ${error.stack || error.message}`);
+        return send(res, 500, { error: "queue_operation_failed" });
+      }
+    });
+  }).listen(port, "127.0.0.1", () => {
+    console.log(`[deploy] Webhook listening on 127.0.0.1:${port}`);
   });
-});
+}
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[deploy] Webhook listening on 127.0.0.1:${PORT}`);
-});
+if (require.main === module) {
+  createWebhookServer();
+}
+
+module.exports = {
+  classifyWebhook,
+  createWebhookServer,
+  verifySignature,
+};
