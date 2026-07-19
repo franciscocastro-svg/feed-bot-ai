@@ -970,7 +970,6 @@ export type Database = {
           dedupe_title_key: string | null
           dedupe_url_key: string | null
           editorial_ready: boolean
-          editorial_reel_duration_seconds: number | null
           error_message: string | null
           generated_cover_url: string | null
           generated_image_url: string | null
@@ -1011,7 +1010,6 @@ export type Database = {
           dedupe_title_key?: string | null
           dedupe_url_key?: string | null
           editorial_ready?: boolean
-          editorial_reel_duration_seconds?: number | null
           error_message?: string | null
           generated_cover_url?: string | null
           generated_image_url?: string | null
@@ -1052,7 +1050,6 @@ export type Database = {
           dedupe_title_key?: string | null
           dedupe_url_key?: string | null
           editorial_ready?: boolean
-          editorial_reel_duration_seconds?: number | null
           error_message?: string | null
           generated_cover_url?: string | null
           generated_image_url?: string | null
@@ -2109,7 +2106,6 @@ export type Database = {
           default_reel_template_id: string | null
           default_story_template_id: string | null
           default_template_id: string | null
-          editorial_reel_duration_seconds: number
           max_posts_per_day: number
           meta_usage_pause_threshold: number
           min_post_interval_minutes: number
@@ -2135,7 +2131,6 @@ export type Database = {
           default_reel_template_id?: string | null
           default_story_template_id?: string | null
           default_template_id?: string | null
-          editorial_reel_duration_seconds?: number
           max_posts_per_day?: number
           meta_usage_pause_threshold?: number
           min_post_interval_minutes?: number
@@ -2161,7 +2156,6 @@ export type Database = {
           default_reel_template_id?: string | null
           default_story_template_id?: string | null
           default_template_id?: string | null
-          editorial_reel_duration_seconds?: number
           max_posts_per_day?: number
           meta_usage_pause_threshold?: number
           min_post_interval_minutes?: number
