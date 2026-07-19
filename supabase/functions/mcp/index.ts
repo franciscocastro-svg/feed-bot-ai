@@ -118,14 +118,15 @@ var list_scheduled_posts_default = defineTool3({
 });
 
 // src/lib/mcp/index.ts
-var projectRef = "gewnaxrhiyylfizgbqdi";
+var MCP_SUPABASE_PROJECT_REF = "gewnaxrhiyylfizgbqdi";
+var MCP_OAUTH_ISSUER = `https://${MCP_SUPABASE_PROJECT_REF}.supabase.co/auth/v1`;
 var mcp_default = defineMcp({
   name: "fluxifeed-mcp",
   title: "FluxiFeed MCP",
   version: "0.1.0",
   instructions: "Ferramentas do FluxiFeed. Use list_topics para ver pautas do criador autenticado, create_topic para cadastrar uma nova pauta e list_scheduled_posts para consultar publica\xE7\xF5es agendadas no Instagram.",
   auth: auth.oauth.issuer({
-    issuer: `https://${projectRef}.supabase.co/auth/v1`,
+    issuer: MCP_OAUTH_ISSUER,
     acceptedAudiences: "authenticated"
   }),
   tools: [list_topics_default, create_topic_default, list_scheduled_posts_default]
