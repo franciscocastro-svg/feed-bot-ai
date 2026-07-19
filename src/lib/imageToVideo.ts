@@ -1,3 +1,14 @@
+import {
+  DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
+} from "@/lib/editorialReelDuration";
+
+export {
+  DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
+  EDITORIAL_REEL_DURATION_OPTIONS,
+  editorialReelFrameCount,
+  normalizeEditorialReelDuration,
+} from "@/lib/editorialReelDuration";
+
 /**
  * Gera um MP4/WebM 1080x1920 de N segundos a partir de uma imagem usando
  * Canvas + MediaRecorder. Não depende de ffmpeg.wasm (que exige
@@ -5,7 +16,7 @@
  *
  * Se audioUrl for fornecido, mixa a trilha sonora (cortada/loop até durationSeconds).
  */
-export const STANDARD_NEWS_REEL_DURATION_SECONDS = 20;
+export const STANDARD_NEWS_REEL_DURATION_SECONDS = DEFAULT_EDITORIAL_REEL_DURATION_SECONDS;
 
 export type ReelMotionFrame = {
   zoom: number;

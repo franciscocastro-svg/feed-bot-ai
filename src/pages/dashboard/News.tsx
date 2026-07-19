@@ -12,6 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { PostCanvasEditor } from "@/components/PostCanvasEditor";
 import { statusLabelPt } from "@/lib/statusLabels";
+import {
+  DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
+  normalizeEditorialReelDuration,
+} from "@/lib/editorialReelDuration";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-muted text-muted-foreground",
@@ -64,6 +68,7 @@ const NEWS_LIST_COLUMNS = [
   "retry_count",
   "next_retry_at",
   "editorial_ready",
+  "editorial_reel_duration_seconds",
   "content_type",
   "content_format",
   "carousel_slides",
@@ -781,10 +786,54 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   const [mediaType, setMediaType] = useState<"feed" | "reel" | "story">("reel");
   const [storyAsVideo, setStoryAsVideo] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editorialReelDuration, setEditorialReelDuration] = useState(DEFAULT_EDITORIAL_REEL_DURATION_SECONDS);
+  const [editorialDurationLoading, setEditorialDurationLoading] = useState(false);
+  const [editorialDurationError, setEditorialDurationError] = useState(false);
+  const itemId = item?.id;
+  const isAiCut = item?.content_type === "video_cut";
+  const itemDurationSnapshot = item?.editorial_reel_duration_seconds;
 
   useEffect(() => {
     if (item?.content_format === "carrossel") setMediaType("feed");
   }, [item?.id, item?.content_format]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!itemId || isAiCut) {
+      setEditorialDurationLoading(false);
+      setEditorialDurationError(false);
+      return;
+    }
+    if (itemDurationSnapshot !== null && itemDurationSnapshot !== undefined) {
+      setEditorialReelDuration(normalizeEditorialReelDuration(itemDurationSnapshot));
+      setEditorialDurationLoading(false);
+      setEditorialDurationError(false);
+      return;
+    }
+    setEditorialReelDuration(DEFAULT_EDITORIAL_REEL_DURATION_SECONDS);
+    setEditorialDurationLoading(true);
+    setEditorialDurationError(false);
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Sessão expirada");
+        const { data, error } = await supabase
+          .from("user_settings")
+          .select("editorial_reel_duration_seconds")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled) {
+          setEditorialReelDuration(normalizeEditorialReelDuration(data?.editorial_reel_duration_seconds));
+        }
+      } catch {
+        if (!cancelled) setEditorialDurationError(true);
+      } finally {
+        if (!cancelled) setEditorialDurationLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [itemId, isAiCut, itemDurationSnapshot]);
 
   const ensureStoryVideo = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -803,6 +852,9 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   const submit = async () => {
     if (!item || !when) return toast.error("Defina a data");
     if (isCarouselItem(item) && mediaType !== "feed") return toast.error("Carrosséis só podem ser agendados no Feed.");
+    if (mediaType === "reel" && !isAiCut && (editorialDurationLoading || editorialDurationError)) {
+      return toast.error("Não foi possível confirmar a duração do Reel. Reabra esta janela e tente novamente.");
+    }
     setBusy(true);
     try {
       if (mediaType === "reel" && item.content_type !== "video_cut") {
@@ -854,7 +906,15 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
               </button>
               <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("reel")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "reel" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                🎬 Reel<div className="text-xs text-muted-foreground font-normal">Vídeo dinâmico 9:16, 20s</div>
+                🎬 Reel<div className="text-xs text-muted-foreground font-normal">
+                  {isAiCut
+                    ? "Duração otimizada pela IA"
+                    : editorialDurationLoading
+                      ? "Carregando duração…"
+                      : editorialDurationError
+                        ? "Duração indisponível"
+                        : `Vídeo dinâmico 9:16, ${editorialReelDuration}s`}
+                </div>
               </button>
               <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("story")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "story" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
@@ -862,7 +922,17 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
               </button>
             </div>
             {isCarouselItem(item) && <p className="mt-2 text-xs text-muted-foreground">Este conteúdo será publicado como carrossel nativo de {item.carousel_slides.length} slides no Feed.</p>}
-            {mediaType === "reel" && <p className="text-xs text-muted-foreground mt-2">O vídeo é gerado em 1080×1920 com movimento contínuo durante 20 segundos. Cortes IA preservam sua duração original.</p>}
+            {mediaType === "reel" && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {isAiCut
+                  ? "Este Corte IA preserva a duração flexível escolhida pela IA para o melhor desempenho."
+                  : editorialDurationError
+                    ? "Não foi possível carregar a duração configurada. O agendamento foi bloqueado para evitar divergências."
+                    : editorialDurationLoading
+                      ? "Carregando a duração configurada para este Reel editorial…"
+                      : `Este Reel editorial de imagem estática será gerado em 1080×1920 com movimento contínuo durante ${editorialReelDuration} segundos.`}
+              </p>
+            )}
             {mediaType === "story" && (
               <div className="mt-2 space-y-2">
                 <div className="flex gap-2">
@@ -887,7 +957,11 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
               <SelectContent>{igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <Button onClick={submit} className="w-full" disabled={busy}>
+          <Button
+            onClick={submit}
+            className="w-full"
+            disabled={busy || (mediaType === "reel" && !isAiCut && (editorialDurationLoading || editorialDurationError))}
+          >
             {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             {busy ? "Processando..." : "Agendar"}
           </Button>

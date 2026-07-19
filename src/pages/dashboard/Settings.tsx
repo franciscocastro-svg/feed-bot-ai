@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Upload, Loader2, Music2, Trash2, GraduationCap, Instagram, ChevronRight, Mail } from "lucide-react";
 import { TutorialModal } from "@/components/TutorialModal";
+import {
+  DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
+  normalizeEditorialReelDuration,
+} from "@/lib/editorialReelDuration";
 
 export default function Settings() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -36,7 +40,10 @@ export default function Settings() {
         const { data: created } = await supabase.from("user_settings").insert({ user_id: user!.id }).select("*").single();
         data = created;
       }
-      setS(data);
+      setS({
+        ...data,
+        editorial_reel_duration_seconds: normalizeEditorialReelDuration(data?.editorial_reel_duration_seconds),
+      });
       const { data: profile } = await supabase.from("profiles").select("marketing_consent, marketing_unsubscribed_at").eq("id", user!.id).maybeSingle();
       setMarketingConsent(!!profile?.marketing_consent && !profile?.marketing_unsubscribed_at);
       const { data: limits } = await supabase.rpc("get_user_plan_limits", { _user_id: user!.id });
@@ -107,6 +114,7 @@ export default function Settings() {
       brand_handle: s.brand_handle,
       brand_logo_url: s.brand_logo_url,
       reel_audio_url: s.reel_audio_url,
+      editorial_reel_duration_seconds: normalizeEditorialReelDuration(s.editorial_reel_duration_seconds),
     }).eq("user_id", s.user_id);
     if (error) return toast.error(error.message);
     setS({ ...s, max_posts_per_day: safeMaxPosts, min_post_interval_minutes: safeInterval });
@@ -327,6 +335,29 @@ export default function Settings() {
               <SelectItem value="story">⭐ Story (24h, alta visibilidade entre seguidores)</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          <Label>Duração dos Reels de notícias</Label>
+          <Select
+            value={String(normalizeEditorialReelDuration(s.editorial_reel_duration_seconds))}
+            onValueChange={value => setS({
+              ...s,
+              editorial_reel_duration_seconds: normalizeEditorialReelDuration(value),
+            })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="6">6 segundos — curto e direto</SelectItem>
+              <SelectItem value="20">20 segundos — equilibrado (padrão)</SelectItem>
+              <SelectItem value="30">30 segundos — mais contexto</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-1">
+            Vale somente para novos Reels editoriais criados de imagens estáticas. Stories e Cortes IA não mudam. O alcance varia conforme conteúdo, público e distribuição; compare os resultados nos Insights.
+          </p>
+          {normalizeEditorialReelDuration(s.editorial_reel_duration_seconds) !== DEFAULT_EDITORIAL_REEL_DURATION_SECONDS && (
+            <p className="text-xs text-muted-foreground mt-1">O padrão atual do sistema é {DEFAULT_EDITORIAL_REEL_DURATION_SECONDS} segundos.</p>
+          )}
         </div>
         <div>
           <Label>Estilo de imagem padrão</Label>
