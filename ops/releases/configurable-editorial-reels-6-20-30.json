@@ -1,0 +1,46 @@
+{
+  "phase": "Reels Editoriais Configuráveis 6/20/30",
+  "baseSha": "645f337bd285cb72f991a7b19cce6dff1c07ee1c",
+  "branch": "codex/reels-duracao-configuravel-6-20-30",
+  "frontend": true,
+  "edgeFunctions": [],
+  "migrations": [
+    "supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql"
+  ],
+  "vpsProcesses": [
+    "feedbot-media"
+  ],
+  "contract": {
+    "allowedEditorialReelSeconds": [6, 20, 30],
+    "defaultEditorialReelSeconds": 20,
+    "frameRate": 30,
+    "durationToleranceSeconds": 1,
+    "resolution": "1080x1920",
+    "snapshotTable": "news_items",
+    "snapshotFirstWriteWins": true,
+    "snapshotNullableUntilFirstSchedule": true,
+    "storyVideoSeconds": 6,
+    "preserveAiCutDuration": true
+  },
+  "rolloutOrder": [
+    "migration",
+    "feedbot-media",
+    "canary-20-6-30",
+    "lovable-frontend"
+  ],
+  "checks": [
+    "npm run ci",
+    "node --check worker/index.js",
+    "vitest configurable editorial reels",
+    "npm audit --omit=dev --audit-level=moderate"
+  ],
+  "guardrails": {
+    "migrationAppliedByThisChange": false,
+    "edgeDeploy": false,
+    "lovablePublish": false,
+    "vpsDeploy": false,
+    "paymentsChanged": false,
+    "templatesChanged": false,
+    "secretsChanged": false
+  }
+}
