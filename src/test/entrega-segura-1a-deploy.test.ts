@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
@@ -158,8 +159,10 @@ async function runDeploy(options: {
   checkoutFailure?: boolean;
   currentSha?: string;
   dirty?: boolean;
-  dirtyAfterBuild?: boolean;
+  dirtyAfterPrepare?: boolean;
+  distMode?: "absent" | "present" | "symlink";
   healthMode?: "always_fail" | "success" | "target_fail";
+  mutateDistAfterCheck?: boolean;
   nginxFailure?: boolean;
   targetSha?: string;
 }) {
@@ -169,19 +172,28 @@ async function runDeploy(options: {
   const stateDir = join(root, "state");
   const commandLog = join(root, "commands.log");
   const currentShaFile = join(root, "current-sha");
+  const distDir = join(appDir, "dist");
+  const distFile = join(distDir, "index.html");
+  const externalDistDir = join(root, "external-dist");
   const healthSource = join(root, "health.sh");
   const targetSha = options.targetSha || expectedSha;
   mkdirSync(appDir);
   mkdirSync(binDir);
   writeFileSync(commandLog, "");
   writeFileSync(currentShaFile, `${options.currentSha || previousSha}\n`);
+  if (options.distMode !== "absent") {
+    const targetDir = options.distMode === "symlink" ? externalDistDir : distDir;
+    mkdirSync(targetDir);
+    writeFileSync(join(targetDir, "index.html"), "frontend-publicado-pela-lovable\n");
+    if (options.distMode === "symlink") symlinkSync(externalDistDir, distDir, "dir");
+  }
 
   writeCommand(binDir, "git", [
     'printf \'git:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"',
     'case "${1:-}" in',
     '  diff)',
     '    [ "$FAKE_GIT_DIRTY" != "1" ] || exit 1',
-    '    if [ "$FAKE_GIT_DIRTY_AFTER_BUILD" = "1" ] && /usr/bin/grep -q \'^npm:run build$\' "$FAKE_COMMAND_LOG"; then',
+    '    if [ "$FAKE_GIT_DIRTY_AFTER_PREPARE" = "1" ] && /usr/bin/grep -q \'^npm:run check$\' "$FAKE_COMMAND_LOG"; then',
     '      exit 1',
     '    fi',
     '    ;;',
@@ -194,7 +206,12 @@ async function runDeploy(options: {
     '  *) exit 0 ;;',
     'esac',
   ].join("\n"));
-  writeCommand(binDir, "npm", 'printf \'npm:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
+  writeCommand(binDir, "npm", [
+    'printf \'npm:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"',
+    'if [ "$FAKE_MUTATE_DIST_AFTER_CHECK" = "1" ] && [ "$*" = "run check" ]; then',
+    '  printf \'alteracao-nao-autorizada\\n\' >> "$FAKE_DIST_FILE"',
+    'fi',
+  ].join("\n"));
   writeCommand(binDir, "node", 'printf \'node:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
   writeCommand(binDir, "pm2", 'printf \'pm2:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
   writeCommand(binDir, "nginx", [
@@ -223,10 +240,12 @@ esac
       FAKE_CHECKOUT_FAILURE: options.checkoutFailure ? "1" : "0",
       FAKE_CURRENT_SHA_FILE: currentShaFile,
       FAKE_GIT_DIRTY: options.dirty ? "1" : "0",
-      FAKE_GIT_DIRTY_AFTER_BUILD: options.dirtyAfterBuild ? "1" : "0",
+      FAKE_GIT_DIRTY_AFTER_PREPARE: options.dirtyAfterPrepare ? "1" : "0",
       FAKE_HEALTH_MODE: options.healthMode || "success",
+      FAKE_MUTATE_DIST_AFTER_CHECK: options.mutateDistAfterCheck ? "1" : "0",
       FAKE_NGINX_FAILURE: options.nginxFailure ? "1" : "0",
       FAKE_TARGET_SHA: targetSha,
+      FAKE_DIST_FILE: distFile,
       PATH: `${binDir}:/usr/local/bin:/usr/bin:/bin`,
     },
   });
@@ -234,6 +253,8 @@ esac
   return {
     ...result,
     commandLog: readFileSync(commandLog, "utf8"),
+    distContent: existsSync(distFile) ? readFileSync(distFile, "utf8") : null,
+    distExists: existsSync(distDir),
     stateExists: existsSync(stateDir),
   };
 }
@@ -343,11 +364,18 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
   it("falha fechado sem esconder alteracoes e sem recarregar o Nginx", () => {
     const deploy = readFileSync(resolve(process.cwd(), "scripts/deploy-vps.sh"), "utf8");
     const health = readFileSync(resolve(process.cwd(), "scripts/health-check-vps.sh"), "utf8");
+    const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
 
     expect(deploy).toContain("assert_clean_tracked_worktree");
     expect(deploy).toContain("tracked_worktree_changed_after_build");
     expect(deploy).toContain("stop_on_prepare_drift");
     expect(deploy).toContain("SAME_SHA_HEALTHY");
+    expect(deploy).toContain("stop_on_frontend_artifact_drift");
+    expect(deploy).toContain("Frontend build skipped on VPS");
+    expect(deploy).not.toMatch(/npm\s+run\s+build/);
+    expect(packageJson.scripts.ci).toContain("npm run build");
     expect(deploy).not.toMatch(/git\s+stash/);
     expect(deploy).not.toMatch(/git\s+pull/);
     expect(deploy).not.toMatch(/systemctl\s+reload\s+nginx/);
@@ -380,6 +408,23 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(result.commandLog).not.toMatch(/git:rev-parse|git:fetch|git:checkout|npm:|node:|pm2:|health:/);
   }, 30_000);
 
+  it("rejeita dist como symlink antes da primeira mutacao", async () => {
+    const result = await runDeploy({ distMode: "symlink" });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(20);
+    expect(result.stdout).toContain("DEPLOY_RESULT_REASON=frontend_artifact_fingerprint_failed");
+    expect(result.stateExists).toBe(false);
+    expect(result.commandLog).not.toMatch(/nginx:|git:fetch|git:checkout|npm:|node:|pm2:|health:/);
+  }, 30_000);
+
+  it("preserva dist ausente durante deploy saudavel", async () => {
+    const result = await runDeploy({ distMode: "absent", targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.distExists).toBe(false);
+    expect(result.commandLog).not.toContain("npm:run build");
+  }, 30_000);
+
   it("usa health-only quando o target ja e o HEAD", async () => {
     const result = await runDeploy({ currentSha: expectedSha, targetSha: expectedSha });
 
@@ -395,8 +440,10 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.commandLog).toContain(`git:checkout --detach ${expectedSha}`);
     expect(result.commandLog).toContain("npm:ci");
+    expect(result.commandLog).not.toContain("npm:run build");
     expect(result.commandLog).toContain("pm2:startOrReload ecosystem.config.cjs --update-env");
     expect(result.commandLog).not.toContain("systemctl:");
+    expect(result.distContent).toBe("frontend-publicado-pela-lovable\n");
 
     const commandLines = result.commandLog.trim().split("\n");
     const nginxIndexes = commandLines.reduce<number[]>((indexes, line, index) => {
@@ -408,25 +455,38 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(nginxIndexes[1]).toBeGreaterThan(commandLines.indexOf("pm2:save"));
     expect(nginxIndexes[1]).toBeLessThan(commandLines.indexOf(`health:${expectedSha}`));
 
-    const buildIndex = commandLines.indexOf("npm:run build");
+    const checkIndex = commandLines.indexOf("npm:run check");
     const workerSyntaxIndex = commandLines.indexOf("node:--check worker/index.js");
     const pm2Index = commandLines.indexOf("pm2:startOrReload ecosystem.config.cjs --update-env");
     const finalCleanGateIndex = commandLines.reduce((lastIndex, line, index) => (
       line === "git:diff --cached --quiet --" ? index : lastIndex
     ), -1);
-    expect(buildIndex).toBeGreaterThan(-1);
-    expect(workerSyntaxIndex).toBeGreaterThan(buildIndex);
+    expect(checkIndex).toBeGreaterThan(-1);
+    expect(workerSyntaxIndex).toBeGreaterThan(checkIndex);
     expect(finalCleanGateIndex).toBeGreaterThan(workerSyntaxIndex);
     expect(pm2Index).toBeGreaterThan(finalCleanGateIndex);
   }, 30_000);
 
-  it("preserva drift pos-build e interrompe antes de PM2, health ou rollback", async () => {
-    const result = await runDeploy({ dirtyAfterBuild: true, targetSha: expectedSha });
+  it("preserva drift pos-check e interrompe antes de PM2, health ou rollback", async () => {
+    const result = await runDeploy({ dirtyAfterPrepare: true, targetSha: expectedSha });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(22);
     expect(result.stdout).toContain("DEPLOY_RESULT=INTERRUPTED");
     expect(result.stdout).toContain("DEPLOY_RESULT_REASON=tracked_worktree_changed_after_build");
-    expect(result.commandLog).toContain("npm:run build");
+    expect(result.commandLog).toContain("npm:run check");
+    expect(result.commandLog).not.toContain("npm:run build");
+    expect(result.commandLog).not.toMatch(/pm2:|health:/);
+    expect(result.commandLog).not.toContain(`git:checkout --detach ${previousSha}`);
+  }, 30_000);
+
+  it("interrompe se dist mudar e nao executa PM2, health ou rollback", async () => {
+    const result = await runDeploy({ mutateDistAfterCheck: true, targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(22);
+    expect(result.stdout).toContain("DEPLOY_RESULT=INTERRUPTED");
+    expect(result.stdout).toContain("DEPLOY_RESULT_REASON=frontend_artifact_changed");
+    expect(result.commandLog).toContain("npm:run check");
+    expect(result.commandLog).not.toContain("npm:run build");
     expect(result.commandLog).not.toMatch(/pm2:|health:/);
     expect(result.commandLog).not.toContain(`git:checkout --detach ${previousSha}`);
   }, 30_000);

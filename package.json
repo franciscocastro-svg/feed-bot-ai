@@ -22,7 +22,7 @@
     "lint:phase1c": "eslint scripts/lint-ratchet.mjs scripts/check-lint-ratchet.mjs scripts/update-lint-baseline.mjs src/test/lint-ratchet.test.ts src/test/auth-email-payload.test.ts src/test/stripe-event-compat.test.ts src/contexts/AuthContext.tsx supabase/functions/_shared/auth-email-payload.ts supabase/functions/_shared/stripe-event-compat.ts supabase/functions/_shared/stripe.ts supabase/functions/auth-email-hook/index.ts supabase/functions/payments-webhook/index.ts",
     "lint:phase1d": "eslint scripts/edge-function-manifest.mjs scripts/check-edge-functions.mjs src/test/edge-function-manifest.test.ts",
     "lint:baseline:update": "node scripts/update-lint-baseline.mjs",
-    "ci": "npm run check:secrets && npm run check:lint-ratchet && npm run typecheck && npm run lint:phase1 && npm run lint:phase1b && npm run lint:phase1c && npm run lint:phase1d && npm run test && npm run check:worker && npm run check:delivery && npm run check:mcp-build",
+    "ci": "npm run check:secrets && npm run check:lint-ratchet && npm run typecheck && npm run lint:phase1 && npm run lint:phase1b && npm run lint:phase1c && npm run lint:phase1d && npm run test && npm run check:worker && npm run check:delivery && npm run check:mcp-build && npm run build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

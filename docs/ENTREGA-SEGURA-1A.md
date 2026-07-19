@@ -115,9 +115,12 @@ Os estados persistidos e expostos pelo webhook são:
 - exige `nginx -t` válido antes de criar estado, fazer fetch ou checkout;
 - registra o SHA atualmente implantado;
 - usa `git checkout --detach SHA`;
-- instala dependências travadas, executa checks e build;
-- exige worktree e index limpos depois dos checks, depois do build e depois da
-  sintaxe do worker, imediatamente antes de qualquer comando PM2;
+- registra um fingerprint SHA-256 privado de `dist/` antes da primeira mutação;
+- instala dependências travadas e executa checks, mas nunca executa o build do
+  frontend no VPS;
+- exige worktree e index limpos depois dos checks e da sintaxe do worker, além
+  de `dist/` byte a byte idêntico após checkout, instalações, checks, sintaxe,
+  PM2 e health;
 - reinicia pelo `ecosystem.config.cjs` os processos `feedbot-cuts`,
   `feedbot-media` e `feedbot-webhook`;
 - executa o health check pós-deploy.
@@ -130,6 +133,21 @@ recarrega Nginx. O binário do Nginx e uma configuração válida são gates
 obrigatórios antes da primeira mutação; depois do restart, `nginx -t` é repetido
 antes do health check. Como esta fase não altera configuração Nginx, nenhum reload
 é executado.
+
+## Gate FRONTEND-ROUTING
+
+O Nginx instalado no VPS possui uma diretiva `root` ativa sob `/opt/feedbot`.
+Por isso, o deploy do worker não pode executar `npm run build` nem alterar
+`dist/`: isso publicaria frontend fora da barreira da Lovable.
+
+O build Vite continua obrigatório no GitHub CI por meio de `npm run ci`. No VPS,
+o script captura `dist/` antes de criar estado, fazer fetch ou checkout e compara
+o mesmo fingerprint depois de todas as etapas relevantes. Ausência inicial de
+`dist/` também é preservada. Symlink ou formato inesperado falha no preflight.
+
+Qualquer mudança em `dist/` retorna `interrupted/frontend_artifact_changed`,
+antes de continuar PM2, health ou rollback. O artefato divergente é preservado
+para auditoria. Publicação do frontend permanece exclusiva da Lovable.
 
 ## Gate MCP-BUILD
 
@@ -148,7 +166,7 @@ Stripe, Meta ou outro secret integra essa matriz.
 O resultado verde é:
 `PASS_MCP_BUILD_REPRODUCIBLE_CLEAN_WORKTREE`.
 
-Se checks, build ou sintaxe deixarem qualquer diferença rastreada, o deploy sai
+Se checks ou sintaxe deixarem qualquer diferença rastreada, o deploy sai
 como `interrupted` antes de PM2 e health. Ele preserva o worktree para auditoria,
 não faz stash, não restaura o arquivo e não tenta checkout automático para
 rollback sobre a evidência divergente. Os processos que já estavam ativos não
@@ -171,7 +189,7 @@ O health check tenta por até 60 segundos, por padrão, validar:
   formatos conhecidos do JSON do PM2, rejeitando valores ausentes ou conflitantes
   e sem registrar os valores de ambiente encontrados.
 
-Se instalação, testes, build, PM2, nginx ou health check falharem depois que o
+Se instalação, testes, PM2, nginx ou health check falharem depois que o
 checkout exato do target for confirmado e o worktree continuar limpo, o mesmo
 fluxo é executado para o SHA anterior. Drift rastreado durante a preparação é a
 exceção segura: interrompe sem PM2, health ou checkout de rollback. O contrato de
