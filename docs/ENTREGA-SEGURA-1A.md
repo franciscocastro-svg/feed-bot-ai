@@ -15,8 +15,13 @@ O contrato de entrega passa a ser:
 4. um runner separado implanta exatamente esse SHA, nunca o `HEAD` mais recente;
 5. o deploy só termina após health check do Git, nginx, webhook local e dos três
    processos PM2;
-6. qualquer falha dispara rollback automático para o SHA anterior;
-7. se o rollback também falhar, a fila é bloqueada para intervenção humana.
+6. falhas depois do checkout do target disparam rollback automático para o SHA anterior;
+7. falhas de preflight, interrupções e rollback malsucedido bloqueiam a fila para
+   intervenção humana.
+
+A versão 1A.2 fecha o fluxo automático sem ampliar o escopo do produto. Ela
+adiciona validação do repositório, idempotência por entrega GitHub e SHA, estados
+operacionais explícitos e testes herméticos do deploy e do rollback.
 
 ## Eventos necessários no webhook do GitHub
 
@@ -32,6 +37,7 @@ Variáveis opcionais:
 ```text
 DEPLOY_BRANCH=main
 DEPLOY_WORKFLOW=CI
+DEPLOY_REPOSITORY=franciscocastro-svg/feed-bot-ai
 DEPLOY_STATE_DIR=/opt/feedbot/.deploy-state
 WEBHOOK_PORT=9000
 ```
@@ -46,17 +52,57 @@ O estado fica em `/opt/feedbot/.deploy-state`, fora do Git:
 - `queue.json`: SHAs aprovados, em ordem de chegada;
 - `active.json`: SHA em implantação;
 - `last-result.json`: último resultado concluído;
-- `BLOCKED.json`: bloqueio criado somente quando rollback falha;
+- `results.json`: journal persistente de resultados por SHA;
+- `deliveries.json`: ledger persistente dos IDs de entrega GitHub;
+- `early-workflows.json`: workflows recebidos antes do respectivo push;
+- `BLOCKED.json`: bloqueio por preflight, interrupção, rollback malsucedido ou
+  resultado desconhecido que exija intervenção;
 - `.runner-lock` e `.state-lock`: exclusão mútua entre webhook e runner.
 
-Entregas repetidas são deduplicadas. Se o webhook reiniciar enquanto o deploy
-estiver em andamento, o runner destacado continua ativo. Se o runner for
-interrompido, o SHA que estava ativo volta ao início da fila na próxima execução.
+Antes de alterar esses arquivos, o webhook valida o HMAC, o tipo do evento, o ID
+de entrega, `repository.full_name`, a branch, o workflow e o SHA completo. Uma
+entrega repetida com o mesmo conteúdo é idempotente; reutilizar o mesmo ID para
+outro evento ou SHA é conflito e falha fechado. Um novo ID para um SHA já
+conhecido não cria outro deploy.
+
+Se o webhook reiniciar enquanto o deploy estiver em andamento, o runner destacado
+continua ativo. Se o runner for interrompido sem resultado terminal observável,
+a fila bloqueia e preserva `active.json`; ela nunca tenta certificar
+automaticamente um checkout possivelmente incompleto. Um resultado terminal já
+gravado nunca é reimplantado pela recuperação.
 Runners disparados durante outro deploy aguardam a liberação do runner ativo, o
 que evita perder uma atualização no instante exato em que a fila anterior termina.
 O FIFO segue a ordem dos pushes, mesmo quando os workflows terminam fora de ordem.
 Um CI cancelado ou com falha libera o próximo push aprovado sem implantar o SHA
 rejeitado.
+
+Se `workflow_run` chegar antes do respectivo `push`, o resultado fica em
+`early-workflows.json` e é reconciliado quando o push aparecer. Ao enfileirar
+trabalho enquanto outro runner está encerrando, o webhook sempre inicia um runner
+de espera; o lock serializa os processos e elimina a janela de fila sem consumidor.
+Na inicialização do listener, o webhook também reconcilia fila ou deploy ativo já
+persistidos e repete reservas de entrega ainda em `processing`, fechando as
+janelas entre reservar a entrega, gravar o estado e iniciar o runner. As transições
+JSON sincronizam arquivo e diretório antes de confirmar a gravação.
+Falhas transitórias dessa reconciliação são repetidas com backoff; enquanto elas
+persistirem, `/deploy-health` responde `503` em vez de aparentar prontidão.
+O runner também registra PID e grupo do Bash de deploy em `active.json`. Se o
+runner Node morrer e o processo de deploy ainda existir, a fila bloqueia sem
+iniciar uma segunda implantação concorrente.
+
+Os estados persistidos e expostos pelo webhook são:
+
+- `awaiting_ci`;
+- `ci_passed_waiting_fifo`;
+- `queued`;
+- `deploying`;
+- `succeeded`;
+- `failed_ci`;
+- `rolled_back`;
+- `failed_preflight`;
+- `rollback_failed`;
+- `interrupted`;
+- `blocked`.
 
 ## Deploy exato
 
@@ -65,6 +111,7 @@ rejeitado.
 - atualiza `origin/main` com `git fetch`;
 - confirma que o SHA existe e pertence ao histórico de `origin/main`;
 - recusa regressão automática para um SHA anterior ao que já está implantado;
+- recusa qualquer alteração rastreada, staged ou unstaged, sem criar stash;
 - registra o SHA atualmente implantado;
 - usa `git checkout --detach SHA`;
 - instala dependências travadas, executa checks e build;
@@ -74,6 +121,11 @@ rejeitado.
 
 Não há `git pull` e não há resolução implícita de `HEAD`.
 
+Se o SHA solicitado já for o `HEAD` ativo, o script executa apenas o health check.
+Esse caminho não reinstala dependências, não faz build, não reinicia PM2 e não
+recarrega Nginx. Em todos os caminhos, `nginx -t` permanece como gate; como esta
+fase não altera configuração Nginx, nenhum reload é executado.
+
 ## Health check e rollback
 
 O health check tenta por até 60 segundos, por padrão, validar:
@@ -81,25 +133,53 @@ O health check tenta por até 60 segundos, por padrão, validar:
 - `git rev-parse HEAD` exatamente igual ao SHA aprovado;
 - `nginx -t`, quando nginx estiver instalado;
 - `GET http://127.0.0.1:9000/deploy-health`;
-- os três processos PM2 existentes com status `online`, PID válido e uptime
-  mínimo de 10 segundos.
+- consistência do estado persistido, rejeitando SHA simultaneamente em mais de um
+  estado operacional ou um bloqueio marcado como bem-sucedido;
+- exatamente os três processos PM2 `feedbot-cuts`, `feedbot-media` e
+  `feedbot-webhook`, cada um uma única vez, com status `online`, PID válido,
+  uptime mínimo de 10 segundos e configuração esperada de script, diretório e
+  watch.
 
-Se instalação, testes, build, PM2, nginx ou health check falharem, o mesmo fluxo é
-executado para o SHA anterior. Um rollback saudável encerra aquele deploy com
-falha e permite que a fila prossiga. Um rollback sem saúde encerra com código 2 e
-cria `BLOCKED.json`, impedindo novos deploys automáticos.
+Se instalação, testes, build, PM2, nginx ou health check falharem depois que o
+checkout exato do target for confirmado, o mesmo fluxo é executado para o SHA
+anterior. O contrato de saída é:
+
+- `0`: `succeeded`, incluindo o caminho `same_sha_healthy`;
+- `10`: `rolled_back`, target falhou e o rollback ficou saudável;
+- `20`: `failed_preflight`, sem ativação e com bloqueio da fila;
+- `21`: `rollback_failed`, com bloqueio da fila;
+- `22`: `interrupted`, com bloqueio e preservação de evidências.
+
+`last-result.json` registra SHA, estado, resultado, motivo, código de saída e
+horários de início e término. Falha de preflight nunca é descrita como rollback.
 
 ## Ativação futura
 
 Este documento não autoriza merge nem deploy. Após aprovação separada, a ativação
 deve ocorrer nesta ordem:
 
-1. fazer merge do Pull Request com CI verde;
-2. confirmar o SHA completo aprovado na `main`;
-3. no VPS, atualizar as referências Git e executar uma única vez
-   `bash scripts/deploy-vps.sh SHA_COMPLETO` para instalar o novo mecanismo;
-4. habilitar o evento `workflow_run` no webhook do GitHub;
-5. enviar uma alteração controlada e acompanhar `logs/deploy-queue.log`.
+1. congelar temporariamente escritores da `main` e confirmar CI verde;
+2. fazer merge somente com autorização específica, mantendo o webhook em
+   `push`;
+3. confirmar que o push do merge criou exatamente um `awaiting_ci`, sem fila,
+   ativo, runner, lock ou bloqueio;
+4. fazer bootstrap manual do SHA completo do merge e confirmar que o estado foi
+   preservado;
+5. adicionar `workflow_run` ao webhook sem substituir `push` e reler a
+   configuração, preservando URL, content type, secret, SSL e `active=true`;
+6. reexecutar o CI do mesmo SHA. Como ele já estará instalado, a promoção deve
+   usar o caminho `same_sha_healthy` e esvaziar o estado sem reiniciar PM2;
+7. em aprovação separada, fazer um canário documental com um novo SHA e observar
+   `push -> awaiting_ci -> workflow_run -> queued -> deploying -> succeeded`;
+8. confirmar SHA exato no VPS, endpoint saudável, PM2 exatamente três, fila
+   vazia, nenhum bloqueio, nenhum stash novo e nenhum reload do Nginx;
+9. redeliver os eventos originais e confirmar idempotência sem alterar SHA, PID
+   ou restart count.
+
+Se qualquer gate divergir, a ativação para. Remover somente `workflow_run` retorna
+o webhook ao modo seguro `push`; URL, secret e estado da fila não devem ser
+apagados. Não se provoca falha deliberada em produção: rollback e bloqueio são
+validados em harness hermético.
 
 ## Recuperação operacional
 
@@ -108,6 +188,11 @@ confirmar manualmente que os três processos PM2 e o endpoint local estão
 saudáveis. Depois de corrigir a causa e com autorização operacional, remova apenas
 o arquivo de bloqueio e inicie `node scripts/deploy-queue.cjs --run`; os SHAs ainda
 presentes em `queue.json` serão processados em FIFO.
+
+Nunca apague `awaiting.json`, `queue.json`, `active.json`, `deliveries.json`,
+`early-workflows.json`, `results.json` ou `last-result.json` para destravar uma
+entrega. Nunca encerre manualmente um runner durante deploy. Código é revertido
+por Pull Request e novo deploy de SHA exato, nunca por reset ou force-push.
 
 ## Fases futuras fora deste Pull Request
 

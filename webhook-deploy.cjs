@@ -7,12 +7,15 @@ const {
   approveWorkflowRun,
   ensureRunner,
   getQueueStatus,
+  reconcileProcessingDeliveries,
   rejectWorkflowRun,
   registerPush,
 } = require("./scripts/deploy-queue.cjs");
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const DELIVERY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_BODY_BYTES = Number(process.env.WEBHOOK_MAX_BODY_BYTES || 1024 * 1024);
+const DEFAULT_REPOSITORY = "franciscocastro-svg/feed-bot-ai";
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -34,7 +37,7 @@ function send(res, status, payload) {
 }
 
 function verifySignature(rawBody, signature, secret) {
-  if (!secret || !signature?.startsWith("sha256=")) return false;
+  if (!secret || typeof signature !== "string" || !signature.startsWith("sha256=")) return false;
 
   const expected = `sha256=${crypto
     .createHmac("sha256", secret)
@@ -45,6 +48,10 @@ function verifySignature(rawBody, signature, secret) {
   const expectedBuffer = Buffer.from(expected);
   return receivedBuffer.length === expectedBuffer.length
     && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+function validDeliveryId(deliveryId) {
+  return typeof deliveryId === "string" && DELIVERY_ID_PATTERN.test(deliveryId);
 }
 
 function classifyWebhook(eventName, payload, branch, workflowName) {
@@ -97,15 +104,46 @@ function createWebhookServer(options = {}) {
   const appDir = options.appDir || process.env.APP_DIR || __dirname;
   loadEnvFile(path.join(appDir, ".env"));
 
-  const port = Number(options.port || process.env.WEBHOOK_PORT || 9000);
+  const port = Number(options.port ?? process.env.WEBHOOK_PORT ?? 9000);
   const branch = options.branch || process.env.DEPLOY_BRANCH || "main";
   const workflowName = options.workflowName || process.env.DEPLOY_WORKFLOW || "CI";
   const secret = options.secret || process.env.GITHUB_WEBHOOK_SECRET || "";
+  const repository = options.repository || process.env.DEPLOY_REPOSITORY || DEFAULT_REPOSITORY;
   const stateDir = options.stateDir || process.env.DEPLOY_STATE_DIR || path.join(appDir, ".deploy-state");
   const queueScript = options.queueScript || path.join(appDir, "scripts", "deploy-queue.cjs");
+  const runnerStarter = options.runnerStarter || ensureRunner;
 
-  return http.createServer((req, res) => {
+  const wakeRunner = () => runnerStarter({ appDir, stateDir, queueScript });
+  const startupMaxAttempts = Math.max(1, Number(
+    options.startupMaxAttempts ?? process.env.DEPLOY_STARTUP_MAX_ATTEMPTS ?? 8,
+  ));
+  const startupRetryBaseMs = Math.max(1, Number(
+    options.startupRetryBaseMs ?? process.env.DEPLOY_STARTUP_RETRY_MS ?? 1000,
+  ));
+  let startupReconciliationError = null;
+  let startupRetryTimer = null;
+
+  const reconcileStartup = (attempt) => {
+    try {
+      reconcileProcessingDeliveries(stateDir);
+      wakeRunner();
+      startupReconciliationError = null;
+    } catch (error) {
+      startupReconciliationError = error;
+      console.error(`[deploy] Startup reconciliation attempt ${attempt} failed: ${error.stack || error.message}`);
+      if (attempt < startupMaxAttempts) {
+        const delay = Math.min(startupRetryBaseMs * (2 ** (attempt - 1)), 30_000);
+        startupRetryTimer = setTimeout(() => reconcileStartup(attempt + 1), delay);
+        startupRetryTimer.unref?.();
+      }
+    }
+  };
+
+  const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/deploy-health") {
+      if (startupReconciliationError) {
+        return send(res, 503, { ok: false, error: "startup_reconciliation_pending" });
+      }
       try {
         return send(res, 200, {
           ok: true,
@@ -157,6 +195,13 @@ function createWebhookServer(options = {}) {
       }
 
       const eventName = String(req.headers["x-github-event"] || "");
+      const deliveryId = req.headers["x-github-delivery"];
+      if (!validDeliveryId(deliveryId)) {
+        return send(res, 400, { error: "invalid_delivery_id" });
+      }
+      if (payload?.repository?.full_name !== repository) {
+        return send(res, 403, { error: "unexpected_repository" });
+      }
       const event = classifyWebhook(eventName, payload, branch, workflowName);
 
       if (event.kind === "invalid") {
@@ -170,14 +215,17 @@ function createWebhookServer(options = {}) {
       try {
         if (event.kind === "push") {
           const result = registerPush(stateDir, event.sha, {
-            deliveryId: req.headers["x-github-delivery"] || null,
+            deliveryId,
           });
+          if (result.runnerRequired) {
+            wakeRunner();
+          }
           return send(res, 202, { ok: true, status: "awaiting_ci", ...result });
         }
 
         const metadata = {
           runId: event.runId,
-          deliveryId: req.headers["x-github-delivery"] || null,
+          deliveryId,
         };
         const result = event.kind === "ci_success"
           ? approveWorkflowRun(stateDir, event.sha, metadata)
@@ -187,17 +235,28 @@ function createWebhookServer(options = {}) {
           });
 
         if (result.runnerRequired) {
-          ensureRunner({ appDir, stateDir, queueScript });
+          wakeRunner();
         }
 
         return send(res, 202, { ok: true, ...result });
       } catch (error) {
         console.error(`[deploy] Queue operation failed: ${error.stack || error.message}`);
-        return send(res, 500, { error: "queue_operation_failed" });
+        return send(res, error.code === "DELIVERY_CONFLICT" ? 409 : 500, {
+          error: error.code === "DELIVERY_CONFLICT"
+            ? "conflicting_delivery"
+            : "queue_operation_failed",
+        });
       }
     });
-  }).listen(port, "127.0.0.1", () => {
+  });
+  server.once("close", () => {
+    if (startupRetryTimer) clearTimeout(startupRetryTimer);
+  });
+  return server.listen(port, "127.0.0.1", () => {
     console.log(`[deploy] Webhook listening on 127.0.0.1:${port}`);
+    // Replay write-ahead reservations before waking durable work. Transient
+    // failures retry with backoff and keep health fail-closed until reconciled.
+    reconcileStartup(1);
   });
 }
 
@@ -213,5 +272,6 @@ module.exports = {
   classifyWebhook,
   createWebhookServer,
   shouldStartWebhook,
+  validDeliveryId,
   verifySignature,
 };

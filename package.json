@@ -12,7 +12,7 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:lint-ratchet": "node scripts/check-lint-ratchet.mjs",
     "check:edge-functions": "node scripts/check-edge-functions.mjs",
-    "check:delivery": "node --check webhook-deploy.cjs && node --check scripts/deploy-queue.cjs && bash -n scripts/deploy-vps.sh && bash -n scripts/health-check-vps.sh && eslint webhook-deploy.cjs scripts/deploy-queue.cjs src/test/entrega-segura-1a.test.ts",
+    "check:delivery": "node --check webhook-deploy.cjs && node --check scripts/deploy-queue.cjs && bash -n scripts/deploy-vps.sh && bash -n scripts/health-check-vps.sh && eslint webhook-deploy.cjs scripts/deploy-queue.cjs src/test/entrega-segura-1a.test.ts src/test/entrega-segura-1a-deploy.test.ts && DELIVERY_HARNESS=1 vitest run src/test/entrega-segura-1a-deploy.test.ts",
     "check": "npm run typecheck && npm run test && npm run check:worker && npm run check:delivery",
     "lint": "eslint .",
     "lint:phase1": "eslint src/lib/starterTopics.ts src/test/starter-topics.test.ts",
