@@ -158,6 +158,7 @@ async function runDeploy(options: {
   checkoutFailure?: boolean;
   currentSha?: string;
   dirty?: boolean;
+  dirtyAfterBuild?: boolean;
   healthMode?: "always_fail" | "success" | "target_fail";
   nginxFailure?: boolean;
   targetSha?: string;
@@ -178,7 +179,12 @@ async function runDeploy(options: {
   writeCommand(binDir, "git", [
     'printf \'git:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"',
     'case "${1:-}" in',
-    '  diff) [ "$FAKE_GIT_DIRTY" != "1" ] ;;',
+    '  diff)',
+    '    [ "$FAKE_GIT_DIRTY" != "1" ] || exit 1',
+    '    if [ "$FAKE_GIT_DIRTY_AFTER_BUILD" = "1" ] && /usr/bin/grep -q \'^npm:run build$\' "$FAKE_COMMAND_LOG"; then',
+    '      exit 1',
+    '    fi',
+    '    ;;',
     '  rev-parse) /bin/cat "$FAKE_CURRENT_SHA_FILE" ;;',
     '  checkout)',
     '    [ "$FAKE_CHECKOUT_FAILURE" != "1" ] || exit 1',
@@ -217,6 +223,7 @@ esac
       FAKE_CHECKOUT_FAILURE: options.checkoutFailure ? "1" : "0",
       FAKE_CURRENT_SHA_FILE: currentShaFile,
       FAKE_GIT_DIRTY: options.dirty ? "1" : "0",
+      FAKE_GIT_DIRTY_AFTER_BUILD: options.dirtyAfterBuild ? "1" : "0",
       FAKE_HEALTH_MODE: options.healthMode || "success",
       FAKE_NGINX_FAILURE: options.nginxFailure ? "1" : "0",
       FAKE_TARGET_SHA: targetSha,
@@ -338,6 +345,8 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     const health = readFileSync(resolve(process.cwd(), "scripts/health-check-vps.sh"), "utf8");
 
     expect(deploy).toContain("assert_clean_tracked_worktree");
+    expect(deploy).toContain("tracked_worktree_changed_after_build");
+    expect(deploy).toContain("stop_on_prepare_drift");
     expect(deploy).toContain("SAME_SHA_HEALTHY");
     expect(deploy).not.toMatch(/git\s+stash/);
     expect(deploy).not.toMatch(/git\s+pull/);
@@ -398,6 +407,28 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(nginxIndexes[0]).toBeLessThan(commandLines.indexOf("git:fetch --prune origin main"));
     expect(nginxIndexes[1]).toBeGreaterThan(commandLines.indexOf("pm2:save"));
     expect(nginxIndexes[1]).toBeLessThan(commandLines.indexOf(`health:${expectedSha}`));
+
+    const buildIndex = commandLines.indexOf("npm:run build");
+    const workerSyntaxIndex = commandLines.indexOf("node:--check worker/index.js");
+    const pm2Index = commandLines.indexOf("pm2:startOrReload ecosystem.config.cjs --update-env");
+    const finalCleanGateIndex = commandLines.reduce((lastIndex, line, index) => (
+      line === "git:diff --cached --quiet --" ? index : lastIndex
+    ), -1);
+    expect(buildIndex).toBeGreaterThan(-1);
+    expect(workerSyntaxIndex).toBeGreaterThan(buildIndex);
+    expect(finalCleanGateIndex).toBeGreaterThan(workerSyntaxIndex);
+    expect(pm2Index).toBeGreaterThan(finalCleanGateIndex);
+  }, 30_000);
+
+  it("preserva drift pos-build e interrompe antes de PM2, health ou rollback", async () => {
+    const result = await runDeploy({ dirtyAfterBuild: true, targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(22);
+    expect(result.stdout).toContain("DEPLOY_RESULT=INTERRUPTED");
+    expect(result.stdout).toContain("DEPLOY_RESULT_REASON=tracked_worktree_changed_after_build");
+    expect(result.commandLog).toContain("npm:run build");
+    expect(result.commandLog).not.toMatch(/pm2:|health:/);
+    expect(result.commandLog).not.toContain(`git:checkout --detach ${previousSha}`);
   }, 30_000);
 
   it("trata falha antes do checkout como preflight sem rollback ou restart", async () => {

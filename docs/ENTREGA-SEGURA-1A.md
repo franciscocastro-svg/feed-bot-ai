@@ -116,6 +116,8 @@ Os estados persistidos e expostos pelo webhook são:
 - registra o SHA atualmente implantado;
 - usa `git checkout --detach SHA`;
 - instala dependências travadas, executa checks e build;
+- exige worktree e index limpos depois dos checks, depois do build e depois da
+  sintaxe do worker, imediatamente antes de qualquer comando PM2;
 - reinicia pelo `ecosystem.config.cjs` os processos `feedbot-cuts`,
   `feedbot-media` e `feedbot-webhook`;
 - executa o health check pós-deploy.
@@ -128,6 +130,29 @@ recarrega Nginx. O binário do Nginx e uma configuração válida são gates
 obrigatórios antes da primeira mutação; depois do restart, `nginx -t` é repetido
 antes do health check. Como esta fase não altera configuração Nginx, nenhum reload
 é executado.
+
+## Gate MCP-BUILD
+
+O issuer OAuth do MCP usa o project ref público e versionado
+`gewnaxrhiyylfizgbqdi`. Ele não depende de `VITE_SUPABASE_PROJECT_ID`, não possui
+fallback `project-ref-unset` e não incorpora outras variáveis `VITE_*` no bundle
+rastreado `supabase/functions/mcp/index.ts`.
+
+`npm run check:mcp-build` registra o bundle antes do build, executa o build e
+exige que fonte, bundle e estado rastreado permaneçam idênticos. A barreira B1M
+usa `npm run check:mcp-build:matrix` em workspace descartável para validar o
+project ref vindo do processo, variáveis `VITE_*` sintéticas não relacionadas e
+a precedência de `.env.production`/`.env.production.local`. Nenhum valor real de
+Stripe, Meta ou outro secret integra essa matriz.
+
+O resultado verde é:
+`PASS_MCP_BUILD_REPRODUCIBLE_CLEAN_WORKTREE`.
+
+Se checks, build ou sintaxe deixarem qualquer diferença rastreada, o deploy sai
+como `interrupted` antes de PM2 e health. Ele preserva o worktree para auditoria,
+não faz stash, não restaura o arquivo e não tenta checkout automático para
+rollback sobre a evidência divergente. Os processos que já estavam ativos não
+são reiniciados.
 
 ## Health check e rollback
 
@@ -147,8 +172,10 @@ O health check tenta por até 60 segundos, por padrão, validar:
   e sem registrar os valores de ambiente encontrados.
 
 Se instalação, testes, build, PM2, nginx ou health check falharem depois que o
-checkout exato do target for confirmado, o mesmo fluxo é executado para o SHA
-anterior. O contrato de saída é:
+checkout exato do target for confirmado e o worktree continuar limpo, o mesmo
+fluxo é executado para o SHA anterior. Drift rastreado durante a preparação é a
+exceção segura: interrompe sem PM2, health ou checkout de rollback. O contrato de
+saída é:
 
 - `0`: `succeeded`, incluindo o caminho `same_sha_healthy`;
 - `10`: `rolled_back`, target falhou e o rollback ficou saudável;
@@ -205,7 +232,6 @@ por Pull Request e novo deploy de SHA exato, nunca por reset ou force-push.
 Devem permanecer em planos e Pull Requests separados:
 
 - `deno check` automático para todas as 32 Edge Functions;
-- correção do drift `VITE_SUPABASE_PROJECT_ID` / `project-ref-unset` do MCP;
 - detecção automática de migrations duplicadas;
 - testes E2E em ambiente sandbox;
 - governança Git e proteção gradual de `main`, com compatibilidade prévia para a

@@ -8,6 +8,7 @@ DEPLOY_STATE_DIR="${DEPLOY_STATE_DIR:-$APP_DIR/.deploy-state}"
 DEPLOY_TRASH_DIR="${DEPLOY_TRASH_DIR:-$APP_DIR/.deploy-trash}"
 HEALTH_SCRIPT_SOURCE="${DEPLOY_HEALTH_SCRIPT_SOURCE:-$APP_DIR/scripts/health-check-vps.sh}"
 HEALTH_SCRIPT_SNAPSHOT="$DEPLOY_STATE_DIR/health-check-vps.sh"
+PREPARE_FAILURE_REASON=""
 
 # Exit contract consumed by the queue runner.
 EXIT_SUCCEEDED=0
@@ -56,6 +57,19 @@ assert_clean_tracked_worktree() {
     echo "ERRO: o deploy nao cria, aplica nem remove stashes automaticamente."
     return 1
   fi
+}
+
+stop_on_prepare_drift() {
+  local checkpoint="$1"
+
+  if assert_clean_tracked_worktree "$checkpoint"; then
+    return 0
+  fi
+
+  PREPARE_FAILURE_REASON="tracked_worktree_changed_after_build"
+  echo "ERRO: preparacao alterou arquivos rastreados; PM2 e health nao serao executados."
+  echo "ERRO: o worktree sera preservado para auditoria, sem checkout ou rollback automatico."
+  return 1
 }
 
 clean_dependency_dir() {
@@ -153,6 +167,9 @@ test_nginx_configuration() {
 
 prepare_release() {
   local sha="$1"
+  local command_status
+
+  PREPARE_FAILURE_REASON=""
 
   assert_clean_tracked_worktree "imediatamente antes do checkout de $sha" || return 1
   echo "==> Checking out exact SHA $sha"
@@ -164,13 +181,22 @@ prepare_release() {
   install_worker_dependencies || return 1
 
   echo "==> Running automated checks"
-  npm run check || return 1
+  npm run check
+  command_status=$?
+  stop_on_prepare_drift "depois dos checks automatizados" || return 1
+  [ "$command_status" -eq 0 ] || return 1
 
   echo "==> Building frontend"
-  npm run build || return 1
+  npm run build
+  command_status=$?
+  stop_on_prepare_drift "depois do build do frontend" || return 1
+  [ "$command_status" -eq 0 ] || return 1
 
   echo "==> Checking worker syntax"
-  node --check worker/index.js || return 1
+  node --check worker/index.js
+  command_status=$?
+  stop_on_prepare_drift "depois da sintaxe do worker, imediatamente antes do PM2" || return 1
+  [ "$command_status" -eq 0 ] || return 1
 }
 
 activate_release() {
@@ -262,6 +288,12 @@ if deploy_release "$TARGET_SHA"; then
   echo "==> Deploy of exact SHA $TARGET_SHA finished healthy at $(date -Is)"
   emit_result "SUCCEEDED" "target_healthy"
   exit "$EXIT_SUCCEEDED"
+fi
+
+if [ "$PREPARE_FAILURE_REASON" = "tracked_worktree_changed_after_build" ]; then
+  echo "ERRO: deploy interrompido antes da ativacao porque a preparacao sujou o worktree."
+  emit_result "INTERRUPTED" "$PREPARE_FAILURE_REASON"
+  exit "$EXIT_INTERRUPTED"
 fi
 
 CURRENT_SHA_AFTER_FAILURE="$(git rev-parse HEAD^{commit})" || \
