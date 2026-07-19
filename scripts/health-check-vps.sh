@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
+umask 077
 
 APP_DIR="${APP_DIR:-/opt/feedbot}"
 EXPECTED_SHA="${1:-${DEPLOY_SHA:-}}"
@@ -27,12 +28,14 @@ check_once() {
     return 1
   fi
 
-  if command -v nginx >/dev/null 2>&1; then
-    nginx -t >/dev/null 2>&1 || {
-      echo "[health] nginx -t falhou"
-      return 1
-    }
+  if ! command -v nginx >/dev/null 2>&1; then
+    echo "[health] nginx nao esta disponivel"
+    return 1
   fi
+  nginx -t >/dev/null 2>&1 || {
+    echo "[health] nginx -t falhou"
+    return 1
+  }
 
   curl --fail --silent --show-error --max-time 5 \
     "http://127.0.0.1:$WEBHOOK_PORT/deploy-health" >/dev/null || {
@@ -53,7 +56,12 @@ const filePath = process.argv[2];
 const minimumUptime = Number(process.argv[3]);
 const appDir = path.resolve(process.argv[4]);
 const expectedNames = ["feedbot-cuts", "feedbot-media", "feedbot-webhook"];
-const apps = JSON.parse(fs.readFileSync(filePath, "utf8"));
+let apps;
+try {
+  apps = JSON.parse(fs.readFileSync(filePath, "utf8"));
+} catch {
+  throw new Error("PM2 response is not valid JSON");
+}
 const now = Date.now();
 
 if (!Array.isArray(apps)) throw new Error("PM2 response is not an array");
@@ -77,6 +85,10 @@ const expectedScripts = {
   "feedbot-media": path.join(appDir, "worker", "index.js"),
   "feedbot-webhook": path.join(appDir, "webhook-deploy.cjs"),
 };
+const expectedWorkerRoles = {
+  "feedbot-cuts": { WORKER_ID: "vps-cuts", WORKER_QUEUES: "cuts" },
+  "feedbot-media": { WORKER_ID: "vps-media", WORKER_QUEUES: "media" },
+};
 
 function validateRequiredPath(value, expected, label, name) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -84,6 +96,24 @@ function validateRequiredPath(value, expected, label, name) {
   }
   if (path.resolve(String(value)) !== path.resolve(expected)) {
     throw new Error(`PM2 ${label} mismatch: ${name} (${value})`);
+  }
+}
+
+function validateWorkerRole(pm2Environment, expectedRole, name) {
+  const sources = [pm2Environment, pm2Environment?.env]
+    .filter((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate));
+
+  for (const [key, expectedValue] of Object.entries(expectedRole)) {
+    const observedValues = sources
+      .filter((source) => Object.prototype.hasOwnProperty.call(source, key))
+      .map((source) => source[key]);
+
+    if (observedValues.length === 0) {
+      throw new Error(`PM2 worker role missing: ${name}/${key}`);
+    }
+    if (observedValues.some((value) => value !== expectedValue)) {
+      throw new Error(`PM2 worker role mismatch: ${name}/${key}`);
+    }
   }
 }
 
@@ -113,6 +143,9 @@ for (const name of expectedNames) {
   if (watch !== false) {
     throw new Error(`PM2 watch must be disabled: ${name}`);
   }
+
+  const expectedRole = expectedWorkerRoles[name];
+  if (expectedRole) validateWorkerRole(app.pm2_env, expectedRole, name);
 }
 NODE
 }
@@ -120,7 +153,7 @@ NODE
 attempt=1
 while [ "$attempt" -le "$HEALTH_RETRIES" ]; do
   if check_once; then
-    echo "[health] SHA, nginx, webhook e exatamente os tres processos PM2 esperados estao saudaveis"
+    echo "[health] SHA, nginx, webhook e os tres processos PM2 com papeis esperados estao saudaveis"
     exit 0
   fi
 

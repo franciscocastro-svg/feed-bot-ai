@@ -112,6 +112,7 @@ Os estados persistidos e expostos pelo webhook são:
 - confirma que o SHA existe e pertence ao histórico de `origin/main`;
 - recusa regressão automática para um SHA anterior ao que já está implantado;
 - recusa qualquer alteração rastreada, staged ou unstaged, sem criar stash;
+- exige `nginx -t` válido antes de criar estado, fazer fetch ou checkout;
 - registra o SHA atualmente implantado;
 - usa `git checkout --detach SHA`;
 - instala dependências travadas, executa checks e build;
@@ -123,22 +124,27 @@ Não há `git pull` e não há resolução implícita de `HEAD`.
 
 Se o SHA solicitado já for o `HEAD` ativo, o script executa apenas o health check.
 Esse caminho não reinstala dependências, não faz build, não reinicia PM2 e não
-recarrega Nginx. Em todos os caminhos, `nginx -t` permanece como gate; como esta
-fase não altera configuração Nginx, nenhum reload é executado.
+recarrega Nginx. O binário do Nginx e uma configuração válida são gates
+obrigatórios antes da primeira mutação; depois do restart, `nginx -t` é repetido
+antes do health check. Como esta fase não altera configuração Nginx, nenhum reload
+é executado.
 
 ## Health check e rollback
 
 O health check tenta por até 60 segundos, por padrão, validar:
 
 - `git rev-parse HEAD` exatamente igual ao SHA aprovado;
-- `nginx -t`, quando nginx estiver instalado;
+- `nginx -t` obrigatório;
 - `GET http://127.0.0.1:9000/deploy-health`;
 - consistência do estado persistido, rejeitando SHA simultaneamente em mais de um
   estado operacional ou um bloqueio marcado como bem-sucedido;
 - exatamente os três processos PM2 `feedbot-cuts`, `feedbot-media` e
   `feedbot-webhook`, cada um uma única vez, com status `online`, PID válido,
   uptime mínimo de 10 segundos e configuração esperada de script, diretório e
-  watch.
+  watch;
+- papéis operacionais exatos `vps-cuts/cuts` e `vps-media/media`, aceitando os
+  formatos conhecidos do JSON do PM2, rejeitando valores ausentes ou conflitantes
+  e sem registrar os valores de ambiente encontrados.
 
 Se instalação, testes, build, PM2, nginx ou health check falharem depois que o
 checkout exato do target for confirmado, o mesmo fluxo é executado para o SHA

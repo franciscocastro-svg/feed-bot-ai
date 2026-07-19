@@ -141,6 +141,16 @@ verify_target_sha() {
   }
 }
 
+test_nginx_configuration() {
+  if ! command -v nginx >/dev/null 2>&1; then
+    echo "ERRO: nginx nao esta disponivel para validacao."
+    return 1
+  fi
+
+  echo "==> Testing nginx configuration (no reload)"
+  nginx -t
+}
+
 prepare_release() {
   local sha="$1"
 
@@ -170,10 +180,7 @@ activate_release() {
   pm2 startOrReload ecosystem.config.cjs --update-env || return 1
   pm2 save || return 1
 
-  if command -v nginx >/dev/null 2>&1; then
-    echo "==> Testing nginx configuration (no reload)"
-    nginx -t || return 1
-  fi
+  test_nginx_configuration || return 1
 
   echo "==> Running post-deploy health checks"
   APP_DIR="$APP_DIR" DEPLOY_STATE_DIR="$DEPLOY_STATE_DIR" \
@@ -204,6 +211,8 @@ echo "==> Approved SHA: $TARGET_SHA"
 # First mutation gate: state files, fetches and checkouts happen only after it.
 assert_clean_tracked_worktree "antes da primeira mutacao" || \
   fail_preflight "tracked_worktree_not_clean"
+
+test_nginx_configuration || fail_preflight "nginx_preflight_failed"
 
 PREVIOUS_SHA="$(git rev-parse HEAD^{commit})" || fail_preflight "cannot_resolve_current_sha"
 echo "==> Previous SHA: $PREVIOUS_SHA"

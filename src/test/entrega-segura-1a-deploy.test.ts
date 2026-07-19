@@ -9,24 +9,29 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 type Pm2App = {
   name: string;
   pid: number;
   pm2_env: {
+    env?: Record<string, string>;
     status: string;
     pm_uptime: number;
     pm_exec_path?: string;
     pm_cwd?: string;
     watch?: boolean;
+    WORKER_ID?: string;
+    WORKER_QUEUES?: string;
+    SENSITIVE_TEST_SENTINEL?: string;
   };
 };
 
 const temporaryDirectories: string[] = [];
 const expectedSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const previousSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const sensitiveSentinel = "sensitive-test-sentinel-must-not-leak";
 const describeDeliveryHarness = process.env.DELIVERY_HARNESS === "1" ? describe : describe.skip;
 
 function temporaryDirectory(prefix: string) {
@@ -37,7 +42,7 @@ function temporaryDirectory(prefix: string) {
 
 function writeCommand(directory: string, name: string, body: string) {
   const commandPath = join(directory, name);
-  writeFileSync(commandPath, `#!/usr/bin/env bash\nset -eu\n${body}\n`, { mode: 0o700 });
+  writeFileSync(commandPath, `#!/bin/bash\nset -eu\n${body}\n`, { mode: 0o700 });
   chmodSync(commandPath, 0o700);
 }
 
@@ -76,6 +81,9 @@ function expectedPm2Apps(appDir: string): Pm2App[] {
         pm_exec_path: join(appDir, "worker/index.js"),
         pm_cwd: appDir,
         watch: false,
+        WORKER_ID: "vps-cuts",
+        WORKER_QUEUES: "cuts",
+        SENSITIVE_TEST_SENTINEL: sensitiveSentinel,
       },
     },
     {
@@ -87,6 +95,9 @@ function expectedPm2Apps(appDir: string): Pm2App[] {
         pm_exec_path: join(appDir, "worker/index.js"),
         pm_cwd: appDir,
         watch: false,
+        WORKER_ID: "vps-media",
+        WORKER_QUEUES: "media",
+        SENSITIVE_TEST_SENTINEL: sensitiveSentinel,
       },
     },
     {
@@ -103,7 +114,10 @@ function expectedPm2Apps(appDir: string): Pm2App[] {
   ];
 }
 
-async function runHealth(mutate: (apps: Pm2App[]) => Pm2App[] = (apps) => apps) {
+async function runHealth(
+  mutate: (apps: Pm2App[]) => Pm2App[] = (apps) => apps,
+  options: { nginxAvailable?: boolean } = {},
+) {
   const root = temporaryDirectory("feedbot-health-test-");
   const appDir = join(root, "app");
   const stateDir = join(root, "state");
@@ -113,12 +127,18 @@ async function runHealth(mutate: (apps: Pm2App[]) => Pm2App[] = (apps) => apps) 
   mkdirSync(binDir);
   writeFileSync(fixturePath, JSON.stringify(mutate(expectedPm2Apps(appDir))));
 
+  writeCommand(binDir, "mkdir", 'exec /bin/mkdir "$@"');
+  writeCommand(binDir, "chmod", 'exec /bin/chmod "$@"');
+  writeCommand(binDir, "rm", 'exec /bin/rm "$@"');
   writeCommand(binDir, "git", `printf '%s\\n' "$FAKE_GIT_SHA"`);
   writeCommand(binDir, "curl", "exit 0");
-  writeCommand(binDir, "nginx", '[ "${1:-}" = "-t" ]');
+  if (options.nginxAvailable !== false) {
+    writeCommand(binDir, "nginx", '[ "${1:-}" = "-t" ]');
+  }
   writeCommand(binDir, "pm2", '[ "${1:-}" = "jlist" ]\n/bin/cat "$FAKE_PM2_JSON"');
+  writeCommand(binDir, "node", `exec ${JSON.stringify(process.execPath)} "$@"`);
 
-  return runProcess("bash", [resolve(process.cwd(), "scripts/health-check-vps.sh"), expectedSha], {
+  return runProcess("/bin/bash", [resolve(process.cwd(), "scripts/health-check-vps.sh"), expectedSha], {
     cwd: appDir,
     env: {
       ...process.env,
@@ -129,7 +149,7 @@ async function runHealth(mutate: (apps: Pm2App[]) => Pm2App[] = (apps) => apps) 
       HEALTH_INTERVAL_SECONDS: "0",
       HEALTH_RETRIES: "1",
       PM2_MIN_UPTIME_MS: "1000",
-      PATH: `${binDir}:${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
+      PATH: binDir,
     },
   });
 }
@@ -139,6 +159,7 @@ async function runDeploy(options: {
   currentSha?: string;
   dirty?: boolean;
   healthMode?: "always_fail" | "success" | "target_fail";
+  nginxFailure?: boolean;
   targetSha?: string;
 }) {
   const root = temporaryDirectory("feedbot-deploy-test-");
@@ -170,7 +191,10 @@ async function runDeploy(options: {
   writeCommand(binDir, "npm", 'printf \'npm:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
   writeCommand(binDir, "node", 'printf \'node:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
   writeCommand(binDir, "pm2", 'printf \'pm2:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
-  writeCommand(binDir, "nginx", 'printf \'nginx:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"');
+  writeCommand(binDir, "nginx", [
+    'printf \'nginx:%s\\n\' "$*" >> "$FAKE_COMMAND_LOG"',
+    '[ "$FAKE_NGINX_FAILURE" != "1" ]',
+  ].join("\n"));
   writeFileSync(healthSource, `#!/usr/bin/env bash
 set -eu
 printf 'health:%s\\n' "$1" >> "$FAKE_COMMAND_LOG"
@@ -194,6 +218,7 @@ esac
       FAKE_CURRENT_SHA_FILE: currentShaFile,
       FAKE_GIT_DIRTY: options.dirty ? "1" : "0",
       FAKE_HEALTH_MODE: options.healthMode || "success",
+      FAKE_NGINX_FAILURE: options.nginxFailure ? "1" : "0",
       FAKE_TARGET_SHA: targetSha,
       PATH: `${binDir}:/usr/local/bin:/usr/bin:/bin`,
     },
@@ -216,6 +241,35 @@ describeDeliveryHarness("Entrega Segura 1A.2 - health PM2 hermetico", () => {
   it("aceita exatamente os tres processos esperados", async () => {
     const result = await runHealth();
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(sensitiveSentinel);
+  }, 30_000);
+
+  it("aceita os papeis operacionais no objeto env do PM2", async () => {
+    const result = await runHealth((apps) => apps.map((app) => {
+      if (app.name === "feedbot-webhook") return app;
+      const { WORKER_ID, WORKER_QUEUES } = app.pm2_env;
+      const copy = {
+        ...app,
+        pm2_env: {
+          ...app.pm2_env,
+          env: { WORKER_ID: WORKER_ID!, WORKER_QUEUES: WORKER_QUEUES! },
+        },
+      };
+      delete copy.pm2_env.WORKER_ID;
+      delete copy.pm2_env.WORKER_QUEUES;
+      return copy;
+    }));
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(sensitiveSentinel);
+  }, 30_000);
+
+  it("rejeita health quando o Nginx nao esta disponivel", async () => {
+    const result = await runHealth((apps) => apps, { nginxAvailable: false });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).not.toBe(0);
+    expect(result.stdout).toContain("[health] nginx nao esta disponivel");
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(sensitiveSentinel);
   }, 30_000);
 
   it.each([
@@ -252,9 +306,29 @@ describeDeliveryHarness("Entrega Segura 1A.2 - health PM2 hermetico", () => {
     ["watch ativo", (apps: Pm2App[]) => apps.map((app, index) => index === 0
       ? { ...app, pm2_env: { ...app.pm2_env, watch: true } }
       : app)],
+    ["WORKER_ID ausente em cuts", (apps: Pm2App[]) => {
+      delete apps[0]!.pm2_env.WORKER_ID;
+      return apps;
+    }],
+    ["WORKER_ID divergente em cuts", (apps: Pm2App[]) => apps.map((app, index) => index === 0
+      ? { ...app, pm2_env: { ...app.pm2_env, WORKER_ID: sensitiveSentinel } }
+      : app)],
+    ["WORKER_QUEUES ampla em cuts", (apps: Pm2App[]) => apps.map((app, index) => index === 0
+      ? { ...app, pm2_env: { ...app.pm2_env, WORKER_QUEUES: "all" } }
+      : app)],
+    ["WORKER_ID divergente em media", (apps: Pm2App[]) => apps.map((app, index) => index === 1
+      ? { ...app, pm2_env: { ...app.pm2_env, WORKER_ID: "vps-cuts" } }
+      : app)],
+    ["WORKER_QUEUES divergente em media", (apps: Pm2App[]) => apps.map((app, index) => index === 1
+      ? { ...app, pm2_env: { ...app.pm2_env, WORKER_QUEUES: "cuts,media" } }
+      : app)],
+    ["papeis conflitantes entre layouts PM2", (apps: Pm2App[]) => apps.map((app, index) => index === 0
+      ? { ...app, pm2_env: { ...app.pm2_env, env: { WORKER_ID: "vps-media", WORKER_QUEUES: "cuts" } } }
+      : app)],
   ])("rejeita %s", async (_label, mutate) => {
     const result = await runHealth(mutate);
     expect(result.status, `${result.stdout}\n${result.stderr}`).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(sensitiveSentinel);
   }, 30_000);
 });
 
@@ -268,10 +342,13 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(deploy).not.toMatch(/git\s+stash/);
     expect(deploy).not.toMatch(/git\s+pull/);
     expect(deploy).not.toMatch(/systemctl\s+reload\s+nginx/);
+    expect(deploy).toContain('fail_preflight "nginx_preflight_failed"');
     expect(health).toContain("apps.length !== expectedNames.length");
     expect(health).toContain("PM2 process must appear exactly once");
     expect(health).toContain("PM2 process has invalid PID");
     expect(health).toContain("PM2 process below minimum uptime");
+    expect(health).toContain("PM2 worker role missing");
+    expect(health).toContain("PM2 worker role mismatch");
   });
 
   it("interrompe worktree rastreada suja antes da primeira mutacao", async () => {
@@ -281,6 +358,17 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(result.stdout).toContain("DEPLOY_RESULT=FAILED_PREFLIGHT");
     expect(result.stateExists).toBe(false);
     expect(result.commandLog).not.toMatch(/git:fetch|git:checkout|npm:|pm2:|health:/);
+  }, 30_000);
+
+  it("bloqueia Nginx invalido antes da primeira mutacao", async () => {
+    const result = await runDeploy({ nginxFailure: true });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(20);
+    expect(result.stdout).toContain("DEPLOY_RESULT=FAILED_PREFLIGHT");
+    expect(result.stdout).toContain("DEPLOY_RESULT_REASON=nginx_preflight_failed");
+    expect(result.stateExists).toBe(false);
+    expect(result.commandLog.match(/^nginx:-t$/gm)).toHaveLength(1);
+    expect(result.commandLog).not.toMatch(/git:rev-parse|git:fetch|git:checkout|npm:|node:|pm2:|health:/);
   }, 30_000);
 
   it("usa health-only quando o target ja e o HEAD", async () => {
@@ -300,6 +388,16 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(result.commandLog).toContain("npm:ci");
     expect(result.commandLog).toContain("pm2:startOrReload ecosystem.config.cjs --update-env");
     expect(result.commandLog).not.toContain("systemctl:");
+
+    const commandLines = result.commandLog.trim().split("\n");
+    const nginxIndexes = commandLines.reduce<number[]>((indexes, line, index) => {
+      if (line === "nginx:-t") indexes.push(index);
+      return indexes;
+    }, []);
+    expect(nginxIndexes).toHaveLength(2);
+    expect(nginxIndexes[0]).toBeLessThan(commandLines.indexOf("git:fetch --prune origin main"));
+    expect(nginxIndexes[1]).toBeGreaterThan(commandLines.indexOf("pm2:save"));
+    expect(nginxIndexes[1]).toBeLessThan(commandLines.indexOf(`health:${expectedSha}`));
   }, 30_000);
 
   it("trata falha antes do checkout como preflight sem rollback ou restart", async () => {
