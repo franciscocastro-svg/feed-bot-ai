@@ -227,6 +227,36 @@ deve ocorrer nesta ordem:
 9. redeliver os eventos originais e confirmar idempotência sem alterar SHA, PID
    ou restart count.
 
+### Gate B1-Q — reconciliação do backlog legado
+
+Antes do bootstrap, o inventário B1-Q0 deve classificar exatamente nove pushes
+legados. O contrato aprovado exige seis ancestrais com CI verde marcados como
+`superseded`, dois ancestrais com CI não verde marcados como `failed_ci` e um
+único `approved_target` idêntico à `main`. Nenhum ancestral entra em
+`queue.json`.
+
+`scripts/reconcile-deploy-backlog.cjs` é bloqueado por padrão. O modo
+`--validate-report` apenas valida o relatório. O modo `--execute` também exige
+aprovação igual ao SHA target, hashes exatos do relatório e de `awaiting.json`,
+estado operacional vazio e um diretório privado de evidências ainda inexistente.
+Não consulta GitHub, não inicia runner e não executa deploy.
+
+Em uma execução futura e separadamente autorizada, a ferramenta:
+
+1. adquire o lock de estado e reconfirma os nove registros em ordem;
+2. preserva byte a byte o `awaiting.json` original e o relatório B1-Q0;
+3. grava `BLOCKED.json` antes de qualquer transição terminal;
+4. registra seis resultados `superseded` e dois `failed_ci`;
+5. mantém somente o target original em `awaiting.json`;
+6. deixa `queue.json` e `active.json` ausentes e o deploy não autorizado.
+
+O bloqueio `b1q_target_pending_bootstrap` deve permanecer até o bootstrap manual
+do SHA exato passar por health check e por uma finalização específica. Ele nunca
+deve ser removido como atalho. Se a ferramenta falhar depois de criar o bloqueio,
+a evidência privada e o bloqueio são preservados; nenhuma correção ou restauração
+automática é tentada. Restauração do arquivo original exige plano e autorização
+próprios, além da prova de que nenhum push concorrente foi recebido.
+
 Se qualquer gate divergir, a ativação para. Remover somente `workflow_run` retorna
 o webhook ao modo seguro `push`; URL, secret e estado da fila não devem ser
 apagados. Não se provoca falha deliberada em produção: rollback e bloqueio são
