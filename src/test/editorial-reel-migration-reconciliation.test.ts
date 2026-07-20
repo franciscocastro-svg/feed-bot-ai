@@ -22,13 +22,23 @@ const historicalMigrations = [
   },
 ];
 
-const migration = read("supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql");
+const sourceMigration = read("supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql");
+const migration = read("supabase/migrations/20260720201720_5433215c-5def-4898-abe7-47b384988f98.sql");
 
 describe("Reconciliação forward-only da duração editorial", () => {
   it("preserva byte a byte as três migrations históricas", () => {
     for (const historical of historicalMigrations) {
       expect(sha256(read(historical.file)), historical.file).toBe(historical.sha256);
     }
+  });
+
+  it("preserva o artefato fonte sem usa-lo como migration pendente", () => {
+    expect(sha256(sourceMigration)).toBe(
+      "1cad381b9b7376c90e913b6eddbb7dfba2eb26472563c96b45533cf49b5d20b8",
+    );
+    expect(sha256(migration)).toBe(
+      "e3889670aa31ef53597a6144ae6bd06ccea8b0911b4f5616407beb827d5e08f5",
+    );
   });
 
   it("remove os triggers incompatíveis antes da função histórica sem usar cascade", () => {

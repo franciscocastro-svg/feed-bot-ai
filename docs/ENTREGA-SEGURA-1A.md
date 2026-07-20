@@ -250,7 +250,8 @@ por Pull Request e novo deploy de SHA exato, nunca por reset ou force-push.
 Devem permanecer em planos e Pull Requests separados:
 
 - `deno check` automático para todas as 32 Edge Functions;
-- detecção automática de migrations duplicadas;
+- ampliar a detecção automática de migrations duplicadas além do par editorial
+  estritamente registrado pelo Gate M2.2;
 - testes E2E em ambiente sandbox;
 - governança Git e proteção gradual de `main`, com compatibilidade prévia para a
   sincronização da Lovable.

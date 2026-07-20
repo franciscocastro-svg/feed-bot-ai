@@ -39,8 +39,8 @@ Insights da própria conta.
 Este PR não aplica migration e não executa deploy. Quando houver autorização
 separada, a ordem segura é:
 
-1. Aplicar somente a reconciliação forward-only autorizada e conferir defaults,
-   constraints e o trigger canônico em `scheduled_posts`.
+1. Validar o gate dos artefatos da migration sem reaplicar SQL; a reconciliação
+   já foi aplicada e auditada pelo Gate M2.
 2. Implantar exatamente o SHA aprovado no VPS e reiniciar somente `feedbot-media`.
 3. Executar canários de 20s, 6s e 30s e validar os arquivos com FFprobe.
 4. Publicar o frontend pela Lovable somente após banco e worker estarem saudáveis.
@@ -63,26 +63,35 @@ semântica diferente do contrato aprovado. O ledger interno de migrations não
 pôde ser lido pelo papel do sandbox, portanto as três migrations históricas são
 preservadas byte a byte e não serão reescritas.
 
-A migration
-`20260720200000_reconcile_editorial_reel_duration.sql` é forward-only e
-idempotente. Ela remove os triggers incompatíveis, aposenta a função histórica
-compartilhada e cria uma função de nome exclusivo para o trigger em
-`scheduled_posts`. O snapshot continua first-write-wins e só alcança novos
-agendamentos elegíveis.
+O arquivo `20260720200000_reconcile_editorial_reel_duration.sql` permanece como
+artefato-fonte. A Lovable aplicou SQL operacionalmente equivalente e registrou no
+Git o artefato `20260720201720_5433215c-5def-4898-abe7-47b384988f98.sql`, com os
+timeouts aprovados. Como o ledger não é legível pelo papel disponível, os dois
+arquivos são preservados byte a byte e ficam explicitamente bloqueados para nova
+aplicação.
 
 Não há backfill dos snapshots existentes. Valores válidos, inclusive `NULL`,
 permanecem como estão; itens antigos continuam no fallback de 20 segundos. A
 migration também não altera status, mídia gerada, Cortes IA, carrosséis, Stories
 ou registros de agendamento.
 
-O SQL não usa `CASCADE`. Uma dependência, tipo de coluna ou valor incompatível
-faz a transação falhar e preserva o estado anterior. Aplicação no Supabase exige
-aprovação separada depois do merge e de uma nova conferência somente leitura.
+O SQL aplicado não usa `CASCADE`. O Gate M2 terminou com
+`PASS_APPLIED_POSTCHECK_GREEN`, sem backfill e sem alterar snapshots existentes.
+Qualquer futura operação de migration exige uma fase separada; este rollout não
+possui migration editorial pendente.
+
+## Reconciliação do artefato Lovable — Gate M2.2
+
+`npm run check:editorial-migration-artifacts` valida os hashes e tamanhos exatos,
+a equivalência operacional restrita, os timeouts e o manifesto de rollout. O gate
+falha se um dos arquivos mudar, se surgir uma terceira cópia equivalente ou se a
+release voltar a solicitar aplicação. Ele não lê nem altera banco ou ledger.
 
 ## Gates mínimos
 
 - `npm ci`
 - `npm run ci`
+- `npm run check:editorial-migration-artifacts`
 - `npx vitest run src/test/dynamic-reels-20s-1a.test.ts src/test/configurable-editorial-reels.test.ts`
 - `npx vitest run src/test/editorial-reel-migration-reconciliation.test.ts`
 - `node --check worker/index.js`
