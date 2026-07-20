@@ -6,6 +6,7 @@ const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
 const migration = read("supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql");
+const reconciliationMigration = read("supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql");
 const settings = read("src/pages/dashboard/Settings.tsx");
 const news = read("src/pages/dashboard/News.tsx");
 const worker = read("worker/index.js");
@@ -27,13 +28,13 @@ describe("Contrato dos Reels editoriais configuráveis", () => {
   });
 
   it("tira um snapshot apenas para Reel editorial sem MP4 e exclui Cortes IA", () => {
-    expect(migration).toContain("if new.media_type is distinct from 'reel'");
-    expect(migration).toContain("item.content_type is distinct from 'video_cut'");
-    expect(migration).toContain("item.content_format is distinct from 'carrossel'");
-    expect(migration).toContain("item.generated_video_url is null");
-    expect(migration).toContain("item.editorial_reel_duration_seconds is null");
-    expect(migration).toContain("before insert or update of media_type, news_item_id, user_id");
-    expect(migration).toContain("set editorial_reel_duration_seconds = v_duration");
+    expect(reconciliationMigration).toContain("if new.media_type is distinct from 'reel'");
+    expect(reconciliationMigration).toContain("item.content_type is distinct from 'video_cut'");
+    expect(reconciliationMigration).toContain("item.content_format is distinct from 'carrossel'");
+    expect(reconciliationMigration).toContain("item.generated_video_url is null");
+    expect(reconciliationMigration).toContain("item.editorial_reel_duration_seconds is null");
+    expect(reconciliationMigration).toContain("before insert or update of media_type, news_item_id, user_id");
+    expect(reconciliationMigration).toContain("set editorial_reel_duration_seconds = v_duration");
   });
 
   it("usa o snapshot nos dois caminhos de render e preserva o fallback de 20 segundos", () => {

@@ -39,7 +39,8 @@ Insights da própria conta.
 Este PR não aplica migration e não executa deploy. Quando houver autorização
 separada, a ordem segura é:
 
-1. Aplicar a migration aditiva e conferir defaults, constraints e trigger.
+1. Aplicar somente a reconciliação forward-only autorizada e conferir defaults,
+   constraints e o trigger canônico em `scheduled_posts`.
 2. Implantar exatamente o SHA aprovado no VPS e reiniciar somente `feedbot-media`.
 3. Executar canários de 20s, 6s e 30s e validar os arquivos com FFprobe.
 4. Publicar o frontend pela Lovable somente após banco e worker estarem saudáveis.
@@ -52,13 +53,38 @@ separada, a ordem segura é:
 - Implantar o worker antes da migration é compatível: a ausência do snapshot cai no
   fallback de 20 segundos, mas o seletor ainda não deve ficar visível.
 - Para rollback, ocultar o seletor, fixar a preferência em 20 e reimplantar o worker
-  anterior. A migration é aditiva e pode permanecer sem apagar dados.
+  anterior. As colunas e snapshots válidos permanecem; o rollback não apaga dados.
+
+## Reconciliação Entrega Segura 1A.2-B.1
+
+O Gate M0 somente leitura encontrou as colunas e constraints ativas, mas também
+encontrou o trigger `snapshot_editorial_reel_duration` em `news_items` com
+semântica diferente do contrato aprovado. O ledger interno de migrations não
+pôde ser lido pelo papel do sandbox, portanto as três migrations históricas são
+preservadas byte a byte e não serão reescritas.
+
+A migration
+`20260720200000_reconcile_editorial_reel_duration.sql` é forward-only e
+idempotente. Ela remove os triggers incompatíveis, aposenta a função histórica
+compartilhada e cria uma função de nome exclusivo para o trigger em
+`scheduled_posts`. O snapshot continua first-write-wins e só alcança novos
+agendamentos elegíveis.
+
+Não há backfill dos snapshots existentes. Valores válidos, inclusive `NULL`,
+permanecem como estão; itens antigos continuam no fallback de 20 segundos. A
+migration também não altera status, mídia gerada, Cortes IA, carrosséis, Stories
+ou registros de agendamento.
+
+O SQL não usa `CASCADE`. Uma dependência, tipo de coluna ou valor incompatível
+faz a transação falhar e preserva o estado anterior. Aplicação no Supabase exige
+aprovação separada depois do merge e de uma nova conferência somente leitura.
 
 ## Gates mínimos
 
 - `npm ci`
 - `npm run ci`
 - `npx vitest run src/test/dynamic-reels-20s-1a.test.ts src/test/configurable-editorial-reels.test.ts`
+- `npx vitest run src/test/editorial-reel-migration-reconciliation.test.ts`
 - `node --check worker/index.js`
 - `npm audit --omit=dev --audit-level=moderate --registry=https://registry.npmjs.org`
 - revisão do diff para confirmar ausência de Edge Functions, pagamentos e templates

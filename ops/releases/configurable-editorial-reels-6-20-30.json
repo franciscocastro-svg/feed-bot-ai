@@ -5,8 +5,21 @@
   "frontend": true,
   "edgeFunctions": [],
   "migrations": [
-    "supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql"
+    "supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql",
+    "supabase/migrations/20260719213209_fc7a5a58-eda2-462d-bd1b-346128463fdb.sql",
+    "supabase/migrations/20260720143319_a49c0567-64ba-4019-8209-0b37c45b1073.sql",
+    "supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql"
   ],
+  "reconciliation": {
+    "phase": "Entrega Segura 1A.2-B.1",
+    "baseSha": "8f19fc282c18024c1a51165b6404808b13ee56d2",
+    "branch": "codex/entrega-segura-1a2-b-migration-reconcile",
+    "strategy": "forward-only",
+    "canonicalTriggerTable": "scheduled_posts",
+    "preserveExistingSnapshots": true,
+    "backfillExistingNullSnapshots": false,
+    "migrationApplied": false
+  },
   "vpsProcesses": [
     "feedbot-media"
   ],
