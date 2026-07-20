@@ -9,6 +9,7 @@ DEPLOY_TRASH_DIR="${DEPLOY_TRASH_DIR:-$APP_DIR/.deploy-trash}"
 HEALTH_SCRIPT_SOURCE="${DEPLOY_HEALTH_SCRIPT_SOURCE:-$APP_DIR/scripts/health-check-vps.sh}"
 HEALTH_SCRIPT_SNAPSHOT="$DEPLOY_STATE_DIR/health-check-vps.sh"
 PREPARE_FAILURE_REASON=""
+FRONTEND_ARTIFACT_BASELINE=""
 
 # Exit contract consumed by the queue runner.
 EXIT_SUCCEEDED=0
@@ -69,6 +70,71 @@ stop_on_prepare_drift() {
   PREPARE_FAILURE_REASON="tracked_worktree_changed_after_build"
   echo "ERRO: preparacao alterou arquivos rastreados; PM2 e health nao serao executados."
   echo "ERRO: o worktree sera preservado para auditoria, sem checkout ou rollback automatico."
+  return 1
+}
+
+hash_frontend_stream() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+    return $?
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+    return $?
+  fi
+
+  return 1
+}
+
+frontend_artifact_fingerprint() {
+  local dist_dir="$APP_DIR/dist"
+  local digest
+
+  if [ ! -e "$dist_dir" ] && [ ! -L "$dist_dir" ]; then
+    printf 'absent\n'
+    return 0
+  fi
+
+  if [ ! -d "$dist_dir" ] || [ -L "$dist_dir" ]; then
+    echo "ERRO: dist deve ser um diretorio regular ou estar ausente." >&2
+    return 1
+  fi
+
+  digest="$(tar -C "$APP_DIR" -cf - dist 2>/dev/null | hash_frontend_stream)" || return 1
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf 'present:%s\n' "$digest"
+}
+
+capture_frontend_artifact_baseline() {
+  FRONTEND_ARTIFACT_BASELINE="$(frontend_artifact_fingerprint)" || return 1
+  case "$FRONTEND_ARTIFACT_BASELINE" in
+    absent|present:[0-9a-f][0-9a-f]*)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  echo "==> Frontend artifact fingerprint captured; VPS will not build or publish it"
+}
+
+stop_on_frontend_artifact_drift() {
+  local checkpoint="$1"
+  local current
+
+  current="$(frontend_artifact_fingerprint)" || {
+    PREPARE_FAILURE_REASON="frontend_artifact_fingerprint_failed"
+    echo "ERRO: nao foi possivel validar dist ($checkpoint)."
+    return 1
+  }
+
+  if [ "$current" = "$FRONTEND_ARTIFACT_BASELINE" ]; then
+    return 0
+  fi
+
+  PREPARE_FAILURE_REASON="frontend_artifact_changed"
+  echo "ERRO: dist mudou durante o deploy ($checkpoint); PM2, health e rollback nao continuarao."
+  echo "ERRO: o frontend permanece sob publicacao exclusiva da Lovable."
   return 1
 }
 
@@ -175,27 +241,28 @@ prepare_release() {
   echo "==> Checking out exact SHA $sha"
   git checkout --detach "$sha" || return 1
   [ "$(git rev-parse HEAD^{commit})" = "$sha" ] || return 1
+  stop_on_frontend_artifact_drift "depois do checkout" || return 1
 
   secure_secret_files || return 1
   install_web_dependencies || return 1
+  stop_on_frontend_artifact_drift "depois das dependencias web" || return 1
   install_worker_dependencies || return 1
+  stop_on_frontend_artifact_drift "depois das dependencias do worker" || return 1
 
   echo "==> Running automated checks"
   npm run check
   command_status=$?
   stop_on_prepare_drift "depois dos checks automatizados" || return 1
+  stop_on_frontend_artifact_drift "depois dos checks automatizados" || return 1
   [ "$command_status" -eq 0 ] || return 1
 
-  echo "==> Building frontend"
-  npm run build
-  command_status=$?
-  stop_on_prepare_drift "depois do build do frontend" || return 1
-  [ "$command_status" -eq 0 ] || return 1
+  echo "==> Frontend build skipped on VPS; GitHub CI validates it and Lovable publishes it"
 
   echo "==> Checking worker syntax"
   node --check worker/index.js
   command_status=$?
   stop_on_prepare_drift "depois da sintaxe do worker, imediatamente antes do PM2" || return 1
+  stop_on_frontend_artifact_drift "depois da sintaxe do worker, imediatamente antes do PM2" || return 1
   [ "$command_status" -eq 0 ] || return 1
 }
 
@@ -211,6 +278,7 @@ activate_release() {
   echo "==> Running post-deploy health checks"
   APP_DIR="$APP_DIR" DEPLOY_STATE_DIR="$DEPLOY_STATE_DIR" \
     bash "$HEALTH_SCRIPT_SNAPSHOT" "$sha" || return 1
+  stop_on_frontend_artifact_drift "depois do health pos-deploy" || return 1
 }
 
 deploy_release() {
@@ -237,6 +305,9 @@ echo "==> Approved SHA: $TARGET_SHA"
 # First mutation gate: state files, fetches and checkouts happen only after it.
 assert_clean_tracked_worktree "antes da primeira mutacao" || \
   fail_preflight "tracked_worktree_not_clean"
+
+capture_frontend_artifact_baseline || \
+  fail_preflight "frontend_artifact_fingerprint_failed"
 
 test_nginx_configuration || fail_preflight "nginx_preflight_failed"
 
@@ -274,6 +345,10 @@ if [ "$TARGET_SHA" = "$PREVIOUS_SHA" ]; then
   echo "==> Target SHA is already checked out; running health-only idempotent path"
   if APP_DIR="$APP_DIR" DEPLOY_STATE_DIR="$DEPLOY_STATE_DIR" \
     bash "$HEALTH_SCRIPT_SNAPSHOT" "$TARGET_SHA"; then
+    stop_on_frontend_artifact_drift "depois do health same-SHA" || {
+      emit_result "INTERRUPTED" "$PREPARE_FAILURE_REASON"
+      exit "$EXIT_INTERRUPTED"
+    }
     emit_result "SAME_SHA_HEALTHY" "same_sha_healthy"
     exit "$EXIT_SUCCEEDED"
   fi
@@ -290,8 +365,10 @@ if deploy_release "$TARGET_SHA"; then
   exit "$EXIT_SUCCEEDED"
 fi
 
-if [ "$PREPARE_FAILURE_REASON" = "tracked_worktree_changed_after_build" ]; then
-  echo "ERRO: deploy interrompido antes da ativacao porque a preparacao sujou o worktree."
+if [ "$PREPARE_FAILURE_REASON" = "tracked_worktree_changed_after_build" ] || \
+   [ "$PREPARE_FAILURE_REASON" = "frontend_artifact_changed" ] || \
+   [ "$PREPARE_FAILURE_REASON" = "frontend_artifact_fingerprint_failed" ]; then
+  echo "ERRO: deploy interrompido porque a preparacao violou um gate de integridade."
   emit_result "INTERRUPTED" "$PREPARE_FAILURE_REASON"
   exit "$EXIT_INTERRUPTED"
 fi
