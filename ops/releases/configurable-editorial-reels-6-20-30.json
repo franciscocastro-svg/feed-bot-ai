@@ -8,17 +8,41 @@
     "supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql",
     "supabase/migrations/20260719213209_fc7a5a58-eda2-462d-bd1b-346128463fdb.sql",
     "supabase/migrations/20260720143319_a49c0567-64ba-4019-8209-0b37c45b1073.sql",
-    "supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql"
+    "supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql",
+    "supabase/migrations/20260720201720_5433215c-5def-4898-abe7-47b384988f98.sql"
   ],
   "reconciliation": {
-    "phase": "Entrega Segura 1A.2-B.1",
+    "phase": "Entrega Segura 1A.2-M2.2",
     "baseSha": "8f19fc282c18024c1a51165b6404808b13ee56d2",
     "branch": "codex/entrega-segura-1a2-b-migration-reconcile",
     "strategy": "forward-only",
     "canonicalTriggerTable": "scheduled_posts",
     "preserveExistingSnapshots": true,
     "backfillExistingNullSnapshots": false,
-    "migrationApplied": false
+    "migrationApplied": true,
+    "applicationResult": "PASS_APPLIED_POSTCHECK_GREEN",
+    "applicationSourceSha": "eba5b13fbb57cf16745d503a214ac719e80bcc1c",
+    "lovableCommitSha": "497485f932c3f67059d0b4edbb96cc7080b51863",
+    "ledgerStatus": "not-readable-with-current-role",
+    "reapplyAllowed": false,
+    "pendingMigrations": [],
+    "sourceArtifact": {
+      "path": "supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql",
+      "sha256": "1cad381b9b7376c90e913b6eddbb7dfba2eb26472563c96b45533cf49b5d20b8",
+      "sizeBytes": 5148,
+      "status": "source-only-do-not-apply"
+    },
+    "lovableArtifact": {
+      "path": "supabase/migrations/20260720201720_5433215c-5def-4898-abe7-47b384988f98.sql",
+      "sha256": "e3889670aa31ef53597a6144ae6bd06ccea8b0911b4f5616407beb827d5e08f5",
+      "sizeBytes": 4583,
+      "status": "observed-applied-do-not-reapply"
+    },
+    "allowedOperationalDifferences": [
+      "lovable-artifact-adds-lock-timeout-3s",
+      "lovable-artifact-adds-statement-timeout-120s",
+      "comments-and-final-newline-only"
+    ]
   },
   "vpsProcesses": [
     "feedbot-media"
@@ -36,19 +60,21 @@
     "preserveAiCutDuration": true
   },
   "rolloutOrder": [
-    "migration",
+    "migration-artifact-gate-no-reapply",
     "feedbot-media",
     "canary-20-6-30",
     "lovable-frontend"
   ],
   "checks": [
     "npm run ci",
+    "npm run check:editorial-migration-artifacts",
     "node --check worker/index.js",
     "vitest configurable editorial reels",
     "npm audit --omit=dev --audit-level=moderate"
   ],
   "guardrails": {
     "migrationAppliedByThisChange": false,
+    "migrationReapplication": false,
     "edgeDeploy": false,
     "lovablePublish": false,
     "vpsDeploy": false,

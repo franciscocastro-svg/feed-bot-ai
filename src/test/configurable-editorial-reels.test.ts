@@ -6,7 +6,7 @@ const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
 const migration = read("supabase/migrations/20260719180000_configurable_editorial_reel_duration.sql");
-const reconciliationMigration = read("supabase/migrations/20260720200000_reconcile_editorial_reel_duration.sql");
+const reconciliationMigration = read("supabase/migrations/20260720201720_5433215c-5def-4898-abe7-47b384988f98.sql");
 const settings = read("src/pages/dashboard/Settings.tsx");
 const news = read("src/pages/dashboard/News.tsx");
 const worker = read("worker/index.js");
