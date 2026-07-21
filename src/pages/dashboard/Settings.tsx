@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Upload, Loader2, Music2, Trash2, GraduationCap, Instagram, ChevronRight, Mail } from "lucide-react";
 import { TutorialModal } from "@/components/TutorialModal";
+import { ContextHelp, FieldLabel } from "@/components/ContextHelp";
 import {
   DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
   normalizeEditorialReelDuration,
@@ -165,11 +166,13 @@ export default function Settings() {
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-2xl">
       <div>
-        <h1 className="font-display text-3xl font-bold">Configurações</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold">Configurações</h1>
+          <ContextHelp label="configurações globais" title="Padrão global">
+            Estas opções servem como padrão para suas contas. Se você tiver mais de uma conta Instagram, também pode personalizar marca, ritmo e tom individualmente.
+          </ContextHelp>
+        </div>
         <p className="text-muted-foreground mt-1">Padrão global da automação e identidade da marca.</p>
-        <p className="text-xs text-muted-foreground mt-2">
-          💡 Tem mais de uma conta Instagram? Você pode definir marca, ritmo e tom específicos por conta abaixo.
-        </p>
       </div>
 
       {igAccounts.length > 1 && (
@@ -231,19 +234,27 @@ export default function Settings() {
       </Card>
 
       <Card className="p-6 space-y-5">
-        <h2 className="font-display text-xl font-semibold">Identidade da marca</h2>
-        <p className="text-xs text-muted-foreground -mt-3">Aparece no header de cada post (estilo "Choquei").</p>
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-xl font-semibold">Identidade da marca</h2>
+          <ContextHelp label="identidade da marca">
+            O nome, o perfil e a logo aparecem no cabeçalho dos posts gerados pelo template dinâmico.
+          </ContextHelp>
+        </div>
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary border-2 border-border shrink-0">
             {s.brand_logo_url ? <img src={s.brand_logo_url} alt="logo" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">sem<br/>logo</div>}
           </div>
           <div className="flex-1">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
-            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-              {s.brand_logo_url ? "Trocar logo" : "Enviar logo"}
-            </Button>
-            <p className="text-xs text-muted-foreground mt-1">Quadrada, fundo claro/escuro, mínimo 300x300px.</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                {s.brand_logo_url ? "Trocar logo" : "Enviar logo"}
+              </Button>
+              <ContextHelp label="formato da logo">
+                Use uma imagem quadrada, com fundo claro ou escuro e pelo menos 300 × 300 pixels.
+              </ContextHelp>
+            </div>
           </div>
         </div>
         <div><Label>Nome da marca</Label><Input value={s.brand_name || ""} onChange={e => setS({ ...s, brand_name: e.target.value })} placeholder="CHOQUEI" /></div>
@@ -252,13 +263,12 @@ export default function Settings() {
 
       <Card className="p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="font-display text-xl font-semibold">Biblioteca de trilhas dos Reels</h2>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-              Suba várias trilhas com <b>nomes descritivos</b> (ex: <code>tenso.mp3</code>, <code>feliz.mp3</code>, <code>urgente.mp3</code>, <code>investigacao.mp3</code>).
-              A IA lê o nome do arquivo e o conteúdo da notícia para escolher a trilha que combina com o tom da publicação.
-              Se nenhuma trilha for cadastrada, o Reel sai sem áudio.
-            </p>
+            <ContextHelp label="biblioteca de trilhas" title="Como a IA escolhe a trilha">
+              <p>Use nomes que descrevam a emoção ou o contexto, como <code>tenso.mp3</code>, <code>feliz.mp3</code> ou <code>urgente.mp3</code>.</p>
+              <p className="mt-1.5">A IA combina o nome do arquivo com a notícia. Sem trilha cadastrada, o Reel é gerado sem áudio.</p>
+            </ContextHelp>
           </div>
           <input
             ref={trackRef}
@@ -301,32 +311,34 @@ export default function Settings() {
             ))}
           </div>
         )}
-
-        <p className="text-[11px] text-muted-foreground">
-          Dica: nomes em PT-BR funcionam melhor. Use uma palavra que descreva a emoção ou o contexto (tenso, alegre, polêmico, esportivo, dramático, investigativo, fofo…). A IA escolhe automaticamente.
-        </p>
       </Card>
 
       <Card className="p-6 space-y-5">
         <h2 className="font-display text-xl font-semibold">Automação</h2>
         <div>
-          <Label>Posts por dia (máx.)</Label>
-          <Input type="number" min={1} max={planMax} value={s.max_posts_per_day} onChange={e => setS({ ...s, max_posts_per_day: Math.min(Math.max(+e.target.value || 1, 1), planMax) })} />
-          <p className="text-xs text-muted-foreground mt-1">
-            {isUnlimited
-              ? <>Seu plano{planLimits?.display_name ? ` (${planLimits.display_name})` : ""} é <strong>ilimitado</strong> — defina o limite diário que preferir.</>
-              : <>Seu plano{planLimits?.display_name ? ` (${planLimits.display_name})` : ""} permite até <strong>{planMax}</strong> posts/dia. Para aumentar, faça upgrade do plano.</>}
-          </p>
+          <FieldLabel htmlFor="max-posts-per-day" helpLabel="posts por dia" help={isUnlimited
+            ? "Seu plano não limita a quantidade diária. Defina aqui o máximo que deseja publicar."
+            : `Seu plano permite até ${planMax} posts por dia. O sistema não salvará um valor acima desse limite.`}
+          >Posts por dia (máx.)</FieldLabel>
+          <Input id="max-posts-per-day" type="number" min={1} max={planMax} value={s.max_posts_per_day} onChange={e => setS({ ...s, max_posts_per_day: Math.min(Math.max(+e.target.value || 1, 1), planMax) })} />
+          <p className="mt-1 text-[11px] text-muted-foreground">Limite do plano{planLimits?.display_name ? ` ${planLimits.display_name}` : ""}: {isUnlimited ? "ilimitado" : `${planMax}/dia`}</p>
         </div>
         <div>
-          <Label>Intervalo mínimo entre posts (minutos)</Label>
-          <Input type="number" min={10} value={s.min_post_interval_minutes ?? 10} onChange={e => setS({ ...s, min_post_interval_minutes: Math.max(+e.target.value || 10, 10) })} />
-          <p className="text-xs text-muted-foreground mt-1">Tempo mínimo entre publicações da mesma conta. Mínimo permitido: 10 min. Recomendado: 30-60 min para evitar bloqueios do Instagram (erro "too many actions").</p>
+          <FieldLabel htmlFor="min-post-interval" helpLabel="intervalo entre posts" help="É o tempo mínimo entre publicações da mesma conta. O sistema aceita no mínimo 10 minutos; recomendamos de 30 a 60 minutos para reduzir bloqueios do Instagram.">
+            Intervalo mínimo entre posts (minutos)
+          </FieldLabel>
+          <Input id="min-post-interval" type="number" min={10} value={s.min_post_interval_minutes ?? 10} onChange={e => setS({ ...s, min_post_interval_minutes: Math.max(+e.target.value || 10, 10) })} />
         </div>
-        <div><Label>Nicho padrão</Label><Input value={s.default_niche || ""} onChange={e => setS({ ...s, default_niche: e.target.value })} placeholder="finanças, esportes…" /></div>
-        <div><Label>Tom da IA</Label><Input value={s.ai_tone || ""} onChange={e => setS({ ...s, ai_tone: e.target.value })} /></div>
         <div>
-          <Label>Tipo de publicação padrão</Label>
+          <FieldLabel htmlFor="default-niche" helpLabel="nicho padrão" help="Tema principal usado pela IA para contextualizar notícias e publicações.">Nicho padrão</FieldLabel>
+          <Input id="default-niche" value={s.default_niche || ""} onChange={e => setS({ ...s, default_niche: e.target.value })} placeholder="finanças, esportes…" />
+        </div>
+        <div>
+          <FieldLabel htmlFor="ai-tone" helpLabel="tom da IA" help="Define o estilo de escrita das legendas, por exemplo: informativo, descontraído ou urgente.">Tom da IA</FieldLabel>
+          <Input id="ai-tone" value={s.ai_tone || ""} onChange={e => setS({ ...s, ai_tone: e.target.value })} />
+        </div>
+        <div>
+          <FieldLabel helpLabel="tipo de publicação padrão" help="Formato usado quando uma automação não escolher outro tipo explicitamente.">Tipo de publicação padrão</FieldLabel>
           <Select value={s.default_media_type || "reel"} onValueChange={v => setS({ ...s, default_media_type: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -337,7 +349,9 @@ export default function Settings() {
           </Select>
         </div>
         <div>
-          <Label>Duração dos Reels de notícias</Label>
+          <FieldLabel helpLabel="duração dos Reels de notícias" help="Vale somente para novos Reels editoriais criados de imagens estáticas. Stories e Cortes IA não mudam. O alcance varia conforme conteúdo, público e distribuição; compare os resultados nos Insights.">
+            Duração dos Reels de notícias
+          </FieldLabel>
           <Select
             value={String(normalizeEditorialReelDuration(s.editorial_reel_duration_seconds))}
             onValueChange={value => setS({
@@ -352,15 +366,12 @@ export default function Settings() {
               <SelectItem value="30">30 segundos — mais contexto</SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground mt-1">
-            Vale somente para novos Reels editoriais criados de imagens estáticas. Stories e Cortes IA não mudam. O alcance varia conforme conteúdo, público e distribuição; compare os resultados nos Insights.
-          </p>
           {normalizeEditorialReelDuration(s.editorial_reel_duration_seconds) !== DEFAULT_EDITORIAL_REEL_DURATION_SECONDS && (
-            <p className="text-xs text-muted-foreground mt-1">O padrão atual do sistema é {DEFAULT_EDITORIAL_REEL_DURATION_SECONDS} segundos.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Personalizado · padrão do sistema: {DEFAULT_EDITORIAL_REEL_DURATION_SECONDS}s</p>
           )}
         </div>
         <div>
-          <Label>Estilo de imagem padrão</Label>
+          <FieldLabel helpLabel="estilo de imagem padrão" help="Template dinâmico usa o visual configurado da marca. Geração com IA cria uma nova imagem para o conteúdo.">Estilo de imagem padrão</FieldLabel>
           <Select value={s.default_image_style} onValueChange={v => setS({ ...s, default_image_style: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -369,9 +380,12 @@ export default function Settings() {
             </SelectContent>
           </Select>
         </div>
-        <div><Label>Melhores horários (separados por vírgula)</Label><Input value={(s.preferred_post_hours || []).join(",")} onChange={e => setS({ ...s, preferred_post_hours: e.target.value.split(",").map((x: string) => +x.trim()).filter(Number.isFinite) })} /></div>
+        <div>
+          <FieldLabel htmlFor="preferred-hours" helpLabel="melhores horários" help="Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21. A automação prioriza esses horários.">Melhores horários</FieldLabel>
+          <Input id="preferred-hours" value={(s.preferred_post_hours || []).join(",")} onChange={e => setS({ ...s, preferred_post_hours: e.target.value.split(",").map((x: string) => +x.trim()).filter(Number.isFinite) })} placeholder="8,12,18,21" />
+        </div>
         <div className="flex items-center justify-between">
-          <div><Label>Aprovação automática</Label><p className="text-xs text-muted-foreground">Pula a etapa de aprovação manual.</p></div>
+          <FieldLabel helpLabel="aprovação automática" help="Quando ativada, a publicação pula a etapa de aprovação manual.">Aprovação automática</FieldLabel>
           <Switch checked={s.auto_approve} onCheckedChange={v => setS({ ...s, auto_approve: v })} />
         </div>
       </Card>
