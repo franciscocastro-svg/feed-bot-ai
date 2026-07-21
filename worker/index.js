@@ -25,6 +25,13 @@ import {
   requestStructuredAnalysis,
   transcriptionProviderOrder,
 } from "./aiProviders.js";
+import {
+  createCutReuseContext,
+  cutReuseTrace,
+  cutSegmentReuseKey,
+  remapTranscriptToKeptSegments,
+  sliceSourceTranscript,
+} from "./cutReuse.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -1718,7 +1725,9 @@ Regras:
 // Gemini continua como fallback. O contrato de providers fica isolado para que
 // um provedor futuro não obrigue a reescrever renderização ou legendas.
 async function transcribeClip(audioPath, maxDuration = Number.POSITIVE_INFINITY) {
+  const attemptedProviders = [];
   for (const provider of transcriptionProviderOrder()) {
+    attemptedProviders.push(provider);
     const rawWords = provider === "groq"
       ? await transcribeClipGroq(audioPath)
       : provider === "gemini"
@@ -1730,13 +1739,14 @@ async function transcribeClip(audioPath, maxDuration = Number.POSITIVE_INFINITY)
     });
     if (words.length > 0) {
       console.log(`[cuts] Transcrição via ${provider}: ${words.length} palavras; lead=${CUT_SUBTITLE_LEAD_MS}ms`);
-      return { words, provider };
+      return { words, provider, attemptedProviders };
     }
   }
-  return { words: [], provider: null };
+  return { words: [], provider: null, attemptedProviders };
 }
 
 async function transcribeSourceForAnalysis(sourcePath, tempDir) {
+  const startedAt = Date.now();
   const segmentDir = path.join(tempDir, "analysis-audio");
   await fs.promises.mkdir(segmentDir, { recursive: true });
   const segmentPattern = path.join(segmentDir, "part-%03d.mp3");
@@ -1749,8 +1759,12 @@ async function transcribeSourceForAnalysis(sourcePath, tempDir) {
     .filter((name) => /^part-\d+\.mp3$/.test(name))
     .sort();
   const words = [];
+  const providers = {};
+  let calls = 0;
   for (let index = 0; index < parts.length; index += 1) {
     const transcription = await transcribeClip(path.join(segmentDir, parts[index]), 600);
+    calls += transcription.attemptedProviders.length;
+    if (transcription.provider) providers[transcription.provider] = (providers[transcription.provider] || 0) + 1;
     const segmentWords = transcription.words;
     if (!segmentWords.length) continue;
     const offset = index * 600;
@@ -1760,7 +1774,15 @@ async function transcribeSourceForAnalysis(sourcePath, tempDir) {
       end: Number(word.end || 0) + offset,
     })));
   }
-  return words;
+  return {
+    words,
+    trace: {
+      calls,
+      providers,
+      segments: parts.length,
+      duration_ms: Date.now() - startedAt,
+    },
+  };
 }
 
 function timedTranscript(words) {
@@ -2008,10 +2030,69 @@ async function validateAiCutOutput(filePath, expected) {
   return report;
 }
 
-async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
-  const overlayPath = path.join(tempDir, `${clip.id}-overlay.png`);
+async function prepareReusableCutSegment({ clip, sourcePath, tempDir, removeSilences, reuseContext }) {
+  const key = cutSegmentReuseKey(clip, removeSilences);
+  const cached = reuseContext.segments.get(key);
+  if (cached) {
+    reuseContext.metrics.segmentReuses += 1;
+    return { ...cached, reused: true };
+  }
+
   const rawCutPath = path.join(tempDir, `${clip.id}-raw.mp4`);
   const trimmedPath = path.join(tempDir, `${clip.id}-trimmed.mp4`);
+  const pass1Cmd = [
+    "ffmpeg -y",
+    "-ss", shellQuote(clip.start_seconds),
+    "-i", shellQuote(sourcePath),
+    "-t", shellQuote(clip.duration_seconds),
+    "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
+    "-c:a aac -b:a 128k",
+    shellQuote(rawCutPath),
+  ].join(" ");
+  await execAsync(pass1Cmd, { maxBuffer: 20 * 1024 * 1024 });
+  if (!fs.existsSync(rawCutPath) || fs.statSync(rawCutPath).size < 1000) {
+    throw new Error("Trecho bruto não foi gerado.");
+  }
+
+  let workingPath = rawCutPath;
+  let workingDuration = Number(clip.duration_seconds) || 0;
+  let keptSegments = null;
+  if (removeSilences && workingDuration > 5) {
+    const silences = await detectSilences(rawCutPath, 0.7);
+    const keep = buildKeepSegments(workingDuration, silences);
+    if (silences.length > 0 && keep.length > 0 && keep.length < 20) {
+      const selectV = keep.map((segment) => `between(t,${segment.start.toFixed(3)},${segment.end.toFixed(3)})`).join("+");
+      const filter = `[0:v]select='${selectV}',setpts=N/FRAME_RATE/TB[v];[0:a]aselect='${selectV}',asetpts=N/SR/TB[a]`;
+      try {
+        await execAsync([
+          "ffmpeg -y",
+          "-i", shellQuote(rawCutPath),
+          "-filter_complex", shellQuote(filter),
+          "-map", shellQuote("[v]"),
+          "-map", shellQuote("[a]"),
+          "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
+          "-c:a aac -b:a 128k",
+          shellQuote(trimmedPath),
+        ].join(" "), { maxBuffer: 20 * 1024 * 1024 });
+        if (fs.existsSync(trimmedPath) && fs.statSync(trimmedPath).size > 1000) {
+          workingPath = trimmedPath;
+          workingDuration = keep.reduce((total, segment) => total + (segment.end - segment.start), 0);
+          keptSegments = keep;
+        }
+      } catch (error) {
+        console.warn(`[cuts:${clip.id}] Falha na remoção de silêncios (mantendo original):`, error?.message);
+      }
+    }
+  }
+
+  const prepared = { key, workingPath, workingDuration, keptSegments, sourceHasAudio: null };
+  reuseContext.segments.set(key, prepared);
+  reuseContext.metrics.segmentPreparations += 1;
+  return { ...prepared, reused: false };
+}
+
+async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir, reuseContext = createCutReuseContext()) {
+  const overlayPath = path.join(tempDir, `${clip.id}-overlay.png`);
   const audioPath = path.join(tempDir, `${clip.id}.mp3`);
   const subtitlePath = path.join(tempDir, `${clip.id}.ass`);
   const outputPath = path.join(tempDir, `${clip.id}.mp4`);
@@ -2028,51 +2109,14 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
 
   await writeCutOverlayPng(clip, settings, overlayPath, format);
 
-  // === PASS 1: extrai o trecho bruto (só o intervalo, sem edição pesada) ===
-  const pass1Cmd = [
-    "ffmpeg -y",
-    "-ss", shellQuote(clip.start_seconds),
-    "-i", shellQuote(sourcePath),
-    "-t", shellQuote(clip.duration_seconds),
-    "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
-    "-c:a aac -b:a 128k",
-    shellQuote(rawCutPath),
-  ].join(" ");
-  await execAsync(pass1Cmd, { maxBuffer: 20 * 1024 * 1024 });
-  if (!fs.existsSync(rawCutPath) || fs.statSync(rawCutPath).size < 1000) {
-    throw new Error("Trecho bruto não foi gerado.");
-  }
-
-  // === PASS 1.5 (opcional): remove silêncios ===
-  let workingPath = rawCutPath;
-  let workingDuration = Number(clip.duration_seconds) || 0;
-  if (wantsSilenceRemoval && workingDuration > 5) {
-    const silences = await detectSilences(rawCutPath, 0.7);
-    const keep = buildKeepSegments(workingDuration, silences);
-    if (silences.length > 0 && keep.length > 0 && keep.length < 20) {
-      const selectV = keep.map((s) => `between(t,${s.start.toFixed(3)},${s.end.toFixed(3)})`).join("+");
-      const selectA = selectV;
-      const filter = `[0:v]select='${selectV}',setpts=N/FRAME_RATE/TB[v];[0:a]aselect='${selectA}',asetpts=N/SR/TB[a]`;
-      try {
-        await execAsync([
-          "ffmpeg -y",
-          "-i", shellQuote(rawCutPath),
-          "-filter_complex", shellQuote(filter),
-          "-map", shellQuote("[v]"),
-          "-map", shellQuote("[a]"),
-          "-c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p",
-          "-c:a aac -b:a 128k",
-          shellQuote(trimmedPath),
-        ].join(" "), { maxBuffer: 20 * 1024 * 1024 });
-        if (fs.existsSync(trimmedPath) && fs.statSync(trimmedPath).size > 1000) {
-          workingPath = trimmedPath;
-          workingDuration = keep.reduce((acc, s) => acc + (s.end - s.start), 0);
-        }
-      } catch (err) {
-        console.warn(`[cuts:${clip.id}] Falha na remoção de silêncios (mantendo original):`, err?.message);
-      }
-    }
-  }
+  const prepared = await prepareReusableCutSegment({
+    clip,
+    sourcePath,
+    tempDir,
+    removeSilences: wantsSilenceRemoval,
+    reuseContext,
+  });
+  const { key: reuseKey, workingPath, workingDuration, keptSegments } = prepared;
 
   // === Transcrição (extrai áudio e chama Gemini/Groq) ===
   let transcript = null;
@@ -2083,16 +2127,30 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     try {
       let words = [];
       if (wantsSubtitles) {
-        await execAsync(
-          `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
-          { maxBuffer: 10 * 1024 * 1024 },
+        words = sliceSourceTranscript(
+          reuseContext.sourceTranscriptWords,
+          Number(clip.start_seconds) || 0,
+          (Number(clip.start_seconds) || 0) + (Number(clip.duration_seconds) || 0),
         );
-        const transcriptionResult = await transcribeClip(audioPath, workingDuration);
-        words = transcriptionResult.words;
+        if (words.length && keptSegments?.length) {
+          words = remapTranscriptToKeptSegments(words, keptSegments, workingDuration);
+        }
+        if (words.length) {
+          reuseContext.metrics.sourceTranscriptReuses += 1;
+          clip.transcription_provider = "source_reuse";
+        } else {
+          await execAsync(
+            `ffmpeg -y -i ${shellQuote(workingPath)} -vn -ar 16000 -ac 1 -b:a 64k ${shellQuote(audioPath)}`,
+            { maxBuffer: 10 * 1024 * 1024 },
+          );
+          const transcriptionResult = await transcribeClip(audioPath, workingDuration);
+          reuseContext.metrics.clipTranscriptionCalls += transcriptionResult.attemptedProviders.length;
+          words = transcriptionResult.words;
+          clip.transcription_provider = transcriptionResult.provider;
+        }
         if (clip.edit_config?.manual_transcript && clip.transcript_text) {
           words = applyManualTranscript(words, clip.transcript_text);
         }
-        clip.transcription_provider = transcriptionResult.provider;
         if (words.length > 0) {
           transcript = words;
         } else {
@@ -2129,9 +2187,18 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
   }
 
   // === PASS 2: composição final — crop 9:16 + overlay + subtitles + loudnorm + zoom ===
-  const subjectFocus = wantsSmartCrop
-    ? await detectPrimarySubjectFocus(workingPath, workingDuration, tempDir)
-    : { x: 0.5, y: 0.5, confidence: 0, provider: "disabled" };
+  let subjectFocus = { x: 0.5, y: 0.5, confidence: 0, provider: "disabled" };
+  if (wantsSmartCrop) {
+    const cachedFocus = reuseContext.focus.get(reuseKey);
+    if (cachedFocus) {
+      subjectFocus = cachedFocus;
+      reuseContext.metrics.focusReuses += 1;
+    } else {
+      subjectFocus = await detectPrimarySubjectFocus(workingPath, workingDuration, tempDir);
+      reuseContext.focus.set(reuseKey, subjectFocus);
+      reuseContext.metrics.focusAnalyses += 1;
+    }
+  }
   const videoFilters = [];
   videoFilters.push(`scale=${outW}:${outH}:force_original_aspect_ratio=increase`);
   videoFilters.push(buildSubjectCropFilter(outW, outH, subjectFocus));
@@ -2145,7 +2212,11 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     ? `;[withOverlay]ass=${shellQuote(subtitlePath).replace(/^'|'$/g, "").replace(/:/g, "\\:")}[v]`
     : ";[withOverlay]copy[v]";
   // Mantém o vídeo renderizável mesmo quando o arquivo original não tem áudio.
-  const sourceHasAudio = await hasAudioStream(workingPath);
+  const cachedSegment = reuseContext.segments.get(reuseKey);
+  if (cachedSegment && cachedSegment.sourceHasAudio == null) {
+    cachedSegment.sourceHasAudio = await hasAudioStream(workingPath);
+  }
+  const sourceHasAudio = cachedSegment?.sourceHasAudio ?? await hasAudioStream(workingPath);
   const audioChain = sourceHasAudio
     ? ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]"
     : `;anullsrc=r=48000:cl=stereo,atrim=duration=${Math.max(1, workingDuration)},asetpts=N/SR/TB[a]`;
@@ -2215,6 +2286,7 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir) {
     })
     .eq("id", clip.id);
 
+  reuseContext.metrics.outputs += 1;
   return { videoUrl, thumbnailUrl, transcript, qualityReport };
 }
 
@@ -2343,7 +2415,8 @@ async function processLocalAudioCutJob(job, tempDir) {
     await downloadFile(signed.signedUrl, audioPath);
 
     const duration = Math.max(3, Number(job.duration_seconds || 0));
-    const transcriptWords = await transcribeSourceForAnalysis(audioPath, tempDir);
+    const sourceTranscription = await transcribeSourceForAnalysis(audioPath, tempDir);
+    const transcriptWords = sourceTranscription.words;
     if (!transcriptWords.length) throw new Error("Não foi possível identificar fala no áudio enviado.");
     await supabase.from("video_cut_jobs").update({ progress: 45, updated_at: new Date().toISOString() }).eq("id", job.id);
 
@@ -2408,7 +2481,11 @@ async function processLocalAudioCutJob(job, tempDir) {
       progress: 100,
       analysis_mode: analysis.mode,
       analysis_warning: analysis.warning,
-      provider_trace: { analysis: analysis.provider || null, render: "local_device" },
+      provider_trace: {
+        analysis: analysis.provider || null,
+        render: "local_device",
+        source_transcription: sourceTranscription.trace,
+      },
       generated_clips: 0,
       error_message: null,
       completed_at: new Date().toISOString(),
@@ -2421,6 +2498,7 @@ async function processLocalAudioCutJob(job, tempDir) {
 }
 
 async function processVideoCutJob(job) {
+  const jobStartedAt = Date.now();
   const tempDir = path.join(TEMP_DIR, `cut_${job.id}`);
   const sourcePath = path.join(tempDir, "source.mp4");
   let generatedCount = 0;
@@ -2509,12 +2587,17 @@ async function processVideoCutJob(job) {
       .eq("id", job.id);
 
     let transcriptWords = [];
+    let sourceTranscriptionTrace = {};
     try {
-      transcriptWords = await transcribeSourceForAnalysis(sourcePath, tempDir);
+      const sourceTranscription = await transcribeSourceForAnalysis(sourcePath, tempDir);
+      transcriptWords = sourceTranscription.words;
+      sourceTranscriptionTrace = sourceTranscription.trace;
     } catch (error) {
       console.warn(`[cuts:${job.id}] Transcrição para análise indisponível:`, error?.message || error);
     }
+    const analysisStartedAt = Date.now();
     const analysis = await analyzeTranscriptForCuts(job, metadata, transcriptWords);
+    const analysisDurationMs = Date.now() - analysisStartedAt;
     const suggestions = analysis.clips;
 
     await supabase.from("video_cut_jobs")
@@ -2524,6 +2607,8 @@ async function processVideoCutJob(job) {
         provider_trace: {
           analysis: analysis.provider || null,
           transcription_order: transcriptionProviderOrder(),
+          source_transcription: sourceTranscriptionTrace,
+          durations_ms: { analysis: analysisDurationMs },
         },
         progress: 35,
         updated_at: new Date().toISOString(),
@@ -2575,6 +2660,8 @@ async function processVideoCutJob(job) {
       : [job.format || "reels"];
     const uniqueFormats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
     const total = (suggestions.length || 1) * uniqueFormats.length;
+    const cutReuseContext = createCutReuseContext(transcriptWords, sourceTranscriptionTrace);
+    const renderStartedAt = Date.now();
     let processed = 0;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
@@ -2615,7 +2702,14 @@ async function processVideoCutJob(job) {
         if (clipError) throw clipError;
         // Sinal para generateVideoCutClip renderizar hook_text se hook_enabled
         clip.hook_enabled = job.hook_enabled !== false;
-        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(job, clip, sourcePath, cutSettings, tempDir);
+        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(
+          job,
+          clip,
+          sourcePath,
+          cutSettings,
+          tempDir,
+          cutReuseContext,
+        );
         generatedCount += 1;
         processed += 1;
 
@@ -2645,6 +2739,16 @@ async function processVideoCutJob(job) {
         error_message: null,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        provider_trace: {
+          analysis: analysis.provider || null,
+          transcription_order: transcriptionProviderOrder(),
+          ...cutReuseTrace(cutReuseContext),
+          durations_ms: {
+            analysis: analysisDurationMs,
+            rendering: Date.now() - renderStartedAt,
+            total: Date.now() - jobStartedAt,
+          },
+        },
       })
       .eq("id", job.id);
     await finishVideoCutUsage(job.id, generatedCount);
