@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "phase": "Entrega Segura 1A.2-B2-F.4",
+  "purpose": "end-to-end-safe-delivery-canary",
+  "baseSha": "c733a9f606e9dcc2a8305e5e5c5f1b9bbb0cae98",
+  "functionalChange": false,
+  "customerVisibleChange": false,
+  "frontendPublicationRequired": false,
+  "migrationRequired": false,
+  "edgeFunctionDeploymentRequired": false,
+  "vpsBuildFrontend": false,
+  "workflowRunActivationCanary": true
+}
