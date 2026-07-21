@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const {
+  completeBootstrapReconciliation,
   executeLegacyReconciliation,
+  fingerprintEvidenceTree,
   sha256,
   validateClassificationReport,
 } = require("../../scripts/reconcile-deploy-backlog.cjs");
@@ -15,6 +17,7 @@ const { approveWorkflowRun, registerPush } = require("../../scripts/deploy-queue
 
 const TARGET_SHA = "9453a1ca1fafb5bc9f6a52dc880f1f1d954f82aa";
 const INSTALLED_SHA = "645f337bd285cb72f991a7b19cce6dff1c07ee1c";
+const FUTURE_MERGE_SHA = "f1a2b3c4d5e6f7081928374655aabbccddeeff00";
 const SHAS = [
   "ed0896786f276ee498208726d079cdccc6112151",
   "ad119b4081b15e74e584465c61c1554abe6c47aa",
@@ -101,6 +104,41 @@ function fixture() {
     root,
     stateDir,
   };
+}
+
+function completionFixture() {
+  const context = fixture();
+  executeLegacyReconciliation({
+    evidenceDir: context.evidenceDir,
+    executionApproval: TARGET_SHA,
+    expectedAwaitingSha256: context.awaitingSha256,
+    expectedReportSha256: context.reportSha256,
+    installedSha: INSTALLED_SHA,
+    reportRaw: context.reportRaw,
+    stateDir: context.stateDir,
+    targetSha: TARGET_SHA,
+  });
+  registerPush(context.stateDir, FUTURE_MERGE_SHA, { deliveryId: "future-merge-push" });
+  const stateFiles = ["BLOCKED.json", "awaiting.json", "reconciliations.json", "results.json"];
+  const originalState = Object.fromEntries(stateFiles.map((name) => [
+    name,
+    fs.readFileSync(path.join(context.stateDir, name), "utf8"),
+  ]));
+  const evidence = fingerprintEvidenceTree(context.evidenceDir);
+  const options = {
+    backupDir: path.join(context.root, "completion-backup"),
+    ciSha: FUTURE_MERGE_SHA,
+    executionApproval: FUTURE_MERGE_SHA,
+    expectedAwaitingSha256: sha256(originalState["awaiting.json"]),
+    expectedEvidenceSha256: evidence.sha256,
+    healthSha: FUTURE_MERGE_SHA,
+    installedMergeSha: FUTURE_MERGE_SHA,
+    legacyTargetSha: TARGET_SHA,
+    mainSha: FUTURE_MERGE_SHA,
+    stateDir: context.stateDir,
+    vpsHeadSha: FUTURE_MERGE_SHA,
+  };
+  return { ...context, evidence, options, originalState };
 }
 
 afterEach(() => {
@@ -275,5 +313,167 @@ describe("Gate B1-Q1 legacy queue reconciliation", () => {
     const awaiting = JSON.parse(fs.readFileSync(path.join(context.stateDir, "awaiting.json"), "utf8"));
     expect(awaiting).toEqual([context.awaiting[8]]);
     expect(fs.existsSync(path.join(context.stateDir, "queue.json"))).toBe(false);
+  });
+});
+
+describe("Gate B2-F.1 post-bootstrap block closure", () => {
+  it("records both installed SHAs, completes reconciliation and removes the block last", () => {
+    const context = completionFixture();
+    const stages: string[] = [];
+    const result = completeBootstrapReconciliation({
+      ...context.options,
+      stageHook: (stage: string) => stages.push(stage),
+    });
+
+    expect(result).toMatchObject({
+      awaitingCount: 0,
+      installedMergeSha: FUTURE_MERGE_SHA,
+      legacyTargetSha: TARGET_SHA,
+      status: "bootstrap_completed",
+    });
+    expect(stages).toEqual([
+      "backup_created",
+      "results_written",
+      "reconciliation_written",
+      "awaiting_emptied",
+      "block_removed",
+      "postcheck_complete",
+    ]);
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(context.stateDir, "awaiting.json"), "utf8")))
+      .toEqual([]);
+    const results = JSON.parse(fs.readFileSync(path.join(context.stateDir, "results.json"), "utf8"));
+    expect(results.bySha[TARGET_SHA]).toMatchObject({ status: "already_installed", ok: true });
+    expect(results.bySha[FUTURE_MERGE_SHA])
+      .toMatchObject({ status: "already_installed", ok: true });
+    const reconciliations = JSON.parse(
+      fs.readFileSync(path.join(context.stateDir, "reconciliations.json"), "utf8"),
+    );
+    expect(reconciliations.byTarget[TARGET_SHA]).toMatchObject({
+      status: "bootstrap_completed",
+      installedMergeSha: FUTURE_MERGE_SHA,
+    });
+    expect(fingerprintEvidenceTree(context.evidenceDir)).toEqual(context.evidence);
+    expect(fs.statSync(context.options.backupDir).mode & 0o077).toBe(0);
+    for (const [name, content] of Object.entries(context.originalState)) {
+      expect(fs.readFileSync(path.join(context.options.backupDir, name), "utf8")).toBe(content);
+    }
+    expect(fs.existsSync(path.join(context.stateDir, "queue.json"))).toBe(false);
+    expect(fs.existsSync(path.join(context.stateDir, "active.json"))).toBe(false);
+  });
+
+  it("requires main, CI, VPS, health and approval to match the same full merge SHA", () => {
+    const context = completionFixture();
+    expect(() => completeBootstrapReconciliation({
+      ...context.options,
+      ciSha: TARGET_SHA,
+    })).toThrow("validation inputs do not authorize the exact installed merge SHA");
+    expect(fs.existsSync(context.options.backupDir)).toBe(false);
+    for (const [name, content] of Object.entries(context.originalState)) {
+      expect(fs.readFileSync(path.join(context.stateDir, name), "utf8")).toBe(content);
+    }
+  });
+
+  it("halts while blocked when awaiting contains any unexpected SHA", () => {
+    const context = completionFixture();
+    const awaitingPath = path.join(context.stateDir, "awaiting.json");
+    const awaiting = JSON.parse(fs.readFileSync(awaitingPath, "utf8"));
+    awaiting.push({
+      sha: "1111111111111111111111111111111111111111",
+      status: "awaiting_ci",
+      receivedAt: "2026-07-21T03:00:00.000Z",
+      deliveryId: "unexpected-push",
+    });
+    fs.writeFileSync(awaitingPath, `${JSON.stringify(awaiting, null, 2)}\n`, { mode: 0o600 });
+    expect(() => completeBootstrapReconciliation({
+      ...context.options,
+      expectedAwaitingSha256: sha256(fs.readFileSync(awaitingPath)),
+    })).toThrow("exactly the legacy target and installed merge SHA");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
+    expect(fs.existsSync(context.options.backupDir)).toBe(false);
+    expect(fingerprintEvidenceTree(context.evidenceDir)).toEqual(context.evidence);
+  });
+
+  it("refuses completion if workflow_run evidence appeared before gradual activation", () => {
+    const context = completionFixture();
+    const awaitingPath = path.join(context.stateDir, "awaiting.json");
+    const awaiting = JSON.parse(fs.readFileSync(awaitingPath, "utf8"));
+    const mergeEntry = awaiting.find((entry: { sha: string }) => entry.sha === FUTURE_MERGE_SHA);
+    mergeEntry.ciStatus = "success";
+    mergeEntry.concludedAt = "2026-07-21T03:00:00.000Z";
+    fs.writeFileSync(awaitingPath, `${JSON.stringify(awaiting, null, 2)}\n`, { mode: 0o600 });
+    expect(() => completeBootstrapReconciliation({
+      ...context.options,
+      expectedAwaitingSha256: sha256(fs.readFileSync(awaitingPath)),
+    })).toThrow("workflow_run evidence exists before B2-F.1 completion");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
+    expect(fs.existsSync(context.options.backupDir)).toBe(false);
+  });
+
+  it("requires the private backup to stay outside state and evidence directories", () => {
+    const context = completionFixture();
+    expect(() => completeBootstrapReconciliation({
+      ...context.options,
+      backupDir: path.join(context.evidenceDir, "unsafe-completion-backup"),
+    })).toThrow("backup must be outside state and evidence directories");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
+    expect(fs.existsSync(path.join(context.evidenceDir, "unsafe-completion-backup"))).toBe(false);
+    expect(fingerprintEvidenceTree(context.evidenceDir)).toEqual(context.evidence);
+  });
+
+  it("rejects evidence drift before creating a backup or changing blocked state", () => {
+    const context = completionFixture();
+    const evidenceFile = path.join(context.evidenceDir, "manifest.json");
+    fs.appendFileSync(evidenceFile, "\n");
+    expect(() => completeBootstrapReconciliation(context.options))
+      .toThrow("evidence fingerprint mismatch");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
+    expect(fs.existsSync(context.options.backupDir)).toBe(false);
+  });
+
+  it("restores the exact blocked state if a failure occurs after BLOCKED is removed", () => {
+    const context = completionFixture();
+    expect(() => completeBootstrapReconciliation({
+      ...context.options,
+      stageHook: (stage: string) => {
+        if (stage === "block_removed") throw new Error("simulated post-remove failure");
+      },
+    })).toThrow("simulated post-remove failure");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
+    for (const [name, content] of Object.entries(context.originalState)) {
+      expect(fs.readFileSync(path.join(context.stateDir, name), "utf8")).toBe(content);
+    }
+    expect(fingerprintEvidenceTree(context.evidenceDir)).toEqual(context.evidence);
+    expect(fs.existsSync(context.options.backupDir)).toBe(true);
+  });
+
+  it("refuses completion until the future merge push is present in awaiting", () => {
+    const context = fixture();
+    executeLegacyReconciliation({
+      evidenceDir: context.evidenceDir,
+      executionApproval: TARGET_SHA,
+      expectedAwaitingSha256: context.awaitingSha256,
+      expectedReportSha256: context.reportSha256,
+      installedSha: INSTALLED_SHA,
+      reportRaw: context.reportRaw,
+      stateDir: context.stateDir,
+      targetSha: TARGET_SHA,
+    });
+    const awaitingPath = path.join(context.stateDir, "awaiting.json");
+    const evidence = fingerprintEvidenceTree(context.evidenceDir);
+    expect(() => completeBootstrapReconciliation({
+      backupDir: path.join(context.root, "completion-backup"),
+      ciSha: FUTURE_MERGE_SHA,
+      executionApproval: FUTURE_MERGE_SHA,
+      expectedAwaitingSha256: sha256(fs.readFileSync(awaitingPath)),
+      expectedEvidenceSha256: evidence.sha256,
+      healthSha: FUTURE_MERGE_SHA,
+      installedMergeSha: FUTURE_MERGE_SHA,
+      legacyTargetSha: TARGET_SHA,
+      mainSha: FUTURE_MERGE_SHA,
+      stateDir: context.stateDir,
+      vpsHeadSha: FUTURE_MERGE_SHA,
+    })).toThrow("exactly the legacy target and installed merge SHA");
+    expect(fs.existsSync(path.join(context.stateDir, "BLOCKED.json"))).toBe(true);
   });
 });

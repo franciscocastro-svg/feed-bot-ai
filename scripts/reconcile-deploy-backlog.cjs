@@ -9,6 +9,7 @@ const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const DELIVERY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const EXPECTED_REPOSITORY = "franciscocastro-svg/feed-bot-ai";
 const EXPECTED_RECORD_COUNT = 9;
+const B2F_LEGACY_TARGET_SHA = "9453a1ca1fafb5bc9f6a52dc880f1f1d954f82aa";
 const EXPECTED_COUNTS = Object.freeze({
   approved_target: 1,
   superseded_failed_ci: 2,
@@ -56,6 +57,60 @@ function isRegularPrivateFile(filePath) {
   const stats = fs.lstatSync(filePath);
   return stats.isFile() && !stats.isSymbolicLink() && (stats.mode & 0o077) === 0
     && (typeof process.getuid !== "function" || stats.uid === process.getuid());
+}
+
+function isPrivateOwnedDirectory(directoryPath) {
+  const stats = fs.lstatSync(directoryPath);
+  return stats.isDirectory() && !stats.isSymbolicLink() && (stats.mode & 0o077) === 0
+    && (typeof process.getuid !== "function" || stats.uid === process.getuid());
+}
+
+function fsyncDirectory(directoryPath) {
+  const descriptor = fs.openSync(directoryPath, "r");
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function fingerprintEvidenceTree(evidenceDir) {
+  if (!path.isAbsolute(evidenceDir) || !isPrivateOwnedDirectory(evidenceDir)) {
+    throw new Error("Evidence directory must be absolute, private and regular");
+  }
+  const digest = crypto.createHash("sha256");
+  let fileCount = 0;
+
+  function visit(directoryPath, relativeDirectory) {
+    const entries = fs.readdirSync(directoryPath, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const entryPath = path.join(directoryPath, entry.name);
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      const stats = fs.lstatSync(entryPath);
+      if (stats.isSymbolicLink()) throw new Error(`Evidence contains symlink: ${relativePath}`);
+      if (stats.isDirectory()) {
+        if (!isPrivateOwnedDirectory(entryPath)) {
+          throw new Error(`Evidence directory is not private: ${relativePath}`);
+        }
+        digest.update(`D\0${relativePath}\0${stats.mode & 0o777}\0`);
+        visit(entryPath, relativePath);
+        continue;
+      }
+      if (!stats.isFile() || !isRegularPrivateFile(entryPath)) {
+        throw new Error(`Evidence file is not private and regular: ${relativePath}`);
+      }
+      const content = fs.readFileSync(entryPath);
+      digest.update(`F\0${relativePath}\0${stats.mode & 0o777}\0${content.length}\0`);
+      digest.update(content);
+      digest.update("\0");
+      fileCount += 1;
+    }
+  }
+
+  visit(evidenceDir, "");
+  if (fileCount === 0) throw new Error("Evidence directory is empty");
+  return { fileCount, sha256: digest.digest("hex") };
 }
 
 function assertAbsent(filePath, label) {
@@ -231,6 +286,288 @@ function acquireStateLock(lockDir) {
 
 function releaseStateLock(lockDir) {
   fs.rmSync(lockDir, { recursive: true, force: true });
+}
+
+function completionStateFiles(files) {
+  return {
+    "BLOCKED.json": files.blocked,
+    "awaiting.json": files.awaiting,
+    "reconciliations.json": files.reconciliations,
+    "results.json": files.results,
+  };
+}
+
+function createCompletionBackup(backupDir, files, metadata) {
+  if (!path.isAbsolute(backupDir)) throw new Error("Completion backup directory must be absolute");
+  const parent = path.dirname(backupDir);
+  if (!isPrivateOwnedDirectory(parent) || fs.lstatSync(backupDir, { throwIfNoEntry: false })) {
+    throw new Error("Completion backup destination must be new under a private directory");
+  }
+  const tempDir = `${backupDir}.tmp-${process.pid}-${Date.now()}`;
+  const stateFiles = completionStateFiles(files);
+  const manifest = {
+    version: 1,
+    kind: "fluxfeed-b2f1-bootstrap-completion-backup",
+    createdAt: new Date().toISOString(),
+    ...metadata,
+    stateFiles: {},
+  };
+  try {
+    fs.mkdirSync(tempDir, { mode: 0o700 });
+    for (const [name, sourcePath] of Object.entries(stateFiles)) {
+      if (!isRegularPrivateFile(sourcePath)) {
+        throw new Error(`Completion state file is not private and regular: ${name}`);
+      }
+      const content = fs.readFileSync(sourcePath);
+      writeFileAtomic(path.join(tempDir, name), content);
+      manifest.stateFiles[name] = { bytes: content.length, sha256: sha256(content) };
+    }
+    writeJsonAtomic(path.join(tempDir, "manifest.json"), manifest);
+    fsyncDirectory(tempDir);
+    fs.renameSync(tempDir, backupDir);
+    fsyncDirectory(parent);
+  } catch (error) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+  if (!isPrivateOwnedDirectory(backupDir)) throw new Error("Completion backup is not private");
+  for (const [name, expected] of Object.entries(manifest.stateFiles)) {
+    const backupPath = path.join(backupDir, name);
+    if (!isRegularPrivateFile(backupPath) || sha256(fs.readFileSync(backupPath)) !== expected.sha256) {
+      throw new Error(`Completion backup verification failed: ${name}`);
+    }
+  }
+  return manifest;
+}
+
+function restoreCompletionBackup(backupDir, files, manifest) {
+  if (!isPrivateOwnedDirectory(backupDir)
+    || manifest?.kind !== "fluxfeed-b2f1-bootstrap-completion-backup") {
+    throw new Error("Completion backup cannot be restored safely");
+  }
+  const stateFiles = completionStateFiles(files);
+  const restoreOrder = ["BLOCKED.json", "results.json", "reconciliations.json", "awaiting.json"];
+  for (const name of restoreOrder) {
+    const sourcePath = path.join(backupDir, name);
+    const destinationPath = stateFiles[name];
+    const expected = manifest.stateFiles?.[name];
+    if (!expected || !isRegularPrivateFile(sourcePath)) {
+      throw new Error(`Completion backup is incomplete: ${name}`);
+    }
+    const content = fs.readFileSync(sourcePath);
+    if (sha256(content) !== expected.sha256 || content.length !== expected.bytes) {
+      throw new Error(`Completion backup hash mismatch: ${name}`);
+    }
+    writeFileAtomic(destinationPath, content);
+  }
+  fsyncDirectory(path.dirname(files.blocked));
+}
+
+function assertNoOperationalWork(files) {
+  if (fs.existsSync(files.queue) || fs.existsSync(files.active) || fs.existsSync(files.runnerLock)) {
+    throw new Error("Queue, active deploy or runner lock exists");
+  }
+  const runnerDirectories = fs.readdirSync(path.dirname(files.awaiting), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("runner-"));
+  if (runnerDirectories.length > 0) throw new Error("Runner snapshot exists");
+}
+
+function isSameOrDescendant(parentPath, candidatePath) {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(candidatePath));
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".."
+    && !path.isAbsolute(relative));
+}
+
+function validateCompletionState(files, options) {
+  const {
+    expectedAwaitingSha256,
+    expectedEvidenceSha256,
+    installedMergeSha,
+    legacyTargetSha,
+  } = options;
+  assertNoOperationalWork(files);
+  for (const filePath of [files.awaiting, files.blocked, files.reconciliations, files.results]) {
+    if (!isRegularPrivateFile(filePath)) throw new Error("Completion state file is not private");
+  }
+
+  const awaitingRaw = fs.readFileSync(files.awaiting);
+  if (sha256(awaitingRaw) !== expectedAwaitingSha256) {
+    throw new Error("Completion awaiting.json hash mismatch");
+  }
+  const awaiting = JSON.parse(awaitingRaw.toString("utf8"));
+  if (!Array.isArray(awaiting) || awaiting.length !== 2) {
+    throw new Error("Completion requires exactly the legacy target and installed merge SHA");
+  }
+  const awaitingShas = awaiting.map((entry) => entry?.sha);
+  if (awaitingShas.some((sha) => !SHA_PATTERN.test(sha || ""))
+    || new Set(awaitingShas).size !== 2
+    || !awaitingShas.includes(legacyTargetSha) || !awaitingShas.includes(installedMergeSha)) {
+    throw new Error("Unexpected SHA in completion awaiting.json");
+  }
+  const mergeEntry = awaiting.find((entry) => entry.sha === installedMergeSha);
+  if (mergeEntry?.status !== "awaiting_ci"
+    || awaiting.some((entry) => entry.ciStatus || entry.concludedAt || entry.workflowDeliveryId)) {
+    throw new Error("workflow_run evidence exists before B2-F.1 completion");
+  }
+
+  const blocked = JSON.parse(fs.readFileSync(files.blocked, "utf8"));
+  const reconciliations = JSON.parse(fs.readFileSync(files.reconciliations, "utf8"));
+  const results = JSON.parse(fs.readFileSync(files.results, "utf8"));
+  const record = reconciliations?.byTarget?.[legacyTargetSha];
+  if (blocked?.sha !== legacyTargetSha || blocked?.status !== "target_pending_bootstrap"
+    || blocked?.reason !== "b1q_target_pending_bootstrap" || !path.isAbsolute(blocked?.evidenceDir || "")
+    || reconciliations?.version !== 1 || record?.targetSha !== legacyTargetSha
+    || record?.status !== "target_pending_bootstrap" || record?.evidenceDir !== blocked.evidenceDir
+    || record?.reportSha256 !== blocked.reportSha256 || results?.version !== 1
+    || !results.bySha || typeof results.bySha !== "object" || Array.isArray(results.bySha)) {
+    throw new Error("B1-Q3 block or reconciliation record diverged");
+  }
+  const terminalEntries = Object.values(results.bySha);
+  if (terminalEntries.length !== 8
+    || terminalEntries.filter((entry) => entry?.status === "superseded").length !== 6
+    || terminalEntries.filter((entry) => entry?.status === "failed_ci").length !== 2
+    || results.bySha[legacyTargetSha] || results.bySha[installedMergeSha]) {
+    throw new Error("B1-Q3 terminal results diverged");
+  }
+  const evidence = fingerprintEvidenceTree(blocked.evidenceDir);
+  if (evidence.sha256 !== expectedEvidenceSha256) {
+    throw new Error("B1-Q3 evidence fingerprint mismatch");
+  }
+  return { awaiting, blocked, evidence, reconciliations, record, results };
+}
+
+function completeBootstrapReconciliation(options) {
+  const {
+    backupDir,
+    ciSha,
+    executionApproval,
+    expectedAwaitingSha256,
+    expectedEvidenceSha256,
+    healthSha,
+    installedMergeSha,
+    legacyTargetSha,
+    mainSha,
+    stageHook = () => {},
+    stateDir,
+    vpsHeadSha,
+  } = options;
+  const validatedShas = [installedMergeSha, ciSha, executionApproval, healthSha, mainSha, vpsHeadSha];
+  if (legacyTargetSha !== B2F_LEGACY_TARGET_SHA
+    || !SHA_PATTERN.test(legacyTargetSha || "") || !SHA_PATTERN.test(installedMergeSha || "")
+    || installedMergeSha === legacyTargetSha || validatedShas.some((sha) => sha !== installedMergeSha)
+    || !HASH_PATTERN.test(expectedAwaitingSha256 || "")
+    || !HASH_PATTERN.test(expectedEvidenceSha256 || "")
+    || !path.isAbsolute(stateDir || "") || !path.isAbsolute(backupDir || "")) {
+    throw new Error("B2-F.1 validation inputs do not authorize the exact installed merge SHA");
+  }
+  if (!isPrivateOwnedDirectory(stateDir)) throw new Error("State directory must be private and regular");
+  const files = statePaths(stateDir);
+  if (fs.existsSync(files.stateLock)) throw new Error("Deploy state lock already exists");
+
+  const initialState = validateCompletionState(files, {
+    expectedAwaitingSha256,
+    expectedEvidenceSha256,
+    installedMergeSha,
+    legacyTargetSha,
+  });
+  if (isSameOrDescendant(stateDir, backupDir)
+    || isSameOrDescendant(initialState.blocked.evidenceDir, backupDir)) {
+    throw new Error("Completion backup must be outside state and evidence directories");
+  }
+  acquireStateLock(files.stateLock);
+  let backupManifest;
+  try {
+    const state = validateCompletionState(files, {
+      expectedAwaitingSha256,
+      expectedEvidenceSha256,
+      installedMergeSha,
+      legacyTargetSha,
+    });
+    backupManifest = createCompletionBackup(backupDir, files, {
+      evidenceDir: state.blocked.evidenceDir,
+      evidenceSha256: state.evidence.sha256,
+      installedMergeSha,
+      legacyTargetSha,
+      awaitingBeforeSha256: expectedAwaitingSha256,
+    });
+    stageHook("backup_created");
+
+    const completedAt = new Date().toISOString();
+    const results = state.results;
+    results.bySha[legacyTargetSha] = {
+      sha: legacyTargetSha,
+      status: "already_installed",
+      ok: true,
+      reason: "legacy_target_bootstrap_verified",
+      completedAt,
+      installedMergeSha,
+    };
+    results.bySha[installedMergeSha] = {
+      sha: installedMergeSha,
+      status: "already_installed",
+      ok: true,
+      reason: "manual_bootstrap_verified_before_workflow_run_activation",
+      completedAt,
+      previousInstalledSha: legacyTargetSha,
+    };
+    writeJsonAtomic(files.results, results);
+    stageHook("results_written");
+
+    const reconciliations = state.reconciliations;
+    reconciliations.byTarget[legacyTargetSha] = {
+      ...state.record,
+      status: "bootstrap_completed",
+      bootstrapCompletedAt: completedAt,
+      installedMergeSha,
+      completionBackupDir: backupDir,
+      evidenceSha256: state.evidence.sha256,
+      awaitingCompletionSha256: expectedAwaitingSha256,
+    };
+    writeJsonAtomic(files.reconciliations, reconciliations);
+    stageHook("reconciliation_written");
+
+    writeJsonAtomic(files.awaiting, []);
+    stageHook("awaiting_emptied");
+
+    fs.rmSync(files.blocked);
+    fsyncDirectory(stateDir);
+    stageHook("block_removed");
+
+    const finalResults = JSON.parse(fs.readFileSync(files.results, "utf8"));
+    const finalReconciliations = JSON.parse(fs.readFileSync(files.reconciliations, "utf8"));
+    const finalAwaiting = JSON.parse(fs.readFileSync(files.awaiting, "utf8"));
+    const finalEvidence = fingerprintEvidenceTree(state.blocked.evidenceDir);
+    assertNoOperationalWork(files);
+    if (fs.existsSync(files.blocked) || finalAwaiting.length !== 0
+      || finalResults.bySha?.[legacyTargetSha]?.status !== "already_installed"
+      || finalResults.bySha?.[installedMergeSha]?.status !== "already_installed"
+      || finalReconciliations.byTarget?.[legacyTargetSha]?.status !== "bootstrap_completed"
+      || finalReconciliations.byTarget?.[legacyTargetSha]?.installedMergeSha !== installedMergeSha
+      || finalEvidence.sha256 !== expectedEvidenceSha256) {
+      throw new Error("B2-F.1 post-completion validation failed");
+    }
+    stageHook("postcheck_complete");
+    return {
+      awaitingCount: 0,
+      backupDir,
+      bootstrapCompletedAt: completedAt,
+      evidenceSha256: finalEvidence.sha256,
+      installedMergeSha,
+      legacyTargetSha,
+      status: "bootstrap_completed",
+    };
+  } catch (error) {
+    if (backupManifest) {
+      try {
+        restoreCompletionBackup(backupDir, files, backupManifest);
+      } catch (restoreError) {
+        throw new Error(`${error.message}; BLOCK RESTORE FAILED: ${restoreError.message}`);
+      }
+    }
+    throw error;
+  } finally {
+    releaseStateLock(files.stateLock);
+  }
 }
 
 function createEvidenceDirectory(evidenceDir, awaitingRaw, reportRaw, manifest) {
@@ -416,6 +753,26 @@ function decodeReportFromEnvironment() {
 
 function main() {
   const mode = process.argv[2];
+  if (mode === "--complete-bootstrap") {
+    const result = completeBootstrapReconciliation({
+      backupDir: process.env.B2F_COMPLETION_BACKUP_DIR || "",
+      ciSha: process.env.B2F_CI_SHA || "",
+      executionApproval: process.env.B2F_COMPLETION_APPROVED || "",
+      expectedAwaitingSha256: process.env.B2F_EXPECTED_AWAITING_SHA256 || "",
+      expectedEvidenceSha256: process.env.B2F_EXPECTED_EVIDENCE_SHA256 || "",
+      healthSha: process.env.B2F_HEALTH_SHA || "",
+      installedMergeSha: process.env.B2F_INSTALLED_MERGE_SHA || "",
+      legacyTargetSha: process.env.B1Q_TARGET_SHA || "",
+      mainSha: process.env.B2F_MAIN_SHA || "",
+      stateDir: process.env.DEPLOY_STATE_DIR || "",
+      vpsHeadSha: process.env.B2F_VPS_HEAD_SHA || "",
+    });
+    process.stdout.write(`B2F1_COMPLETION=${JSON.stringify(result)}\n`);
+    process.stdout.write("B2F1_DEPLOY_AUTHORIZED=false\n");
+    process.stdout.write("B2F1_WORKFLOW_RUN_AUTHORIZED=false\n");
+    process.stdout.write("B2F1_COMPLETION_RESULT=PASS_BOOTSTRAP_COMPLETED_BLOCK_REMOVED_NO_DEPLOY\n");
+    return;
+  }
   const reportRaw = decodeReportFromEnvironment();
   const targetSha = process.env.B1Q_TARGET_SHA || "";
   const installedSha = process.env.B1Q_INSTALLED_SHA || "";
@@ -431,7 +788,9 @@ function main() {
     process.stdout.write("B1Q1_REPORT_RESULT=PASS_VALIDATED_NO_MUTATION\n");
     return;
   }
-  if (mode !== "--execute") throw new Error("Use --validate-report or --execute");
+  if (mode !== "--execute") {
+    throw new Error("Use --validate-report, --execute or --complete-bootstrap");
+  }
   const result = executeLegacyReconciliation({
     evidenceDir: process.env.B1Q_EVIDENCE_DIR || "",
     executionApproval: process.env.B1Q_EXECUTION_APPROVED || "",
@@ -451,13 +810,18 @@ if (require.main === module) {
   try {
     main();
   } catch (error) {
-    process.stderr.write(`B1Q1_RECONCILIATION_RESULT=HALT_PRESERVE_EVIDENCE\n${error.message}\n`);
+    const label = process.argv[2] === "--complete-bootstrap"
+      ? "B2F1_COMPLETION_RESULT=HALT_BLOCK_RESTORED_OR_PRESERVED"
+      : "B1Q1_RECONCILIATION_RESULT=HALT_PRESERVE_EVIDENCE";
+    process.stderr.write(`${label}\n${error.message}\n`);
     process.exitCode = 1;
   }
 }
 
 module.exports = {
+  completeBootstrapReconciliation,
   executeLegacyReconciliation,
+  fingerprintEvidenceTree,
   sha256,
   validateAwaitingEntries,
   validateClassificationReport,
