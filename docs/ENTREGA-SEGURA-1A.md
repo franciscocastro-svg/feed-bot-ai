@@ -227,6 +227,68 @@ deve ocorrer nesta ordem:
 9. redeliver os eventos originais e confirmar idempotência sem alterar SHA, PID
    ou restart count.
 
+### Gate B1-Q — reconciliação do backlog legado
+
+Antes do bootstrap, o inventário B1-Q0 deve classificar exatamente nove pushes
+legados. O contrato aprovado exige seis ancestrais com CI verde marcados como
+`superseded`, dois ancestrais com CI não verde marcados como `failed_ci` e um
+único `approved_target` idêntico à `main`. Nenhum ancestral entra em
+`queue.json`.
+
+`scripts/reconcile-deploy-backlog.cjs` é bloqueado por padrão. O modo
+`--validate-report` apenas valida o relatório. O modo `--execute` também exige
+aprovação igual ao SHA target, hashes exatos do relatório e de `awaiting.json`,
+estado operacional vazio e um diretório privado de evidências ainda inexistente.
+Não consulta GitHub, não inicia runner e não executa deploy.
+
+Em uma execução futura e separadamente autorizada, a ferramenta:
+
+1. adquire o lock de estado e reconfirma os nove registros em ordem;
+2. preserva byte a byte o `awaiting.json` original e o relatório B1-Q0;
+3. grava `BLOCKED.json` antes de qualquer transição terminal;
+4. registra seis resultados `superseded` e dois `failed_ci`;
+5. mantém somente o target original em `awaiting.json`;
+6. deixa `queue.json` e `active.json` ausentes e o deploy não autorizado.
+
+O bloqueio `b1q_target_pending_bootstrap` deve permanecer até o bootstrap manual
+do SHA exato passar por health check e por uma finalização específica. Ele nunca
+deve ser removido como atalho. Se a ferramenta falhar depois de criar o bloqueio,
+a evidência privada e o bloqueio são preservados; nenhuma correção ou restauração
+automática é tentada. Restauração do arquivo original exige plano e autorização
+próprios, além da prova de que nenhum push concorrente foi recebido.
+
+### Gate B2-F.1 — conclusão segura depois do bootstrap
+
+O modo `--complete-bootstrap` existe exclusivamente para concluir o bloqueio
+`b1q_target_pending_bootstrap` depois que o futuro merge do PR de reconciliação
+já estiver instalado manualmente e saudável. Ele não consulta GitHub, não faz
+checkout, não inicia runner, não executa deploy e não habilita `workflow_run`.
+
+Antes da primeira mutação, o chamador deve fornecer SHAs completos e idênticos
+em `B2F_INSTALLED_MERGE_SHA`, `B2F_MAIN_SHA`, `B2F_CI_SHA`,
+`B2F_VPS_HEAD_SHA`, `B2F_HEALTH_SHA` e `B2F_COMPLETION_APPROVED`. O target legado
+em `B1Q_TARGET_SHA` deve continuar exatamente em
+`9453a1ca1fafb5bc9f6a52dc880f1f1d954f82aa`. Também são obrigatórios os hashes
+atuais de `awaiting.json` e da árvore privada de evidências, além de um diretório
+novo e privado em `B2F_COMPLETION_BACKUP_DIR`.
+
+A conclusão exige simultaneamente:
+
+1. `BLOCKED.json` ainda registra `b1q_target_pending_bootstrap` para o target;
+2. `queue.json`, `active.json`, locks e snapshots de runner estão ausentes;
+3. `awaiting.json` contém exatamente o target e o merge SHA instalado;
+4. os oito resultados anteriores continuam sendo seis `superseded` e dois
+   `failed_ci`;
+5. a reconciliação e a árvore de evidências B1-Q3 permanecem íntegras.
+
+Depois de criar e conferir um backup privado, a ordem durável é: registrar ambos
+os SHAs como `already_installed`, marcar a reconciliação `bootstrap_completed`,
+esvaziar os dois itens esperados de `awaiting.json` e remover `BLOCKED.json` como
+última mutação. Um SHA inesperado ou qualquer divergência interrompe antes da
+conclusão. Falha depois do backup restaura primeiro `BLOCKED.json` e depois os
+demais arquivos exatamente do backup, mantendo as evidências existentes sem
+alteração. O backup não é removido automaticamente.
+
 Se qualquer gate divergir, a ativação para. Remover somente `workflow_run` retorna
 o webhook ao modo seguro `push`; URL, secret e estado da fila não devem ser
 apagados. Não se provoca falha deliberada em produção: rollback e bloqueio são
@@ -236,9 +298,9 @@ validados em harness hermético.
 
 Se `BLOCKED.json` existir, não o remova antes de identificar o motivo no log e
 confirmar manualmente que os três processos PM2 e o endpoint local estão
-saudáveis. Depois de corrigir a causa e com autorização operacional, remova apenas
-o arquivo de bloqueio e inicie `node scripts/deploy-queue.cjs --run`; os SHAs ainda
-presentes em `queue.json` serão processados em FIFO.
+saudáveis. O motivo `b1q_target_pending_bootstrap` nunca permite remoção manual:
+ele exige o Gate B2-F.1 acima. Outros motivos precisam de runbook e autorização
+operacional próprios; não apague o arquivo como atalho para iniciar o runner.
 
 Nunca apague `awaiting.json`, `queue.json`, `active.json`, `deliveries.json`,
 `early-workflows.json`, `results.json` ou `last-result.json` para destravar uma

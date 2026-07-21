@@ -170,7 +170,13 @@ function readJournal(filePath, key) {
 
 function terminalResult(results, sha) {
   const result = results.bySha[sha];
-  return result && ["succeeded", "rolled_back", "failed_ci"].includes(result.status)
+  return result && [
+    "succeeded",
+    "rolled_back",
+    "failed_ci",
+    "superseded",
+    "already_installed",
+  ].includes(result.status)
     ? result
     : null;
 }
@@ -180,7 +186,13 @@ function terminalResultForFiles(files, results, sha) {
   if (journalResult) return journalResult;
   const legacy = readJson(files.lastResult, null);
   if (legacy?.sha !== sha) return null;
-  if (legacy.status && ["succeeded", "rolled_back", "failed_ci"].includes(legacy.status)) {
+  if (legacy.status && [
+    "succeeded",
+    "rolled_back",
+    "failed_ci",
+    "superseded",
+    "already_installed",
+  ].includes(legacy.status)) {
     return legacy;
   }
   if (legacy.ok === true) return { ...legacy, status: "succeeded" };
