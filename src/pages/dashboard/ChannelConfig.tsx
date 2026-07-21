@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { Image, Film, Camera, Save, Loader2 } from "lucide-react";
+import { ContextHelp, FieldLabel } from "@/components/ContextHelp";
 
 type Channel = "feed" | "story" | "reel";
 
@@ -108,28 +108,32 @@ export default function ChannelConfig() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Status do canal</CardTitle>
-          <CardDescription>Desative para não publicar nada neste formato.</CardDescription>
+          <div className="flex items-center gap-2">
+            <CardTitle>Status do canal</CardTitle>
+            <ContextHelp label="status do canal">Desative para não publicar nada neste formato.</ContextHelp>
+          </div>
         </CardHeader>
         <CardContent className="flex items-center justify-between">
-          <Label htmlFor="active">Canal ativo</Label>
+          <FieldLabel htmlFor="active" helpLabel="canal ativo" help={`Controla todas as publicações no formato ${meta.title}.`}>Canal ativo</FieldLabel>
           <Switch id="active" checked={active} onCheckedChange={setActive} />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Ritmo de publicação</CardTitle>
-          <CardDescription>Controle a frequência para não sobrecarregar o perfil.</CardDescription>
+          <div className="flex items-center gap-2">
+            <CardTitle>Ritmo de publicação</CardTitle>
+            <ContextHelp label="ritmo de publicação">Controle a frequência para não sobrecarregar o perfil.</ContextHelp>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="interval">Intervalo mínimo entre posts (minutos)</Label>
+              <FieldLabel htmlFor="interval" helpLabel="intervalo do canal" help="Tempo mínimo entre duas publicações deste formato. O menor valor permitido é 10 minutos.">Intervalo mínimo (minutos)</FieldLabel>
               <Input id="interval" type="number" min={10} value={minInterval} onChange={(e) => setMinInterval(Math.max(parseInt(e.target.value) || 10, 10))} />
             </div>
             <div>
-              <Label htmlFor="max">Máximo de posts por dia</Label>
+              <FieldLabel htmlFor="max" helpLabel="máximo diário do canal" help="Limite diário exclusivo deste formato, respeitando também o limite do seu plano.">Máximo de posts por dia</FieldLabel>
               <Input id="max" type="number" min={1} max={planCap < 0 ? undefined : planCap}
                 value={maxPerDay}
                 onChange={(e) => {
@@ -142,37 +146,33 @@ export default function ChannelConfig() {
             </div>
           </div>
           <div>
-            <Label htmlFor="hours">Horários permitidos (0–23, separados por vírgula)</Label>
+            <FieldLabel htmlFor="hours" helpLabel="horários permitidos" help="Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21 publica somente nesses horários.">Horários permitidos</FieldLabel>
             <Input id="hours" value={hoursStr} onChange={(e) => setHoursStr(e.target.value)} placeholder="8,9,12,18,21" />
-            <p className="text-xs text-muted-foreground mt-1">Ex: <code>8,12,18,21</code> publica só nesses horários.</p>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Roteamento de notícias</CardTitle>
-          <CardDescription>Decide quais notícias vão para este canal.</CardDescription>
+          <div className="flex items-center gap-2">
+            <CardTitle>Roteamento de notícias</CardTitle>
+            <ContextHelp label="roteamento de notícias">Define quais notícias podem ser direcionadas para este canal.</ContextHelp>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="priority">Receber notícias urgentes</Label>
-              <p className="text-xs text-muted-foreground">Quando uma notícia bater com palavras urgentes, vai pra cá.</p>
-            </div>
+            <FieldLabel htmlFor="priority" helpLabel="notícias urgentes" help="Quando uma notícia corresponder às palavras urgentes, ela poderá ser direcionada para este canal.">Receber notícias urgentes</FieldLabel>
             <Switch id="priority" checked={isPriority} onCheckedChange={setIsPriority} />
           </div>
           <div>
-            <Label htmlFor="urgent">Palavras-chave urgentes</Label>
+            <FieldLabel htmlFor="urgent" helpLabel="palavras-chave urgentes" help="Separe por vírgula. Notícias com essas palavras serão tratadas como urgentes.">Palavras-chave urgentes</FieldLabel>
             <Textarea id="urgent" rows={2} value={urgentStr} onChange={(e) => setUrgentStr(e.target.value)}
               placeholder="urgente, exclusivo, morre, vaza, prisão, escândalo" />
-            <p className="text-xs text-muted-foreground mt-1">Separe por vírgula. Notícias com essas palavras serão tratadas como urgentes.</p>
           </div>
           <div>
-            <Label htmlFor="kw">Palavras-chave normais (filtro de conteúdo)</Label>
+            <FieldLabel htmlFor="kw" helpLabel="filtro de conteúdo" help="Se preencher, somente notícias com alguma destas palavras poderão entrar neste canal. Deixe vazio para aceitar tudo.">Palavras-chave normais</FieldLabel>
             <Textarea id="kw" rows={2} value={keywordsStr} onChange={(e) => setKeywordsStr(e.target.value)}
               placeholder="política, esporte, tecnologia" />
-            <p className="text-xs text-muted-foreground mt-1">Se preencher, só notícias contendo alguma destas palavras vão para este canal. Deixe vazio para aceitar tudo.</p>
           </div>
         </CardContent>
       </Card>

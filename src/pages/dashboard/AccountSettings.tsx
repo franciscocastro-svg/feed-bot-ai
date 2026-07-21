@@ -4,11 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, Loader2, ArrowLeft, Instagram, Info } from "lucide-react";
+import { Upload, Loader2, ArrowLeft, Instagram } from "lucide-react";
+import { ContextHelp, FieldLabel } from "@/components/ContextHelp";
 
 // Per-IG-account settings. Empty/null values inherit from global user_settings.
 // We store ONLY the override values; the page shows current effective values
@@ -162,23 +162,23 @@ export default function AccountSettings() {
           <Instagram className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="font-display text-2xl md:text-3xl font-bold">Configurações de @{account.username}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl md:text-3xl font-bold">Configurações de @{account.username}</h1>
+            <ContextHelp label={`configurações de @${account.username}`} title="Como funciona a personalização">
+              <p>Estas opções valem somente para esta conta Instagram.</p>
+              <p className="mt-1.5">Automação vazia herda o padrão global. Identidade vazia usa o @ real da conta e não exibe logo.</p>
+            </ContextHelp>
+          </div>
           <p className="text-sm text-muted-foreground">Campos vazios usam o padrão global em <Link to="/dashboard/settings" className="underline text-primary">Configurações</Link>.</p>
         </div>
       </div>
 
-      <Card className="p-4 flex gap-3 bg-secondary/40 border-dashed">
-        <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>As configurações aqui <b>só valem para esta conta Instagram</b>.</p>
-          <p><b>Identidade da marca</b> (logo, nome, @): quando você tem mais de uma conta conectada, <b>não herda</b> do padrão global — cada conta usa só o que estiver configurado abaixo. Se ficar vazio, o sistema usa o @ real do Instagram e sem logo.</p>
-          <p><b>Automação</b> (tom, nicho, posts/dia, horários): continua herdando do padrão global se ficar em branco.</p>
-        </div>
-      </Card>
-
       {/* Identidade */}
       <Card className="p-6 space-y-5">
-        <h2 className="font-display text-xl font-semibold">Identidade da marca (desta conta)</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-xl font-semibold">Identidade da marca (desta conta)</h2>
+          <ContextHelp label="identidade desta conta">Logo, nome e @ configurados aqui substituem a identidade global somente nesta conta.</ContextHelp>
+        </div>
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary border-2 border-border shrink-0">
             {(form.brand_logo_url || effective.brand_logo_url) ? (
@@ -199,12 +199,12 @@ export default function AccountSettings() {
           </div>
         </div>
         <div>
-          <Label>Nome da marca</Label>
-          <Input value={form.brand_name} onChange={e => setForm({ ...form, brand_name: e.target.value })} placeholder={ph(effective.brand_name)} />
+          <FieldLabel htmlFor="account-brand-name" helpLabel="nome da marca desta conta" help="Deixe vazio para usar o nome efetivo indicado no campo.">Nome da marca</FieldLabel>
+          <Input id="account-brand-name" value={form.brand_name} onChange={e => setForm({ ...form, brand_name: e.target.value })} placeholder={ph(effective.brand_name)} />
         </div>
         <div>
-          <Label>@ do Instagram</Label>
-          <Input value={form.brand_handle} onChange={e => setForm({ ...form, brand_handle: e.target.value })} placeholder={ph(effective.brand_handle, `@${account.username}`)} />
+          <FieldLabel htmlFor="account-brand-handle" helpLabel="perfil desta conta" help="Identificação exibida nos templates desta conta. Se ficar vazio, será usado o @ real do Instagram.">@ do Instagram</FieldLabel>
+          <Input id="account-brand-handle" value={form.brand_handle} onChange={e => setForm({ ...form, brand_handle: e.target.value })} placeholder={ph(effective.brand_handle, `@${account.username}`)} />
         </div>
       </Card>
 
@@ -212,27 +212,27 @@ export default function AccountSettings() {
       <Card className="p-6 space-y-5">
         <h2 className="font-display text-xl font-semibold">Automação</h2>
         <div>
-          <Label>Posts por dia (máx.)</Label>
-          <Input type="number" min={1} value={form.max_posts_per_day}
+          <FieldLabel htmlFor="account-max-posts" helpLabel="posts por dia desta conta" help="Limite diário exclusivo desta conta. Se ficar vazio, herda o padrão global.">Posts por dia (máx.)</FieldLabel>
+          <Input id="account-max-posts" type="number" min={1} value={form.max_posts_per_day}
             onChange={e => setForm({ ...form, max_posts_per_day: e.target.value === "" ? "" : Math.max(parseInt(e.target.value) || 1, 1) })}
             placeholder={ph(effective.max_posts_per_day)} />
         </div>
         <div>
-          <Label>Intervalo mínimo entre posts (min)</Label>
-          <Input type="number" min={10} value={form.min_post_interval_minutes}
+          <FieldLabel htmlFor="account-min-interval" helpLabel="intervalo desta conta" help="Tempo mínimo entre posts desta conta. O mínimo aceito é 10 minutos; vazio herda o padrão global.">Intervalo mínimo entre posts (min)</FieldLabel>
+          <Input id="account-min-interval" type="number" min={10} value={form.min_post_interval_minutes}
             onChange={e => setForm({ ...form, min_post_interval_minutes: e.target.value === "" ? "" : Math.max(parseInt(e.target.value) || 10, 10) })}
             placeholder={ph(effective.min_post_interval_minutes)} />
         </div>
         <div>
-          <Label>Nicho</Label>
-          <Input value={form.default_niche} onChange={e => setForm({ ...form, default_niche: e.target.value })} placeholder={ph(effective.default_niche)} />
+          <FieldLabel htmlFor="account-niche" helpLabel="nicho desta conta" help="Tema principal usado pela IA apenas para esta conta. Vazio herda o padrão global.">Nicho</FieldLabel>
+          <Input id="account-niche" value={form.default_niche} onChange={e => setForm({ ...form, default_niche: e.target.value })} placeholder={ph(effective.default_niche)} />
         </div>
         <div>
-          <Label>Tom da IA</Label>
-          <Input value={form.ai_tone} onChange={e => setForm({ ...form, ai_tone: e.target.value })} placeholder={ph(effective.ai_tone)} />
+          <FieldLabel htmlFor="account-ai-tone" helpLabel="tom da IA desta conta" help="Estilo de escrita das legendas desta conta. Vazio herda o padrão global.">Tom da IA</FieldLabel>
+          <Input id="account-ai-tone" value={form.ai_tone} onChange={e => setForm({ ...form, ai_tone: e.target.value })} placeholder={ph(effective.ai_tone)} />
         </div>
         <div>
-          <Label>Tipo de publicação padrão</Label>
+          <FieldLabel helpLabel="tipo de publicação desta conta" help="Formato preferido desta conta quando a automação não definir outro. Você pode manter o padrão global.">Tipo de publicação padrão</FieldLabel>
           <Select value={form.default_media_type || "__inherit"} onValueChange={v => setForm({ ...form, default_media_type: (v === "__inherit" ? "" : v) as any })}>
             <SelectTrigger><SelectValue placeholder={ph(effective.default_media_type)} /></SelectTrigger>
             <SelectContent>
@@ -244,7 +244,7 @@ export default function AccountSettings() {
           </Select>
         </div>
         <div>
-          <Label>Estilo de imagem</Label>
+          <FieldLabel helpLabel="estilo de imagem desta conta" help="Escolha o template dinâmico ou geração por IA apenas para esta conta, ou mantenha o padrão global.">Estilo de imagem</FieldLabel>
           <Select value={form.default_image_style || "__inherit"} onValueChange={v => setForm({ ...form, default_image_style: (v === "__inherit" ? "" : v) as any })}>
             <SelectTrigger><SelectValue placeholder={ph(effective.default_image_style)} /></SelectTrigger>
             <SelectContent>
@@ -255,13 +255,13 @@ export default function AccountSettings() {
           </Select>
         </div>
         <div>
-          <Label>Horários preferidos (vírgula, 0–23)</Label>
-          <Input value={form.preferred_post_hours} onChange={e => setForm({ ...form, preferred_post_hours: e.target.value })}
+          <FieldLabel htmlFor="account-preferred-hours" helpLabel="horários desta conta" help="Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21. Vazio herda o padrão global.">Horários preferidos</FieldLabel>
+          <Input id="account-preferred-hours" value={form.preferred_post_hours} onChange={e => setForm({ ...form, preferred_post_hours: e.target.value })}
             placeholder={ph(effective.preferred_post_hours?.join(","))} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <Label>Aprovação automática</Label>
+            <FieldLabel helpLabel="aprovação automática desta conta" help="Quando ativada, as publicações desta conta pulam a aprovação manual. Use “herdar” para voltar ao padrão global.">Aprovação automática</FieldLabel>
             <p className="text-xs text-muted-foreground">
               {form.auto_approve === null ? `Herdando do padrão: ${effective.auto_approve ? "ligado" : "desligado"}` : "Personalizado para esta conta"}
             </p>
