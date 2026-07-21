@@ -32,6 +32,10 @@ import {
   remapTranscriptToKeptSegments,
   sliceSourceTranscript,
 } from "./cutReuse.js";
+import {
+  professionalCandidatePoolSize,
+  refineTranscriptCutCandidates,
+} from "./cutQuality.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -1795,37 +1799,29 @@ function timedTranscript(words) {
   return lines.join("\n").slice(0, 120000);
 }
 
-function snapClipToTranscript(clip, words, index, duration) {
-  const normalized = clampClipSuggestion(clip, index, duration);
-  const nearStart = words
-    .filter((word) => Math.abs(word.start - normalized.start_seconds) <= 3)
-    .sort((a, b) => Math.abs(a.start - normalized.start_seconds) - Math.abs(b.start - normalized.start_seconds))[0];
-  const nearEnd = words
-    .filter((word) => Math.abs(word.end - normalized.end_seconds) <= 3)
-    .sort((a, b) => Math.abs(a.end - normalized.end_seconds) - Math.abs(b.end - normalized.end_seconds))[0];
-  return clampClipSuggestion({
-    ...normalized,
-    start_seconds: nearStart?.start ?? normalized.start_seconds,
-    end_seconds: nearEnd?.end ?? normalized.end_seconds,
-  }, index, duration);
-}
-
 async function analyzeTranscriptForCuts(job, metadata, words) {
   if (!words?.length) {
     return {
       clips: fallbackClipSuggestions(job, metadata),
       mode: "timeline_fallback",
       warning: "Não foi possível transcrever o vídeo completo.",
+      quality_trace: {
+        candidate_pool: 0,
+        selected: Math.max(1, Math.min(5, Number(job.requested_clips || 1))),
+        additional_ai_calls: 0,
+        duration_policy: "ai_flexible_8_180",
+      },
     };
   }
 
   const preset = resolveCutPreset(job.preset_key, job);
   const wantsHook = job.hook_enabled !== false;
   const transcript = timedTranscript(words);
-  const requested = Math.min(5, Number(job.requested_clips || 1));
-  const prompt = `Você é um editor de vídeos curtos. Escolha os ${requested} melhores trechos desta TRANSCRIÇÃO COM TIMESTAMPS.
+  const requested = Math.max(1, Math.min(5, Number(job.requested_clips || 1)));
+  const candidatePoolSize = professionalCandidatePoolSize(requested);
+  const prompt = `Você é um editor sênior de vídeos curtos. Indique ${candidatePoolSize} candidatos fortes desta TRANSCRIÇÃO COM TIMESTAMPS; o sistema selecionará os ${requested} melhores e mais diversos.
 
-Use somente o que está na transcrição. Priorize começo e fim naturais, gancho forte, emoção, clareza e uma ideia completa. Não comece nem termine no meio de frase. A duração é flexível: mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos e use de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando a fala completa exigir. A coerência vence a duração. Não invente falas.
+Use somente o que está na transcrição. Priorize começo que faça sentido sem contexto anterior, gancho forte nos primeiros segundos, emoção, clareza e uma entrega completa no final. Não comece nem termine no meio de frase. Evite candidatos que contem a mesma ideia ou se sobreponham muito. A duração é flexível: mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos e use de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando a fala completa exigir. A coerência vence a duração. Não invente falas nem use clickbait que não seja sustentado pelo trecho.
 
 PRESET DE EDIÇÃO (${preset.label}): ${preset.analysisInstruction}
 ${job.custom_prompt ? `ORIENTAÇÃO DO CLIENTE: ${String(job.custom_prompt).slice(0, 1200)}` : ""}
@@ -1845,18 +1841,37 @@ ${transcript}`;
     const parsed = parseJsonFromText(result.text);
     const clips = Array.isArray(parsed?.clips) ? parsed.clips : [];
     if (!clips.length) throw new Error("A IA não retornou trechos utilizáveis.");
+    const quality = refineTranscriptCutCandidates(
+      clips.map((clip, index) => clampClipSuggestion(clip, index + 1, metadata.duration_seconds)),
+      words,
+      {
+        requested,
+        videoDuration: metadata.duration_seconds,
+        minDuration: MIN_NATURAL_CUT_SECONDS,
+        maxDuration: MAX_NATURAL_CUT_SECONDS,
+      },
+    );
+    if (!quality.clips.length) throw new Error("Nenhum candidato passou pela avaliação profissional.");
     return {
-      clips: clips.slice(0, requested).map((clip, index) => snapClipToTranscript(clip, words, index + 1, metadata.duration_seconds)),
+      clips: quality.clips,
       mode: `transcript_ai:${result.provider}`,
       warning: null,
       provider: result.provider,
+      quality_trace: quality.trace,
     };
   } catch (error) {
     console.warn(`[cuts:${job.id}] Análise da transcrição falhou; usando modo básico:`, error?.message || error);
+    const quality = refineTranscriptCutCandidates(fallbackClipSuggestions(job, metadata), words, {
+      requested,
+      videoDuration: metadata.duration_seconds,
+      minDuration: MIN_NATURAL_CUT_SECONDS,
+      maxDuration: MAX_NATURAL_CUT_SECONDS,
+    });
     return {
-      clips: fallbackClipSuggestions(job, metadata),
+      clips: quality.clips,
       mode: "timeline_fallback",
       warning: `Análise inteligente indisponível: ${error?.message || error}`.slice(0, 500),
+      quality_trace: quality.trace,
     };
   }
 }
@@ -2238,11 +2253,15 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir, re
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error(`Corte não foi gerado. ${stderr || ""}`.trim());
   }
-  const qualityReport = await validateAiCutOutput(outputPath, {
+  const technicalQualityReport = await validateAiCutOutput(outputPath, {
     width: outW,
     height: outH,
     duration: workingDuration,
   });
+  const qualityReport = {
+    ...technicalQualityReport,
+    editorial: clip.selection_quality || null,
+  };
 
   await execAsync(
     `ffmpeg -y -ss 1 -i ${shellQuote(outputPath)} -frames:v 1 -q:v 3 ${shellQuote(thumbPath)}`,
@@ -2275,6 +2294,8 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir, re
       transcript_text: transcript ? transcript.map((word) => word.word).join(" ") : null,
       quality_report: qualityReport,
       provider_trace: {
+        analysis: clip.analysis_provider || null,
+        selection: clip.selection_quality || null,
         transcription: clip.transcription_provider || null,
         framing: subjectFocus.provider,
         framing_confidence: subjectFocus.confidence,
@@ -2469,7 +2490,11 @@ async function processLocalAudioCutJob(job, tempDir) {
           transcript: { words },
           transcript_text: words.map((word) => word.word).join(" "),
           edit_config: { local_render_pending: true },
-          provider_trace: { analysis: analysis.provider || null, render: "local_device_pending" },
+          provider_trace: {
+            analysis: analysis.provider || null,
+            selection: suggestion.selection_quality || null,
+            render: "local_device_pending",
+          },
         });
         if (clipError) throw clipError;
         createdCount += 1;
@@ -2483,6 +2508,7 @@ async function processLocalAudioCutJob(job, tempDir) {
       analysis_warning: analysis.warning,
       provider_trace: {
         analysis: analysis.provider || null,
+        editorial_quality: analysis.quality_trace || null,
         render: "local_device",
         source_transcription: sourceTranscription.trace,
       },
@@ -2606,6 +2632,7 @@ async function processVideoCutJob(job) {
         analysis_warning: analysis.warning,
         provider_trace: {
           analysis: analysis.provider || null,
+          editorial_quality: analysis.quality_trace || null,
           transcription_order: transcriptionProviderOrder(),
           source_transcription: sourceTranscriptionTrace,
           durations_ms: { analysis: analysisDurationMs },
@@ -2695,6 +2722,10 @@ async function processVideoCutJob(job) {
             video_url: null,
             thumbnail_url: null,
             error_message: null,
+            provider_trace: {
+              analysis: analysis.provider || null,
+              selection: suggestion.selection_quality || null,
+            },
           }, { onConflict: "job_id,clip_index" })
           .select("*")
           .single();
@@ -2702,6 +2733,8 @@ async function processVideoCutJob(job) {
         if (clipError) throw clipError;
         // Sinal para generateVideoCutClip renderizar hook_text se hook_enabled
         clip.hook_enabled = job.hook_enabled !== false;
+        clip.analysis_provider = analysis.provider || null;
+        clip.selection_quality = suggestion.selection_quality || null;
         const { videoUrl, thumbnailUrl } = await generateVideoCutClip(
           job,
           clip,
@@ -2741,6 +2774,7 @@ async function processVideoCutJob(job) {
         updated_at: new Date().toISOString(),
         provider_trace: {
           analysis: analysis.provider || null,
+          editorial_quality: analysis.quality_trace || null,
           transcription_order: transcriptionProviderOrder(),
           ...cutReuseTrace(cutReuseContext),
           durations_ms: {
