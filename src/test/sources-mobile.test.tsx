@@ -49,7 +49,7 @@ vi.mock("@/integrations/supabase/client", () => {
 describe("Sources mobile layout", () => {
   it("keeps long source content contained and opens a scrollable add dialog", async () => {
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <Sources />
       </MemoryRouter>,
     );
