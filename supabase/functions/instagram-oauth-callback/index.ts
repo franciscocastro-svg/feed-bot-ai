@@ -1,5 +1,10 @@
 // Receives Instagram OAuth callback, exchanges code for long-lived token, saves account.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  exchangeLongLivedInstagramToken,
+  instagramOAuthRedirect,
+  publicInstagramOAuthError,
+} from '../_shared/instagram-oauth.ts';
 
 const APP_ID = Deno.env.get('INSTAGRAM_APP_ID')!;
 const APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET')!;
@@ -20,13 +25,6 @@ async function hmac(data: string, secret: string): Promise<string> {
   );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function htmlRedirect(target: string, message: string) {
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>${message}</title><meta http-equiv="refresh" content="0;url=${target}"><p>${message} <a href="${target}">Continuar</a></p>`,
-    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-  );
 }
 
 function isAuthorizationCodeAlreadyUsed(data: any): boolean {
@@ -91,10 +89,10 @@ Deno.serve(async (req) => {
   const errParam = url.searchParams.get('error');
 
   if (errParam) {
-    return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=${encodeURIComponent(errParam)}`, 'Falha na autorização');
+    return instagramOAuthRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=authorization_denied`);
   }
   if (!code || !state) {
-    return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=missing_params`, 'Parâmetros ausentes');
+    return instagramOAuthRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=missing_params`);
   }
 
   try {
@@ -125,32 +123,22 @@ Deno.serve(async (req) => {
       if (isAuthorizationCodeAlreadyUsed(shortData)) {
         const recent = await findRecentlyConnectedAccount(admin, userId, ts);
         if (recent?.username) {
-          return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=connected&u=${encodeURIComponent(recent.username)}`, `Conta @${recent.username} conectada!`);
+          return instagramOAuthRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=connected&u=${encodeURIComponent(recent.username)}`);
         }
         throw new Error('authorization_code_already_used');
       }
-      throw new Error(`short_token_failed: ${JSON.stringify(shortData)}`);
+      throw new Error('short_token_failed');
     }
     const shortToken = shortData.access_token as string;
     const igUserId = String(shortData.user_id ?? '');
 
-    // 3. Exchange short -> long-lived (60 days) — Meta requires POST on graph.instagram.com
-    const longForm = new URLSearchParams();
-    longForm.set('grant_type', 'ig_exchange_token');
-    longForm.set('client_secret', APP_SECRET);
-    longForm.set('access_token', shortToken);
-    const longRes = await fetch('https://graph.instagram.com/access_token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: longForm.toString(),
-    });
-    const longData = await longRes.json();
-    if (!longRes.ok || !longData.access_token) {
-      console.error('long token error', longData);
-      throw new Error(`long_token_failed: ${JSON.stringify(longData)}`);
-    }
-    const longToken = longData.access_token as string;
-    const expiresIn = (longData.expires_in as number) ?? 60 * 24 * 3600;
+    // 3. Exchange short -> long-lived (60 days).
+    // Instagram currently accepts GET for this exchange. A narrowly-scoped POST
+    // fallback keeps compatibility if Meta explicitly rejects the GET method.
+    const { accessToken: longToken, expiresIn } = await exchangeLongLivedInstagramToken(
+      shortToken,
+      APP_SECRET,
+    );
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
     // 4. Get IG user info
@@ -190,9 +178,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=connected&u=${encodeURIComponent(username)}`, `Conta @${username} conectada!`);
+    return instagramOAuthRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=connected&u=${encodeURIComponent(username)}`);
   } catch (e) {
-    console.error('callback error', e);
-    return htmlRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=${encodeURIComponent((e as Error).message)}`, 'Erro ao conectar');
+    const reason = publicInstagramOAuthError(e);
+    console.error('callback error', {
+      reason,
+      diagnostic: e && typeof e === 'object' && 'diagnostic' in e
+        ? (e as { diagnostic: unknown }).diagnostic
+        : undefined,
+    });
+    return instagramOAuthRedirect(`${APP_ORIGIN}/dashboard/accounts?ig=error&reason=${encodeURIComponent(reason)}`);
   }
 });
