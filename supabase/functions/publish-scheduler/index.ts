@@ -8,6 +8,7 @@ import {
 } from "../_shared/autopilot-policy.ts";
 import { resolveGlobalPostInterval } from "../_shared/editorial-policy.ts";
 import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
+import { finalizeEditorialCaption } from "../_shared/caption-integrity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,7 +24,6 @@ const DEFAULT_USAGE_PAUSE_THRESHOLD = 80; // %
 const GRAPH_VERSION = "v21.0";
 const AWAITING_CONTAINER_TTL_MINUTES = 120;
 const ACTIVE_QUEUE_STATUSES = ["scheduled", "posting", "awaiting_container"];
-const INSTAGRAM_CAPTION_LIMIT = 2200;
 const MIN_PUBLISH_CAPTION_CHARS = 40;
 
 function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null, contentType?: string | null) {
@@ -301,14 +301,6 @@ function normalizePublishCaption(value?: string | null): string {
     .trim();
 }
 
-function smartTrimCaption(value: string, limit = INSTAGRAM_CAPTION_LIMIT): string {
-  const clean = normalizePublishCaption(value);
-  if (clean.length <= limit) return clean;
-  const cut = clean.slice(0, Math.max(0, limit - 1));
-  const breakAt = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
-  return (breakAt > 700 ? cut.slice(0, breakAt + 1) : cut).trim();
-}
-
 function buildHashtagsLine(value: unknown): string {
   const raw = Array.isArray(value)
     ? value
@@ -324,7 +316,11 @@ function buildHashtagsLine(value: unknown): string {
   return tags.length ? tags.map((tag) => `#${tag}`).join(" ") : "";
 }
 
-function buildSafePublishCaption(news: any, mediaType: "feed" | "reel" | "story"): { caption: string; usedFallback: boolean } {
+function buildSafePublishCaption(
+  news: any,
+  mediaType: "feed" | "reel" | "story",
+  accountUsername: string,
+): { caption: string; usedFallback: boolean } {
   if (mediaType === "story") return { caption: "", usedFallback: false };
 
   const preferred = mediaType === "reel"
@@ -338,7 +334,14 @@ function buildSafePublishCaption(news: any, mediaType: "feed" | "reel" | "story"
     const withTags = hashtagsLine && !hasHashtags
       ? `${cleanPreferred}\n\n${hashtagsLine}`
       : cleanPreferred;
-    return { caption: smartTrimCaption(withTags), usedFallback: false };
+    return {
+      caption: finalizeEditorialCaption(withTags, {
+        accountHandle: accountUsername,
+        hashtagsLine,
+        maxLength: mediaType === "reel" ? 1100 : 1700,
+      }),
+      usedFallback: false,
+    };
   }
 
   const title = normalizePublishCaption(news?.rewritten_title || news?.original_title || "Notícia importante");
@@ -362,7 +365,14 @@ function buildSafePublishCaption(news: any, mediaType: "feed" | "reel" | "story"
     ? blocks.join("\n\n")
     : "🚨 Notícia importante\n\n💬 O que você achou dessa notícia?";
 
-  return { caption: smartTrimCaption(fallback), usedFallback: true };
+  return {
+    caption: finalizeEditorialCaption(fallback, {
+      accountHandle: accountUsername,
+      hashtagsLine,
+      maxLength: mediaType === "reel" ? 1100 : 1700,
+    }),
+    usedFallback: true,
+  };
 }
 
 // Quando recebemos 4/2207051 num post de Feed, a Meta às vezes JÁ publicou
@@ -1394,7 +1404,7 @@ Deno.serve(async (req) => {
           });
           continue;
         }
-        const safeCaption = buildSafePublishCaption(news, mediaType);
+        const safeCaption = buildSafePublishCaption(news, mediaType, acc.username);
         const captionToUse = safeCaption.caption;
         if (safeCaption.usedFallback && news?.id) {
           const captionPatch = mediaType === "reel"
@@ -1468,7 +1478,7 @@ Deno.serve(async (req) => {
           // post existe no perfil — se sim, marca como publicado.
           if (p.media_type === "feed") {
             try {
-              const captionToCheck = buildSafePublishCaption(news, "feed").caption;
+              const captionToCheck = buildSafePublishCaption(news, "feed", acc.username).caption;
               const ghostId = await findRecentlyPublishedMediaId(acc.ig_user_id, acc.access_token, captionToCheck);
               if (ghostId) {
                 await supabase.from("scheduled_posts").update({

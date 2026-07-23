@@ -55,11 +55,12 @@ describe("Perfil do Criador 1A", () => {
     expect(() => assertCreatorProfileCompliance("Novidades sobre IA generativa", shortTermProfile)).toThrow();
   });
 
-  it("adds signature and preferred CTA as deterministic caption extras", () => {
+  it("adds only the signature deterministically and keeps CTA as prompt guidance", () => {
     expect(creatorCaptionExtras(profile)).toEqual([
       "Dinheiro simples, decisão consciente.",
-      "Pergunte qual dúvida o leitor quer ver respondida.",
     ]);
+    expect(creatorProfilePrompt(profile)).toContain("apenas referencia de tom");
+    expect(creatorProfilePrompt(profile)).toContain("Nao inclua CTA");
   });
 
   it("isolates profiles by account and protects every mutation with owner-checked RPCs", () => {

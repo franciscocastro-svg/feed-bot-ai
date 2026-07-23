@@ -11,6 +11,7 @@
     "check:worker": "node --check worker/index.js && node --check worker/cutReuse.js && node --check worker/cutQuality.js",
     "check:cuts-efficiency": "node --check worker/index.js && node --check worker/cutReuse.js && vitest run src/test/video-cuts-efficiency.test.ts",
     "check:cuts-quality": "node --check worker/index.js && node --check worker/cutQuality.js && vitest run src/test/video-cuts-quality.test.ts",
+    "check:captions": "vitest run src/test/caption-integrity.test.ts src/test/creator-profile-1a.test.ts",
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:lint-ratchet": "node scripts/check-lint-ratchet.mjs",
     "check:edge-functions": "node scripts/check-edge-functions.mjs",
@@ -26,7 +27,7 @@
     "lint:phase1c": "eslint scripts/lint-ratchet.mjs scripts/check-lint-ratchet.mjs scripts/update-lint-baseline.mjs src/test/lint-ratchet.test.ts src/test/auth-email-payload.test.ts src/test/stripe-event-compat.test.ts src/contexts/AuthContext.tsx supabase/functions/_shared/auth-email-payload.ts supabase/functions/_shared/stripe-event-compat.ts supabase/functions/_shared/stripe.ts supabase/functions/auth-email-hook/index.ts supabase/functions/payments-webhook/index.ts",
     "lint:phase1d": "eslint scripts/edge-function-manifest.mjs scripts/check-edge-functions.mjs src/test/edge-function-manifest.test.ts",
     "lint:baseline:update": "node scripts/update-lint-baseline.mjs",
-    "ci": "npm run check:secrets && npm run check:lint-ratchet && npm run typecheck && npm run lint:phase1 && npm run lint:phase1b && npm run lint:phase1c && npm run lint:phase1d && npm run test && npm run check:worker && npm run check:delivery && npm run check:editorial-migration-artifacts && npm run check:mcp-build && npm run build",
+    "ci": "npm run check:secrets && npm run check:lint-ratchet && npm run typecheck && npm run lint:phase1 && npm run lint:phase1b && npm run lint:phase1c && npm run lint:phase1d && npm run check:captions && npm run test && npm run check:worker && npm run check:delivery && npm run check:editorial-migration-artifacts && npm run check:mcp-build && npm run build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
