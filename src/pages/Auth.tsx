@@ -14,6 +14,7 @@ import { Eye, EyeOff, Loader2, Sparkles, Newspaper, Instagram } from "lucide-rea
 import { BrandLogo } from "@/components/BrandLogo";
 import { trackMetaEvent } from "@/lib/metaPixel";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { resolvePostAuthRedirect } from "@/lib/safeRedirect";
 
 const schemas = (t: (source: string) => string) => {
   const schema = z.object({
@@ -86,10 +87,7 @@ export default function Auth() {
   const { t } = useLanguage();
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
-  const rawNext = searchParams.get("next");
-  // Only accept same-origin relative paths for the post-auth redirect.
-  const nextPath = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
-  const postAuthTarget = nextPath ?? "/dashboard";
+  const postAuthTarget = resolvePostAuthRedirect(searchParams.get("next"));
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
