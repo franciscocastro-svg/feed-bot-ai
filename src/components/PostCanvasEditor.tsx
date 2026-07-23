@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Save, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const SIZE = 1080;
 const PREVIEW = 480;
@@ -134,6 +135,7 @@ interface Props {
 }
 
 export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [photoImg, setPhotoImg] = useState<HTMLImageElement | null>(null);
@@ -307,11 +309,11 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
         status: "processed",
         error_message: null,
       }).eq("id", item.id);
-      toast.success("Post salvo!");
+      toast.success(t("Post salvo!"));
       onSaved();
       onClose();
     } catch (e: any) {
-      toast.error(e.message || "Erro ao salvar");
+      toast.error(t("Erro ao salvar o post."));
     } finally {
       setSaving(false);
     }
@@ -325,9 +327,9 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
     <Dialog open={!!item} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Editor de Post (1080×1080)</DialogTitle>
+          <DialogTitle>{t("Editor de Post (1080×1080)")}</DialogTitle>
           <DialogDescription>
-            Edite o visual do post no canvas. As mudanças são renderizadas ao vivo.
+            {t("Edite o visual do post no canvas. As mudanças são renderizadas ao vivo.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -350,7 +352,7 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
               <div className="flex gap-2">
                 <Button onClick={handleSave} disabled={saving} className="flex-1">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                  Salvar post
+                  {t("Salvar post")}
                 </Button>
                 <Button variant="outline" onClick={() => setLayout({ ...DEFAULT_LAYOUT, title: layout.title, subtitle: layout.subtitle, handle: layout.handle })}>
                   <RotateCcw className="h-4 w-4" />
@@ -361,8 +363,8 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
             {/* Controles */}
             <Tabs defaultValue="text">
               <TabsList className="grid grid-cols-4 w-full">
-                <TabsTrigger value="text">Texto</TabsTrigger>
-                <TabsTrigger value="photo">Foto</TabsTrigger>
+                <TabsTrigger value="text">{t("Texto")}</TabsTrigger>
+                <TabsTrigger value="photo">{t("Foto")}</TabsTrigger>
                 <TabsTrigger value="layout">Layout</TabsTrigger>
                 <TabsTrigger value="badge">Badge</TabsTrigger>
               </TabsList>
@@ -373,36 +375,36 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
                   <Input value={layout.handle} onChange={e => update("handle", e.target.value.replace(/^@/, ""))} />
                 </div>
                 <div>
-                  <Label>Título</Label>
+                  <Label>{t("Título")}</Label>
                   <Textarea rows={3} value={layout.title} onChange={e => update("title", e.target.value)} />
                 </div>
                 <div>
-                  <Label>Subtítulo / Resumo</Label>
+                  <Label>{t("Subtítulo / Resumo")}</Label>
                   <Textarea rows={2} value={layout.subtitle} onChange={e => update("subtitle", e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label>Tamanho do título: {layout.titleSize}px</Label>
+                    <Label>{t("Tamanho do título:")} {layout.titleSize}px</Label>
                     <Slider min={32} max={96} step={2} value={[layout.titleSize]} onValueChange={v => update("titleSize", v[0])} />
                   </div>
                   <div>
-                    <Label>Posição Y do título: {layout.titleY}</Label>
+                    <Label>{t("Posição Y do título:")} {layout.titleY}</Label>
                     <Slider min={150} max={500} step={5} value={[layout.titleY]} onValueChange={v => update("titleY", v[0])} />
                   </div>
                   <div>
-                    <Label>Cor do título</Label>
+                    <Label>{t("Cor do título")}</Label>
                     <Input type="color" value={layout.titleColor} onChange={e => update("titleColor", e.target.value)} />
                   </div>
                   <div>
-                    <Label>Cor subtítulo</Label>
+                    <Label>{t("Cor subtítulo")}</Label>
                     <Input type="color" value={layout.subtitleColor} onChange={e => update("subtitleColor", e.target.value)} />
                   </div>
                   <div>
-                    <Label>Tam. subtítulo: {layout.subtitleSize}</Label>
+                    <Label>{t("Tam. subtítulo:")} {layout.subtitleSize}</Label>
                     <Slider min={16} max={48} step={1} value={[layout.subtitleSize]} onValueChange={v => update("subtitleSize", v[0])} />
                   </div>
                   <div>
-                    <Label>Pos. Y subtítulo: {layout.subtitleY}</Label>
+                    <Label>{t("Pos. Y subtítulo:")} {layout.subtitleY}</Label>
                     <Slider min={300} max={520} step={5} value={[layout.subtitleY]} onValueChange={v => update("subtitleY", v[0])} />
                   </div>
                 </div>
@@ -411,71 +413,71 @@ export function PostCanvasEditor({ item, onClose, onSaved }: Props) {
               <TabsContent value="photo" className="space-y-4 pt-4">
                 {!photoImg && (
                   <p className="text-sm text-muted-foreground p-3 bg-muted rounded">
-                    Sem foto disponível para essa notícia. Mostrando gradiente de fundo.
+                    {t("Sem foto disponível para essa notícia. Mostrando gradiente de fundo.")}
                   </p>
                 )}
                 <div>
-                  <Label>Topo da foto: {layout.photoY}</Label>
+                  <Label>{t("Topo da foto:")} {layout.photoY}</Label>
                   <Slider min={300} max={800} step={5} value={[layout.photoY]} onValueChange={v => update("photoY", v[0])} />
                 </div>
                 <div>
-                  <Label>Altura da foto: {layout.photoH}</Label>
+                  <Label>{t("Altura da foto:")} {layout.photoH}</Label>
                   <Slider min={200} max={780} step={5} value={[layout.photoH]} onValueChange={v => update("photoH", v[0])} />
                 </div>
                 <div className="flex items-center gap-3">
-                  <Label>Modo</Label>
+                  <Label>{t("Modo")}</Label>
                   <div className="flex gap-1">
                     {(["smart", "cover", "contain"] as const).map(m => (
                       <Button key={m} size="sm" variant={layout.photoFit === m ? "default" : "outline"} onClick={() => update("photoFit", m)}>
-                        {m === "smart" ? "Inteligente" : m === "cover" ? "Preencher" : "Encaixar"}
+                        {m === "smart" ? t("Inteligente") : m === "cover" ? t("Preencher") : t("Encaixar")}
                       </Button>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <Label>Escurecer foto: {Math.round(layout.overlayOpacity * 100)}%</Label>
+                  <Label>{t("Escurecer foto:")} {Math.round(layout.overlayOpacity * 100)}%</Label>
                   <Slider min={0} max={0.8} step={0.05} value={[layout.overlayOpacity]} onValueChange={v => update("overlayOpacity", v[0])} />
                 </div>
               </TabsContent>
 
               <TabsContent value="layout" className="space-y-4 pt-4">
                 <div>
-                  <Label>Altura do header: {layout.headerH}</Label>
+                  <Label>{t("Altura do cabeçalho:")} {layout.headerH}</Label>
                   <Slider min={300} max={800} step={5} value={[layout.headerH]} onValueChange={v => update("headerH", v[0])} />
                 </div>
                 <div>
-                  <Label>Cor do header</Label>
+                  <Label>{t("Cor do cabeçalho")}</Label>
                   <Input type="color" value={layout.headerBg} onChange={e => update("headerBg", e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#FFFFFF", titleColor: "#000000", subtitleColor: "#52525B" }))}>Tema claro</Button>
-                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#0A0A0A", titleColor: "#FFFFFF", subtitleColor: "#A1A1AA" }))}>Tema escuro</Button>
-                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#FFD400", titleColor: "#000000", subtitleColor: "#27272A" }))}>Amarelo</Button>
-                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#DC2626", titleColor: "#FFFFFF", subtitleColor: "#FECACA" }))}>Urgente</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#FFFFFF", titleColor: "#000000", subtitleColor: "#52525B" }))}>{t("Tema claro")}</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#0A0A0A", titleColor: "#FFFFFF", subtitleColor: "#A1A1AA" }))}>{t("Tema escuro")}</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#FFD400", titleColor: "#000000", subtitleColor: "#27272A" }))}>{t("Amarelo")}</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLayout(p => ({ ...p, headerBg: "#DC2626", titleColor: "#FFFFFF", subtitleColor: "#FECACA" }))}>{t("Urgente")}</Button>
                 </div>
               </TabsContent>
 
               <TabsContent value="badge" className="space-y-4 pt-4">
                 <div className="flex items-center gap-3">
                   <Switch checked={layout.showBadge} onCheckedChange={v => update("showBadge", v)} />
-                  <Label>Mostrar badge</Label>
+                  <Label>{t("Mostrar badge")}</Label>
                 </div>
                 <div>
-                  <Label>Texto do badge</Label>
+                  <Label>{t("Texto do badge")}</Label>
                   <Input value={layout.badgeText} onChange={e => update("badgeText", e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label>Fundo</Label>
+                    <Label>{t("Fundo")}</Label>
                     <Input type="color" value={layout.badgeBg} onChange={e => update("badgeBg", e.target.value)} />
                   </div>
                   <div>
-                    <Label>Texto</Label>
+                    <Label>{t("Texto")}</Label>
                     <Input type="color" value={layout.badgeColor} onChange={e => update("badgeColor", e.target.value)} />
                   </div>
                 </div>
                 <div>
-                  <Label>Posição Y: {layout.badgeY}</Label>
+                  <Label>{t("Posição Y:")} {layout.badgeY}</Label>
                   <Slider min={400} max={1020} step={5} value={[layout.badgeY]} onValueChange={v => update("badgeY", v[0])} />
                 </div>
               </TabsContent>

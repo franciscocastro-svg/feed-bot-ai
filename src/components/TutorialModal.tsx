@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const STORAGE_KEY = "flux-feed_tutorial_views";
 
@@ -210,6 +211,7 @@ const steps: TutorialStep[] = [
 ];
 
 export function TutorialModal({ open, onOpenChange }: { open: boolean; onOpenChange: (value: boolean) => void }) {
+  const { language, t } = useLanguage();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const current = steps[step];
@@ -231,8 +233,8 @@ export function TutorialModal({ open, onOpenChange }: { open: boolean; onOpenCha
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-4xl gap-0 overflow-hidden p-0">
-        <DialogTitle className="sr-only">Guia de primeiros passos do Flux & Feed</DialogTitle>
-        <DialogDescription className="sr-only">Tutorial completo para configurar e usar a plataforma.</DialogDescription>
+        <DialogTitle className="sr-only">{t("Guia de primeiros passos do Flux & Feed")}</DialogTitle>
+        <DialogDescription className="sr-only">{t("Tutorial completo para configurar e usar a plataforma.")}</DialogDescription>
 
         <div className="grid h-[min(720px,92vh)] min-h-0 md:grid-cols-[250px_1fr]">
           <aside className="hidden border-r border-border bg-muted/20 p-5 md:flex md:flex-col">
@@ -241,12 +243,12 @@ export function TutorialModal({ open, onOpenChange }: { open: boolean; onOpenCha
                 <Sparkles className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <p className="font-display font-semibold">Primeiros passos</p>
-                <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3 w-3" /> Guia de 7 minutos</p>
+                <p className="font-display font-semibold">{t("Primeiros passos")}</p>
+                <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3 w-3" /> {t("Guia de 7 minutos")}</p>
               </div>
             </div>
 
-            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1" aria-label="Etapas do tutorial">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1" aria-label={t("Etapas do tutorial")}>
               {steps.map((item, index) => {
                 const StepIcon = item.icon;
                 const active = index === step;
@@ -265,22 +267,22 @@ export function TutorialModal({ open, onOpenChange }: { open: boolean; onOpenCha
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", active && "border-primary bg-primary text-primary-foreground", completed && "border-emerald-500/40 bg-emerald-500/10 text-emerald-400")}>
                       {completed ? <Check className="h-3.5 w-3.5" /> : <StepIcon className="h-3.5 w-3.5" />}
                     </span>
-                    <span className="truncate font-medium">{item.navTitle}</span>
+                    <span className="truncate font-medium">{t(item.navTitle)}</span>
                   </button>
                 );
               })}
             </nav>
 
             <button type="button" onClick={close} className="mt-4 text-left text-xs text-muted-foreground transition hover:text-foreground">
-              Fechar e continuar depois
+              {t("Fechar e continuar depois")}
             </button>
           </aside>
 
           <section className="flex min-h-0 min-w-0 flex-col">
             <div className="border-b border-border px-5 pb-4 pt-5 md:px-8">
               <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                <span className="font-medium text-muted-foreground">Etapa {step + 1} de {steps.length}</span>
-                <span className="text-muted-foreground">{Math.round(progress)}% concluído</span>
+                <span className="font-medium text-muted-foreground">{language === "en-US" ? `Step ${step + 1} of ${steps.length}` : `Etapa ${step + 1} de ${steps.length}`}</span>
+                <span className="text-muted-foreground">{language === "en-US" ? `${Math.round(progress)}% complete` : `${Math.round(progress)}% concluído`}</span>
               </div>
               <Progress value={progress} className="h-1.5" />
             </div>
@@ -291,42 +293,42 @@ export function TutorialModal({ open, onOpenChange }: { open: boolean; onOpenCha
                   <Icon className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">{current.eyebrow}</p>
-                  <h2 className="font-display text-2xl font-semibold leading-tight md:text-3xl">{current.title}</h2>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t(current.eyebrow)}</p>
+                  <h2 className="font-display text-2xl font-semibold leading-tight md:text-3xl">{t(current.title)}</h2>
                 </div>
               </div>
 
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">{current.summary}</p>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">{t(current.summary)}</p>
 
               <div className="my-6 grid gap-3 sm:grid-cols-2">
                 {current.items.map((item, index) => (
                   <div key={item} className="flex gap-3 rounded-xl border border-border bg-card/60 p-3.5">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{index + 1}</span>
-                    <p className="text-sm leading-relaxed">{item}</p>
+                    <p className="text-sm leading-relaxed">{t(item)}</p>
                   </div>
                 ))}
               </div>
 
               <div className="rounded-xl border border-border bg-muted/30 p-4">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Orientação prática</p>
-                <p className="text-sm leading-relaxed">{current.note}</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("Orientação prática")}</p>
+                <p className="text-sm leading-relaxed">{t(current.note)}</p>
               </div>
             </div>
 
             <footer className="border-t border-border bg-card/40 px-5 py-4 md:px-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <Button variant="ghost" onClick={() => setStep(value => Math.max(0, value - 1))} disabled={step === 0}>
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+                  <ArrowLeft className="mr-2 h-4 w-4" /> {t("Voltar")}
                 </Button>
                 <div className="ml-auto flex flex-wrap justify-end gap-2">
                   {current.route && !last && (
-                    <Button variant="outline" onClick={openSection}>{current.action}</Button>
+                    <Button variant="outline" onClick={openSection}>{t(current.action || "")}</Button>
                   )}
                   {last ? (
-                    <Button onClick={openSection}>Concluir <CheckCircle2 className="ml-2 h-4 w-4" /></Button>
+                    <Button onClick={openSection}>{t("Concluir")} <CheckCircle2 className="ml-2 h-4 w-4" /></Button>
                   ) : (
                     <Button onClick={() => setStep(value => Math.min(steps.length - 1, value + 1))}>
-                      Próxima etapa <ArrowRight className="ml-2 h-4 w-4" />
+                      {t("Próxima etapa")} <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   )}
                 </div>

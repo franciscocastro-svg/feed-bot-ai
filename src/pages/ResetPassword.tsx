@@ -10,16 +10,14 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const schema = z.object({
-  password: z.string().min(8, "Mínimo 8 caracteres").max(72),
+const schema = (t: (source: string) => string) => z.object({
+  password: z.string().min(8, t("Mínimo 8 caracteres")).max(72),
   confirm: z.string(),
-}).refine((d) => d.password === d.confirm, { message: "As senhas não coincidem", path: ["confirm"] });
+}).refine((d) => d.password === d.confirm, { message: t("As senhas não coincidem"), path: ["confirm"] });
 
 type RecoveryStatus = "validating" | "ready" | "invalid";
-
-const INVALID_LINK_MESSAGE =
-  "Este link de recuperação está inválido ou expirou. Solicite um novo link para definir sua senha.";
 
 function getRecoveryParams() {
   const searchParams = new URLSearchParams(window.location.search);
@@ -50,7 +48,8 @@ type PasswordInputProps = {
 };
 
 function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: PasswordInputProps) {
-  const label = visible ? "Ocultar senha" : "Mostrar senha";
+  const { t } = useLanguage();
+  const label = visible ? t("Ocultar senha") : t("Mostrar senha");
   const Icon = visible ? EyeOff : Eye;
 
   return (
@@ -79,6 +78,7 @@ function PasswordInput({ value, onChange, visible, onToggle, autoComplete }: Pas
 }
 
 export default function ResetPassword() {
+  const { t } = useLanguage();
   const nav = useNavigate();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -97,7 +97,7 @@ export default function ResetPassword() {
       setStatus("ready");
     };
 
-    const markInvalid = (message = INVALID_LINK_MESSAGE) => {
+    const markInvalid = (message = t("Este link de recuperação está inválido ou expirou. Solicite um novo link para definir sua senha.")) => {
       if (!active) return;
       setLinkError(message);
       setStatus("invalid");
@@ -161,25 +161,25 @@ export default function ResetPassword() {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [t]);
 
   const handle = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = schema.safeParse({ password, confirm });
+    const parsed = schema(t).safeParse({ password, confirm });
     if (!parsed.success) return toast.error(parsed.error.errors[0].message);
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
     setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Senha atualizada!");
+    if (error) return toast.error(t("Não foi possível atualizar a senha."));
+    toast.success(t("Senha atualizada!"));
     nav("/dashboard");
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <SEO
-        title="Definir nova senha — Flux & Feed"
-        description="Crie uma nova senha segura para sua conta Flux & Feed e volte a automatizar suas publicações no Instagram."
+        title={t("Definir nova senha — Flux & Feed")}
+        description={t("Crie uma nova senha segura para sua conta Flux & Feed e volte a automatizar suas publicações no Instagram.")}
         path="/reset-password"
         noindex
       />
@@ -187,21 +187,21 @@ export default function ResetPassword() {
         <div className="mb-6 flex justify-center">
           <BrandLogo priority className="h-9 max-w-[230px]" />
         </div>
-        <h1 className="font-display text-2xl font-bold mb-2">Nova senha</h1>
-        <p className="text-sm text-muted-foreground mb-6">Defina uma nova senha para acessar sua conta.</p>
+        <h1 className="font-display text-2xl font-bold mb-2">{t("Nova senha")}</h1>
+        <p className="text-sm text-muted-foreground mb-6">{t("Defina uma nova senha para acessar sua conta.")}</p>
         {status === "validating" ? (
-          <p className="text-sm text-muted-foreground">Validando link…</p>
+          <p className="text-sm text-muted-foreground">{t("Validando link…")}</p>
         ) : status === "invalid" ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">{linkError}</p>
             <Button className="w-full" asChild>
-              <Link to="/forgot-password">Solicitar novo link</Link>
+              <Link to="/forgot-password">{t("Solicitar novo link")}</Link>
             </Button>
           </div>
         ) : (
           <form onSubmit={handle} className="space-y-4">
             <div className="space-y-2">
-              <Label>Nova senha</Label>
+              <Label>{t("Nova senha")}</Label>
               <PasswordInput
                 value={password}
                 onChange={setPassword}
@@ -211,7 +211,7 @@ export default function ResetPassword() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Confirmar senha</Label>
+              <Label>{t("Confirmar senha")}</Label>
               <PasswordInput
                 value={confirm}
                 onChange={setConfirm}
@@ -221,7 +221,7 @@ export default function ResetPassword() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar nova senha"}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("Salvar nova senha")}
             </Button>
           </form>
         )}

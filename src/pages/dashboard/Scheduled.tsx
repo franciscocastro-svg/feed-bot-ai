@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const ACTIVE_POST_LIMIT = 150;
 const POSTED_POST_LIMIT = 30;
@@ -24,8 +25,9 @@ function isManagedReelVideoUrl(url?: string | null, userId?: string | null, item
 }
 
 export default function Scheduled() {
+  const { language, locale, t } = useLanguage();
   const fmtBR = (d: string | Date) =>
-    new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) + " (Brasília)";
+    new Date(d).toLocaleString(locale, { timeZone: "America/Sao_Paulo" }) + ` (${language === "en-US" ? "Brasilia" : "Brasília"})`;
   const [posts, setPosts] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [running, setRunning] = useState(false);
@@ -73,7 +75,7 @@ export default function Scheduled() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
-    toast.success("Lista atualizada");
+    toast.success(t("Lista atualizada"));
   };
 
   const runNow = async () => {
@@ -81,15 +83,15 @@ export default function Scheduled() {
     const { data, error } = await supabase.functions.invoke("publish-scheduler");
     setRunning(false);
     if (error) return toast.error(error.message);
-    toast.success(`${data?.processed || 0} posts processados`);
+    toast.success(language === "en-US" ? `${data?.processed || 0} posts processed` : `${data?.processed || 0} posts processados`);
     load();
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Apagar este agendamento?")) return;
+    if (!confirm(t("Apagar este agendamento?"))) return;
     const { error } = await supabase.from("scheduled_posts").delete().eq("id", id);
     if (error) return toast.error(error.message);
-    toast.success("Removido");
+    toast.success(t("Removido"));
     load();
   };
 
@@ -111,7 +113,7 @@ export default function Scheduled() {
       retry_count: 0,
     }).eq("id", editing.id);
     if (error) return toast.error(error.message);
-    toast.success("Atualizado");
+    toast.success(t("Atualizado"));
     setEditing(null);
     load();
   };
@@ -124,19 +126,19 @@ export default function Scheduled() {
       scheduled_for: new Date().toISOString(),
     }).eq("id", id);
     if (error) return toast.error(error.message);
-    toast.success("Reenfileirado");
+    toast.success(t("Reenfileirado"));
     load();
   };
 
   const regenerateArtwork = async (post: any) => {
     if (!post.news_item_id || !post.instagram_account_id) {
-      toast.error("Este agendamento não possui notícia ou conta vinculada.");
+      toast.error(t("Este agendamento não possui notícia ou conta vinculada."));
       return;
     }
     setRegeneratingId(post.id);
     try {
       const { data: item, error } = await supabase.from("news_items").select("*").eq("id", post.news_item_id).maybeSingle();
-      if (error || !item) throw new Error(error?.message || "Notícia não encontrada");
+      if (error || !item) throw new Error(error?.message || t("Notícia não encontrada"));
 
       item.instagram_account_id = post.instagram_account_id;
       const { error: accountError } = await supabase.from("news_items")
@@ -151,7 +153,7 @@ export default function Scheduled() {
         const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
         await composeAndUploadStory(item, { withFollowCta: post.media_type === "reel" });
         if (post.media_type === "reel" && item.content_type !== "video_cut") {
-          toast.info("Reenfileirando o vídeo para validação no VPS...");
+          toast.info(t("Reenfileirando o vídeo para validação no VPS..."));
           const { error: resetError } = await supabase.from("news_items")
             .update({ generated_video_url: null, editorial_ready: false, error_message: null })
             .eq("id", item.id);
@@ -162,17 +164,17 @@ export default function Scheduled() {
         }
       }
 
-      toast.success(`Arte regenerada com o template atual de @${post.instagram_accounts?.username || "conta"}`);
+      toast.success(language === "en-US" ? `Artwork regenerated with @${post.instagram_accounts?.username || "account"}'s current template` : `Arte regenerada com o template atual de @${post.instagram_accounts?.username || "conta"}`);
       await load();
     } catch (error) {
-      toast.error(`Não foi possível regenerar a arte: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+      toast.error(`${t("Não foi possível regenerar a arte")}: ${error instanceof Error ? error.message : t("erro desconhecido")}`);
     } finally {
       setRegeneratingId(null);
     }
   };
 
   const publishNow = async (id: string) => {
-    if (!confirm("Publicar este post AGORA no Instagram?")) return;
+    if (!confirm(t("Publicar este post AGORA no Instagram?"))) return;
     setPublishingId(id);
     try {
       const { error: updErr } = await supabase.from("scheduled_posts").update({
@@ -185,10 +187,10 @@ export default function Scheduled() {
         body: { scheduled_post_id: id },
       });
       if (error) throw error;
-      toast.success(`Publicação enviada (${data?.processed || 0} processado(s))`);
+      toast.success(language === "en-US" ? `Publication sent (${data?.processed || 0} processed)` : `Publicação enviada (${data?.processed || 0} processado(s))`);
       load();
     } catch (e: any) {
-      toast.error(e.message || "Erro ao publicar");
+      toast.error(e.message || t("Erro ao publicar"));
     } finally {
       setPublishingId(null);
     }
@@ -201,28 +203,28 @@ export default function Scheduled() {
         body: { scheduled_post_id: id },
       });
       if (error) throw error;
-      toast.success(`Meta verificada (${data?.processed || 0} publicado(s))`);
+      toast.success(language === "en-US" ? `Meta verified (${data?.processed || 0} published)` : `Meta verificada (${data?.processed || 0} publicado(s))`);
       load();
     } catch (e: any) {
-      toast.error(e.message || "Erro ao verificar Meta");
+      toast.error(e.message || t("Erro ao verificar Meta"));
     } finally {
       setPublishingId(null);
     }
   };
 
   const statusLabel = (status: string) => {
-    if (status === "scheduled") return "agendado";
-    if (status === "posting") return "enviando";
-    if (status === "awaiting_container") return "aguardando IG";
-    if (status === "posted") return "publicado";
-    if (status === "failed") return "falhou";
+    if (status === "scheduled") return t("agendado");
+    if (status === "posting") return t("enviando");
+    if (status === "awaiting_container") return t("aguardando IG");
+    if (status === "posted") return t("publicado");
+    if (status === "failed") return t("falhou");
     return status;
   };
 
   const getFriendlyError = (message?: string | null) => {
     if (!message) return null;
     if (/token do instagram expirou|session has expired|validating access token|oauth/i.test(message)) {
-      return "Token do Instagram expirou. Atualize em Contas Instagram antes de tentar novamente.";
+      return t("Token do Instagram expirou. Atualize em Contas Instagram antes de tentar novamente.");
     }
     return message;
   };
@@ -231,22 +233,22 @@ export default function Scheduled() {
     <div className="p-4 md:p-8 space-y-6 max-w-5xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl font-bold">Agendados</h1>
-          <p className="text-muted-foreground mt-1">Fila de publicações no Instagram.</p>
+          <h1 className="font-display text-3xl font-bold">{t("Agendados")}</h1>
+          <p className="text-muted-foreground mt-1">{t("Fila de publicações no Instagram.")}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex">
           <Button variant="outline" onClick={refresh} disabled={refreshing} className="min-w-0">
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} /> Atualizar
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} /> {t("Atualizar")}
           </Button>
           <Button onClick={runNow} disabled={running} className="min-w-0">
-            {running ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />} Executar agora
+            {running ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />} {t("Executar agora")}
           </Button>
         </div>
       </div>
       {posts.length === 0 ? (
         <Card className="p-12 text-center text-muted-foreground border-dashed">
           <Calendar className="h-10 w-10 mx-auto mb-3 opacity-50" />
-          Nada agendado ainda.
+          {t("Nada agendado ainda.")}
         </Card>
       ) : (
         <div className="space-y-3">
@@ -284,42 +286,42 @@ export default function Scheduled() {
                       <span className="w-fit max-w-full truncate text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-secondary border border-border shrink-0">{statusLabel(p.status)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      @{p.instagram_accounts?.username || <span className="text-destructive">conta faltando</span>}
+                      @{p.instagram_accounts?.username || <span className="text-destructive">{t("conta faltando")}</span>}
                       {" · "}
-                      <span title="Horário de publicação agendado">
+                      <span title={t("Horário de publicação agendado")}>
                         {p.status === "posted" && p.posted_at
-                          ? `publicado em ${fmtBR(p.posted_at)}`
+                          ? `${t("publicado em")} ${fmtBR(p.posted_at)}`
                           : awaitingContainer
-                          ? `aguardando Instagram desde ${fmtBR(p.container_created_at || p.updated_at || p.scheduled_for)}`
+                          ? `${t("aguardando Instagram desde")} ${fmtBR(p.container_created_at || p.updated_at || p.scheduled_for)}`
                           : posting
-                          ? `enviando desde ${fmtBR(p.updated_at || p.scheduled_for)}`
-                          : `agendado para ${fmtBR(p.scheduled_for)}`}
+                          ? `${t("enviando desde")} ${fmtBR(p.updated_at || p.scheduled_for)}`
+                          : `${t("agendado para")} ${fmtBR(p.scheduled_for)}`}
                       </span>
                     </p>
                     <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate">
-                      gerado em {fmtBR(p.created_at)}
+                      {t("gerado em")} {fmtBR(p.created_at)}
                     </p>
                     {isDelayed && (
                       <p className="text-xs text-amber-500 mt-1 flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> Publica em ~{minutesUntilPost >= 60 ? `${Math.floor(minutesUntilPost/60)}h${minutesUntilPost%60 ? ` ${minutesUntilPost%60}min` : ""}` : `${minutesUntilPost} min`} (fila espaçada a cada 10 min)
+                        <Clock className="h-3 w-3" /> {language === "en-US" ? "Publishes in" : "Publica em"} ~{minutesUntilPost >= 60 ? `${Math.floor(minutesUntilPost/60)}h${minutesUntilPost%60 ? ` ${minutesUntilPost%60}min` : ""}` : `${minutesUntilPost} min`} {t("(fila espaçada a cada 10 min)")}
                       </p>
                     )}
                     {p.media_type === "reel" && p.status !== "posted" && (
                       awaitingContainer ? (
-                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · Instagram/Meta processando o vídeo</p>
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · {t("Instagram/Meta processando o vídeo")}</p>
                       ) : managedReelVideo && p.news_items?.editorial_ready ? (
-                        <p className="text-xs text-emerald-500 mt-1">🎬 {news.content_type === "video_cut" ? "Corte IA · vídeo completo pronto" : "Reel · vídeo pronto"}</p>
+                        <p className="text-xs text-emerald-500 mt-1">🎬 {news.content_type === "video_cut" ? t("Corte IA · vídeo completo pronto") : t("Reel · vídeo pronto")}</p>
                       ) : p.news_items?.generated_video_url ? (
-                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · regenerando vídeo com template…</p>
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · {t("regenerando vídeo com template…")}</p>
                       ) : (
-                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · vídeo gerando…</p>
+                        <p className="text-xs text-amber-500 mt-1 line-clamp-2">⏳ Reel · {t("vídeo gerando…")}</p>
                       )
                     )}
                     {p.media_type === "story" && p.status !== "posted" && (
-                      <p className="text-xs text-purple-400 mt-1 line-clamp-2">⭐ Story · {p.news_items?.generated_video_url ? "vídeo 9:16" : "imagem 9:16"}</p>
+                      <p className="text-xs text-purple-400 mt-1 line-clamp-2">⭐ Story · {p.news_items?.generated_video_url ? t("vídeo 9:16") : t("imagem 9:16")}</p>
                     )}
                     {p.media_type === "feed" && p.status !== "posted" && (
-                      <p className="text-xs text-blue-400 mt-1">📷 Feed · imagem 1:1</p>
+                      <p className="text-xs text-blue-400 mt-1">📷 Feed · {t("imagem 1:1")}</p>
                     )}
                     {friendlyError && (
                       <p className="text-xs text-destructive mt-1 flex items-start gap-1">
@@ -331,33 +333,33 @@ export default function Scheduled() {
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/50">
                   {awaitingContainer && p.instagram_account_id && (
-                    <Button size="sm" variant="outline" onClick={() => checkContainerNow(p.id)} disabled={publishingId === p.id} title="Verificar processamento na Meta" className="min-w-[9rem] flex-1 md:flex-none">
-                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-4 w-4 mr-1" /> Verificar Meta</>}
+                    <Button size="sm" variant="outline" onClick={() => checkContainerNow(p.id)} disabled={publishingId === p.id} title={t("Verificar processamento na Meta")} className="min-w-[9rem] flex-1 md:flex-none">
+                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-4 w-4 mr-1" /> {t("Verificar Meta")}</>}
                     </Button>
                   )}
                   {p.status !== "posted" && !awaitingContainer && p.instagram_account_id && (
-                    <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title="Publicar agora" className="min-w-[9rem] flex-1 md:flex-none">
-                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-1" /> Publicar agora</>}
+                    <Button size="sm" onClick={() => publishNow(p.id)} disabled={publishingId === p.id} title={t("Publicar agora")} className="min-w-[9rem] flex-1 md:flex-none">
+                      {publishingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-1" /> {t("Publicar agora")}</>}
                     </Button>
                   )}
                   {(missingAccount || failed) && (
-                    <Button size="sm" variant="outline" onClick={() => retry(p.id)} title="Tentar novamente">
+                    <Button size="sm" variant="outline" onClick={() => retry(p.id)} title={t("Tentar novamente")}>
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" onClick={() => setPreviewing(p)} title="Ver como será publicado" className="min-w-[7rem]">
-                    <Eye className="h-4 w-4 mr-1" /> Prévia
+                  <Button size="sm" variant="outline" onClick={() => setPreviewing(p)} title={t("Ver como será publicado")} className="min-w-[7rem]">
+                    <Eye className="h-4 w-4 mr-1" /> {t("Prévia")}
                   </Button>
                   {p.status !== "posted" && !awaitingContainer && !posting && p.instagram_account_id && (
-                    <Button size="sm" variant="outline" onClick={() => regenerateArtwork(p)} disabled={regeneratingId === p.id} title="Gerar novamente usando o template atual desta conta">
+                    <Button size="sm" variant="outline" onClick={() => regenerateArtwork(p)} disabled={regeneratingId === p.id} title={t("Gerar novamente usando o template atual desta conta")}>
                       {regeneratingId === p.id ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
-                      Regenerar arte
+                      {t("Regenerar arte")}
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" onClick={() => openEdit(p)} title="Editar">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(p)} title={t("Editar")}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => remove(p.id)} title="Apagar">
+                  <Button size="sm" variant="outline" onClick={() => remove(p.id)} title={t("Apagar")}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -371,25 +373,25 @@ export default function Scheduled() {
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Editar agendamento</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Editar agendamento")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Conta do Instagram</Label>
+              <Label>{t("Conta do Instagram")}</Label>
               <Select value={editAccount} onValueChange={setEditAccount}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma conta" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("Selecione uma conta")} /></SelectTrigger>
                 <SelectContent>
                   {accounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Data e hora</Label>
+              <Label>{t("Data e hora")}</Label>
               <Input type="datetime-local" value={editWhen} onChange={(e) => setEditWhen(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-            <Button onClick={saveEdit}>Salvar</Button>
+            <Button variant="outline" onClick={() => setEditing(null)}>{t("Cancelar")}</Button>
+            <Button onClick={saveEdit}>{t("Salvar")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -398,6 +400,7 @@ export default function Scheduled() {
 }
 
 function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose: () => void }) {
+  const { t } = useLanguage();
   if (!post) return null;
 
   const news = post.news_items || {};
@@ -420,9 +423,9 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
     <Dialog open={!!post} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Prévia da publicação</DialogTitle>
+          <DialogTitle>{t("Prévia da publicação")}</DialogTitle>
           <DialogDescription>
-            Mídia e texto que serão enviados para @{post.instagram_accounts?.username || "conta não definida"}.
+            {t("Mídia e texto que serão enviados para")} @{post.instagram_accounts?.username || t("conta não definida")}.
           </DialogDescription>
         </DialogHeader>
 
@@ -434,14 +437,14 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
               ) : (
                 <img
                   src={mediaUrl}
-                  alt={`Prévia ${formatLabel}`}
+                  alt={`${t("Prévia")} ${formatLabel}`}
                   className={`w-full rounded-lg object-contain ${mediaType === "feed" ? "aspect-square max-h-[68vh]" : "aspect-[9/16] max-h-[68vh]"}`}
                 />
               )
             ) : (
               <div className="py-16 text-center text-sm text-white/70">
                 {isVideo ? <Film className="h-10 w-10 mx-auto mb-3" /> : <ImageIcon className="h-10 w-10 mx-auto mb-3" />}
-                {isVideo ? "O vídeo ainda está sendo preparado." : "A arte ainda está sendo preparada."}
+                {isVideo ? t("O vídeo ainda está sendo preparado.") : t("A arte ainda está sendo preparada.")}
               </div>
             )}
           </div>
@@ -450,29 +453,29 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
             <div className="rounded-xl border bg-card p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-semibold truncate">@{post.instagram_accounts?.username || "conta não definida"}</p>
-                  <p className="text-xs text-muted-foreground">{formatLabel} · {statusPreviewLabel(post.status)}</p>
+                  <p className="font-semibold truncate">@{post.instagram_accounts?.username || t("conta não definida")}</p>
+                  <p className="text-xs text-muted-foreground">{formatLabel} · {statusPreviewLabel(post.status, t)}</p>
                 </div>
                 <span className="rounded-full border px-2.5 py-1 text-xs font-medium">{formatLabel}</span>
               </div>
-              <p className="mt-4 text-sm font-medium leading-snug">{news.rewritten_title || "Sem título"}</p>
+              <p className="mt-4 text-sm font-medium leading-snug">{news.rewritten_title || t("Sem título")}</p>
             </div>
 
             <div className="rounded-xl border bg-muted/20 p-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {mediaType === "story" ? "Legenda no Story" : `Legenda do ${formatLabel}`}
+                {mediaType === "story" ? t("Legenda no Story") : `${t("Legenda do")} ${formatLabel}`}
               </p>
               {mediaType === "story" ? (
-                <p className="text-sm text-muted-foreground">Stories não exibem legenda. Toda a informação visível precisa estar na própria arte.</p>
+                <p className="text-sm text-muted-foreground">{t("Stories não exibem legenda. Toda a informação visível precisa estar na própria arte.")}</p>
               ) : caption ? (
                 <div className="max-h-[42vh] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-relaxed">{caption}</div>
               ) : (
-                <p className="text-sm text-amber-500">Nenhuma legenda preparada para esta publicação.</p>
+                <p className="text-sm text-amber-500">{t("Nenhuma legenda preparada para esta publicação.")}</p>
               )}
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Esta prévia usa os arquivos finais armazenados. Alterações posteriores na arte ou legenda aparecerão ao atualizar a fila.
+              {t("Esta prévia usa os arquivos finais armazenados. Alterações posteriores na arte ou legenda aparecerão ao atualizar a fila.")}
             </p>
           </div>
         </div>
@@ -481,10 +484,10 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
   );
 }
 
-function statusPreviewLabel(status: string) {
-  if (status === "posted") return "já publicado";
-  if (status === "awaiting_container") return "processando no Instagram";
-  if (status === "posting") return "em publicação";
-  if (status === "failed") return "falhou";
-  return "agendado";
+function statusPreviewLabel(status: string, t: (source: string) => string) {
+  if (status === "posted") return t("já publicado");
+  if (status === "awaiting_container") return t("processando no Instagram");
+  if (status === "posting") return t("em publicação");
+  if (status === "failed") return t("falhou");
+  return t("agendado");
 }

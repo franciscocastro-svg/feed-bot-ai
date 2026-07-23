@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
@@ -72,62 +73,71 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppRoutes() {
+  const { t } = useLanguage();
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AnalyticsTracker />
+        <AnalyticsConsentBanner />
+        <AppErrorBoundary>
+        <Suspense fallback={
+          <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" /> {t("Carregando área...")}
+          </div>
+        }>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/data-deletion" element={<DataDeletionStatus />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/checkout/return" element={<CheckoutReturn />} />
+          <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+            <Route index element={<Overview />} />
+            <Route path="news" element={<News />} />
+            <Route path="sources" element={<Sources />} />
+            <Route path="topics" element={<Topics />} />
+            <Route path="creator-profile" element={<CreatorProfile />} />
+            <Route path="scheduled" element={<Scheduled />} />
+            <Route path="accounts" element={<Accounts />} />
+            <Route path="accounts/:id/settings" element={<AccountSettings />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="logs" element={<Logs />} />
+            <Route path="insights" element={<Insights />} />
+            <Route path="templates" element={<Templates />} />
+            <Route path="cortes" element={<Cuts />} />
+            <Route path="token-health" element={<AdminOnlyRoute permission="tokens"><TokenHealth /></AdminOnlyRoute>} />
+            <Route path="meta-api-health" element={<AdminOnlyRoute permission="meta"><MetaApiHealth /></AdminOnlyRoute>} />
+            <Route path="channels/:channel" element={<ChannelConfig />} />
+            <Route path="admin" element={<AdminOnlyRoute><Admin /></AdminOnlyRoute>} />
+            <Route path="admin/releases" element={<AdminOnlyRoute permission="releases"><AdminReleases /></AdminOnlyRoute>} />
+            <Route path="support" element={<Support />} />
+            <Route path="admin/support" element={<AdminOnlyRoute permission="support"><AdminSupport /></AdminOnlyRoute>} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+        </Suspense>
+        </AppErrorBoundary>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <AnalyticsTracker />
-          <AnalyticsConsentBanner />
-          <AppErrorBoundary>
-          <Suspense fallback={
-            <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" /> Carregando área...
-            </div>
-          }>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/data-deletion" element={<DataDeletionStatus />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/checkout/return" element={<CheckoutReturn />} />
-            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-              <Route index element={<Overview />} />
-              <Route path="news" element={<News />} />
-              <Route path="sources" element={<Sources />} />
-              <Route path="topics" element={<Topics />} />
-              <Route path="creator-profile" element={<CreatorProfile />} />
-              <Route path="scheduled" element={<Scheduled />} />
-              <Route path="accounts" element={<Accounts />} />
-              <Route path="accounts/:id/settings" element={<AccountSettings />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="logs" element={<Logs />} />
-              <Route path="insights" element={<Insights />} />
-              <Route path="templates" element={<Templates />} />
-              <Route path="cortes" element={<Cuts />} />
-              <Route path="token-health" element={<AdminOnlyRoute permission="tokens"><TokenHealth /></AdminOnlyRoute>} />
-              <Route path="meta-api-health" element={<AdminOnlyRoute permission="meta"><MetaApiHealth /></AdminOnlyRoute>} />
-              <Route path="channels/:channel" element={<ChannelConfig />} />
-              <Route path="admin" element={<AdminOnlyRoute><Admin /></AdminOnlyRoute>} />
-              <Route path="admin/releases" element={<AdminOnlyRoute permission="releases"><AdminReleases /></AdminOnlyRoute>} />
-              <Route path="support" element={<Support />} />
-              <Route path="admin/support" element={<AdminOnlyRoute permission="support"><AdminSupport /></AdminOnlyRoute>} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </Suspense>
-          </AppErrorBoundary>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <LanguageProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <AppRoutes />
+      </TooltipProvider>
+    </LanguageProvider>
   </QueryClientProvider>
 );
 

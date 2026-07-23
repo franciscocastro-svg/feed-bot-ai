@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { RefreshCw, Eye, Heart, MessageCircle, Bookmark, TrendingUp, Film, Image as ImageIcon, ExternalLink, Users, ArrowUp, ArrowDown, Instagram, PlayCircle } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type Post = {
   id: string;
@@ -23,7 +24,7 @@ type Post = {
   news_items?: { rewritten_title: string | null; original_title: string; generated_image_url: string | null; generated_cover_url: string | null } | null;
 };
 
-const fmt = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR"));
+const fmt = (n: number | null, locale = "pt-BR") => (n == null ? "—" : n.toLocaleString(locale));
 
 type AccountFollowers = {
   account_id: string;
@@ -39,6 +40,7 @@ const INSIGHTS_POST_LIMIT = 300;
 const FOLLOWER_HISTORY_PER_ACCOUNT = 60;
 
 export default function Insights() {
+  const { language, locale, t } = useLanguage();
   const [posts, setPosts] = useState<Post[]>([]);
   const [followers, setFollowers] = useState<AccountFollowers[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,10 +105,10 @@ export default function Insights() {
     try {
       const { error } = await supabase.functions.invoke("fetch-insights", { body: {} });
       if (error) throw error;
-      toast.success("Métricas atualizadas");
+      toast.success(t("Métricas atualizadas"));
       await load();
     } catch (e: any) {
-      toast.error(e.message || "Erro ao atualizar");
+      toast.error(e.message || t("Erro ao atualizar"));
     } finally {
       setRefreshing(false);
     }
@@ -165,8 +167,8 @@ export default function Insights() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-display font-bold">Insights do Instagram</h1>
-          <p className="text-sm text-muted-foreground">Visualizações, alcance, curtidas, comentários e salvamentos por post</p>
+          <h1 className="text-2xl font-display font-bold">{t("Insights do Instagram")}</h1>
+          <p className="text-sm text-muted-foreground">{t("Visualizações, alcance, curtidas, comentários e salvamentos por post")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {followers.length > 1 && (
@@ -176,7 +178,7 @@ export default function Insights() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas as contas</SelectItem>
+                <SelectItem value="all">{t("Todas as contas")}</SelectItem>
                 {followers.map(f => (
                   <SelectItem key={f.account_id} value={f.account_id}>@{f.username}</SelectItem>
                 ))}
@@ -185,18 +187,18 @@ export default function Insights() {
           )}
           <Button onClick={refresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Atualizar métricas
+            {t("Atualizar métricas")}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Visualizações", value: totals.views, icon: PlayCircle },
-          { label: "Alcance total", value: totals.reach, icon: Eye },
-          { label: "Curtidas", value: totals.likes, icon: Heart },
-          { label: "Comentários", value: totals.comments, icon: MessageCircle },
-          { label: "Salvamentos", value: totals.saves, icon: Bookmark },
+          { label: t("Visualizações"), value: totals.views, icon: PlayCircle },
+          { label: t("Alcance total"), value: totals.reach, icon: Eye },
+          { label: t("Curtidas"), value: totals.likes, icon: Heart },
+          { label: t("Comentários"), value: totals.comments, icon: MessageCircle },
+          { label: t("Salvamentos"), value: totals.saves, icon: Bookmark },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="p-4">
@@ -204,7 +206,7 @@ export default function Insights() {
                 <span className="text-xs text-muted-foreground">{s.label}</span>
                 <s.icon className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="text-2xl font-bold mt-2">{fmt(s.value)}</div>
+              <div className="text-2xl font-bold mt-2">{fmt(s.value, locale)}</div>
             </CardContent>
           </Card>
         ))}
@@ -225,16 +227,16 @@ export default function Insights() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-end gap-3">
-                    <div className="text-3xl font-bold tabular-nums">{fmt(f.current)}</div>
-                    <span className="text-xs text-muted-foreground mb-1">seguidores</span>
+                    <div className="text-3xl font-bold tabular-nums">{fmt(f.current, locale)}</div>
+                    <span className="text-xs text-muted-foreground mb-1">{t("seguidores")}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <DeltaBadge label="Últimas 24h" value={delta24} />
-                    <DeltaBadge label="Desde o início" value={deltaTotal} />
+                    <DeltaBadge label={t("Últimas 24h")} value={delta24} />
+                    <DeltaBadge label={t("Desde o início")} value={deltaTotal} />
                   </div>
                   {f.captured_at && (
                     <p className="text-[10px] text-muted-foreground">
-                      Última leitura: {new Date(f.captured_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                      {t("Última leitura:")} {new Date(f.captured_at).toLocaleString(locale, { timeZone: "America/Sao_Paulo" })}
                     </p>
                   )}
                 </CardContent>
@@ -246,21 +248,21 @@ export default function Insights() {
 
       {/* Reels vs Feed comparison */}
       <div className="grid md:grid-cols-2 gap-4">
-        <FormatCard title="Reels" icon={Film} stats={reelStats} highlight={winner === "reel"} emptyMsg="Nenhum Reel publicado ainda." />
-        <FormatCard title="Feed" icon={ImageIcon} stats={feedStats} highlight={winner === "feed"} emptyMsg="Nenhum post de Feed publicado ainda." />
+        <FormatCard title="Reels" icon={Film} stats={reelStats} highlight={winner === "reel"} emptyMsg={t("Nenhum Reel publicado ainda.")} />
+        <FormatCard title="Feed" icon={ImageIcon} stats={feedStats} highlight={winner === "feed"} emptyMsg={t("Nenhum post de Feed publicado ainda.")} />
       </div>
 
       {winner === "reel" && reelStats.count >= 1 && feedStats.count >= 1 && (
         <Card className="bg-primary/5 border-primary/30">
           <CardContent className="p-4 text-sm">
-            🎬 <strong>Reels estão performando {Math.round((reelStats.avgReach / Math.max(1, feedStats.avgReach)) * 100 - 100)}% melhor</strong> em alcance médio. Continue priorizando Reels para ganhar seguidores.
+            🎬 <strong>{language === "en-US" ? `Reels are performing ${Math.round((reelStats.avgReach / Math.max(1, feedStats.avgReach)) * 100 - 100)}% better` : `Reels estão performando ${Math.round((reelStats.avgReach / Math.max(1, feedStats.avgReach)) * 100 - 100)}% melhor`}</strong> {t("em alcance médio. Continue priorizando Reels para ganhar seguidores.")}
           </CardContent>
         </Card>
       )}
 
       {topPosts.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Top 5 posts de maior alcance</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> {t("Top 5 posts de maior alcance")}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {topPosts.map((p, i) => {
               const img = (p.media_type || "").toLowerCase() === "feed"
@@ -274,10 +276,10 @@ export default function Insights() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.news_items?.rewritten_title || p.news_items?.original_title}</p>
-                  <p className="text-sm text-muted-foreground">Visualizações: {fmt(p.impressions)} · Alcance: {fmt(p.reach)} · Curtidas: {fmt(p.likes)} · Salvamentos: {fmt(p.saves)}</p>
+                  <p className="text-sm text-muted-foreground">{t("Visualizações:")} {fmt(p.impressions, locale)} · {t("Alcance:")} {fmt(p.reach, locale)} · {t("Curtidas:")} {fmt(p.likes, locale)} · {t("Salvamentos:")} {fmt(p.saves, locale)}</p>
                 </div>
                 {p.permalink && (
-                  <a href={p.permalink} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">Ver</a>
+                  <a href={p.permalink} target="_blank" rel="noreferrer" className="text-xs text-primary underline shrink-0">{t("Ver")}</a>
                 )}
               </div>
               );
@@ -287,12 +289,12 @@ export default function Insights() {
       )}
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Histórico de posts</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">{t("Histórico de posts")}</CardTitle></CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-6 text-sm text-muted-foreground">Carregando…</div>
+            <div className="p-6 text-sm text-muted-foreground">{t("Carregando…")}</div>
           ) : filteredPosts.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">Nenhum post publicado ainda.</div>
+            <div className="p-6 text-sm text-muted-foreground">{t("Nenhum post publicado ainda.")}</div>
           ) : (
             <div className="divide-y divide-border">
               {filteredPosts.map((p) => {
@@ -318,15 +320,15 @@ export default function Insights() {
                       {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary"><ExternalLink className="h-3 w-3" /></a>}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {p.posted_at ? new Date(p.posted_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"}
+                      {p.posted_at ? new Date(p.posted_at).toLocaleString(locale, { timeZone: "America/Sao_Paulo" }) : "—"}
                     </p>
                   </div>
                   <div className="hidden md:flex gap-6 text-sm">
                     <Stat icon={PlayCircle} label="Views" value={p.impressions} />
-                    <Stat icon={Eye} label="Alcance" value={p.reach} />
-                    <Stat icon={Heart} label="Curtidas" value={p.likes} />
-                    <Stat icon={MessageCircle} label="Coment." value={p.comments} />
-                    <Stat icon={Bookmark} label="Salvos" value={p.saves} />
+                    <Stat icon={Eye} label={t("Alcance")} value={p.reach} />
+                    <Stat icon={Heart} label={t("Curtidas")} value={p.likes} />
+                    <Stat icon={MessageCircle} label={t("Coment.")} value={p.comments} />
+                    <Stat icon={Bookmark} label={t("Salvos")} value={p.saves} />
                   </div>
                 </div>
               );})}
@@ -339,21 +341,23 @@ export default function Insights() {
 }
 
 function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: number | null }) {
+  const { locale } = useLanguage();
   return (
     <div className="flex flex-col items-end">
       <div className="flex items-center gap-1 text-xs text-muted-foreground"><Icon className="h-3 w-3" /> {label}</div>
-      <div className="font-semibold tabular-nums">{fmt(value)}</div>
+      <div className="font-semibold tabular-nums">{fmt(value, locale)}</div>
     </div>
   );
 }
 
 function FormatCard({ title, icon: Icon, stats, highlight, emptyMsg }: { title: string; icon: any; stats: any; highlight: boolean; emptyMsg: string }) {
+  const { language, locale, t } = useLanguage();
   return (
     <Card className={highlight ? "border-primary/60 bg-primary/5" : ""}>
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <Icon className="h-4 w-4" /> {title}
-          {highlight && <Badge className="ml-auto">Melhor formato</Badge>}
+          {highlight && <Badge className="ml-auto">{t("Melhor formato")}</Badge>}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -361,14 +365,14 @@ function FormatCard({ title, icon: Icon, stats, highlight, emptyMsg }: { title: 
           <p className="text-sm text-muted-foreground">{emptyMsg}</p>
         ) : (
           <>
-            <div className="text-xs text-muted-foreground">{stats.count} publicado(s)</div>
+            <div className="text-xs text-muted-foreground">{language === "en-US" ? `${stats.count} published` : `${stats.count} publicado(s)`}</div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><div className="text-xs text-muted-foreground">Visualizações média</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgViews)}</div></div>
-              <div><div className="text-xs text-muted-foreground">Alcance médio</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgReach)}</div></div>
-              <div><div className="text-xs text-muted-foreground">Curtidas média</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgLikes)}</div></div>
-              <div><div className="text-xs text-muted-foreground">Engajamento</div><div className="font-bold text-lg tabular-nums">{stats.engagement}%</div></div>
-              <div><div className="text-xs text-muted-foreground">Visualizações total</div><div className="font-bold text-lg tabular-nums">{fmt(stats.views)}</div></div>
-              <div><div className="text-xs text-muted-foreground">Alcance total</div><div className="font-bold text-lg tabular-nums">{fmt(stats.reach)}</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Visualizações média")}</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgViews, locale)}</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Alcance médio")}</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgReach, locale)}</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Curtidas média")}</div><div className="font-bold text-lg tabular-nums">{fmt(stats.avgLikes, locale)}</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Engajamento")}</div><div className="font-bold text-lg tabular-nums">{stats.engagement}%</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Visualizações total")}</div><div className="font-bold text-lg tabular-nums">{fmt(stats.views, locale)}</div></div>
+              <div><div className="text-xs text-muted-foreground">{t("Alcance total")}</div><div className="font-bold text-lg tabular-nums">{fmt(stats.reach, locale)}</div></div>
             </div>
           </>
         )}
@@ -378,6 +382,7 @@ function FormatCard({ title, icon: Icon, stats, highlight, emptyMsg }: { title: 
 }
 
 function DeltaBadge({ label, value }: { label: string; value: number | null }) {
+  const { locale } = useLanguage();
   const positive = (value ?? 0) > 0;
   const negative = (value ?? 0) < 0;
   const Icon = positive ? ArrowUp : negative ? ArrowDown : null;
@@ -387,7 +392,7 @@ function DeltaBadge({ label, value }: { label: string; value: number | null }) {
       <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className={`flex items-center gap-1 font-semibold tabular-nums ${cls}`}>
         {Icon && <Icon className="h-3.5 w-3.5" />}
-        {value == null ? "—" : `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`}
+        {value == null ? "—" : `${value > 0 ? "+" : ""}${value.toLocaleString(locale)}`}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { TutorialModal, shouldAutoShowTutorial, incrementTutorialView } from "@/components/TutorialModal";
 // isAdmin agora vem do AuthContext — sem query duplicada
 import { isPathVisible } from "@/config/featureFlags";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const nav = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Visão geral" },
@@ -37,6 +38,7 @@ const nav = [
 ];
 
 function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: { onNavigate?: () => void; user: any; onSignOut: () => void; isAdmin: boolean; adminUnread: number }) {
+  const { t } = useLanguage();
   // Esconde itens em rollout gradual de quem não é admin (ver src/config/featureFlags.ts)
   const visibleNav = nav.filter(item => isPathVisible(item.to, { isAdmin, userId: user?.id }));
   const items = isAdmin
@@ -58,7 +60,7 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: {
               isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
             )}>
             <item.icon className="h-4 w-4" />
-            <span className="flex-1">{item.label}</span>
+            <span className="flex-1">{t(item.label)}</span>
             {item.badge > 0 && (
               <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
                 {item.badge > 99 ? "99+" : item.badge}
@@ -71,7 +73,7 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: {
         <PlanUsageCard />
         <div className="px-3 py-2 text-xs text-muted-foreground truncate">{user?.email}</div>
         <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onSignOut}>
-          <LogOut className="h-4 w-4 mr-2" /> Sair
+          <LogOut className="h-4 w-4 mr-2" /> {t("Sair")}
         </Button>
       </div>
     </div>

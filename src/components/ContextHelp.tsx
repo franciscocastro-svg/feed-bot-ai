@@ -4,6 +4,7 @@ import { Info } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type ContextHelpProps = {
   label: string;
@@ -13,12 +14,13 @@ type ContextHelpProps = {
 };
 
 export function ContextHelp({ label, title, children, className }: ContextHelpProps) {
+  const { language } = useLanguage();
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={`Ajuda: ${label}`}
+          aria-label={language === "en-US" ? `Help: ${label}` : `Ajuda: ${label}`}
           className={cn(
             "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             className,
@@ -30,7 +32,7 @@ export function ContextHelp({ label, title, children, className }: ContextHelpPr
       <PopoverContent
         align="start"
         sideOffset={8}
-        aria-label={`Informações sobre ${label}`}
+        aria-label={language === "en-US" ? `Information about ${label}` : `Informações sobre ${label}`}
         className="w-[min(20rem,calc(100vw-2rem))] space-y-1.5 p-3"
       >
         {title ? <p className="text-sm font-semibold leading-snug">{title}</p> : null}

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { PostCanvasEditor } from "@/components/PostCanvasEditor";
 import { statusLabelPt } from "@/lib/statusLabels";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
   normalizeEditorialReelDuration,
@@ -75,31 +76,36 @@ const NEWS_LIST_COLUMNS = [
   "carousel_media_urls",
 ].join(",");
 
-function friendlyDatabaseMessage(error: unknown) {
+function friendlyDatabaseMessage(error: unknown, t: (source: string) => string = value => value) {
   const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
   const message = typeof record.message === "string" ? record.message : "";
   const text = `${record.code || ""} ${message} ${record.details || ""}`.toLowerCase();
   if (text.includes("duplicate_news_item_url") || text.includes("duplicate_news_item_title") || text.includes("idx_news_items_unique_active_")) {
-    return "Essa notícia já existe para este Instagram. O sistema bloqueou a duplicidade.";
+    return t("Essa notícia já existe para este Instagram. O sistema bloqueou a duplicidade.");
   }
   if (text.includes("idx_scheduled_posts_unique_active_news_per_ig") || text.includes("duplicate key")) {
-    return "Essa publicação já está agendada para este Instagram.";
+    return t("Essa publicação já está agendada para este Instagram.");
   }
-  return message || "Não foi possível concluir a ação.";
+  return message || t("Não foi possível concluir a ação.");
 }
 
-function friendlyProcessingMessage(value: unknown) {
+function friendlyProcessingMessage(value: unknown, t: (source: string) => string = text => text) {
   const message = typeof value === "string" ? value : "";
   if (/identidade da conta indisponível|configure o nome ou @/i.test(message)) {
-    return "Configure o nome ou @ da conta do Instagram e tente novamente.";
+    return t("Configure o nome ou @ da conta do Instagram e tente novamente.");
   }
   if (/expired_api_key|invalid api key|provedor de ia de reserva/i.test(message)) {
-    return "O provedor de IA de reserva está indisponível. Verifique a chave configurada.";
+    return t("O provedor de IA de reserva está indisponível. Verifique a chave configurada.");
   }
   if (/402|créditos|credits|payment_required/i.test(message)) {
-    return "Sem créditos de IA disponíveis. Regularize o saldo e tente novamente.";
+    return t("Sem créditos de IA disponíveis. Regularize o saldo e tente novamente.");
   }
-  return message || "Não foi possível processar a notícia. Tente novamente.";
+  return message || t("Não foi possível processar a notícia. Tente novamente.");
+}
+
+function statusLabel(status: string, language: string) {
+  if (language !== "en-US") return statusLabelPt(status);
+  return ({ pending: "Pending", processing: "Processing", processed: "Processed", approved: "Approved", scheduled: "Scheduled", posted: "Published", failed: "Failed", rejected: "Rejected" } as Record<string, string>)[status] || status;
 }
 
 function feedPreviewUrl(item: any) {
@@ -160,6 +166,7 @@ function nextConfiguredSlot(mediaType: MediaType, existing: any[], userSettings:
 }
 
 export default function News() {
+  const { language, locale, t } = useLanguage();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<any | null>(null);
@@ -192,9 +199,9 @@ export default function News() {
   const sources = useMemo(() => Array.from(new Set(items.map(i => i.source_name).filter(Boolean))), [items]);
 
   const accountName = (accountId?: string | null) => {
-    if (!accountId) return "sem conta definida";
+    if (!accountId) return t("sem conta definida");
     const account = igAccounts.find((ig) => ig.id === accountId);
-    return account ? `@${account.username}` : "conta não encontrada";
+    return account ? `@${account.username}` : t("conta não encontrada");
   };
 
   const filtered = useMemo(() => {
@@ -224,24 +231,24 @@ export default function News() {
     });
     if (error) {
       setLoad(item.id, false);
-      return toast.error(friendlyProcessingMessage(error.message));
+      return toast.error(friendlyProcessingMessage(error.message, t));
     }
     if (data?.already_processing) {
       setLoad(item.id, false);
       await load();
-      return toast.info("Esta notícia ainda está sendo processada. Aguarde alguns minutos antes de tentar novamente.");
+      return toast.info(t("Esta notícia ainda está sendo processada. Aguarde alguns minutos antes de tentar novamente."));
     }
     if (data?.duplicate_ignored) {
       setLoad(item.id, false);
       await load();
-      return toast.info("Esta notícia já foi concluída ou não pode ser reprocessada neste estado.");
+      return toast.info(t("Esta notícia já foi concluída ou não pode ser reprocessada neste estado."));
     }
     if (data?.status === "failed") {
       setLoad(item.id, false);
       await load();
-      return toast.error(friendlyProcessingMessage(data?.error));
+      return toast.error(friendlyProcessingMessage(data?.error, t));
     }
-    toast.info(data?.status === "processed" ? "Processamento concluído. Finalizando a prévia..." : "Processando... aguarde.");
+    toast.info(data?.status === "processed" ? t("Processamento concluído. Finalizando a prévia...") : t("Processando... aguarde."));
     // Polling: recarrega até ficar processed/failed (max 60s)
     const start = Date.now();
     const poll = async () => {
@@ -253,13 +260,13 @@ export default function News() {
             const { composeAndUploadPost } = await import("@/lib/composePostCanvas");
             await composeAndUploadPost(row);
             await supabase.from("news_items").update({ editorial_ready: true }).eq("id", row.id);
-            toast.success("Processado com template");
+            toast.success(t("Processado com template"));
           } catch (e: any) {
-            toast.warning("Texto pronto, mas falhou ao compor imagem: " + (e.message || ""));
+            toast.warning(t("Texto pronto, mas falhou ao compor imagem:") + " " + (e.message || ""));
           }
         } else if (row.status === "processed") {
-          toast.success("Processado");
-        } else if (row.status === "failed") toast.error("Falhou no processamento");
+          toast.success(t("Processado"));
+        } else if (row.status === "failed") toast.error(t("Falhou no processamento"));
         setLoad(item.id, false);
         load();
         return;
@@ -281,7 +288,7 @@ export default function News() {
   };
   const approve = async (item: any, mediaType: MediaType) => {
     if (isCarouselItem(item) && mediaType !== "feed") {
-      toast.error("Carrosséis são publicados no Feed. Escolha Carrossel/Feed.");
+      toast.error(t("Carrosséis são publicados no Feed. Escolha Carrossel/Feed."));
       return;
     }
     // Respeita o IG vinculado à notícia (definido pela fonte/processamento).
@@ -290,7 +297,7 @@ export default function News() {
       igAccounts.find(a => a.id === item.instagram_account_id) ||
       igAccounts[0];
     if (!acc) {
-      toast.error("Conecte uma conta do Instagram em Contas antes de aprovar.");
+      toast.error(t("Conecte uma conta do Instagram em Contas antes de aprovar."));
       return;
     }
     setLoad(item.id, true);
@@ -311,7 +318,7 @@ export default function News() {
 
       // Para Story OU Reel, compõe a arte editorial 9:16 (1080×1920) no navegador
       if (mediaType === "story" || mediaType === "reel") {
-        toast.info("Gerando arte 1080×1920...");
+        toast.info(t("Gerando arte 1080×1920..."));
         const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
         const storyUrl = await composeAndUploadStory(item, { withFollowCta: mediaType === "reel" });
         item.generated_cover_url = storyUrl;
@@ -346,10 +353,10 @@ export default function News() {
       if (schedErr) throw schedErr;
       await supabase.from("news_items").update({ status: "scheduled" }).eq("id", item.id);
       const label = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
-      toast.success(`${label} agendado para ${new Date(slot).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`);
+      toast.success(language === "en-US" ? `${label} scheduled for ${new Date(slot).toLocaleString(locale, { timeZone: "America/Sao_Paulo" })}` : `${label} agendado para ${new Date(slot).toLocaleString(locale, { timeZone: "America/Sao_Paulo" })}`);
       load();
     } catch (e: unknown) {
-      toast.error(friendlyDatabaseMessage(e) || "Erro ao agendar");
+      toast.error(friendlyDatabaseMessage(e, t) || t("Erro ao agendar"));
     } finally {
       setLoad(item.id, false);
     }
@@ -359,7 +366,7 @@ export default function News() {
     if (!confirm(`Excluir ${ids.length} notícia(s)?`)) return;
     const { error } = await supabase.from("news_items").delete().in("id", ids);
     if (error) return toast.error(error.message);
-    toast.success("Excluídas");
+    toast.success(t("Excluídas"));
     load();
   };
 
@@ -370,28 +377,28 @@ export default function News() {
       caption: editing.caption,
       hashtags: editing.hashtags,
     }).eq("id", editing.id);
-    if (error) return toast.error(friendlyDatabaseMessage(error));
-    toast.success("Salvo");
+    if (error) return toast.error(friendlyDatabaseMessage(error, t));
+    toast.success(t("Salvo"));
     setEditing(null);
     load();
   };
 
   const bulkProcess = async () => {
     const ids = Array.from(selected);
-    toast.info(`Processando ${ids.length}...`);
+    toast.info(language === "en-US" ? `Processing ${ids.length}...` : `Processando ${ids.length}...`);
     for (const id of ids) {
       const it = items.find(i => i.id === id);
       if (it && it.status === "pending") await process(it, "template");
     }
-    toast.success("Lote processado");
+    toast.success(t("Lote processado"));
     load();
   };
   const bulkReject = async () => {
     const ids = Array.from(selected);
-    if (!confirm(`Rejeitar ${ids.length} notícia(s)?`)) return;
+    if (!confirm(language === "en-US" ? `Reject ${ids.length} news item(s)?` : `Rejeitar ${ids.length} notícia(s)?`)) return;
     const { error } = await supabase.from("news_items").update({ status: "rejected" }).in("id", ids);
     if (error) return toast.error(error.message);
-    toast.success("Rejeitadas");
+    toast.success(t("Rejeitadas"));
     load();
   };
 
@@ -412,11 +419,11 @@ export default function News() {
     <div className="p-4 md:p-8 space-y-6 max-w-6xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl md:text-3xl font-bold">Notícias</h1>
-          <p className="text-sm md:text-base text-muted-foreground mt-1">Aprove, edite e publique cada peça.</p>
+          <h1 className="font-display text-2xl md:text-3xl font-bold">{t("Notícias")}</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">{t("Aprove, edite e publique cada peça.")}</p>
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Criar notícia
+          <Plus className="mr-2 h-4 w-4" /> {t("Criar notícia")}
         </Button>
       </div>
 
@@ -424,52 +431,52 @@ export default function News() {
       <Card className="p-3 md:p-4 flex flex-col md:flex-row md:flex-wrap md:items-center gap-2 md:gap-3">
         <div className="relative flex-1 min-w-0 md:min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder={t("Buscar...")} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="flex-1 md:w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "all" ? "Todos os estados" : statusLabelPt(s)}</SelectItem>)}</SelectContent>
+            <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "all" ? t("Todos os estados") : statusLabel(s, language)}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="flex-1 md:w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as fontes</SelectItem>
+              <SelectItem value="all">{t("Todas as fontes")}</SelectItem>
               {sources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={accountFilter} onValueChange={setAccountFilter}>
             <SelectTrigger className="flex-1 md:w-[190px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos Instagrams</SelectItem>
-              <SelectItem value="none">Sem conta definida</SelectItem>
+              <SelectItem value="all">{t("Todos Instagrams")}</SelectItem>
+              <SelectItem value="none">{t("Sem conta definida")}</SelectItem>
               {igAccounts.map(account => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
-        <span className="text-xs text-muted-foreground">{filtered.length} de {items.length}</span>
+        <span className="text-xs text-muted-foreground">{language === "en-US" ? `${filtered.length} of ${items.length}` : `${filtered.length} de ${items.length}`}</span>
       </Card>
 
       {/* Ações em massa */}
       {selected.size > 0 && (
         <Card className="p-3 bg-primary/5 border-primary/30 flex items-center gap-3">
-          <span className="text-sm font-medium">{selected.size} selecionada(s)</span>
-          <Button size="sm" onClick={bulkProcess}><Sparkles className="h-3 w-3 mr-1" /> Processar todas</Button>
-          <Button size="sm" variant="outline" onClick={bulkReject}><X className="h-3 w-3 mr-1" /> Rejeitar</Button>
-          <Button size="sm" variant="destructive" onClick={() => remove(Array.from(selected))}><Trash2 className="h-3 w-3 mr-1" /> Excluir</Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} className="ml-auto">Limpar</Button>
+          <span className="text-sm font-medium">{language === "en-US" ? `${selected.size} selected` : `${selected.size} selecionada(s)`}</span>
+          <Button size="sm" onClick={bulkProcess}><Sparkles className="h-3 w-3 mr-1" /> {t("Processar todas")}</Button>
+          <Button size="sm" variant="outline" onClick={bulkReject}><X className="h-3 w-3 mr-1" /> {t("Rejeitar")}</Button>
+          <Button size="sm" variant="destructive" onClick={() => remove(Array.from(selected))}><Trash2 className="h-3 w-3 mr-1" /> {t("Excluir")}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} className="ml-auto">{t("Limpar")}</Button>
         </Card>
       )}
 
       {filtered.length > 0 && (
         <div className="flex items-center gap-2 px-1">
           <Checkbox checked={selected.size === filtered.length && filtered.length > 0} onCheckedChange={toggleAll} />
-          <span className="text-xs text-muted-foreground">Selecionar todas visíveis</span>
+          <span className="text-xs text-muted-foreground">{t("Selecionar todas visíveis")}</span>
         </div>
       )}
 
       {filtered.length === 0 ? (
-        <Card className="p-12 text-center text-muted-foreground border-dashed">Nenhuma notícia com esses filtros.</Card>
+        <Card className="p-12 text-center text-muted-foreground border-dashed">{t("Nenhuma notícia com esses filtros.")}</Card>
       ) : (
         <div className="space-y-3">
           {filtered.map(n => (
@@ -484,7 +491,7 @@ export default function News() {
                 ) : isCarouselItem(n) ? (
                   <button onClick={() => setPreviewing(n)} className="w-20 h-20 md:w-24 md:h-24 rounded-lg border border-primary/30 bg-primary/5 shrink-0 flex flex-col items-center justify-center text-center p-2">
                     <FileText className="h-5 w-5 text-primary mb-1" />
-                    <span className="text-[10px]">{n.carousel_slides.length} slides</span>
+                    <span className="text-[10px]">{n.carousel_slides.length} {t("slides")}</span>
                   </button>
                 ) : n.original_image_url ? (
                   <img src={n.original_image_url} alt="" loading="lazy" decoding="async" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover shrink-0 opacity-70" />
@@ -494,12 +501,12 @@ export default function News() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <p className="font-medium leading-tight text-sm md:text-base line-clamp-3">{n.rewritten_title || n.original_title}</p>
-                    <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{statusLabelPt(n.status)}</span>
+                    <span className={`shrink-0 text-[10px] md:text-xs px-2 py-1 rounded-full ${STATUS_COLORS[n.status]}`}>{statusLabel(n.status, language)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2 break-words">
-                    {n.source_name} · {accountName(n.instagram_account_id)} · {new Date(n.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    {n.source_name} · {accountName(n.instagram_account_id)} · {new Date(n.created_at).toLocaleString(locale, { timeZone: "America/Sao_Paulo" })}
                     {!String(n.original_url || "").startsWith("manual://") && (
-                      <a href={n.original_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 ml-1 hover:text-primary"><ExternalLink className="h-3 w-3" />original</a>
+                      <a href={n.original_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 ml-1 hover:text-primary"><ExternalLink className="h-3 w-3" />{t("original")}</a>
                     )}
                   </p>
                   {n.caption && <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{n.caption}</p>}
@@ -507,10 +514,10 @@ export default function News() {
                     {["pending", "processing", "failed"].includes(n.status) && (
                       <>
                         <Button size="sm" onClick={() => process(n, "template")} disabled={loading[n.id]}>
-                          {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />} {n.status === "pending" ? "Processar" : "Tentar novamente"}
+                          {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />} {n.status === "pending" ? t("Processar") : t("Tentar novamente")}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => process(n, "ai")} disabled={loading[n.id]}>
-                          <ImageIcon className="h-3 w-3 mr-1" /> Img IA
+                        <ImageIcon className="h-3 w-3 mr-1" /> {t("Img IA")}
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => reject(n.id)}><X className="h-3 w-3" /></Button>
                       </>
@@ -518,9 +525,9 @@ export default function News() {
                     {n.error_message && <p className="basis-full text-xs text-muted-foreground">{n.error_message}</p>}
                     {n.status === "processed" && (
                       <>
-                        {hasNewsPreview(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> Pré-visualizar</Button>}
-                        {!isCarouselItem(n) && <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> Editar visual</Button>}
-                        <Button size="sm" variant="outline" onClick={() => setEditing(n)}>Editar legenda</Button>
+                        {hasNewsPreview(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> {t("Pré-visualizar")}</Button>}
+                        {!isCarouselItem(n) && <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> {t("Editar visual")}</Button>}
+                        <Button size="sm" variant="outline" onClick={() => setEditing(n)}>{t("Editar legenda")}</Button>
                         <Button size="sm" onClick={() => approve(n, "feed")} disabled={loading[n.id]}>
                           {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}{isCarouselItem(n) ? "📚 Carrossel" : "📷 Feed"}
                         </Button>
@@ -530,11 +537,11 @@ export default function News() {
                         {!isCarouselItem(n) && <Button size="sm" onClick={() => approve(n, "story")} disabled={loading[n.id]}>
                           {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}⭐ Story
                         </Button>}
-                        <Button size="sm" variant="outline" onClick={() => setScheduleFor(n)}><Calendar className="h-3 w-3 mr-1" /> Horário custom</Button>
+                        <Button size="sm" variant="outline" onClick={() => setScheduleFor(n)}><Calendar className="h-3 w-3 mr-1" /> {t("Horário custom")}</Button>
                       </>
                     )}
                     {n.status === "approved" && (
-                      <Button size="sm" onClick={() => setScheduleFor(n)}><Calendar className="h-3 w-3 mr-1" /> Agendar publicação</Button>
+                      <Button size="sm" onClick={() => setScheduleFor(n)}><Calendar className="h-3 w-3 mr-1" /> {t("Agendar publicação")}</Button>
                     )}
                   </div>
                 </div>
@@ -546,20 +553,20 @@ export default function News() {
 
       {items.length >= newsLimit && (
         <Button variant="outline" onClick={() => setNewsLimit((limit) => limit + NEWS_PAGE_SIZE)} className="w-full">
-          Carregar mais notícias
+          {t("Carregar mais notícias")}
         </Button>
       )}
 
       {/* Editor */}
       <Dialog open={!!editing} onOpenChange={v => !v && setEditing(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Editar conteúdo</DialogTitle><DialogDescription>Ajuste o título, legenda e hashtags antes de publicar.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Editar conteúdo")}</DialogTitle><DialogDescription>{t("Ajuste o título, legenda e hashtags antes de publicar.")}</DialogDescription></DialogHeader>
           {editing && (
             <div className="space-y-4">
-              <div><Label>Título</Label><Input value={editing.rewritten_title || ""} onChange={e => setEditing({ ...editing, rewritten_title: e.target.value })} /></div>
-              <div><Label>Legenda <span className="text-xs text-muted-foreground">({(editing.caption || "").length} caracteres)</span></Label><Textarea rows={8} value={editing.caption || ""} onChange={e => setEditing({ ...editing, caption: e.target.value })} /></div>
-              <div><Label>Hashtags (separadas por espaço)</Label><Input value={(editing.hashtags || []).join(" ")} onChange={e => setEditing({ ...editing, hashtags: e.target.value.split(/\s+/).filter(Boolean) })} /></div>
-              <Button onClick={saveEdit} className="w-full">Salvar</Button>
+              <div><Label>{t("Título")}</Label><Input value={editing.rewritten_title || ""} onChange={e => setEditing({ ...editing, rewritten_title: e.target.value })} /></div>
+              <div><Label>{t("Legenda")} <span className="text-xs text-muted-foreground">({(editing.caption || "").length} {t("caracteres")})</span></Label><Textarea rows={8} value={editing.caption || ""} onChange={e => setEditing({ ...editing, caption: e.target.value })} /></div>
+              <div><Label>{t("Hashtags (separadas por espaço)")}</Label><Input value={(editing.hashtags || []).join(" ")} onChange={e => setEditing({ ...editing, hashtags: e.target.value.split(/\s+/).filter(Boolean) })} /></div>
+              <Button onClick={saveEdit} className="w-full">{t("Salvar")}</Button>
             </div>
           )}
         </DialogContent>
@@ -568,7 +575,7 @@ export default function News() {
       {/* Preview da imagem */}
       <Dialog open={!!previewing} onOpenChange={v => !v && setPreviewing(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Pré-visualização</DialogTitle><DialogDescription>Como o post vai aparecer no Instagram (1080×1080).</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Pré-visualização")}</DialogTitle><DialogDescription>{t("Como o post vai aparecer no Instagram (1080×1080).")}</DialogDescription></DialogHeader>
           {previewing && (
             <div className="space-y-4">
               {Array.isArray(previewing.carousel_media_urls) && previewing.carousel_media_urls.length ? (
@@ -576,7 +583,7 @@ export default function News() {
                   {previewing.carousel_media_urls.map((url: string, index: number) => (
                     <figure key={url} className="min-w-[85%] snap-center space-y-1 sm:min-w-[60%]">
                       <img src={url} alt={`Slide ${index + 1}`} className="w-full rounded-lg border" />
-                      <figcaption className="text-center text-xs text-muted-foreground">Slide {index + 1} de {previewing.carousel_media_urls.length}</figcaption>
+                      <figcaption className="text-center text-xs text-muted-foreground">{language === "en-US" ? `Slide ${index + 1} of ${previewing.carousel_media_urls.length}` : `Slide ${index + 1} de ${previewing.carousel_media_urls.length}`}</figcaption>
                     </figure>
                   ))}
                 </div>
@@ -584,7 +591,7 @@ export default function News() {
                 <div className="grid max-h-[60vh] gap-3 overflow-y-auto sm:grid-cols-2">
                   {previewing.carousel_slides.map((slide: CarouselSlide, index: number) => (
                     <article key={`${previewing.id}-${index}`} className="rounded-lg border bg-muted/20 p-4">
-                      <p className="mb-2 text-xs font-medium text-primary">Slide {index + 1} de {previewing.carousel_slides.length}</p>
+                      <p className="mb-2 text-xs font-medium text-primary">{language === "en-US" ? `Slide ${index + 1} of ${previewing.carousel_slides.length}` : `Slide ${index + 1} de ${previewing.carousel_slides.length}`}</p>
                       <h3 className="font-display text-lg font-bold">{slide.title}</h3>
                       {slide.body && <p className="mt-2 text-sm text-muted-foreground">{slide.body}</p>}
                     </article>
@@ -593,7 +600,7 @@ export default function News() {
               ) : previewImageUrl ? <img src={previewImageUrl} alt="" className="w-full rounded-lg border" /> : null}
               {previewing.caption && (
                 <div className="text-sm whitespace-pre-wrap p-4 rounded-lg bg-muted/30 border">
-                  <p className="font-medium text-xs text-muted-foreground mb-2">Legenda:</p>
+                  <p className="font-medium text-xs text-muted-foreground mb-2">{t("Legenda:")}</p>
                   {previewing.caption}
                 </div>
               )}
@@ -626,6 +633,7 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
   onClose: () => void;
   onCreated: (item: any, processNow: boolean) => Promise<void>;
 }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [sourceName, setSourceName] = useState("Conteúdo manual");
@@ -648,8 +656,8 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
 
   const chooseImage = (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return toast.error("Escolha uma imagem PNG, JPG ou WEBP.");
-    if (file.size > 10 * 1024 * 1024) return toast.error("A imagem deve ter no máximo 10 MB.");
+    if (!file.type.startsWith("image/")) return toast.error(t("Escolha uma imagem PNG, JPG ou WEBP."));
+    if (file.size > 10 * 1024 * 1024) return toast.error(t("A imagem deve ter no máximo 10 MB."));
     setImageFile(file);
     setImageUrl("");
   };
@@ -657,14 +665,14 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
   const submit = async (processNow: boolean) => {
     const cleanTitle = title.trim();
     const cleanContent = content.trim();
-    if (cleanTitle.length < 8) return toast.error("Digite um título com pelo menos 8 caracteres.");
-    if (cleanContent.length < 80) return toast.error("A matéria precisa ter pelo menos 80 caracteres.");
-    if (imageUrl.trim() && !/^https?:\/\//i.test(imageUrl.trim())) return toast.error("O endereço da imagem precisa começar com http:// ou https://.");
+    if (cleanTitle.length < 8) return toast.error(t("Digite um título com pelo menos 8 caracteres."));
+    if (cleanContent.length < 80) return toast.error(t("A matéria precisa ter pelo menos 80 caracteres."));
+    if (imageUrl.trim() && !/^https?:\/\//i.test(imageUrl.trim())) return toast.error(t("O endereço da imagem precisa começar com http:// ou https://."));
     setBusy(true);
     let uploadedPath: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada. Entre novamente.");
+      if (!user) throw new Error(t("Sessão expirada. Entre novamente."));
       const id = crypto.randomUUID();
       let originalImageUrl = imageUrl.trim() || null;
       if (imageFile) {
@@ -697,11 +705,11 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
       const { data, error } = await supabase.from("news_items").insert(row).select(NEWS_LIST_COLUMNS).single();
       if (error) throw error;
       uploadedPath = null;
-      toast.success(processNow ? "Matéria criada. Iniciando processamento..." : "Matéria salva como pendente.");
+      toast.success(processNow ? t("Matéria criada. Iniciando processamento...") : t("Matéria salva como pendente."));
       await onCreated(data, processNow);
     } catch (error: unknown) {
       if (uploadedPath) await supabase.storage.from("post-images").remove([uploadedPath]);
-      toast.error(friendlyDatabaseMessage(error) || "Não foi possível criar a matéria.");
+      toast.error(friendlyDatabaseMessage(error, t) || t("Não foi possível criar a matéria."));
     } finally {
       setBusy(false);
     }
@@ -711,38 +719,38 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
     <Dialog open={open} onOpenChange={value => !value && !busy && onClose()}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> Criar notícia manual</DialogTitle>
-          <DialogDescription>Escreva uma matéria própria e use o mesmo fluxo de templates, processamento e agendamento.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> {t("Criar notícia manual")}</DialogTitle>
+          <DialogDescription>{t("Escreva uma matéria própria e use o mesmo fluxo de templates, processamento e agendamento.")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="space-y-1.5">
-            <Label>Título da matéria</Label>
-            <Input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Ex.: Empresa anuncia novo projeto para a comunidade" />
+            <Label>{t("Título da matéria")}</Label>
+            <Input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder={t("Ex.: Empresa anuncia novo projeto para a comunidade")} />
             <p className="text-right text-xs text-muted-foreground">{title.length}/200</p>
           </div>
           <div className="space-y-1.5">
-            <Label>Conteúdo completo</Label>
-            <Textarea value={content} onChange={event => setContent(event.target.value)} rows={10} placeholder="Escreva os fatos, contexto, nomes, datas e informações que devem aparecer na publicação..." />
-            <p className="text-right text-xs text-muted-foreground">{content.length} caracteres</p>
+            <Label>{t("Conteúdo completo")}</Label>
+            <Textarea value={content} onChange={event => setContent(event.target.value)} rows={10} placeholder={t("Escreva os fatos, contexto, nomes, datas e informações que devem aparecer na publicação...")} />
+            <p className="text-right text-xs text-muted-foreground">{content.length} {t("caracteres")}</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Identificação da fonte</Label>
-              <Input value={sourceName} onChange={event => setSourceName(event.target.value)} maxLength={80} placeholder="Conteúdo manual" />
+              <Label>{t("Identificação da fonte")}</Label>
+              <Input value={sourceName} onChange={event => setSourceName(event.target.value)} maxLength={80} placeholder={t("Conteúdo manual")} />
             </div>
             <div className="space-y-1.5">
-              <Label>Conta Instagram</Label>
+              <Label>{t("Conta Instagram")}</Label>
               <Select value={accountId || "none"} onValueChange={value => setAccountId(value === "none" ? "" : value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Escolher ao publicar</SelectItem>
+                  <SelectItem value="none">{t("Escolher ao publicar")}</SelectItem>
                   {igAccounts.map(account => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Formato principal</Label>
+            <Label>{t("Formato principal")}</Label>
             <div className="grid grid-cols-3 gap-2">
               {(["feed", "story", "reel"] as MediaType[]).map(format => (
                 <button key={format} type="button" onClick={() => setMediaType(format)} className={`rounded-lg border p-3 text-sm font-medium transition ${mediaType === format ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
@@ -752,27 +760,27 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Imagem principal <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+            <Label>{t("Imagem principal")} <span className="font-normal text-muted-foreground">{t("(opcional)")}</span></Label>
             <div className="grid gap-3 md:grid-cols-[180px_1fr]">
               <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 p-3 text-center hover:border-primary">
                 {imageFile ? (
                   <><ImageIcon className="mb-2 h-6 w-6 text-primary" /><span className="line-clamp-2 text-xs">{imageFile.name}</span></>
                 ) : (
-                  <><Upload className="mb-2 h-6 w-6 text-muted-foreground" /><span className="text-xs">Enviar imagem</span><span className="text-[10px] text-muted-foreground">até 10 MB</span></>
+                  <><Upload className="mb-2 h-6 w-6 text-muted-foreground" /><span className="text-xs">{t("Enviar imagem")}</span><span className="text-[10px] text-muted-foreground">{t("até 10 MB")}</span></>
                 )}
                 <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => chooseImage(event.target.files?.[0])} />
               </label>
               <div className="space-y-1.5">
-                <Label className="text-xs">Ou cole o endereço de uma imagem</Label>
+                <Label className="text-xs">{t("Ou cole o endereço de uma imagem")}</Label>
                 <Input type="url" value={imageUrl} disabled={!!imageFile} onChange={event => setImageUrl(event.target.value)} placeholder="https://..." />
-                {(imageFile || imageUrl) && <Button type="button" size="sm" variant="ghost" onClick={() => { setImageFile(null); setImageUrl(""); }}>Remover imagem</Button>}
+                {(imageFile || imageUrl) && <Button type="button" size="sm" variant="ghost" onClick={() => { setImageFile(null); setImageUrl(""); }}>{t("Remover imagem")}</Button>}
               </div>
             </div>
           </div>
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-            <Button variant="secondary" onClick={() => submit(false)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Salvar como pendente</Button>
-            <Button onClick={() => submit(true)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Criar e processar</Button>
+            <Button variant="outline" onClick={onClose} disabled={busy}>{t("Cancelar")}</Button>
+            <Button variant="secondary" onClick={() => submit(false)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t("Salvar como pendente")}</Button>
+            <Button onClick={() => submit(true)} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{t("Criar e processar")}</Button>
           </div>
         </div>
       </DialogContent>
@@ -781,6 +789,7 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
 }
 
 function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClose: () => void; igAccounts: any[] }) {
+  const { language, t } = useLanguage();
   const [when, setWhen] = useState("");
   const [acc, setAcc] = useState<string>("");
   const [mediaType, setMediaType] = useState<"feed" | "reel" | "story">("reel");
@@ -816,7 +825,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
     (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Sessão expirada");
+        if (!user) throw new Error(t("Sessão expirada"));
         const { data, error } = await supabase
           .from("user_settings")
           .select("editorial_reel_duration_seconds")
@@ -837,7 +846,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
 
   const ensureStoryVideo = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Sessão expirada");
+    if (!user) throw new Error(t("Sessão expirada"));
     const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
     const sourceUrl = await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id });
     const { imageToReelVideo } = await import("@/lib/imageToVideo");
@@ -850,10 +859,10 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   };
 
   const submit = async () => {
-    if (!item || !when) return toast.error("Defina a data");
-    if (isCarouselItem(item) && mediaType !== "feed") return toast.error("Carrosséis só podem ser agendados no Feed.");
+    if (!item || !when) return toast.error(t("Defina a data"));
+    if (isCarouselItem(item) && mediaType !== "feed") return toast.error(t("Carrosséis só podem ser agendados no Feed."));
     if (mediaType === "reel" && !isAiCut && (editorialDurationLoading || editorialDurationError)) {
-      return toast.error("Não foi possível confirmar a duração do Reel. Reabra esta janela e tente novamente.");
+      return toast.error(t("Não foi possível confirmar a duração do Reel. Reabra esta janela e tente novamente."));
     }
     setBusy(true);
     try {
@@ -884,10 +893,10 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
       if (error) throw error;
       await supabase.from("news_items").update({ status: "scheduled" }).eq("id", item.id);
       const label = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
-      toast.success(`Agendado como ${label}`);
+      toast.success(language === "en-US" ? `Scheduled as ${label}` : `Agendado como ${label}`);
       onClose();
     } catch (e: unknown) {
-      toast.error(friendlyDatabaseMessage(e) || "Erro ao agendar");
+      toast.error(friendlyDatabaseMessage(e, t) || t("Erro ao agendar"));
     } finally {
       setBusy(false);
     }
@@ -895,25 +904,25 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   return (
     <Dialog open={!!item} onOpenChange={v => !v && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Agendar publicação</DialogTitle><DialogDescription>Escolha quando, em qual conta e o tipo de post.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{t("Agendar publicação")}</DialogTitle><DialogDescription>{t("Escolha quando, em qual conta e o tipo de post.")}</DialogDescription></DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label>Tipo de publicação</Label>
+            <Label>{t("Tipo de publicação")}</Label>
             <div className="grid grid-cols-3 gap-2 mt-1">
               <button type="button" onClick={() => setMediaType("feed")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "feed" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                📷 Feed<div className="text-xs text-muted-foreground font-normal">Imagem 1:1</div>
+                📷 Feed<div className="text-xs text-muted-foreground font-normal">{t("Imagem 1:1")}</div>
               </button>
               <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("reel")}
                 className={`p-3 rounded-lg border text-sm font-medium transition ${mediaType === "reel" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
                 🎬 Reel<div className="text-xs text-muted-foreground font-normal">
                   {isAiCut
-                    ? "Duração otimizada pela IA"
+                    ? t("Duração otimizada pela IA")
                     : editorialDurationLoading
-                      ? "Carregando duração…"
+                      ? t("Carregando duração…")
                       : editorialDurationError
-                        ? "Duração indisponível"
-                        : `Vídeo dinâmico 9:16, ${editorialReelDuration}s`}
+                        ? t("Duração indisponível")
+                        : language === "en-US" ? `Dynamic 9:16 video, ${editorialReelDuration}s` : `Vídeo dinâmico 9:16, ${editorialReelDuration}s`}
                 </div>
               </button>
               <button type="button" disabled={isCarouselItem(item)} onClick={() => setMediaType("story")}
@@ -921,16 +930,16 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
                 ⭐ Story<div className="text-xs text-muted-foreground font-normal">9:16, 24h</div>
               </button>
             </div>
-            {isCarouselItem(item) && <p className="mt-2 text-xs text-muted-foreground">Este conteúdo será publicado como carrossel nativo de {item.carousel_slides.length} slides no Feed.</p>}
+            {isCarouselItem(item) && <p className="mt-2 text-xs text-muted-foreground">{language === "en-US" ? `This content will be published as a native ${item.carousel_slides.length}-slide carousel in Feed.` : `Este conteúdo será publicado como carrossel nativo de ${item.carousel_slides.length} slides no Feed.`}</p>}
             {mediaType === "reel" && (
               <p className="text-xs text-muted-foreground mt-2">
                 {isAiCut
-                  ? "Este Corte IA preserva a duração flexível escolhida pela IA para o melhor desempenho."
+                  ? t("Este Corte IA preserva a duração flexível escolhida pela IA para o melhor desempenho.")
                   : editorialDurationError
-                    ? "Não foi possível carregar a duração configurada. O agendamento foi bloqueado para evitar divergências."
+                    ? t("Não foi possível carregar a duração configurada. O agendamento foi bloqueado para evitar divergências.")
                     : editorialDurationLoading
-                      ? "Carregando a duração configurada para este Reel editorial…"
-                      : `Este Reel editorial de imagem estática será gerado em 1080×1920 com movimento contínuo durante ${editorialReelDuration} segundos.`}
+                      ? t("Carregando a duração configurada para este Reel editorial…")
+                      : language === "en-US" ? `This static-image editorial Reel will be generated at 1080×1920 with continuous motion for ${editorialReelDuration} seconds.` : `Este Reel editorial de imagem estática será gerado em 1080×1920 com movimento contínuo durante ${editorialReelDuration} segundos.`}
               </p>
             )}
             {mediaType === "story" && (
@@ -938,22 +947,22 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setStoryAsVideo(false)}
                     className={`flex-1 p-2 rounded-lg border text-xs transition ${!storyAsVideo ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                    Imagem 9:16
+                    {t("Imagem 9:16")}
                   </button>
                   <button type="button" onClick={() => setStoryAsVideo(true)}
                     className={`flex-1 p-2 rounded-lg border text-xs transition ${storyAsVideo ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                    Vídeo 9:16 (6s)
+                    {t("Vídeo 9:16 (6s)")}
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground">Stories desaparecem em 24h. Sem legenda visível.</p>
+                <p className="text-xs text-muted-foreground">{t("Stories desaparecem em 24h. Sem legenda visível.")}</p>
               </div>
             )}
           </div>
-          <div><Label>Data e hora</Label><Input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
+          <div><Label>{t("Data e hora")}</Label><Input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
           <div>
-            <Label>Conta Instagram</Label>
+            <Label>{t("Conta Instagram")}</Label>
             <Select value={acc} onValueChange={setAcc}>
-              <SelectTrigger><SelectValue placeholder={(() => { const def = igAccounts.find(a => a.id === item?.instagram_account_id) || igAccounts[0]; return def ? `@${def.username} (padrão)` : "Padrão"; })()} /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={(() => { const def = igAccounts.find(a => a.id === item?.instagram_account_id) || igAccounts[0]; return def ? `@${def.username} ${t("(padrão)")}` : t("Padrão"); })()} /></SelectTrigger>
               <SelectContent>{igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}</SelectContent>
             </Select>
           </div>
@@ -963,7 +972,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
             disabled={busy || (mediaType === "reel" && !isAiCut && (editorialDurationLoading || editorialDurationError))}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            {busy ? "Processando..." : "Agendar"}
+            {busy ? t("Processando...") : t("Agendar")}
           </Button>
         </div>
       </DialogContent>
