@@ -16,6 +16,10 @@ import {
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
 } from "../_shared/creator-profile.ts";
+import {
+  finalizeEditorialCaption,
+  normalizeInstagramHandle,
+} from "../_shared/caption-integrity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -213,7 +217,7 @@ function normalizeRewritePayload(parsed: any, item: any): any {
     ? parsed.hashtags
         .map((h: any) => String(h || "").replace(/^#/, "").trim().toLowerCase())
         .filter(Boolean)
-        .slice(0, 15)
+        .slice(0, 8)
     : fallback.hashtags;
 
   return {
@@ -227,10 +231,10 @@ function normalizeRewritePayload(parsed: any, item: any): any {
   };
 }
 
-const AI_FEED_CAPTION_MIN = 900;
-const AI_FEED_CAPTION_MAX = 1950;
-const AI_REEL_CAPTION_MIN = 550;
-const AI_REEL_CAPTION_MAX = 1200;
+const AI_FEED_CAPTION_MIN = 650;
+const AI_FEED_CAPTION_MAX = 1300;
+const AI_REEL_CAPTION_MIN = 350;
+const AI_REEL_CAPTION_MAX = 750;
 
 type CaptionQualityPayload = {
   caption?: string | null;
@@ -267,14 +271,15 @@ function buildGroqRewriteMessages(item: any, tone: string, srcOpts: { lang?: str
 
   const profileBlock = creatorProfilePrompt(item?._creator_profile);
   const system = `Voce e um redator jornalistico viral para Instagram em PT-BR. Tom: ${tone}.
-Gere texto informativo, natural, sem copiar frases literais da noticia.
-Nao cite fonte, nao use link na bio, nao use leia mais, nao invente fatos.
+Gere texto original para Instagram, informativo, natural e envolvente, sem copiar frases literais da noticia.
+Nao cite fonte, portal, site, URL, credito de imagem ou origem da noticia. Nao use link na bio, nao use leia mais, nao invente fatos.
 Use os nomes, datas, locais, numeros e detalhes concretos do texto fornecido.
 Cada paragrafo deve acrescentar uma informacao nova. Nao repita o titulo, o resumo nem o mesmo fato com outras palavras.
+Nao inclua CTA, pedido para comentar, salvar, compartilhar ou seguir. Nao inclua nenhum @handle; o sistema adiciona uma unica CTA com a conta correta.
 Proibido usar preenchimentos genericos como "O ponto central", "O que se sabe ate agora", "Por que isso importa", "quando uma informacao ganha forca" ou "observe os proximos capitulos".
 Caption do feed: longa, util, com paragrafos curtos, entre ${AI_FEED_CAPTION_MIN} e ${AI_FEED_CAPTION_MAX} caracteres.
 Caption do reel: rica e direta, entre ${AI_REEL_CAPTION_MIN} e ${AI_REEL_CAPTION_MAX} caracteres.
-Hashtags: exatamente 15, sem #, minusculas, relevantes ao tema.
+Hashtags: entre 5 e 8, sem #, minusculas e estritamente relevantes ao tema.
 ${profileBlock}${srcOpts.translate ? `\nA fonte pode estar em ${LANG_NAMES[srcOpts.lang || "auto"] || "outro idioma"}; traduza tudo para PT-BR natural.` : ""}${srcOpts.cultural ? "\nExplique referencias culturais somente com informacoes presentes na fonte. Nao estime cotacoes, conversoes, datas ou contexto ausente." : ""}${retryNote}
 Responda APENAS um JSON valido com estas chaves:
 {"title":"...","subtitle":"...","hook":"...","summary":"...","caption":"...","reel_caption":"...","hashtags":["..."]}`;
@@ -600,9 +605,11 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
         tr: !!srcOpts.translate,
         c: !!srcOpts.cultural,
         p: creatorProfileFingerprint(item?._creator_profile),
+        a: String(item?.instagram_account_id || ""),
+        h: normalizeInstagramHandle(item?._caption_account_handle),
         provider: getTextAiProvider(),
         model: getTextAiModel(),
-        v: 7, // perfil por conta participa da chave; não cruza vozes no cache
+        v: 8, // perfil e identidade da conta participam da chave
       }))
     : null;
   if (cacheKey) {
@@ -669,7 +676,7 @@ function cleanWords(text: string): string[] {
 }
 
 const INSTAGRAM_CAPTION_LIMIT = 2200;
-const MIN_USEFUL_CAPTION_CHARS = 700;
+const MIN_USEFUL_CAPTION_CHARS = 500;
 
 function sanitizeNewsTitle(text: string): string {
   return decodeHtmlEntities(String(text || ""))
@@ -777,9 +784,8 @@ function buildInformativeCaptionFallback(item: any, title: string, summary: stri
   const blocks = [
     `🚨 ${title}`,
     ...factualBody,
-    `💬 Qual é a sua opinião sobre ${title.toLowerCase()}?`,
   ];
-  return smartTrimCaption(dedupeCaptionText(blocks.filter(Boolean).join("\n\n")), 1850);
+  return smartTrimCaption(dedupeCaptionText(blocks.filter(Boolean).join("\n\n")), 1350);
 }
 
 function ensureUsefulCaption(caption: string, item: any, title: string, summary: string): string {
@@ -787,13 +793,6 @@ function ensureUsefulCaption(caption: string, item: any, title: string, summary:
   if (clean.length >= MIN_USEFUL_CAPTION_CHARS) return clean;
   const fallback = buildInformativeCaptionFallback(item, title, summary);
   return fallback.length > clean.length ? fallback : clean;
-}
-
-function buildCaptionWithExtras(base: string, extraBlocks: string[], hashtagsLine: string): string {
-  const suffix = [...extraBlocks, hashtagsLine].filter(Boolean).join("\n\n");
-  if (!suffix) return smartTrimCaption(base);
-  const maxBase = Math.max(900, INSTAGRAM_CAPTION_LIMIT - suffix.length - 4);
-  return smartTrimCaption([smartTrimCaption(base, maxBase), suffix].filter(Boolean).join("\n\n"));
 }
 
 function fallbackRewrite(item: any) {
@@ -1036,6 +1035,9 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       item.instagram_account_id || null,
     );
     (item as any)._creator_profile = creatorProfile;
+    (item as any)._caption_account_handle = normalizeInstagramHandle(
+      accountUsername || settings?.brand_handle,
+    );
     let srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {};
     if (item.source_id) {
       const { data: src } = await supabase.from("news_sources").select("source_language, translate_to_pt, cultural_adaptation").eq("id", item.source_id).maybeSingle();
@@ -1122,8 +1124,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const safePhotoUrl = assertSafeHttpUrl(photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim());
     const identity = resolveEditorialIdentity(settings, accountUsername);
     assertEditorialCopy(ai.title, ai.subtitle);
-    const handle = identity.brandHandle;
-    const followCta = handle ? `👉 SIGA @${handle} para mais notícias do dia` : "";
+    const handle = normalizeInstagramHandle(accountUsername || identity.brandHandle);
 
     // Override de hashtags por conta IG: se a conta tiver custom_hashtags
     // configuradas, usa SEMPRE essas (ignora as geradas pela IA).
@@ -1142,17 +1143,29 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const safeHashtags = Array.isArray(ai.hashtags) && ai.hashtags.length > 0
       ? ai.hashtags
       : fallbackRewrite(item).hashtags;
-    const hashtagsLine = safeHashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
+    const hashtagsLine = safeHashtags.slice(0, 8).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const reelHashtagsLine = safeHashtags.slice(0, 5).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const usefulCaption = ensureUsefulCaption(ai.caption, item, ai.title, ai.summary);
     const creatorExtras = creatorCaptionExtras(creatorProfile);
-    const finalCaption = buildCaptionWithExtras(
+    const finalCaption = finalizeEditorialCaption(
       usefulCaption,
-      [...creatorExtras, "💬 Comente sua opinião\n💾 Salve para ler depois\n🔁 Compartilhe com quem precisa ver", followCta],
-      hashtagsLine,
+      {
+        accountHandle: handle,
+        signatureBlocks: creatorExtras,
+        hashtagsLine,
+        maxLength: 1700,
+      },
     );
     const usefulReelCaption = ensureUsefulCaption(ai.reel_caption || usefulCaption, item, ai.title, ai.summary);
-    const reelCaptionFinal = buildCaptionWithExtras(usefulReelCaption, [...creatorExtras, followCta], reelHashtagsLine);
+    const reelCaptionFinal = finalizeEditorialCaption(
+      usefulReelCaption,
+      {
+        accountHandle: handle,
+        signatureBlocks: creatorExtras,
+        hashtagsLine: reelHashtagsLine,
+        maxLength: 1100,
+      },
+    );
 
     // Escolha local e determinística de trilha. Uma segunda chamada de IA só
     // para áudio aumentava latência e consumo sem melhorar a notícia.

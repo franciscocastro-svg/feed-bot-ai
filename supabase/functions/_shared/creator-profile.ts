@@ -89,10 +89,13 @@ export function creatorProfilePrompt(profile: CreatorProfile | null | undefined)
     value.expertise_summary ? `- Autoridade real: ${value.expertise_summary}` : "",
     value.signature_phrases?.length ? `- Frases de assinatura (use no maximo uma, quando natural): ${value.signature_phrases.join(" | ")}` : "",
     value.forbidden_words?.length ? `- TERMOS/TEMAS PROIBIDOS: ${value.forbidden_words.join(" | ")}` : "",
-    value.cta_style ? `- CTA preferido: ${value.cta_style}` : "",
+    value.cta_style
+      ? `- Estilo de engajamento (apenas referencia de tom; nao copie literalmente nem inclua @handles): ${value.cta_style}`
+      : "",
     value.example_posts?.length ? `- Referencias de estilo:\n${value.example_posts.map((item, index) => `  [${index + 1}] ${item}`).join("\n")}` : "",
     value.extra_notes ? `- Instrucoes adicionais: ${value.extra_notes}` : "",
     "Nao invente experiencia pessoal, credenciais, resultados ou opinioes que nao estejam neste perfil.",
+    "Entregue somente conteudo factual e contextual. Nao inclua CTA, pedido para seguir, @handle, link, fonte ou credito de imagem; o sistema finaliza a identidade depois.",
   ];
   return lines.filter(Boolean).join("\n");
 }
@@ -134,7 +137,6 @@ export function creatorCaptionExtras(profile: CreatorProfile | null | undefined)
   if (!value) return [];
   const extras: string[] = [];
   if (value.signature_phrases?.[0]) extras.push(value.signature_phrases[0]);
-  if (value.cta_style) extras.push(value.cta_style);
   return extras;
 }
 
