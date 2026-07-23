@@ -11,12 +11,14 @@ import { toast } from "sonner";
 import { Upload, Loader2, Music2, Trash2, GraduationCap, Instagram, ChevronRight, Mail } from "lucide-react";
 import { TutorialModal } from "@/components/TutorialModal";
 import { ContextHelp, FieldLabel } from "@/components/ContextHelp";
+import { useLanguage, type UiLanguage } from "@/contexts/LanguageContext";
 import {
   DEFAULT_EDITORIAL_REEL_DURATION_SECONDS,
   normalizeEditorialReelDuration,
 } from "@/lib/editorialReelDuration";
 
 export default function Settings() {
+  const { language, setLanguage, t } = useLanguage();
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [s, setS] = useState<any | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -76,10 +78,10 @@ export default function Settings() {
         file_url: pub.publicUrl,
       });
       if (insErr) throw insErr;
-      toast.success(`Trilha "${baseName}" adicionada`);
+      toast.success(language === "en-US" ? `Track "${baseName}" added` : `Trilha "${baseName}" adicionada`);
       await loadTracks(s.user_id);
     } catch (e: any) {
-      toast.error(e.message || "Erro ao enviar trilha");
+      toast.error(e.message || (language === "en-US" ? "Could not upload track" : "Erro ao enviar trilha"));
     } finally {
       setUploadingTrack(false);
       if (trackRef.current) trackRef.current.value = "";
@@ -93,10 +95,10 @@ export default function Settings() {
   };
 
   const removeTrack = async (id: string) => {
-    if (!confirm("Remover esta trilha?")) return;
+    if (!confirm(t("Remover esta trilha?"))) return;
     await supabase.from("reel_audio_tracks").delete().eq("id", id);
     setTracks(prev => prev.filter(t => t.id !== id));
-    toast.success("Removida");
+    toast.success(t("Removida"));
   };
 
   const save = async () => {
@@ -119,7 +121,7 @@ export default function Settings() {
     }).eq("user_id", s.user_id);
     if (error) return toast.error(error.message);
     setS({ ...s, max_posts_per_day: safeMaxPosts, min_post_interval_minutes: safeInterval });
-    toast.success("Salvo");
+    toast.success(t("Salvo"));
   };
 
   const uploadLogo = async (file: File) => {
@@ -133,7 +135,7 @@ export default function Settings() {
     setS({ ...s, brand_logo_url: url });
     await supabase.from("user_settings").update({ brand_logo_url: url }).eq("user_id", s.user_id);
     setUploading(false);
-    toast.success("Logo enviada");
+    toast.success(t("Logo enviada"));
   };
 
   const updateMarketingConsent = async (enabled: boolean) => {
@@ -143,9 +145,9 @@ export default function Settings() {
       marketing_consent_at: enabled ? now : null,
       marketing_unsubscribed_at: enabled ? null : now,
     }).eq("id", s.user_id);
-    if (error) return toast.error("Não foi possível atualizar sua preferência");
+    if (error) return toast.error(t("Não foi possível atualizar sua preferência"));
     setMarketingConsent(enabled);
-    toast.success(enabled ? "Você receberá novidades da Flux & Feed" : "Comunicações promocionais desativadas");
+    toast.success(enabled ? t("Você receberá novidades da Flux & Feed") : t("Comunicações promocionais desativadas"));
   };
 
   const _uploadAudio = async (file: File) => {
@@ -159,7 +161,7 @@ export default function Settings() {
     setS({ ...s, reel_audio_url: url });
     await supabase.from("user_settings").update({ reel_audio_url: url }).eq("user_id", s.user_id);
     setUploading(false);
-    toast.success("Trilha enviada");
+    toast.success(t("Trilha enviada"));
   };
   void _uploadAudio;
 
@@ -167,26 +169,42 @@ export default function Settings() {
     <div className="p-4 md:p-8 space-y-6 max-w-2xl">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="font-display text-3xl font-bold">Configurações</h1>
-          <ContextHelp label="configurações globais" title="Padrão global">
-            Estas opções servem como padrão para suas contas. Se você tiver mais de uma conta Instagram, também pode personalizar marca, ritmo e tom individualmente.
+          <h1 className="font-display text-3xl font-bold">{t("Configurações")}</h1>
+          <ContextHelp label={t("Configurações globais")} title={t("Padrão global")}>
+            {t("Estas opções servem como padrão para suas contas. Se você tiver mais de uma conta Instagram, também pode personalizar marca, ritmo e tom individualmente.")}
           </ContextHelp>
         </div>
-        <p className="text-muted-foreground mt-1">Padrão global da automação e identidade da marca.</p>
+        <p className="text-muted-foreground mt-1">{t("Padrão global da automação e identidade da marca.")}</p>
       </div>
+
+      <Card className="p-5 space-y-3" data-testid="interface-language-card">
+        <div>
+          <Label htmlFor="interface-language" className="text-base font-semibold">{t("Idioma da interface")}</Label>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Altera somente os textos do painel neste navegador. Conteúdos, legendas e regras da automação não mudam.")}</p>
+        </div>
+        <Select value={language} onValueChange={value => setLanguage(value as UiLanguage)}>
+          <SelectTrigger id="interface-language" aria-label={t("Idioma da interface")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
+            <SelectItem value="en-US">English</SelectItem>
+          </SelectContent>
+        </Select>
+      </Card>
 
       {igAccounts.length > 1 && (
         <Card className="p-4 space-y-3 border-primary/40 bg-primary/5">
           <div className="flex items-center gap-2">
             <Instagram className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-sm">Configurações por conta Instagram</h2>
+            <h2 className="font-semibold text-sm">{t("Configurações por conta Instagram")}</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            Escolha uma conta para personalizar marca, tom, horários e ritmo só para ela. As demais continuam usando o padrão global abaixo.
+            {t("Escolha uma conta para personalizar marca, tom, horários e ritmo só para ela. As demais continuam usando o padrão global abaixo.")}
           </p>
           <Select onValueChange={(v) => { if (v) window.location.href = `/dashboard/accounts/${v}/settings`; }}>
             <SelectTrigger>
-              <SelectValue placeholder="Selecione uma conta para configurar…" />
+              <SelectValue placeholder={t("Selecione uma conta para configurar…")} />
             </SelectTrigger>
             <SelectContent>
               {igAccounts.map(a => (
@@ -200,10 +218,10 @@ export default function Settings() {
         <Card className="p-4 flex items-center justify-between gap-3 border-dashed">
           <div className="flex items-center gap-2 text-sm">
             <Instagram className="h-4 w-4 text-muted-foreground" />
-            <span>Personalizar só para <strong>@{igAccounts[0].username}</strong></span>
+            <span>{t("Personalizar só para")} <strong>@{igAccounts[0].username}</strong></span>
           </div>
           <Button asChild variant="outline" size="sm">
-            <Link to={`/dashboard/accounts/${igAccounts[0].id}/settings`}>Configurar <ChevronRight className="h-3 w-3 ml-1" /></Link>
+            <Link to={`/dashboard/accounts/${igAccounts[0].id}/settings`}>{t("Configurar")} <ChevronRight className="h-3 w-3 ml-1" /></Link>
           </Button>
         </Card>
       )}
@@ -215,59 +233,59 @@ export default function Settings() {
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-display text-lg font-semibold">Guia de primeiros passos</h2>
-              <span className="rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">9 etapas · 7 min</span>
+              <h2 className="font-display text-lg font-semibold">{t("Guia de primeiros passos")}</h2>
+              <span className="rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t("9 etapas · 7 min")}</span>
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Da conexão do Instagram à publicação e análise dos resultados.</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("Da conexão do Instagram à publicação e análise dos resultados.")}</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setTutorialOpen(true)} className="w-full sm:w-auto">Abrir guia</Button>
+        <Button variant="outline" onClick={() => setTutorialOpen(true)} className="w-full sm:w-auto">{t("Abrir guia")}</Button>
       </Card>
       <TutorialModal open={tutorialOpen} onOpenChange={setTutorialOpen} />
 
       <Card className="p-6 flex items-start justify-between gap-4">
         <div className="flex gap-3">
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Mail className="h-5 w-5 text-primary" /></div>
-          <div><h2 className="font-display text-lg font-semibold">Novidades por e-mail</h2><p className="text-sm text-muted-foreground mt-1">Receba atualizações do produto, dicas e promoções. E-mails essenciais de segurança continuam normalmente.</p></div>
+          <div><h2 className="font-display text-lg font-semibold">{t("Novidades por e-mail")}</h2><p className="text-sm text-muted-foreground mt-1">{t("Receba atualizações do produto, dicas e promoções. E-mails essenciais de segurança continuam normalmente.")}</p></div>
         </div>
-        <Switch checked={marketingConsent} onCheckedChange={updateMarketingConsent} aria-label="Receber novidades por e-mail" />
+        <Switch checked={marketingConsent} onCheckedChange={updateMarketingConsent} aria-label={t("Receber novidades por e-mail")} />
       </Card>
 
       <Card className="p-6 space-y-5">
         <div className="flex items-center gap-2">
-          <h2 className="font-display text-xl font-semibold">Identidade da marca</h2>
-          <ContextHelp label="identidade da marca">
-            O nome, o perfil e a logo aparecem no cabeçalho dos posts gerados pelo template dinâmico.
+          <h2 className="font-display text-xl font-semibold">{t("Identidade da marca")}</h2>
+          <ContextHelp label={t("Identidade da marca")}>
+            {t("O nome, o perfil e a logo aparecem no cabeçalho dos posts gerados pelo template dinâmico.")}
           </ContextHelp>
         </div>
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary border-2 border-border shrink-0">
-            {s.brand_logo_url ? <img src={s.brand_logo_url} alt="logo" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">sem<br/>logo</div>}
+            {s.brand_logo_url ? <img src={s.brand_logo_url} alt="logo" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">{t("sem logo")}</div>}
           </div>
           <div className="flex-1">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-                {s.brand_logo_url ? "Trocar logo" : "Enviar logo"}
+                {s.brand_logo_url ? t("Trocar logo") : t("Enviar logo")}
               </Button>
-              <ContextHelp label="formato da logo">
-                Use uma imagem quadrada, com fundo claro ou escuro e pelo menos 300 × 300 pixels.
+              <ContextHelp label={t("formato da logo")}>
+                {t("Use uma imagem quadrada, com fundo claro ou escuro e pelo menos 300 × 300 pixels.")}
               </ContextHelp>
             </div>
           </div>
         </div>
-        <div><Label>Nome da marca</Label><Input value={s.brand_name || ""} onChange={e => setS({ ...s, brand_name: e.target.value })} placeholder="CHOQUEI" /></div>
-        <div><Label>@ do Instagram</Label><Input value={s.brand_handle || ""} onChange={e => setS({ ...s, brand_handle: e.target.value })} placeholder="@meuperfil" /></div>
+        <div><Label>{t("Nome da marca")}</Label><Input value={s.brand_name || ""} onChange={e => setS({ ...s, brand_name: e.target.value })} placeholder="CHOQUEI" /></div>
+        <div><Label>{t("@ do Instagram")}</Label><Input value={s.brand_handle || ""} onChange={e => setS({ ...s, brand_handle: e.target.value })} placeholder={t("@meuperfil")} /></div>
       </Card>
 
       <Card className="p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-xl font-semibold">Biblioteca de trilhas dos Reels</h2>
-            <ContextHelp label="biblioteca de trilhas" title="Como a IA escolhe a trilha">
-              <p>Use nomes que descrevam a emoção ou o contexto, como <code>tenso.mp3</code>, <code>feliz.mp3</code> ou <code>urgente.mp3</code>.</p>
-              <p className="mt-1.5">A IA combina o nome do arquivo com a notícia. Sem trilha cadastrada, o Reel é gerado sem áudio.</p>
+            <h2 className="font-display text-xl font-semibold">{t("Biblioteca de trilhas dos Reels")}</h2>
+            <ContextHelp label={t("biblioteca de trilhas")} title={t("Como a IA escolhe a trilha")}>
+              <p>{t("Use nomes que descrevam a emoção ou o contexto, como")} <code>tenso.mp3</code>, <code>feliz.mp3</code> {t("ou")} <code>urgente.mp3</code>.</p>
+              <p className="mt-1.5">{t("A IA combina o nome do arquivo com a notícia. Sem trilha cadastrada, o Reel é gerado sem áudio.")}</p>
             </ContextHelp>
           </div>
           <input
@@ -283,28 +301,28 @@ export default function Settings() {
           />
           <Button variant="outline" onClick={() => trackRef.current?.click()} disabled={uploadingTrack} className="shrink-0">
             {uploadingTrack ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-            Adicionar trilhas
+            {t("Adicionar trilhas")}
           </Button>
         </div>
 
         {tracks.length === 0 ? (
           <div className="text-center py-8 border border-dashed border-border rounded-lg text-muted-foreground text-sm">
             <Music2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            Nenhuma trilha na biblioteca ainda.
+            {t("Nenhuma trilha na biblioteca ainda.")}
           </div>
         ) : (
           <div className="space-y-2">
-            {tracks.map(t => (
-              <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card/50">
+            {tracks.map(track => (
+              <div key={track.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card/50">
                 <Music2 className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Input
-                  defaultValue={t.name}
-                  onBlur={e => e.target.value !== t.name && renameTrack(t.id, e.target.value)}
+                  defaultValue={track.name}
+                  onBlur={e => e.target.value !== track.name && renameTrack(track.id, e.target.value)}
                   className="h-8 max-w-xs"
-                  placeholder="ex: tenso, feliz, urgente"
+                  placeholder={t("ex: tenso, feliz, urgente")}
                 />
-                <audio controls src={t.file_url} className="h-8 flex-1 min-w-0" />
-                <Button size="sm" variant="ghost" onClick={() => removeTrack(t.id)}>
+                <audio controls src={track.file_url} className="h-8 flex-1 min-w-0" />
+                <Button size="sm" variant="ghost" onClick={() => removeTrack(track.id)}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </div>
@@ -314,43 +332,43 @@ export default function Settings() {
       </Card>
 
       <Card className="p-6 space-y-5">
-        <h2 className="font-display text-xl font-semibold">Automação</h2>
+        <h2 className="font-display text-xl font-semibold">{t("Automação")}</h2>
         <div>
-          <FieldLabel htmlFor="max-posts-per-day" helpLabel="posts por dia" help={isUnlimited
-            ? "Seu plano não limita a quantidade diária. Defina aqui o máximo que deseja publicar."
-            : `Seu plano permite até ${planMax} posts por dia. O sistema não salvará um valor acima desse limite.`}
-          >Posts por dia (máx.)</FieldLabel>
+          <FieldLabel htmlFor="max-posts-per-day" helpLabel={t("posts por dia")} help={isUnlimited
+            ? t("Seu plano não limita a quantidade diária. Defina aqui o máximo que deseja publicar.")
+            : language === "en-US" ? `Your plan allows up to ${planMax} posts per day. The system will not save a value above this limit.` : `Seu plano permite até ${planMax} posts por dia. O sistema não salvará um valor acima desse limite.`}
+          >{t("Posts por dia (máx.)")}</FieldLabel>
           <Input id="max-posts-per-day" type="number" min={1} max={planMax} value={s.max_posts_per_day} onChange={e => setS({ ...s, max_posts_per_day: Math.min(Math.max(+e.target.value || 1, 1), planMax) })} />
-          <p className="mt-1 text-[11px] text-muted-foreground">Limite do plano{planLimits?.display_name ? ` ${planLimits.display_name}` : ""}: {isUnlimited ? "ilimitado" : `${planMax}/dia`}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("Limite do plano")}{planLimits?.display_name ? ` ${planLimits.display_name}` : ""}: {isUnlimited ? t("ilimitado") : language === "en-US" ? `${planMax}/day` : `${planMax}/dia`}</p>
         </div>
         <div>
-          <FieldLabel htmlFor="min-post-interval" helpLabel="intervalo entre posts" help="É o tempo mínimo entre publicações da mesma conta. O sistema aceita no mínimo 10 minutos; recomendamos de 30 a 60 minutos para reduzir bloqueios do Instagram.">
-            Intervalo mínimo entre posts (minutos)
+          <FieldLabel htmlFor="min-post-interval" helpLabel={t("intervalo entre posts")} help={t("É o tempo mínimo entre publicações da mesma conta. O sistema aceita no mínimo 10 minutos; recomendamos de 30 a 60 minutos para reduzir bloqueios do Instagram.")}>
+            {t("Intervalo mínimo entre posts (minutos)")}
           </FieldLabel>
           <Input id="min-post-interval" type="number" min={10} value={s.min_post_interval_minutes ?? 10} onChange={e => setS({ ...s, min_post_interval_minutes: Math.max(+e.target.value || 10, 10) })} />
         </div>
         <div>
-          <FieldLabel htmlFor="default-niche" helpLabel="nicho padrão" help="Tema principal usado pela IA para contextualizar notícias e publicações.">Nicho padrão</FieldLabel>
-          <Input id="default-niche" value={s.default_niche || ""} onChange={e => setS({ ...s, default_niche: e.target.value })} placeholder="finanças, esportes…" />
+          <FieldLabel htmlFor="default-niche" helpLabel={t("Nicho padrão")} help={t("Tema principal usado pela IA para contextualizar notícias e publicações.")}>{t("Nicho padrão")}</FieldLabel>
+          <Input id="default-niche" value={s.default_niche || ""} onChange={e => setS({ ...s, default_niche: e.target.value })} placeholder={t("finanças, esportes…")} />
         </div>
         <div>
-          <FieldLabel htmlFor="ai-tone" helpLabel="tom da IA" help="Define o estilo de escrita das legendas, por exemplo: informativo, descontraído ou urgente.">Tom da IA</FieldLabel>
+          <FieldLabel htmlFor="ai-tone" helpLabel={t("Tom da IA")} help={t("Define o estilo de escrita das legendas, por exemplo: informativo, descontraído ou urgente.")}>{t("Tom da IA")}</FieldLabel>
           <Input id="ai-tone" value={s.ai_tone || ""} onChange={e => setS({ ...s, ai_tone: e.target.value })} />
         </div>
         <div>
-          <FieldLabel helpLabel="tipo de publicação padrão" help="Formato usado quando uma automação não escolher outro tipo explicitamente.">Tipo de publicação padrão</FieldLabel>
+          <FieldLabel helpLabel={t("Tipo de publicação padrão")} help={t("Formato usado quando uma automação não escolher outro tipo explicitamente.")}>{t("Tipo de publicação padrão")}</FieldLabel>
           <Select value={s.default_media_type || "reel"} onValueChange={v => setS({ ...s, default_media_type: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="reel">🎬 Reel (recomendado — alcança não-seguidores)</SelectItem>
-              <SelectItem value="feed">📷 Feed (só aparece para seguidores)</SelectItem>
-              <SelectItem value="story">⭐ Story (24h, alta visibilidade entre seguidores)</SelectItem>
+              <SelectItem value="reel">🎬 {t("Reel (recomendado — alcança não-seguidores)")}</SelectItem>
+              <SelectItem value="feed">📷 {t("Feed (só aparece para seguidores)")}</SelectItem>
+              <SelectItem value="story">⭐ {t("Story (24h, alta visibilidade entre seguidores)")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <FieldLabel helpLabel="duração dos Reels de notícias" help="Vale somente para novos Reels editoriais criados de imagens estáticas. Stories e Cortes IA não mudam. O alcance varia conforme conteúdo, público e distribuição; compare os resultados nos Insights.">
-            Duração dos Reels de notícias
+          <FieldLabel helpLabel={t("duração dos Reels de notícias")} help={t("Vale somente para novos Reels editoriais criados de imagens estáticas. Stories e Cortes IA não mudam. O alcance varia conforme conteúdo, público e distribuição; compare os resultados nos Insights.")}>
+            {t("Duração dos Reels de notícias")}
           </FieldLabel>
           <Select
             value={String(normalizeEditorialReelDuration(s.editorial_reel_duration_seconds))}
@@ -361,36 +379,36 @@ export default function Settings() {
           >
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="6">6 segundos — curto e direto</SelectItem>
-              <SelectItem value="20">20 segundos — equilibrado (padrão)</SelectItem>
-              <SelectItem value="30">30 segundos — mais contexto</SelectItem>
+              <SelectItem value="6">{t("6 segundos — curto e direto")}</SelectItem>
+              <SelectItem value="20">{t("20 segundos — equilibrado (padrão)")}</SelectItem>
+              <SelectItem value="30">{t("30 segundos — mais contexto")}</SelectItem>
             </SelectContent>
           </Select>
           {normalizeEditorialReelDuration(s.editorial_reel_duration_seconds) !== DEFAULT_EDITORIAL_REEL_DURATION_SECONDS && (
-            <p className="mt-1 text-[11px] text-muted-foreground">Personalizado · padrão do sistema: {DEFAULT_EDITORIAL_REEL_DURATION_SECONDS}s</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("Personalizado · padrão do sistema:")} {DEFAULT_EDITORIAL_REEL_DURATION_SECONDS}s</p>
           )}
         </div>
         <div>
-          <FieldLabel helpLabel="estilo de imagem padrão" help="Template dinâmico usa o visual configurado da marca. Geração com IA cria uma nova imagem para o conteúdo.">Estilo de imagem padrão</FieldLabel>
+          <FieldLabel helpLabel={t("Estilo de imagem padrão")} help={t("Template dinâmico usa o visual configurado da marca. Geração com IA cria uma nova imagem para o conteúdo.")}>{t("Estilo de imagem padrão")}</FieldLabel>
           <Select value={s.default_image_style} onValueChange={v => setS({ ...s, default_image_style: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="template">Template dinâmico (estilo Choquei)</SelectItem>
-              <SelectItem value="ai">Geração com IA</SelectItem>
+              <SelectItem value="template">{t("Template dinâmico (estilo Choquei)")}</SelectItem>
+              <SelectItem value="ai">{t("Geração com IA")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <FieldLabel htmlFor="preferred-hours" helpLabel="melhores horários" help="Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21. A automação prioriza esses horários.">Melhores horários</FieldLabel>
+          <FieldLabel htmlFor="preferred-hours" helpLabel={t("Melhores horários")} help={t("Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21. A automação prioriza esses horários.")}>{t("Melhores horários")}</FieldLabel>
           <Input id="preferred-hours" value={(s.preferred_post_hours || []).join(",")} onChange={e => setS({ ...s, preferred_post_hours: e.target.value.split(",").map((x: string) => +x.trim()).filter(Number.isFinite) })} placeholder="8,12,18,21" />
         </div>
         <div className="flex items-center justify-between">
-          <FieldLabel helpLabel="aprovação automática" help="Quando ativada, a publicação pula a etapa de aprovação manual.">Aprovação automática</FieldLabel>
+          <FieldLabel helpLabel={t("Aprovação automática")} help={t("Quando ativada, a publicação pula a etapa de aprovação manual.")}>{t("Aprovação automática")}</FieldLabel>
           <Switch checked={s.auto_approve} onCheckedChange={v => setS({ ...s, auto_approve: v })} />
         </div>
       </Card>
 
-      <Button onClick={save} className="w-full" size="lg">Salvar configurações</Button>
+      <Button onClick={save} className="w-full" size="lg">{t("Salvar configurações")}</Button>
     </div>
   );
 }

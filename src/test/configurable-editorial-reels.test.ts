@@ -18,9 +18,9 @@ describe("Contrato dos Reels editoriais configuráveis", () => {
     expect(migration).toContain("alter table public.news_items\n  add column if not exists editorial_reel_duration_seconds smallint;");
     expect(migration).toContain("check (editorial_reel_duration_seconds in (6, 20, 30))");
     expect(settings).toContain("editorial_reel_duration_seconds: normalizeEditorialReelDuration");
-    expect(settings).toContain('<SelectItem value="6">6 segundos — curto e direto</SelectItem>');
-    expect(settings).toContain('<SelectItem value="20">20 segundos — equilibrado (padrão)</SelectItem>');
-    expect(settings).toContain('<SelectItem value="30">30 segundos — mais contexto</SelectItem>');
+    expect(settings).toContain('<SelectItem value="6">{t("6 segundos — curto e direto")}</SelectItem>');
+    expect(settings).toContain('<SelectItem value="20">{t("20 segundos — equilibrado (padrão)")}</SelectItem>');
+    expect(settings).toContain('<SelectItem value="30">{t("30 segundos — mais contexto")}</SelectItem>');
     expect(news).toContain("Carregando duração…");
     expect(news).toContain("O agendamento foi bloqueado para evitar divergências");
     expect(news).toContain("itemDurationSnapshot !== null && itemDurationSnapshot !== undefined");
