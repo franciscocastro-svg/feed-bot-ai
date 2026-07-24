@@ -44,7 +44,9 @@ describe("Pautas 1A — geração completa de carrosséis", () => {
     expect(worker).toContain("composeAndUploadCarouselNode");
     expect(worker).toContain("carousel_media_urls: urls");
     expect(worker).toContain("urls.length !== slides.length");
-    expect(worker).toContain("allowMissingPhoto: true");
+    expect(worker).toContain("drawEditorialCarouselSlide");
+    expect(worker).toContain("EDITORIAL_CAROUSEL_HEIGHT");
+    expect(worker).toContain("carousel_slides: resolvedSlides");
     expect(worker).toContain("opts.allowMissingPhoto && !item.original_image_url");
   });
 

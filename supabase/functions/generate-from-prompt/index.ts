@@ -80,7 +80,7 @@ REGRAS:
 - Hashtags: 8-15, pt-BR.
 - Título até 80 chars.${carouselContract}
 
-Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"...","slides":[{"title":"...","body":"..."}]}`;
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"...","slides":[{"title":"...","body":"...","emphasis":["..."],"image_mode":"text","image_query":null,"image_alt":null}]}`;
 
     const generated = await generateTopicJson({
       systemPrompt,

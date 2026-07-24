@@ -36,6 +36,13 @@ import {
   professionalCandidatePoolSize,
   refineTranscriptCutCandidates,
 } from "./cutQuality.js";
+import { resolveCarouselStockImage } from "./carouselStockImages.js";
+import {
+  drawEditorialCarouselSlide,
+  EDITORIAL_CAROUSEL_HEIGHT,
+  EDITORIAL_CAROUSEL_WIDTH,
+  normalizeEditorialCarouselSlide,
+} from "./editorialCarousel.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -668,31 +675,83 @@ function normalizeCarouselSlidesForWorker(value) {
     if (!title || (index > 0 && !body)) {
       throw new Error(`Slide ${index + 1} do carrossel está incompleto.`);
     }
-    return { title, body, position: index + 1 };
+    return normalizeEditorialCarouselSlide({
+      ...slide,
+      title,
+      body,
+    }, index, value.length);
   });
 }
 
 async function composeAndUploadCarouselNode(item, settings) {
   const slides = normalizeCarouselSlidesForWorker(item.carousel_slides);
   const urls = [];
+  const resolvedSlides = [];
+  const usedStockAssetIds = new Set();
+  const maxStockImages = Math.max(0, Math.min(2, Number(process.env.CAROUSEL_IMAGE_MAX_PER_CAROUSEL || 2)));
+  let resolvedStockImages = 0;
+  const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
+  const accentColor = safeTemplateColor(
+    settings?.cut_brand_profile?.primary_color || settings?.primary_color,
+    "#D92DA8",
+  );
+  const logo = settings?.brand_logo_url
+    ? await loadImageHelper(settings.brand_logo_url, { output: "png", assetLabel: "logo da marca do carrossel" })
+    : null;
+
   for (const slide of slides) {
-    const slideItem = {
-      ...item,
-      rewritten_title: slide.title,
-      rewritten_summary: slide.body,
+    let stockImage = null;
+    if (slide.image_mode === "stock" && resolvedStockImages < maxStockImages) {
+      try {
+        stockImage = await resolveCarouselStockImage({
+          query: slide.image_query,
+          excludedIds: usedStockAssetIds,
+          cacheFile: path.join(TEMP_DIR, "carousel-stock-cache.json"),
+        });
+      } catch (error) {
+        console.warn(`[carousel:${item.id}] imagem real indisponível no slide ${slide.position}; usando fallback textual: ${error?.message || error}`);
+      }
+    }
+    if (stockImage) {
+      usedStockAssetIds.add(stockImage.audit.asset_id);
+      resolvedStockImages += 1;
+    }
+    const image = stockImage
+      ? await loadImageHelper(stockImage.downloadUrl, { output: "jpg", assetLabel: `imagem editorial do slide ${slide.position}` })
+      : null;
+    const persistedSlide = {
+      ...slide,
+      image_mode: image ? "stock" : "text",
+      image_asset: image ? stockImage.audit : null,
     };
-    const url = await composeAndUploadPostNode(slideItem, settings, {
-      storageSuffix: `-carousel-${slide.position}`,
-      updateNewsItem: false,
-      allowMissingPhoto: true,
+    const { createCanvas } = await getCanvasRuntime();
+    const canvas = createCanvas(EDITORIAL_CAROUSEL_WIDTH, EDITORIAL_CAROUSEL_HEIGHT);
+    const ctx = canvas.getContext("2d");
+    drawEditorialCarouselSlide(ctx, {
+      slide: persistedSlide,
+      total: slides.length,
+      handle,
+      logo,
+      image,
+      accentColor,
     });
+    const buffer = await encodeCanvas(canvas, "png");
+    const storagePath = `${item.user_id}/${item.id}-carousel-${slide.position}.png`;
+    await uploadPostAsset(storagePath, buffer, {
+      contentType: "image/png",
+      upsert: true,
+    });
+    const { data: publicAsset } = supabase.storage.from("post-images").getPublicUrl(storagePath);
+    const url = `${publicAsset.publicUrl}?t=${Date.now()}`;
     urls.push(url);
+    resolvedSlides.push(persistedSlide);
   }
   if (urls.length !== slides.length) {
     throw new Error("O worker não concluiu todas as imagens do carrossel.");
   }
   const { error } = await supabase.from("news_items").update({
     carousel_media_urls: urls,
+    carousel_slides: resolvedSlides,
     generated_image_url: urls[0],
     editorial_ready: true,
     error_message: null,

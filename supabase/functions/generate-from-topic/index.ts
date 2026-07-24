@@ -60,7 +60,7 @@ REGRAS:
 - Hashtags: 8-15, mix de nicho e amplas, em pt-BR.
 - Título curto (até 80 chars) para usar em capa.${carouselContract}
 
-Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa","slides":[{"title":"...","body":"..."}]}`;
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa","slides":[{"title":"...","body":"...","emphasis":["..."],"image_mode":"text","image_query":null,"image_alt":null}]}`;
 
   const userPrompt = `Pauta: "${topic.title}"\nGere o conteúdo no formato ${format}.`;
 
