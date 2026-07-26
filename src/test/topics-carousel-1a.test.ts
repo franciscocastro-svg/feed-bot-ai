@@ -11,6 +11,7 @@ const worker = read("worker/index.js");
 const publisher = read("supabase/functions/publish-scheduler/index.ts");
 const autopilot = read("supabase/functions/autopilot/index.ts");
 const news = read("src/pages/dashboard/News.tsx");
+const scheduled = read("src/pages/dashboard/Scheduled.tsx");
 
 const slides = Array.from({ length: 6 }, (_, index) => ({
   title: index === 0 ? "Gancho principal" : `Ideia ${index}`,
@@ -63,5 +64,10 @@ describe("Pautas 1A — geração completa de carrosséis", () => {
     expect(news).toContain("previewing.carousel_media_urls.map");
     expect(news).toContain("previewing.carousel_slides.map");
     expect(news).toContain("carrossel nativo de");
+    expect(scheduled).toContain("carousel_media_urls, content_format");
+    expect(scheduled).toContain('news.content_format === "carrossel"');
+    expect(scheduled).toContain("carouselMediaUrls.map");
+    expect(scheduled).toContain('const formatLabel = isCarousel ? "Carrossel"');
+    expect(scheduled).toContain("aspect-[4/5]");
   });
 });
