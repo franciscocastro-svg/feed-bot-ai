@@ -196,7 +196,10 @@ Deno.serve(async (req) => {
       source_id: null,
       source_name: "Pauta",
       instagram_account_id: instagramAccountId,
-      original_title: topic.title,
+      // Pautas são conteúdo perene e reutilizável: o dedupe de 7 dias vale para
+      // notícias captadas, não para gerações repetidas da mesma pauta.
+      original_title: `${topic.title} · pauta ${new Date().toISOString()}`,
+
       original_content: topic.notes || topic.title,
       original_url: `topic://${topic.id}/${Date.now()}`,
       original_image_url: null,
