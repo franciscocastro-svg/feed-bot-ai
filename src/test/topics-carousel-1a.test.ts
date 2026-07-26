@@ -20,14 +20,14 @@ const scheduled = read("src/pages/dashboard/Scheduled.tsx");
 
 const slides = Array.from({ length: 6 }, (_, index) => ({
   title: index === 0 ? "Gancho principal" : `Ideia ${index}`,
-  body: index === 0 ? "" : `Explicação concreta do slide ${index + 1}`,
+  body: index === 0 ? "Informação de impacto na capa" : `Explicação concreta do slide ${index + 1}`,
 }));
 
 describe("Pautas 1A — geração completa de carrosséis", () => {
   it("normaliza capa, desenvolvimento e CTA em uma sequência ordenada", () => {
     const result = normalizeTopicCarousel(slides, "Título", "Comente sua dúvida");
     expect(result).toHaveLength(6);
-    expect(result[0]).toMatchObject({ position: 1, role: "cover" });
+    expect(result[0]).toMatchObject({ position: 1, role: "cover", image_mode: "stock" });
     expect(result.at(-1)).toMatchObject({ position: 6, role: "cta" });
     expect(result.at(-1)?.body).toBe("Explicação concreta do slide 6");
   });

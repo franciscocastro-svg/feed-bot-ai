@@ -469,7 +469,9 @@ Deno.serve(async (req) => {
           .eq("user_id", userId)
           .eq("active", true);
         const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
-        const fallbackAccountId = igAccs?.[0]?.id;
+        // Só existe fallback seguro quando há exatamente uma conta. Com duas
+        // ou mais, conteúdo sem vínculo fica aguardando escolha explícita.
+        const fallbackAccountId = validIgIds.size === 1 ? igAccs?.[0]?.id : undefined;
         let postedRows: PostedAccountRow[] = [];
         if (validIgIds.size > 0) {
           const { data } = await supabase.from("scheduled_posts")

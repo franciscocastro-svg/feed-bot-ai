@@ -193,6 +193,7 @@ export default function Topics() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickTheme, setQuickTheme] = useState("");
   const [quickFormat, setQuickFormat] = useState("dica");
+  const [quickAccount, setQuickAccount] = useState("");
   const [quickLoading, setQuickLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [objectiveFilter, setObjectiveFilter] = useState("all");
@@ -201,7 +202,7 @@ export default function Topics() {
   const [selectedPack, setSelectedPack] = useState(CREATOR_PACKS[0].key as string);
   const [planAudience, setPlanAudience] = useState("");
   const [planTone, setPlanTone] = useState("");
-  const [planAccount, setPlanAccount] = useState("all");
+  const [planAccount, setPlanAccount] = useState("");
   const [planLoading, setPlanLoading] = useState(false);
 
   const load = async () => {
@@ -212,7 +213,18 @@ export default function Topics() {
       supabase.from("user_settings").select("topics_enabled, topics_posts_per_day").maybeSingle(),
     ]);
     setTopics(t.data || []);
-    setIgAccounts((ig.data as IgAccount[]) || []);
+    const activeAccounts = (ig.data as IgAccount[]) || [];
+    setIgAccounts(activeAccounts);
+    setQuickAccount((current) =>
+      activeAccounts.some((account) => account.id === current)
+        ? current
+        : activeAccounts.length === 1 ? activeAccounts[0].id : ""
+    );
+    setPlanAccount((current) =>
+      activeAccounts.some((account) => account.id === current)
+        ? current
+        : activeAccounts.length === 1 ? activeAccounts[0].id : ""
+    );
     setEnabled(!!us.data?.topics_enabled);
     setPostsPerDay(us.data?.topics_posts_per_day || 1);
     setLoading(false);
@@ -233,7 +245,8 @@ export default function Topics() {
 
   const openNew = () => { setEditing({
     title: "", notes: "", formats: ["dica", "mini_aula", "roteiro_reel"], active: true,
-    instagram_account_id: null, content_pillar: "", objective: "educar", target_audience: "",
+    instagram_account_id: igAccounts.length === 1 ? igAccounts[0].id : null,
+    content_pillar: "", objective: "educar", target_audience: "",
     funnel_stage: "descoberta", tone: "", call_to_action: "", keywords: [],
     frequency_per_week: 1, preferred_days: [], priority: 3, evergreen: true, source_type: "manual",
   }); setOpen(true); };
@@ -241,6 +254,11 @@ export default function Topics() {
 
   const save = async () => {
     if (!editing?.title?.trim()) { toast.error("Título obrigatório"); return; }
+    const targetAccountId = editing.instagram_account_id || (igAccounts.length === 1 ? igAccounts[0].id : null);
+    if (!targetAccountId) {
+      toast.error("Escolha o Instagram compatível com esta pauta");
+      return;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const payload = {
@@ -249,7 +267,7 @@ export default function Topics() {
       notes: editing.notes || null,
       formats: editing.formats && editing.formats.length ? editing.formats : ["dica"],
       active: editing.active !== false,
-      instagram_account_id: editing.instagram_account_id || null,
+      instagram_account_id: targetAccountId,
       content_pillar: editing.content_pillar?.trim() || null,
       objective: editing.objective || "educar",
       target_audience: editing.target_audience?.trim() || null,
@@ -309,6 +327,10 @@ export default function Topics() {
   const createStarterPlan = async () => {
     const pack = CREATOR_PACKS.find(item => item.key === selectedPack);
     if (!pack) return;
+    if (!planAccount) {
+      toast.error("Escolha o Instagram que receberá estas pautas");
+      return;
+    }
     setPlanLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -317,7 +339,7 @@ export default function Topics() {
         userId: user.id,
         targetAudience: planAudience.trim() || null,
         tone: planTone.trim() || null,
-        instagramAccountId: planAccount === "all" ? null : planAccount,
+        instagramAccountId: planAccount,
       });
       const { error } = await supabase.from("content_topics").insert(rows);
       if (error) throw error;
@@ -421,10 +443,18 @@ export default function Topics() {
   // Geração avulsa por tema
   const quickGenerate = async () => {
     if (quickTheme.trim().length < 3) { toast.error("Digite um tema (mín. 3 caracteres)"); return; }
+    if (!quickAccount) {
+      toast.error("Escolha o Instagram compatível com este conteúdo");
+      return;
+    }
     setQuickLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-from-prompt", {
-        body: { theme: quickTheme.trim(), format: quickFormat },
+        body: {
+          theme: quickTheme.trim(),
+          format: quickFormat,
+          instagram_account_id: quickAccount,
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -772,16 +802,16 @@ export default function Topics() {
               <Label>Palavras-chave</Label>
               <Input value={(editing?.keywords || []).join(", ")} onChange={e => setEditing({ ...editing!, keywords: e.target.value.split(",").map(v => v.trim()).filter(Boolean) })} placeholder="marketing, vendas, instagram" />
             </div>
-            {igAccounts.length > 1 && (
+            {igAccounts.length > 0 && (
               <div>
-                <Label>Conta Instagram (opcional)</Label>
-                <Select value={editing?.instagram_account_id || "all"} onValueChange={(v) => setEditing({ ...editing!, instagram_account_id: v === "all" ? null : v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label>Conta Instagram <span className="text-destructive">*</span></Label>
+                <Select value={editing?.instagram_account_id || ""} onValueChange={(v) => setEditing({ ...editing!, instagram_account_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Escolha o perfil compatível" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todas as contas</SelectItem>
                     {igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <p className="mt-1 text-xs text-muted-foreground">A pauta usará o nicho, a identidade e o template desta conta.</p>
               </div>
             )}
             <div>
@@ -863,9 +893,8 @@ export default function Topics() {
               <div>
                 <Label>Aplicar o plano em</Label>
                 <Select value={planAccount} onValueChange={setPlanAccount}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Escolha o perfil compatível" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todas as contas</SelectItem>
                     {igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1038,6 +1067,18 @@ export default function Topics() {
                   {FORMATS.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Conta Instagram <span className="text-destructive">*</span></Label>
+              <Select value={quickAccount} onValueChange={setQuickAccount}>
+                <SelectTrigger><SelectValue placeholder="Escolha onde este conteúdo faz sentido" /></SelectTrigger>
+                <SelectContent>
+                  {igAccounts.map(account => (
+                    <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">A IA respeitará o Perfil do Criador e o visual dessa conta.</p>
             </div>
           </div>
           <DialogFooter>

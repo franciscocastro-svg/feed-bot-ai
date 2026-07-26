@@ -40,7 +40,7 @@ export function normalizeEditorialCarouselSlide(slide, index, total) {
     title,
     body,
     emphasis: validEmphasis(slide?.emphasis, title, body),
-    image_mode: role !== "cta" && slide?.image_mode === "stock" ? "stock" : "text",
+    image_mode: role === "cover" ? "stock" : "text",
   };
 }
 

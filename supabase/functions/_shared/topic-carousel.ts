@@ -23,6 +23,7 @@ const MAX_SLIDES = 7;
 const MAX_STOCK_SLIDES = 1;
 const MAX_TITLE_LENGTH = 72;
 const MAX_BODY_LENGTH = 190;
+const MAX_IMAGE_QUERY_WORDS = 5;
 
 function cleanText(value: unknown, maxLength: number) {
   return String(value || "")
@@ -40,6 +41,14 @@ function cleanImageQuery(value: unknown) {
     .trim();
   if (!cleaned) return null;
   return cleaned;
+}
+
+function coverImageQuery(value: unknown, fallbackTitle: string) {
+  const requested = cleanImageQuery(value);
+  if (requested) return requested;
+  const fallback = cleanImageQuery(fallbackTitle);
+  if (!fallback) return "editorial news concept";
+  return fallback.split(/\s+/).slice(0, MAX_IMAGE_QUERY_WORDS).join(" ");
 }
 
 function normalizeEmphasis(value: unknown, title: string, body: string) {
@@ -67,29 +76,38 @@ export function normalizeTopicCarousel(
     throw new Error("Carrossel inválido: a IA não retornou a lista de slides.");
   }
 
-  let stockSlides = 0;
-  const normalized = rawSlides.slice(0, MAX_SLIDES).map<TopicCarouselSlide>((slide, index) => {
+  const requestedSlides = rawSlides.slice(0, MAX_SLIDES);
+  const requestedStock = requestedSlides
+    .map((slide) => slide && typeof slide === "object" ? slide as Record<string, unknown> : {})
+    .find((record, index) =>
+      index < requestedSlides.length - 1
+      && record.image_mode === "stock"
+      && Boolean(cleanImageQuery(record.image_query))
+    );
+  const normalized = requestedSlides.map<TopicCarouselSlide>((slide, index) => {
     const record = slide && typeof slide === "object" ? slide as Record<string, unknown> : {};
     const title = cleanText(record.title, MAX_TITLE_LENGTH);
     const body = cleanText(record.body, MAX_BODY_LENGTH);
     if (!title) throw new Error(`Carrossel inválido: o slide ${index + 1} está sem título.`);
-    if (index > 0 && !body) throw new Error(`Carrossel inválido: o slide ${index + 1} está sem conteúdo.`);
+    if (!body) throw new Error(`Carrossel inválido: o slide ${index + 1} está sem conteúdo.`);
     const isLastRequestedSlide = index === Math.min(rawSlides.length, MAX_SLIDES) - 1;
-    const imageQuery = cleanImageQuery(record.image_query);
-    const wantsStock = record.image_mode === "stock"
-      && Boolean(imageQuery)
-      && !isLastRequestedSlide
-      && stockSlides < MAX_STOCK_SLIDES;
-    if (wantsStock) stockSlides += 1;
+    const isCover = index === 0;
+    const coverStock = isCover
+      ? (cleanImageQuery(record.image_query) ? record : requestedStock)
+      : null;
+    const wantsStock = isCover && !isLastRequestedSlide && MAX_STOCK_SLIDES > 0;
+    const imageQuery = wantsStock
+      ? coverImageQuery(coverStock?.image_query, title || fallbackTitle)
+      : null;
     return {
       position: index + 1,
-      role: index === 0 ? "cover" : "content",
+      role: isCover ? "cover" : "content",
       title,
       body,
       emphasis: normalizeEmphasis(record.emphasis, title, body),
       image_mode: wantsStock ? "stock" : "text",
       image_query: wantsStock ? imageQuery : null,
-      image_alt: wantsStock ? cleanText(record.image_alt, 140) || title : null,
+      image_alt: wantsStock ? cleanText(coverStock?.image_alt, 140) || title : null,
     };
   });
 
@@ -116,9 +134,10 @@ export function normalizeTopicCarousel(
 export function carouselPromptContract() {
   return `Para carrossel, inclua obrigatoriamente "slides" com 5 a 7 objetos.
 Slide 1: capa com gancho curto. Slides intermediários: uma ideia concreta por slide. Último slide: conclusão e CTA.
+O slide 1 deve concentrar a manchete e a informação mais impactante do carrossel, sem guardar o principal fato para o slide 2.
 Escreva como um carrossel editorial minimalista: 24 a 38 palavras por slide, frases curtas, muito respiro e nenhuma parede de texto.
 Cada objeto deve seguir {"title":"até 72 caracteres","body":"até 190 caracteres","emphasis":["até 3 trechos exatos do title/body"],"image_mode":"text ou stock","image_query":"2 a 5 palavras genéricas em inglês ou null","image_alt":"descrição curta em pt-BR ou null"}.
-Use image_mode="stock" em no máximo 1 slide, preferencialmente na capa ou no primeiro desenvolvimento. Todos os outros slides e o CTA final devem ser text.
+Use image_mode="stock" obrigatoriamente no slide 1, com uma imagem diretamente relacionada à manchete. Todos os outros slides e o CTA final devem ser text.
 As buscas visuais devem representar conceitos genéricos; nunca peça pessoa pública, marca, logotipo, conta social ou evento exato.
 Escolha em emphasis apenas frases curtas que merecem negrito e que existam literalmente no title ou body.
 Não escreva fonte, URL, crédito, nome do banco de imagens ou marcadores "Slide N" na legenda, no title ou no body.`;
