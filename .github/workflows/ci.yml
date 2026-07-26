@@ -55,7 +55,8 @@ jobs:
         run: npm run check:edge-functions
 
       - name: Check production dependency security
-        run: npm audit --omit=dev --audit-level=moderate
+        # Scoped RSC-only waiver: docs/security/react-router-rsc-waiver.md
+        run: npm run check:production-audit
 
       - name: Report existing lint debt
         continue-on-error: true
