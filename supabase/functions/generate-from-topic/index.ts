@@ -236,17 +236,23 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error(e);
-    const msg = e instanceof Error ? e.message : "unknown";
-    const code = e?.code || null;
+    const rawCode = e?.code || null;
+    const isDuplicate = rawCode === "23505";
+    const code = isDuplicate ? "duplicate_content" : rawCode;
+    const msg = isDuplicate
+      ? (e?.details || "Já existe um conteúdo recente com este mesmo título. Ajuste a pauta ou tente outro formato.")
+      : (e instanceof Error ? e.message : (e?.message || "unknown"));
     // Fix: status HTTP semântico (não retornar 200 para erros)
     const status = code === "no_credits" ? 402
       : code === "rate_limited" ? 429
       : code === "creator_profile_forbidden" ? 422
       : code === "instagram_account_required" ? 409
+      : code === "duplicate_content" ? 409
       : code === "instagram_account_invalid" ? 404
       : code === "instagram_account_missing" ? 422
       : code === "no_provider" || code === "ai_unavailable" ? 503
       : 500;
     return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   }
 });
