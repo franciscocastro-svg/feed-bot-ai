@@ -46,6 +46,7 @@ import {
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
+const WORKER_POLL_INTERVAL_MS = 5_000;
 const MIN_NATURAL_CUT_SECONDS = 8;
 const IDEAL_NATURAL_CUT_SECONDS = 90;
 const MAX_NATURAL_CUT_SECONDS = 180;
@@ -3189,8 +3190,8 @@ async function main() {
       console.error("Erro no ciclo do worker:", err);
     }
     
-    // Aguarda 30 segundos antes do próximo polling para reduzir picos de CPU no VPS.
-    await new Promise((resolve) => setTimeout(resolve, 30000));
+    // Polling curto reduz a espera para iniciar renders editoriais sem alterar a fila durável.
+    await new Promise((resolve) => setTimeout(resolve, WORKER_POLL_INTERVAL_MS));
   }
 }
 

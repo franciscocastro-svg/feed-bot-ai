@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_SCHEDULE_REFRESH_MS,
+  PREPARING_CAROUSEL_REFRESH_MS,
+  scheduledRefreshInterval,
+} from "../lib/scheduledRefresh";
 import { normalizeTopicCarousel } from "../../supabase/functions/_shared/topic-carousel";
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
@@ -69,5 +74,27 @@ describe("Pautas 1A — geração completa de carrosséis", () => {
     expect(scheduled).toContain("carouselMediaUrls.map");
     expect(scheduled).toContain('const formatLabel = isCarousel ? "Carrossel"');
     expect(scheduled).toContain("aspect-[4/5]");
+  });
+
+  it("atualiza rapidamente somente enquanto um carrossel agendado está em preparação", () => {
+    const preparing = {
+      status: "scheduled",
+      news_items: { content_format: "carrossel", editorial_ready: false },
+    };
+    expect(scheduledRefreshInterval([preparing])).toBe(PREPARING_CAROUSEL_REFRESH_MS);
+    expect(PREPARING_CAROUSEL_REFRESH_MS).toBe(5_000);
+
+    expect(scheduledRefreshInterval([{
+      ...preparing,
+      news_items: { content_format: "carrossel", editorial_ready: true },
+    }])).toBe(DEFAULT_SCHEDULE_REFRESH_MS);
+    expect(scheduledRefreshInterval([{
+      ...preparing,
+      status: "failed",
+    }])).toBe(DEFAULT_SCHEDULE_REFRESH_MS);
+    expect(scheduledRefreshInterval([{
+      ...preparing,
+      news_items: { content_format: "feed", editorial_ready: false },
+    }])).toBe(DEFAULT_SCHEDULE_REFRESH_MS);
   });
 });
