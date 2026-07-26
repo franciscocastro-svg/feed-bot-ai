@@ -689,9 +689,10 @@ async function composeAndUploadCarouselNode(item, settings) {
   const urls = [];
   const resolvedSlides = [];
   const usedStockAssetIds = new Set();
-  const maxStockImages = Math.max(0, Math.min(2, Number(process.env.CAROUSEL_IMAGE_MAX_PER_CAROUSEL || 2)));
+  const maxStockImages = Math.max(0, Math.min(1, Number(process.env.CAROUSEL_IMAGE_MAX_PER_CAROUSEL || 1)));
   let resolvedStockImages = 0;
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
+  const brandName = String(settings?.brand_name || handle || "Flux & Feed").trim();
   const accentColor = safeTemplateColor(
     settings?.cut_brand_profile?.primary_color || settings?.primary_color,
     "#D92DA8",
@@ -699,6 +700,16 @@ async function composeAndUploadCarouselNode(item, settings) {
   const logo = settings?.brand_logo_url
     ? await loadImageHelper(settings.brand_logo_url, { output: "png", assetLabel: "logo da marca do carrossel" })
     : null;
+  let verifiedBadge = null;
+  try {
+    const verifiedBadgePath = path.join(__dirname, "assets", "verified-badge.png");
+    if (fs.existsSync(verifiedBadgePath)) {
+      const { loadImage } = await getCanvasRuntime();
+      verifiedBadge = await loadImage(verifiedBadgePath);
+    }
+  } catch (error) {
+    console.warn(`[carousel:${item.id}] selo de verificação indisponível; usando marcador simples: ${error?.message || error}`);
+  }
 
   for (const slide of slides) {
     let stockImage = null;
@@ -731,8 +742,10 @@ async function composeAndUploadCarouselNode(item, settings) {
     drawEditorialCarouselSlide(ctx, {
       slide: persistedSlide,
       total: slides.length,
+      brandName,
       handle,
       logo,
+      verifiedBadge,
       image,
       accentColor,
     });

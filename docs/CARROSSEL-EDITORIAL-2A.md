@@ -9,12 +9,16 @@ usar geração de imagens por IA.
 ## Contrato visual
 
 - formato vertical `1080x1350`;
-- fundo branco, tipografia preta, bastante espaço em branco e cor de destaque;
-- identidade da própria conta (logo e `@` efetivo);
+- fundo branco, tipografia preta e bastante espaço em branco;
+- identidade da própria conta em cabeçalho editorial com logo, nome, selo visual de
+  verificação e `@` efetivo;
+- conjunto de perfil e informação centralizado verticalmente nos slides textuais;
 - 5 a 7 slides;
-- trechos importantes em negrito;
-- no máximo duas fotos reais por carrossel;
+- 24 a 38 palavras por slide, sem paredes de texto;
+- até três frases curtas em negrito, preservadas literalmente do conteúdo;
+- no máximo uma foto real por carrossel;
 - último slide sempre textual, com uma CTA;
+- rodapé discreto, contador e indicação de continuidade;
 - nenhuma fonte, URL ou origem da imagem na legenda pública.
 
 As fontes e os URLs de origem continuam preservados nos metadados internos do
@@ -29,7 +33,7 @@ atribuição pública obrigatória. O worker:
 1. aceita somente consultas visuais genéricas;
 2. ativa `safesearch`;
 3. pede fotografias verticais;
-4. limita a duas imagens por carrossel;
+4. limita a uma imagem por carrossel;
 5. baixa a imagem para gerar o PNG final, sem hotlink permanente;
 6. guarda o resultado da busca em cache privado por 24 horas;
 7. registra internamente provedor, ID, autor, página, consulta e licença;
@@ -52,7 +56,7 @@ Adicionar ao ambiente privado do worker:
 ```dotenv
 CAROUSEL_IMAGE_PROVIDER=pixabay
 PIXABAY_API_KEY=<chave privada>
-CAROUSEL_IMAGE_MAX_PER_CAROUSEL=2
+CAROUSEL_IMAGE_MAX_PER_CAROUSEL=1
 ```
 
 Sem `PIXABAY_API_KEY`, o recurso permanece seguro e funcional, renderizando

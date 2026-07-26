@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ import {
 } from "../../worker/editorialCarousel.js";
 
 const temporaryDirectories: string[] = [];
+const editorialRenderer = readFileSync(join(process.cwd(), "worker/editorialCarousel.js"), "utf8");
 
 afterEach(() => {
   while (temporaryDirectories.length) {
@@ -37,10 +38,10 @@ function makeSlides() {
 }
 
 describe("Carrossel Editorial 2A", () => {
-  it("mantém compatibilidade, limita fotos reais e força CTA textual", () => {
+  it("mantém compatibilidade, limita a uma foto real e força CTA textual", () => {
     const result = normalizeTopicCarousel(makeSlides(), "Título");
     expect(result).toHaveLength(6);
-    expect(result.filter((slide) => slide.image_mode === "stock")).toHaveLength(2);
+    expect(result.filter((slide) => slide.image_mode === "stock")).toHaveLength(1);
     expect(result[1].emphasis).toEqual(["conteúdo factual"]);
     expect(result.at(-1)).toMatchObject({
       role: "cta",
@@ -59,7 +60,8 @@ describe("Carrossel Editorial 2A", () => {
   it("instrui a IA a pedir apenas imagens genéricas e nunca expor fonte na legenda", () => {
     const contract = carouselPromptContract();
     expect(contract).toContain('image_mode":"text ou stock');
-    expect(contract).toContain("no máximo 2 slides");
+    expect(contract).toContain("24 a 38 palavras por slide");
+    expect(contract).toContain("no máximo 1 slide");
     expect(contract).toContain("nunca peça pessoa pública, marca, logotipo");
     expect(contract).toContain("Não escreva fonte, URL, crédito");
   });
@@ -72,6 +74,24 @@ describe("Carrossel Editorial 2A", () => {
       5,
       6,
     )).toMatchObject({ role: "cta", image_mode: "text" });
+  });
+
+  it("limita o texto e só preserva destaques que existem no conteúdo", () => {
+    const normalized = normalizeEditorialCarouselSlide({
+      title: "Uma frase editorial curta com um destaque importante para o leitor e texto excedente",
+      body: "Este é um corpo curto com dado essencial. A segunda frase fecha a ideia sem criar uma parede de texto.".repeat(3),
+      emphasis: ["dado essencial", "trecho inventado"],
+      image_mode: "text",
+    }, 1, 6);
+
+    expect(normalized.title.length).toBeLessThanOrEqual(72);
+    expect(normalized.body.length).toBeLessThanOrEqual(190);
+    expect(normalized.emphasis).toEqual(["dado essencial"]);
+  });
+
+  it("centraliza verticalmente o conjunto editorial nos slides sem imagem", () => {
+    expect(editorialRenderer).toContain("const headerCenterY = hasImage ? 238 : 360");
+    expect(editorialRenderer).toContain('slide.role === "cta" ? 560 : 540');
   });
 
   it("monta uma busca Pixabay segura sem colocar a chave nos metadados", async () => {
@@ -158,7 +178,13 @@ describe("Carrossel Editorial 2A", () => {
     expect(worker).toContain("drawEditorialCarouselSlide");
     expect(worker).toContain("EDITORIAL_CAROUSEL_HEIGHT");
     expect(worker).toContain("carousel_slides: resolvedSlides");
+    expect(worker).toContain('path.join(__dirname, "assets", "verified-badge.png")');
+    expect(worker).toContain("verifiedBadge");
+    const verifiedBadgePath = join(process.cwd(), "worker/assets/verified-badge.png");
+    expect(existsSync(verifiedBadgePath)).toBe(true);
+    expect(statSync(verifiedBadgePath).size).toBeGreaterThan(1_000);
     expect(worker).not.toContain("caption: resolvedSlides");
+    expect(worker).toContain("Math.min(1");
     expect(worker).toContain("const WORKER_POLL_INTERVAL_MS = 5_000");
     expect(worker).toContain("setTimeout(resolve, WORKER_POLL_INTERVAL_MS)");
   });
