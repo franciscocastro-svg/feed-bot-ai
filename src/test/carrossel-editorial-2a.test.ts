@@ -29,19 +29,27 @@ afterEach(() => {
 function makeSlides() {
   return Array.from({ length: 6 }, (_, index) => ({
     title: index === 0 ? "Um gancho que prende" : `Ideia concreta ${index}`,
-    body: index === 0 ? "" : `Este é o conteúdo factual do slide ${index + 1}.`,
+    body: index === 0
+      ? "O dado mais importante aparece já na capa."
+      : `Este é o conteúdo factual do slide ${index + 1}.`,
     emphasis: index === 1 ? ["conteúdo factual", "trecho inexistente"] : [],
-    image_mode: index < 3 ? "stock" : "text",
-    image_query: index < 3 ? `business concept ${index}` : null,
-    image_alt: index < 3 ? "Fotografia editorial genérica" : null,
+    image_mode: index > 0 && index < 3 ? "stock" : "text",
+    image_query: index > 0 && index < 3 ? `business concept ${index}` : null,
+    image_alt: index > 0 && index < 3 ? "Fotografia editorial genérica" : null,
   }));
 }
 
 describe("Carrossel Editorial 2A", () => {
-  it("mantém compatibilidade, limita a uma foto real e força CTA textual", () => {
+  it("promove a única foto para a capa e força os demais slides a texto", () => {
     const result = normalizeTopicCarousel(makeSlides(), "Título");
     expect(result).toHaveLength(6);
     expect(result.filter((slide) => slide.image_mode === "stock")).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      role: "cover",
+      image_mode: "stock",
+      image_query: "business concept 1",
+    });
+    expect(result.slice(1).every((slide) => slide.image_mode === "text")).toBe(true);
     expect(result[1].emphasis).toEqual(["conteúdo factual"]);
     expect(result.at(-1)).toMatchObject({
       role: "cta",
@@ -54,14 +62,19 @@ describe("Carrossel Editorial 2A", () => {
       makeSlides().map(({ title, body }) => ({ title, body })),
       "Título",
     );
-    expect(legacy.every((slide) => slide.image_mode === "text")).toBe(true);
+    expect(legacy[0]).toMatchObject({
+      image_mode: "stock",
+      image_query: "Um gancho que prende",
+    });
+    expect(legacy.slice(1).every((slide) => slide.image_mode === "text")).toBe(true);
   });
 
   it("instrui a IA a pedir apenas imagens genéricas e nunca expor fonte na legenda", () => {
     const contract = carouselPromptContract();
     expect(contract).toContain('image_mode":"text ou stock');
     expect(contract).toContain("24 a 38 palavras por slide");
-    expect(contract).toContain("no máximo 1 slide");
+    expect(contract).toContain('image_mode="stock" obrigatoriamente no slide 1');
+    expect(contract).toContain("informação mais impactante");
     expect(contract).toContain("nunca peça pessoa pública, marca, logotipo");
     expect(contract).toContain("Não escreva fonte, URL, crédito");
   });
@@ -74,6 +87,11 @@ describe("Carrossel Editorial 2A", () => {
       5,
       6,
     )).toMatchObject({ role: "cta", image_mode: "text" });
+    expect(normalizeEditorialCarouselSlide(
+      { title: "Capa", body: "Impacto", image_mode: "text" },
+      0,
+      6,
+    )).toMatchObject({ role: "cover", image_mode: "stock" });
   });
 
   it("limita o texto e só preserva destaques que existem no conteúdo", () => {
@@ -184,7 +202,8 @@ describe("Carrossel Editorial 2A", () => {
     expect(existsSync(verifiedBadgePath)).toBe(true);
     expect(statSync(verifiedBadgePath).size).toBeGreaterThan(1_000);
     expect(worker).not.toContain("caption: resolvedSlides");
-    expect(worker).toContain("Math.min(1");
+    expect(worker).toContain("const maxStockImages = 1");
+    expect(worker).toContain("A capa do carrossel precisa de uma imagem relevante");
     expect(worker).toContain("const WORKER_POLL_INTERVAL_MS = 5_000");
     expect(worker).toContain("setTimeout(resolve, WORKER_POLL_INTERVAL_MS)");
   });

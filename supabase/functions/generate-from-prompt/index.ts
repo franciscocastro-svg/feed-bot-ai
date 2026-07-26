@@ -7,6 +7,7 @@ import {
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
 } from "../_shared/creator-profile.ts";
+import { resolveContentInstagramAccount } from "../_shared/content-account-routing.ts";
 import { carouselPromptContract, normalizeTopicCarousel } from "../_shared/topic-carousel.ts";
 
 const corsHeaders = {
@@ -39,23 +40,21 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({} as any));
     const theme: string = (body?.theme || "").toString().trim();
     const format: string = ["dica","mini_aula","pergunta","carrossel","frase"].includes(body?.format) ? body.format : "dica";
-    const instagramAccountId: string | null = body?.instagram_account_id || null;
+    const requestedInstagramAccountId: string | null = body?.instagram_account_id || null;
     if (!theme || theme.length < 3) {
       return new Response(JSON.stringify({ error: "Tema obrigatório (mín. 3 caracteres)." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    if (instagramAccountId) {
-      const { data: ownedAccount } = await supabase
-        .from("instagram_accounts")
-        .select("id")
-        .eq("id", instagramAccountId)
-        .eq("user_id", user.id)
-        .eq("active", true)
-        .maybeSingle();
-      if (!ownedAccount) {
-        return new Response(JSON.stringify({ error: "Conta Instagram inválida." }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
+    const { data: activeAccounts, error: accountsError } = await supabase
+      .from("instagram_accounts")
+      .select("id,username")
+      .eq("user_id", user.id)
+      .eq("active", true);
+    if (accountsError) throw accountsError;
+    const instagramAccountId = resolveContentInstagramAccount(
+      activeAccounts,
+      requestedInstagramAccountId,
+    );
 
     const [{ data: settings }, profile] = await Promise.all([
       supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -139,7 +138,12 @@ Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_t
     console.error(e);
     const code = typeof e?.code === "string" ? e.code : null;
     const expected = code === "no_provider" || code === "no_credits" || code === "ai_unavailable";
-    const status = code === "creator_profile_forbidden" ? 422 : expected ? 200 : 500;
+    const status = code === "creator_profile_forbidden" ? 422
+      : code === "instagram_account_required" ? 409
+      : code === "instagram_account_invalid" ? 404
+      : code === "instagram_account_missing" ? 422
+      : expected ? 200
+      : 500;
     return new Response(JSON.stringify({ error: e?.message || "unknown", code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

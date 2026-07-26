@@ -670,6 +670,11 @@ function normalizeCarouselSlidesForWorker(value) {
   if (!Array.isArray(value) || value.length < 5 || value.length > 7) {
     throw new Error("Carrossel sem contrato válido de 5 a 7 slides.");
   }
+  const requestedCoverImage = value.find((slide, index) =>
+    index < value.length - 1
+    && slide?.image_mode === "stock"
+    && String(slide?.image_query || "").trim()
+  );
   return value.map((slide, index) => {
     const title = String(slide?.title || "").trim();
     const body = String(slide?.body || "").trim();
@@ -680,6 +685,12 @@ function normalizeCarouselSlidesForWorker(value) {
       ...slide,
       title,
       body,
+      image_query: index === 0
+        ? String(slide?.image_query || requestedCoverImage?.image_query || title).trim()
+        : null,
+      image_alt: index === 0
+        ? String(slide?.image_alt || requestedCoverImage?.image_alt || title).trim()
+        : null,
     }, index, value.length);
   });
 }
@@ -689,7 +700,7 @@ async function composeAndUploadCarouselNode(item, settings) {
   const urls = [];
   const resolvedSlides = [];
   const usedStockAssetIds = new Set();
-  const maxStockImages = Math.max(0, Math.min(1, Number(process.env.CAROUSEL_IMAGE_MAX_PER_CAROUSEL || 1)));
+  const maxStockImages = 1;
   let resolvedStockImages = 0;
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const brandName = String(settings?.brand_name || handle || "Flux & Feed").trim();
@@ -721,16 +732,25 @@ async function composeAndUploadCarouselNode(item, settings) {
           cacheFile: path.join(TEMP_DIR, "carousel-stock-cache.json"),
         });
       } catch (error) {
-        console.warn(`[carousel:${item.id}] imagem real indisponível no slide ${slide.position}; usando fallback textual: ${error?.message || error}`);
+        console.warn(`[carousel:${item.id}] banco de imagens indisponível para a capa: ${error?.message || error}`);
       }
     }
     if (stockImage) {
       usedStockAssetIds.add(stockImage.audit.asset_id);
       resolvedStockImages += 1;
     }
-    const image = stockImage
+    let image = stockImage
       ? await loadImageHelper(stockImage.downloadUrl, { output: "jpg", assetLabel: `imagem editorial do slide ${slide.position}` })
       : null;
+    if (!image && slide.role === "cover" && item.original_image_url) {
+      image = await loadImageHelper(item.original_image_url, {
+        output: "jpg",
+        assetLabel: "imagem original da capa do carrossel",
+      });
+    }
+    if (slide.role === "cover" && !image) {
+      throw new Error("A capa do carrossel precisa de uma imagem relevante; nenhuma imagem segura foi encontrada.");
+    }
     const persistedSlide = {
       ...slide,
       image_mode: image ? "stock" : "text",

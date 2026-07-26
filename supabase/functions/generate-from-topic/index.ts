@@ -7,6 +7,7 @@ import {
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
 } from "../_shared/creator-profile.ts";
+import { resolveContentInstagramAccount } from "../_shared/content-account-routing.ts";
 import { carouselPromptContract, normalizeTopicCarousel } from "../_shared/topic-carousel.ts";
 
 const corsHeaders = {
@@ -119,10 +120,19 @@ Deno.serve(async (req) => {
     // Settings globais; o Perfil do Criador efetivo depende da conta da pauta.
     const { data: settings } = await supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle();
 
-    // Seleciona pauta: específica ou menos usada recentemente
+    // Seleciona pauta e contas em conjunto. Com mais de uma conta ativa, uma
+    // pauta sem destino explícito nunca pode cair silenciosamente na primeira.
     let topicQuery = supabase.from("content_topics").select("*").eq("user_id", userId).eq("active", true);
     if (topicId) topicQuery = topicQuery.eq("id", topicId);
-    const { data: topics } = await topicQuery;
+    const [{ data: topics }, { data: activeAccounts, error: accountsError }] = await Promise.all([
+      topicQuery,
+      supabase
+        .from("instagram_accounts")
+        .select("id,username")
+        .eq("user_id", userId)
+        .eq("active", true),
+    ]);
+    if (accountsError) throw accountsError;
     if (!topics || topics.length === 0) {
       return new Response(JSON.stringify({ error: "no_active_topics" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -132,7 +142,15 @@ Deno.serve(async (req) => {
     // sempre é permitida.
     const today = new Date().getDay();
     const now = Date.now();
-    const eligible = topicId ? topics : topics.filter((candidate: any) => {
+    const activeAccountIds = new Set((activeAccounts || []).map((account: any) => account.id));
+    const routableTopics = topicId
+      ? topics
+      : topics.filter((candidate: any) =>
+        candidate.instagram_account_id
+          ? activeAccountIds.has(candidate.instagram_account_id)
+          : activeAccountIds.size === 1
+      );
+    const eligible = topicId ? routableTopics : routableTopics.filter((candidate: any) => {
       const days = Array.isArray(candidate.preferred_days) ? candidate.preferred_days : [];
       if (days.length > 0 && !days.includes(today)) return false;
       if (!candidate.last_used_at) return true;
@@ -140,7 +158,7 @@ Deno.serve(async (req) => {
       const minimumGapMs = (7 / frequency) * 24 * 60 * 60 * 1000;
       return now - new Date(candidate.last_used_at).getTime() >= minimumGapMs;
     });
-    const candidates = eligible.length > 0 ? eligible : (topicId ? topics : []);
+    const candidates = eligible.length > 0 ? eligible : (topicId ? routableTopics : []);
     if (candidates.length === 0) {
       return new Response(JSON.stringify({ error: "no_topic_due_today", skipped: true }), {
         status: 200,
@@ -156,7 +174,11 @@ Deno.serve(async (req) => {
       return (a.use_count || 0) - (b.use_count || 0);
     });
     const topic = sorted[0];
-    const profile = await loadEffectiveCreatorProfile(supabase, userId!, topic.instagram_account_id);
+    const instagramAccountId = resolveContentInstagramAccount(
+      activeAccounts,
+      topic.instagram_account_id,
+    );
+    const profile = await loadEffectiveCreatorProfile(supabase, userId!, instagramAccountId);
     assertCreatorProfileCompliance([topic.title || "", topic.notes || ""], profile);
 
     // Escolhe formato
@@ -173,7 +195,7 @@ Deno.serve(async (req) => {
       user_id: userId,
       source_id: null,
       source_name: "Pauta",
-      instagram_account_id: topic.instagram_account_id,
+      instagram_account_id: instagramAccountId,
       original_title: topic.title,
       original_content: topic.notes || topic.title,
       original_url: `topic://${topic.id}/${Date.now()}`,
@@ -220,6 +242,9 @@ Deno.serve(async (req) => {
     const status = code === "no_credits" ? 402
       : code === "rate_limited" ? 429
       : code === "creator_profile_forbidden" ? 422
+      : code === "instagram_account_required" ? 409
+      : code === "instagram_account_invalid" ? 404
+      : code === "instagram_account_missing" ? 422
       : code === "no_provider" || code === "ai_unavailable" ? 503
       : 500;
     return new Response(JSON.stringify({ error: msg, code }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });

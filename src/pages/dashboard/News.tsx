@@ -807,6 +807,14 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
   }, [item?.id, item?.content_format]);
 
   useEffect(() => {
+    if (!item) {
+      setAcc("");
+      return;
+    }
+    setAcc(item.instagram_account_id || (igAccounts.length === 1 ? igAccounts[0].id : ""));
+  }, [item?.id, item?.instagram_account_id, igAccounts]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!itemId || isAiCut) {
       setEditorialDurationLoading(false);
@@ -860,6 +868,8 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
 
   const submit = async () => {
     if (!item || !when) return toast.error(t("Defina a data"));
+    const targetAccountId = acc || item.instagram_account_id || (igAccounts.length === 1 ? igAccounts[0].id : "");
+    if (!targetAccountId) return toast.error(t("Escolha a conta Instagram compatível com este conteúdo."));
     if (isCarouselItem(item) && mediaType !== "feed") return toast.error(t("Carrosséis só podem ser agendados no Feed."));
     if (mediaType === "reel" && !isAiCut && (editorialDurationLoading || editorialDurationError)) {
       return toast.error(t("Não foi possível confirmar a duração do Reel. Reabra esta janela e tente novamente."));
@@ -868,7 +878,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
     try {
       if (mediaType === "reel" && item.content_type !== "video_cut") {
         const { composeAndUploadStory } = await import("@/lib/composeStoryCanvas");
-        await composeAndUploadStory({ ...item, instagram_account_id: acc || item.instagram_account_id }, { withFollowCta: true });
+        await composeAndUploadStory({ ...item, instagram_account_id: targetAccountId }, { withFollowCta: true });
         await supabase.from("news_items")
           .update({ generated_video_url: null, editorial_ready: false, error_message: null })
           .eq("id", item.id);
@@ -886,7 +896,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
       const { error } = await supabase.from("scheduled_posts").insert({
         user_id: user!.id,
         news_item_id: item.id,
-        instagram_account_id: acc || item.instagram_account_id || igAccounts[0]?.id || null,
+        instagram_account_id: targetAccountId,
         scheduled_for: new Date(when).toISOString(),
         media_type: mediaType,
       });
@@ -962,7 +972,7 @@ function ScheduleDialog({ item, onClose, igAccounts }: { item: any | null; onClo
           <div>
             <Label>{t("Conta Instagram")}</Label>
             <Select value={acc} onValueChange={setAcc}>
-              <SelectTrigger><SelectValue placeholder={(() => { const def = igAccounts.find(a => a.id === item?.instagram_account_id) || igAccounts[0]; return def ? `@${def.username} ${t("(padrão)")}` : t("Padrão"); })()} /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("Escolha o perfil compatível")} /></SelectTrigger>
               <SelectContent>{igAccounts.map(a => <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>)}</SelectContent>
             </Select>
           </div>

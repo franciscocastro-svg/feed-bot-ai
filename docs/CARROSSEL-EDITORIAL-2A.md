@@ -16,7 +16,9 @@ usar geração de imagens por IA.
 - 5 a 7 slides;
 - 24 a 38 palavras por slide, sem paredes de texto;
 - até três frases curtas em negrito, preservadas literalmente do conteúdo;
-- no máximo uma foto real por carrossel;
+- exatamente uma foto real por carrossel, sempre na capa;
+- capa com manchete e a informação mais impactante, sem adiar o fato principal
+  para o slide 2;
 - último slide sempre textual, com uma CTA;
 - rodapé discreto, contador e indicação de continuidade;
 - nenhuma fonte, URL ou origem da imagem na legenda pública.
@@ -33,11 +35,14 @@ atribuição pública obrigatória. O worker:
 1. aceita somente consultas visuais genéricas;
 2. ativa `safesearch`;
 3. pede fotografias verticais;
-4. limita a uma imagem por carrossel;
+4. reserva a única imagem para a capa, inclusive promovendo uma sugestão visual
+   que a IA tenha colocado em outro slide;
 5. baixa a imagem para gerar o PNG final, sem hotlink permanente;
 6. guarda o resultado da busca em cache privado por 24 horas;
 7. registra internamente provedor, ID, autor, página, consulta e licença;
-8. cai para slide textual quando não há chave, resultado ou disponibilidade.
+8. usa a imagem original da notícia como segunda opção e, se nenhuma imagem
+   segura estiver disponível, mantém o carrossel bloqueado em preparação em vez
+   de criar uma capa sem foto.
 
 Não devem ser selecionadas automaticamente imagens de pessoas públicas,
 logotipos, marcas ou eventos exatos. O objetivo da foto é apoiar um conceito,
@@ -59,8 +64,16 @@ PIXABAY_API_KEY=<chave privada>
 CAROUSEL_IMAGE_MAX_PER_CAROUSEL=1
 ```
 
-Sem `PIXABAY_API_KEY`, o recurso permanece seguro e funcional, renderizando
-todos os slides somente com texto.
+Sem `PIXABAY_API_KEY` e sem imagem original, o worker não conclui o carrossel.
+Essa trava evita publicar uma capa fora do padrão aprovado.
+
+## Roteamento por conta
+
+- fontes continuam vinculadas explicitamente a uma ou mais contas Instagram;
+- temas avulsos e pautas exigem a conta de destino quando há mais de um perfil;
+- o Perfil do Criador e o kit visual são carregados da conta escolhida;
+- o piloto automático só usa fallback quando existe exatamente uma conta ativa;
+- conteúdo sem vínculo nunca é enviado silenciosamente ao primeiro Instagram.
 
 ## Escopo preservado
 
