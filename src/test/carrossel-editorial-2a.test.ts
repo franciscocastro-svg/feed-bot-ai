@@ -159,5 +159,7 @@ describe("Carrossel Editorial 2A", () => {
     expect(worker).toContain("EDITORIAL_CAROUSEL_HEIGHT");
     expect(worker).toContain("carousel_slides: resolvedSlides");
     expect(worker).not.toContain("caption: resolvedSlides");
+    expect(worker).toContain("const WORKER_POLL_INTERVAL_MS = 5_000");
+    expect(worker).toContain("setTimeout(resolve, WORKER_POLL_INTERVAL_MS)");
   });
 });

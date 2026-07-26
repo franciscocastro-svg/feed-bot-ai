@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { scheduledRefreshInterval } from "@/lib/scheduledRefresh";
 
 const ACTIVE_POST_LIMIT = 150;
 const POSTED_POST_LIMIT = 30;
-const SCHEDULE_REFRESH_MS = 30000;
 
 function isManagedReelVideoUrl(url?: string | null, userId?: string | null, itemId?: string | null, contentType?: string | null) {
   if (contentType === "video_cut") return Boolean(url);
@@ -39,7 +39,7 @@ export default function Scheduled() {
   const [editAccount, setEditAccount] = useState<string>("");
   const [editWhen, setEditWhen] = useState<string>("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, carousel_media_urls, content_format, editorial_ready, caption, reel_caption, content_type), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
       supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
@@ -64,12 +64,18 @@ export default function Scheduled() {
     });
     setPosts(sorted);
     setAccounts(a || []);
-  };
+  }, []);
+
+  const refreshInterval = scheduledRefreshInterval(posts);
+
   useEffect(() => {
     load();
-    const i = setInterval(load, SCHEDULE_REFRESH_MS);
+  }, [load]);
+
+  useEffect(() => {
+    const i = setInterval(load, refreshInterval);
     return () => clearInterval(i);
-  }, []);
+  }, [load, refreshInterval]);
 
   const refresh = async () => {
     setRefreshing(true);
