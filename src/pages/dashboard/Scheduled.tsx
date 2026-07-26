@@ -40,7 +40,7 @@ export default function Scheduled() {
   const [editWhen, setEditWhen] = useState<string>("");
 
   const load = async () => {
-    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, editorial_ready, caption, reel_caption, content_type), instagram_accounts(username)";
+    const sel = "*, news_items(rewritten_title, generated_image_url, generated_cover_url, generated_video_url, carousel_media_urls, content_format, editorial_ready, caption, reel_caption, content_type), instagram_accounts(username)";
     const [{ data: pending }, { data: postedRows }, { data: a }] = await Promise.all([
       supabase.from("scheduled_posts").select(sel).in("status", ["scheduled", "posting", "awaiting_container", "failed"]).order("scheduled_for", { ascending: true }).limit(ACTIVE_POST_LIMIT),
       supabase.from("scheduled_posts").select(sel).eq("status", "posted").order("posted_at", { ascending: false }).limit(POSTED_POST_LIMIT),
@@ -405,6 +405,10 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
 
   const news = post.news_items || {};
   const mediaType = post.media_type === "reel" ? "reel" : post.media_type === "story" ? "story" : "feed";
+  const isCarousel = mediaType === "feed" && news.content_format === "carrossel";
+  const carouselMediaUrls = isCarousel && Array.isArray(news.carousel_media_urls)
+    ? news.carousel_media_urls.filter((url: unknown): url is string => typeof url === "string" && url.length > 0)
+    : [];
   const managedReelVideo = mediaType === "reel"
     ? isManagedReelVideoUrl(news.generated_video_url, post.user_id, post.news_item_id, news.content_type)
     : false;
@@ -417,7 +421,7 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
   const caption = mediaType === "reel"
     ? news.reel_caption || news.caption || ""
     : news.caption || "";
-  const formatLabel = mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
+  const formatLabel = isCarousel ? "Carrossel" : mediaType === "reel" ? "Reel" : mediaType === "story" ? "Story" : "Feed";
 
   return (
     <Dialog open={!!post} onOpenChange={(open) => !open && onClose()}>
@@ -431,7 +435,29 @@ function PublicationPreviewDialog({ post, onClose }: { post: any | null; onClose
 
         <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
           <div className="rounded-xl border bg-black/95 p-2 flex items-center justify-center min-h-64">
-            {mediaUrl ? (
+            {isCarousel ? (
+              carouselMediaUrls.length > 0 ? (
+                <div className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+                  {carouselMediaUrls.map((url: string, index: number) => (
+                    <figure key={`${url}-${index}`} className="min-w-[88%] snap-center space-y-2 sm:min-w-[72%]">
+                      <img
+                        src={url}
+                        alt={`${t("Slide")} ${index + 1} ${t("de")} ${carouselMediaUrls.length}`}
+                        className="aspect-[4/5] max-h-[68vh] w-full rounded-lg bg-black object-contain"
+                      />
+                      <figcaption className="text-center text-xs text-white/70">
+                        {t("Slide")} {index + 1} {t("de")} {carouselMediaUrls.length}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-sm text-white/70">
+                  <ImageIcon className="h-10 w-10 mx-auto mb-3" />
+                  {t("O carrossel ainda está sendo preparado.")}
+                </div>
+              )
+            ) : mediaUrl ? (
               isVideo ? (
                 <video src={mediaUrl} poster={news.generated_cover_url || news.generated_image_url || undefined} controls playsInline className="max-h-[68vh] w-auto max-w-full rounded-lg bg-black" />
               ) : (
