@@ -1,5 +1,4 @@
 export const MIN_POST_INTERVAL_MINUTES = 10;
-export const EDITORIAL_PREPARATION_LEAD_MINUTES = 20;
 
 const URGENT_TERMS = /\b(urgente|exclusivo|bombou|chocante|polêmica|polemica|escândalo|escandalo|revela|revelad[oa]|surpreende|surpreendente|inédit[oa]|inedit[oa]|recorde|histórico|historico|morre|morreu|morte|prisão|prisao|preso|presa|vaza|vazou|confirma|confirmad[oa]|anuncia|anunciad[oa]|novo|nova|primeira vez|nunca visto|impressionante|viral)\b/gi;
 
@@ -51,14 +50,13 @@ export function compareEditorialNews(a: EditorialNews, b: EditorialNews, nowMs =
   return String(a.id || "").localeCompare(String(b.id || ""));
 }
 
-export function shouldPrepareNextPost(
+export function nextAllowedPublicationAt(
   lastPostedAtMs: number | null | undefined,
   intervalMinutes: number,
   nowMs = Date.now(),
-  leadMinutes = EDITORIAL_PREPARATION_LEAD_MINUTES,
-): boolean {
-  if (!lastPostedAtMs || !Number.isFinite(lastPostedAtMs)) return true;
+): number {
+  const immediateSlot = nowMs + 60_000;
+  if (!lastPostedAtMs || !Number.isFinite(lastPostedAtMs)) return immediateSlot;
   const safeInterval = resolveGlobalPostInterval(intervalMinutes);
-  const nextAllowedAt = lastPostedAtMs + safeInterval * 60_000;
-  return nowMs >= nextAllowedAt - Math.max(1, leadMinutes) * 60_000;
+  return Math.max(immediateSlot, lastPostedAtMs + safeInterval * 60_000);
 }

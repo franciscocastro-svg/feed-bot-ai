@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   compareEditorialNews,
   editorialNewsScore,
+  nextAllowedPublicationAt,
   resolveGlobalPostInterval,
-  shouldPrepareNextPost,
 } from "../../supabase/functions/_shared/editorial-policy";
 
 const NOW = new Date("2026-07-13T20:00:00-03:00").getTime();
@@ -56,14 +56,15 @@ describe("editorial policy", () => {
     expect([common, urgent].sort((a, b) => compareEditorialNews(a, b, NOW))[0].id).toBe("urgent");
   });
 
-  it("prepara conteúdo apenas perto da próxima vaga quando o intervalo é longo", () => {
+  it("mantém o intervalo somente no horário da próxima publicação", () => {
     const lastPosted = new Date("2026-07-13T18:00:00-03:00").getTime();
-    expect(shouldPrepareNextPost(lastPosted, 120, new Date("2026-07-13T19:39:59-03:00").getTime())).toBe(false);
-    expect(shouldPrepareNextPost(lastPosted, 120, new Date("2026-07-13T19:40:00-03:00").getTime())).toBe(true);
+    const now = new Date("2026-07-13T18:05:00-03:00").getTime();
+    expect(nextAllowedPublicationAt(lastPosted, 120, now))
+      .toBe(new Date("2026-07-13T20:00:00-03:00").getTime());
   });
 
-  it("começa imediatamente quando o intervalo cabe na janela de preparação", () => {
-    const lastPosted = new Date("2026-07-13T19:42:00-03:00").getTime();
-    expect(shouldPrepareNextPost(lastPosted, 18, NOW)).toBe(true);
+  it("agenda no próximo minuto quando a conta já cumpriu o intervalo", () => {
+    const lastPosted = new Date("2026-07-13T19:00:00-03:00").getTime();
+    expect(nextAllowedPublicationAt(lastPosted, 18, NOW)).toBe(NOW + 60_000);
   });
 });
