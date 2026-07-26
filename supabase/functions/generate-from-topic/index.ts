@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({} as any));
     const topicId: string | null = body?.topic_id || null;
     const forcedFormat: string | null = body?.format || null;
+    const requestedInstagramAccountId: string | null = body?.instagram_account_id || null;
     let userId: string | null = body?.user_id || null;
     let supabase;
 
@@ -143,12 +144,18 @@ Deno.serve(async (req) => {
     const today = new Date().getDay();
     const now = Date.now();
     const activeAccountIds = new Set((activeAccounts || []).map((account: any) => account.id));
+    const requestedActiveAccountId = requestedInstagramAccountId
+      ? resolveContentInstagramAccount(activeAccounts, requestedInstagramAccountId)
+      : null;
     const routableTopics = topicId
       ? topics
       : topics.filter((candidate: any) =>
-        candidate.instagram_account_id
-          ? activeAccountIds.has(candidate.instagram_account_id)
-          : activeAccountIds.size === 1
+        requestedActiveAccountId
+          ? candidate.instagram_account_id === requestedActiveAccountId ||
+            (!candidate.instagram_account_id && activeAccountIds.size === 1)
+          : candidate.instagram_account_id
+            ? activeAccountIds.has(candidate.instagram_account_id)
+            : activeAccountIds.size === 1
       );
     const eligible = topicId ? routableTopics : routableTopics.filter((candidate: any) => {
       const days = Array.isArray(candidate.preferred_days) ? candidate.preferred_days : [];
@@ -176,7 +183,9 @@ Deno.serve(async (req) => {
     const topic = sorted[0];
     const instagramAccountId = resolveContentInstagramAccount(
       activeAccounts,
-      topic.instagram_account_id,
+      !topicId && requestedActiveAccountId
+        ? requestedActiveAccountId
+        : topic.instagram_account_id,
     );
     const profile = await loadEffectiveCreatorProfile(supabase, userId!, instagramAccountId);
     assertCreatorProfileCompliance([topic.title || "", topic.notes || ""], profile);

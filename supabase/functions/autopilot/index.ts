@@ -10,8 +10,8 @@ import {
   compareEditorialNews,
   editorialNewsScore,
   MIN_POST_INTERVAL_MINUTES,
+  nextAllowedPublicationAt,
   resolveGlobalPostInterval,
-  shouldPrepareNextPost,
   type EditorialNews,
 } from "../_shared/editorial-policy.ts";
 
@@ -98,6 +98,14 @@ type PostedAccountRow = {
   posted_at: string | null;
 };
 
+type AccountRouteRow = {
+  instagram_account_id: string | null;
+};
+
+type ActiveInstagramAccountRow = {
+  id: string;
+};
+
 function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
   const t = text.toLowerCase();
   const active = channels.filter(c => c.active);
@@ -149,6 +157,7 @@ function nextSlotForChannel(
   takenByChannel: Date[],
   allTaken: Date[],
   minIntervalAcrossAccount = MIN_POST_INTERVAL_MINUTES,
+  notBeforeMs = Date.now() + 60_000,
 ): Date | null {
   // Tudo é interpretado em America/Sao_Paulo (UTC-3, sem horário de verão).
   // O servidor Deno roda em UTC, então aplicamos offset manual.
@@ -157,7 +166,7 @@ function nextSlotForChannel(
   const fromBRT = (d: Date) => new Date(d.getTime() + BRT_OFFSET_MS); // BRT-vista -> UTC real
 
   const now = new Date();
-  let candidate = new Date(now.getTime() + 60_000);
+  let candidate = new Date(Math.max(now.getTime() + 60_000, notBeforeMs));
   const cooldownMs = cfg.min_interval_minutes * 60_000;
   const globalCooldownMs = Math.max(minIntervalAcrossAccount, MIN_POST_INTERVAL_MINUTES) * 60_000;
   const lastTakenAt = allTaken.length ? Math.max(...allTaken.map((d) => d.getTime())) : 0;
@@ -489,26 +498,27 @@ Deno.serve(async (req) => {
           if (!row.instagram_account_id || !row.posted_at || lastPostedByAccount.has(row.instagram_account_id)) continue;
           lastPostedByAccount.set(row.instagram_account_id, new Date(row.posted_at).getTime());
         }
-        const canPrepareAccount = (accountId: string) => shouldPrepareNextPost(
-          lastPostedByAccount.get(accountId),
-          masterMinInterval,
-        );
         userSummary.steps.active_instagram_accounts = (igAccs || []).map((a: any) => ({
           id: a.id,
           username: a.username,
           has_queue: activeQueueIgIds.has(a.id),
         }));
 
-        // 2.1) Conteúdo perene por Pautas: quando ativado, gera no máximo
-        // uma pauta por rodada e só se a conta estiver livre. Assim o fluxo
-        // continua one-at-a-time: gerar -> processar -> agendar -> publicar.
-        if ((u as any).topics_enabled && !(activeQueueCount && activeQueueCount > 0)) {
+        // 2.1) Conteúdo perene por Pautas: quando ativado, gera no máximo uma
+        // pauta por rodada para uma conta livre. A fila de outra conta não pode
+        // bloquear esta preparação, e o destino é sempre explícito.
+        if ((u as any).topics_enabled && validIgIds.size > 0) {
           const todayStart = new Date();
           todayStart.setHours(0, 0, 0, 0);
           const todayEnd = new Date(todayStart);
           todayEnd.setDate(todayEnd.getDate() + 1);
           const topicDailyLimit = Math.max(1, Math.min(5, Number((u as any).topics_posts_per_day) || 1));
-          const [{ count: topicsToday }, { count: pendingTopics }, { count: activeTopics }] = await Promise.all([
+          const [
+            { count: topicsToday },
+            { data: pendingTopicRows },
+            { data: activeTopicRows },
+            { data: activeTopicRoutes },
+          ] = await Promise.all([
             supabase
               .from("news_items")
               .select("id", { count: "exact", head: true })
@@ -518,31 +528,73 @@ Deno.serve(async (req) => {
               .lt("published_at", todayEnd.toISOString()),
             supabase
               .from("news_items")
-              .select("id", { count: "exact", head: true })
+              .select("id, instagram_account_id")
               .eq("user_id", userId)
               .eq("content_type", "topic")
               .in("status", ["pending", "processing", "processed"]),
             supabase
               .from("scheduled_posts")
-              .select("id, news_items!inner(content_type)", { count: "exact", head: true })
+              .select("id, instagram_account_id, news_items!inner(content_type)")
               .eq("user_id", userId)
               .in("status", PUBLISH_ACTIVE_STATUSES)
               .eq("news_items.content_type", "topic"),
+            supabase
+              .from("content_topics")
+              .select("instagram_account_id")
+              .eq("user_id", userId)
+              .eq("active", true),
           ]);
+          const pendingTopicRoutes = (pendingTopicRows || []) as AccountRouteRow[];
+          const scheduledTopicRoutes = (activeTopicRows || []) as AccountRouteRow[];
+          const configuredTopicRoutes = (activeTopicRoutes || []) as AccountRouteRow[];
+          const activeAccountsForTopics = (igAccs || []) as ActiveInstagramAccountRow[];
+          const pendingTopicAccountIds = new Set(
+            pendingTopicRoutes.map((row) =>
+              row.instagram_account_id && validIgIds.has(row.instagram_account_id)
+                ? row.instagram_account_id
+                : fallbackAccountId
+            ).filter(Boolean),
+          );
+          const activeTopicAccountIds = new Set(
+            scheduledTopicRoutes.map((row) =>
+              row.instagram_account_id && validIgIds.has(row.instagram_account_id)
+                ? row.instagram_account_id
+                : fallbackAccountId
+            ).filter(Boolean),
+          );
+          const routedTopicAccountIds = new Set(
+            configuredTopicRoutes.map((row) => row.instagram_account_id).filter(Boolean),
+          );
+          const hasSingleAccountLegacyTopic =
+            validIgIds.size === 1 &&
+            configuredTopicRoutes.some((row) => !row.instagram_account_id);
+          const topicAccountId = activeAccountsForTopics.find((account) =>
+            !activeQueueIgIds.has(account.id) &&
+            !pendingTopicAccountIds.has(account.id) &&
+            !activeTopicAccountIds.has(account.id) &&
+            (routedTopicAccountIds.has(account.id) || hasSingleAccountLegacyTopic)
+          )?.id;
           const canGenerateTopic =
             (topicsToday || 0) < topicDailyLimit &&
-            !(pendingTopics && pendingTopics > 0) &&
-            !(activeTopics && activeTopics > 0);
-          if (canGenerateTopic) {
-            const topicResult = await callFn("generate-from-topic", { user_id: userId });
-            userSummary.steps.topic_generation = { ok: topicResult.ok, data: topicResult.data };
+            Boolean(topicAccountId);
+          if (canGenerateTopic && topicAccountId) {
+            const topicResult = await callFn("generate-from-topic", {
+              user_id: userId,
+              instagram_account_id: topicAccountId,
+            });
+            userSummary.steps.topic_generation = {
+              ok: topicResult.ok,
+              instagram_account_id: topicAccountId,
+              data: topicResult.data,
+            };
           } else {
             userSummary.steps.topic_generation = {
               skipped: true,
               topics_today: topicsToday || 0,
               limit: topicDailyLimit,
-              pending_topics: pendingTopics || 0,
-              active_topics: activeTopics || 0,
+              pending_topics: (pendingTopicRows || []).length,
+              active_topics: (activeTopicRows || []).length,
+              free_routed_account: topicAccountId || null,
             };
           }
         }
@@ -633,7 +685,6 @@ Deno.serve(async (req) => {
             : fallbackAccountId;
           if (!targetIg) continue;
           if ((activeQueueCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
-          if (!canPrepareAccount(targetIg)) continue;
           if (inFlightIgIds.has(targetIg)) continue;
           if (pickedIgIds.has(targetIg)) continue;
           if (item.fingerprint && pickedFingerprints.has(item.fingerprint)) continue;
@@ -700,17 +751,27 @@ Deno.serve(async (req) => {
         const dupeRows: any[] = recentScheduledForDupes || [];
 
         const alreadyScheduledNews = new Set((existingScheduled || []).map((s) => s.news_item_id));
-        const allTaken = (existingScheduled || []).map((s) => new Date(s.scheduled_for));
-        const takenByCh: Record<string, Date[]> = { feed: [], story: [], reel: [] };
-        (existingScheduled || []).forEach((s: any) => {
-          const k = s.media_type === "story" ? "story" : s.media_type === "reel" ? "reel" : "feed";
-          takenByCh[k].push(new Date(s.scheduled_for));
-        });
+        const allTakenByIg = new Map<string, Date[]>();
+        const takenByChByIg = new Map<string, Record<ChannelCfg["channel"], Date[]>>();
         // Mantém uma fila curta por conta. Um item problemático não pode
         // bloquear toda a produção, mas o limite evita acúmulo sem controle.
         const activeScheduledCountByIg = new Map<string, number>();
         for (const row of existingScheduled || []) {
           if (!row.instagram_account_id) continue;
+          const scheduledFor = new Date(row.scheduled_for);
+          const accountTaken = allTakenByIg.get(row.instagram_account_id) || [];
+          accountTaken.push(scheduledFor);
+          allTakenByIg.set(row.instagram_account_id, accountTaken);
+          const channelTaken = takenByChByIg.get(row.instagram_account_id) || {
+            feed: [],
+            story: [],
+            reel: [],
+          };
+          const channel = row.media_type === "story"
+            ? "story"
+            : row.media_type === "reel" ? "reel" : "feed";
+          channelTaken[channel].push(scheduledFor);
+          takenByChByIg.set(row.instagram_account_id, channelTaken);
           activeScheduledCountByIg.set(
             row.instagram_account_id,
             (activeScheduledCountByIg.get(row.instagram_account_id) || 0) + 1,
@@ -795,66 +856,84 @@ Deno.serve(async (req) => {
 
         const scheduledNow: { id: string; channel: string }[] = [];
         const scheduledThisRunIgIds = new Set<string>();
-        if (fallbackAccountId) {
-          for (const it of rankedReady) {
-            if (alreadyScheduledNews.has(it.id)) continue;
-            if (remainingDailyCap <= 0) break; // respeita limite global da Automação
-            // Resolve qual IG usar: o vinculado à notícia (se válido) ou o fallback
-            const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
-              ? it.instagram_account_id
-              : fallbackAccountId;
-            if (!canPrepareAccount(targetIg)) continue;
-            // No máximo uma nova publicação por conta em cada tick. A fila
-            // pode manter uma reserva, mas nunca é preenchida em rajada.
-            if (scheduledThisRunIgIds.has(targetIg)) continue;
-            const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg, true));
-            if (duplicateRow) {
-              await supabase.from("news_items").update({
-                status: "rejected",
-                error_message: "Duplicada: notícia igual já foi agendada ou publicada para outra conta deste cliente",
-              }).eq("id", it.id).eq("user_id", userId);
-              continue;
-            }
-            if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
-            const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
-            const cfg = it.content_format === "carrossel"
-              ? channels.find((channel) => channel.channel === "feed" && channel.active) || null
-              : pickChannel(text, channels);
-            if (!cfg) continue;
-            const slot = nextSlotForChannel(cfg, takenByCh[cfg.channel], allTaken, masterMinInterval);
-            if (!slot) continue;
-            const { error } = await supabase.from("scheduled_posts").insert({
-              user_id: userId,
+        for (const it of rankedReady) {
+          if (alreadyScheduledNews.has(it.id)) continue;
+          if (remainingDailyCap <= 0) break; // respeita limite global da Automação
+          // Com múltiplas contas, somente itens com destino válido entram na
+          // fila. O fallback continua seguro para clientes com uma única conta.
+          const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
+            ? it.instagram_account_id
+            : fallbackAccountId;
+          if (!targetIg) continue;
+          // No máximo uma nova publicação por conta em cada tick. A fila
+          // pode manter uma reserva, mas nunca é preenchida em rajada.
+          if (scheduledThisRunIgIds.has(targetIg)) continue;
+          const duplicateRow = dupeRows.find((row) => sameScheduledFingerprint(it, row, targetIg, true));
+          if (duplicateRow) {
+            await supabase.from("news_items").update({
+              status: "rejected",
+              error_message: "Duplicada: notícia igual já foi agendada ou publicada para outra conta deste cliente",
+            }).eq("id", it.id).eq("user_id", userId);
+            continue;
+          }
+          if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
+          const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
+          const cfg = it.content_format === "carrossel"
+            ? channels.find((channel) => channel.channel === "feed" && channel.active) || null
+            : pickChannel(text, channels);
+          if (!cfg) continue;
+          const accountTaken = allTakenByIg.get(targetIg) || [];
+          const channelTaken = takenByChByIg.get(targetIg) || {
+            feed: [],
+            story: [],
+            reel: [],
+          };
+          const notBeforeMs = nextAllowedPublicationAt(
+            lastPostedByAccount.get(targetIg),
+            masterMinInterval,
+          );
+          const slot = nextSlotForChannel(
+            cfg,
+            channelTaken[cfg.channel],
+            accountTaken,
+            masterMinInterval,
+            notBeforeMs,
+          );
+          if (!slot) continue;
+          const { error } = await supabase.from("scheduled_posts").insert({
+            user_id: userId,
+            news_item_id: it.id,
+            instagram_account_id: targetIg,
+            scheduled_for: slot.toISOString(),
+            status: "scheduled",
+            media_type: cfg.channel,
+          });
+          if (!error) {
+            await supabase.from("news_items").update({ status: "scheduled" }).eq("id", it.id).eq("user_id", userId);
+            scheduledNow.push({ id: it.id, channel: cfg.channel });
+            channelTaken[cfg.channel].push(slot);
+            accountTaken.push(slot);
+            takenByChByIg.set(targetIg, channelTaken);
+            allTakenByIg.set(targetIg, accountTaken);
+            remainingDailyCap--;
+            activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
+            scheduledThisRunIgIds.add(targetIg);
+            dupeRows.push({
               news_item_id: it.id,
               instagram_account_id: targetIg,
-              scheduled_for: slot.toISOString(),
-              status: "scheduled",
-              media_type: cfg.channel,
+              news_items: {
+                id: it.id,
+                original_url: it.original_url,
+                original_canonical_url: it.original_canonical_url,
+                original_title: it.original_title,
+                rewritten_title: it.rewritten_title,
+              },
             });
-            if (!error) {
-              await supabase.from("news_items").update({ status: "scheduled" }).eq("id", it.id).eq("user_id", userId);
-              scheduledNow.push({ id: it.id, channel: cfg.channel });
-              takenByCh[cfg.channel].push(slot);
-              allTaken.push(slot);
-              remainingDailyCap--;
-              activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
-              scheduledThisRunIgIds.add(targetIg);
-              dupeRows.push({
-                news_item_id: it.id,
-                instagram_account_id: targetIg,
-                news_items: {
-                  id: it.id,
-                  original_url: it.original_url,
-                  original_canonical_url: it.original_canonical_url,
-                  original_title: it.original_title,
-                  rewritten_title: it.rewritten_title,
-                },
-              });
-            }
           }
         }
         userSummary.steps.scheduled = scheduledNow;
-        userSummary.steps.account = fallbackAccountId ? "ok" : "missing";
+        userSummary.steps.account = validIgIds.size > 0 ? "ok" : "missing";
+        userSummary.steps.explicit_account_required = validIgIds.size > 1;
 
         // 4) publicar o que está vencido
         const pub = await callFn("publish-scheduler", { user_id: userId });
