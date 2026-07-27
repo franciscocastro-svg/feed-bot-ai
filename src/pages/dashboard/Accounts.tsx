@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { UpgradeModal } from "@/components/UpgradeModal";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const empty = { username: "", niche: "" };
+const emptyManual = { username: "", ig_user_id: "", page_id: "", access_token: "", niche: "" };
 const ACCOUNT_PUBLIC_COLUMNS = "id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status";
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => (
@@ -40,12 +41,31 @@ function friendlyInstagramConnectError(reason: string | null, t: (source: string
   return text;
 }
 
+async function edgeFunctionErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const context = error && typeof error === "object" && "context" in error
+    ? (error as { context?: Response }).context
+    : null;
+  if (context) {
+    try {
+      const payload = await context.clone().json() as { message?: string; error?: string };
+      if (payload.message) return payload.message;
+      if (payload.error) return payload.error;
+    } catch {
+      // The generic SDK message below remains safe when the response has no JSON body.
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function Accounts() {
   const { language, locale, t } = useLanguage();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
+  const [manualForm, setManualForm] = useState(emptyManual);
+  const [manualSaving, setManualSaving] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -105,6 +125,29 @@ export default function Accounts() {
     load();
   };
 
+  const saveManual = async () => {
+    if (!manualForm.access_token.trim()) return toast.error(t("Access Token obrigatório"));
+    setManualSaving(true);
+    const { data, error } = await supabase.functions.invoke("instagram-manual-connect", {
+      body: manualForm,
+    });
+    setManualSaving(false);
+    if (error || !data?.ok) {
+      return toast.error(
+        data?.message ||
+        await edgeFunctionErrorMessage(error, t("Não foi possível conectar a conta manualmente.")),
+      );
+    }
+    toast.success(
+      data.updated
+        ? t("Credencial atualizada e validada com sucesso.")
+        : `@${data.account?.username || manualForm.username} ${t("conectada e validada com sucesso!")}`,
+    );
+    setManualOpen(false);
+    setManualForm(emptyManual);
+    await load();
+  };
+
   const verify = async (id: string) => {
     setVerifying(id);
     const { data, error } = await supabase.functions.invoke("verify-ig-token", { body: { account_id: id } });
@@ -139,12 +182,94 @@ export default function Accounts() {
             {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Instagram className="h-4 w-4 mr-2" />}
             {t("Conectar com Instagram")}
           </Button>
+          <Button onClick={() => setManualOpen(true)} variant="outline">
+            <Plus className="h-4 w-4 mr-2" />
+            {t("Adicionar manualmente")}
+          </Button>
         </div>
       </div>
 
       <div className="rounded-md border bg-secondary/40 p-3 text-xs text-muted-foreground">
         {t("A conexão via Instagram usa OAuth direto e não precisa de Page ID nem de “token permanente”. Ela é renovável por 60 dias e deve ficar ativa quando o botão Verificar mostrar tudo pronto.")}
       </div>
+
+      <Dialog open={manualOpen} onOpenChange={(nextOpen) => {
+        if (manualSaving) return;
+        setManualOpen(nextOpen);
+        if (!nextOpen) setManualForm(emptyManual);
+      }}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("Adicionar conta Instagram manualmente")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground">
+              {t("Use somente uma credencial fornecida pelo responsável da conta. O token é validado pela Meta e enviado diretamente ao cofre seguro; ele não fica salvo nem volta para o navegador.")}
+            </div>
+            <div>
+              <Label htmlFor="manual-username">{t("Username")} ({t("opcional")})</Label>
+              <Input
+                id="manual-username"
+                value={manualForm.username}
+                onChange={(event) => setManualForm({ ...manualForm, username: event.target.value })}
+                placeholder="meuperfil"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manual-ig-id">Instagram Business User ID</Label>
+              <Input
+                id="manual-ig-id"
+                value={manualForm.ig_user_id}
+                onChange={(event) => setManualForm({ ...manualForm, ig_user_id: event.target.value })}
+                placeholder={t("Obrigatório para token da Meta Graph API")}
+                inputMode="numeric"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manual-page-id">Page ID (Facebook)</Label>
+              <Input
+                id="manual-page-id"
+                value={manualForm.page_id}
+                onChange={(event) => setManualForm({ ...manualForm, page_id: event.target.value })}
+                placeholder={t("Obrigatório para token da Meta Graph API")}
+                inputMode="numeric"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manual-token">Access Token ({t("longa duração")})</Label>
+              <Input
+                id="manual-token"
+                type="password"
+                value={manualForm.access_token}
+                onChange={(event) => setManualForm({ ...manualForm, access_token: event.target.value })}
+                placeholder="IG... / EAA..."
+                autoComplete="off"
+                spellCheck={false}
+                className="font-mono text-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("Tokens do Instagram Login dispensam os dois IDs. Tokens da Meta Graph API exigem o Instagram Business User ID e o Page ID.")}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="manual-niche">{t("Nicho")} ({t("opcional")})</Label>
+              <Input
+                id="manual-niche"
+                value={manualForm.niche}
+                onChange={(event) => setManualForm({ ...manualForm, niche: event.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <Button onClick={saveManual} disabled={manualSaving} className="w-full">
+              {manualSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {manualSaving ? t("Validando com a Meta…") : t("Validar e conectar")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditingId(null); setForm(empty); } }}>
         <DialogContent>
