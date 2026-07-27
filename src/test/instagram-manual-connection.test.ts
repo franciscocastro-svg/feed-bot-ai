@@ -70,6 +70,17 @@ describe("manual Instagram connection", () => {
     expect(edgeFunction).not.toContain("user_id: input.");
   });
 
+  it("shows official Meta instructions without exposing credentials to external links", () => {
+    const accountsPage = read("src/pages/dashboard/Accounts.tsx");
+
+    expect(accountsPage).toContain("Passo a passo para obter os dados");
+    expect(accountsPage).toContain("https://developers.facebook.com/apps/");
+    expect(accountsPage).toContain("/instagram-api-with-instagram-login/get-started");
+    expect(accountsPage).toContain("/instagram-api-with-facebook-login/get-started");
+    expect(accountsPage.match(/rel="noreferrer"/g)).toHaveLength(3);
+    expect(accountsPage).not.toContain("access_token=${");
+  });
+
   it("returns only public account metadata after storing the credential", () => {
     const edgeFunction = read("supabase/functions/instagram-manual-connect/index.ts");
     const responseBlock = edgeFunction.slice(edgeFunction.indexOf("return json({\n      ok: true"));

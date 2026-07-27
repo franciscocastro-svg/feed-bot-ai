@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Instagram, Trash2, Pencil, ShieldCheck, Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Settings as SettingsIcon, CircleHelp, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const empty = { username: "", niche: "" };
 const emptyManual = { username: "", ig_user_id: "", page_id: "", access_token: "", niche: "" };
 const ACCOUNT_PUBLIC_COLUMNS = "id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status";
+const META_APPS_URL = "https://developers.facebook.com/apps/";
+const INSTAGRAM_LOGIN_GUIDE_URL = "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/get-started";
+const FACEBOOK_LOGIN_GUIDE_URL = "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/get-started";
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => (
   <li className="flex items-center gap-2">
@@ -206,6 +209,61 @@ export default function Accounts() {
             <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground">
               {t("Use somente uma credencial fornecida pelo responsável da conta. O token é validado pela Meta e enviado diretamente ao cofre seguro; ele não fica salvo nem volta para o navegador.")}
             </div>
+            <details className="group rounded-md border bg-secondary/30 p-3 text-sm">
+              <summary className="flex cursor-pointer list-none items-center gap-2 font-medium">
+                <CircleHelp className="h-4 w-4 text-primary" />
+                {t("Passo a passo para obter os dados")}
+                <span className="ml-auto text-xs text-muted-foreground group-open:hidden">
+                  {t("Abrir")}
+                </span>
+              </summary>
+              <ol className="mt-3 list-decimal space-y-3 pl-5 text-xs text-muted-foreground">
+                <li>
+                  {t("Confirme que a conta é profissional (Empresa ou Criador). Para o caminho Meta Graph API, ela também precisa estar vinculada a uma Página do Facebook.")}
+                </li>
+                <li>
+                  <span>{t("Abra seu aplicativo na Meta e escolha um dos caminhos oficiais:")}</span>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <a
+                      href={INSTAGRAM_LOGIN_GUIDE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1.5 font-medium text-foreground hover:border-primary"
+                    >
+                      {t("Instagram Login (sem Page ID)")}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <a
+                      href={FACEBOOK_LOGIN_GUIDE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1.5 font-medium text-foreground hover:border-primary"
+                    >
+                      {t("Meta Graph API (com Página)")}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </li>
+                <li>
+                  {t("Na Meta, autorize a conta e gere um Access Token de longa duração com permissão para publicar conteúdo. Nunca informe a senha do Instagram aqui.")}
+                </li>
+                <li>
+                  {t("Cole o token abaixo. Se ele começar com IG, os dois IDs podem ficar vazios. Para token Graph API, copie também o Instagram Business User ID e o Page ID.")}
+                </li>
+                <li>
+                  {t("Clique em Validar e conectar. O sistema confirmará a conta e as permissões diretamente com a Meta antes de salvar.")}
+                </li>
+              </ol>
+              <a
+                href={META_APPS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                {t("Abrir Meus Aplicativos — Meta for Developers")}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </details>
             <div>
               <Label htmlFor="manual-username">{t("Username")} ({t("opcional")})</Label>
               <Input
