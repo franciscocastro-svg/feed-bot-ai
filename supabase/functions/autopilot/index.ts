@@ -14,6 +14,12 @@ import {
   resolveGlobalPostInterval,
   type EditorialNews,
 } from "../_shared/editorial-policy.ts";
+import {
+  carouselFeedChannel,
+  channelsForAccount,
+  normalizeAutopilotMediaType,
+  type AutopilotChannelConfig,
+} from "../_shared/autopilot-media-routing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,16 +78,7 @@ async function recordFunctionFailure(
   }
 }
 
-type ChannelCfg = {
-  channel: "feed" | "story" | "reel";
-  active: boolean;
-  min_interval_minutes: number;
-  allowed_hours: number[];
-  max_per_day: number;
-  keywords: string[];
-  urgent_keywords: string[];
-  is_priority: boolean;
-};
+type ChannelCfg = AutopilotChannelConfig;
 
 type ActiveQueueRow = {
   id: string;
@@ -104,6 +101,12 @@ type AccountRouteRow = {
 
 type ActiveInstagramAccountRow = {
   id: string;
+};
+
+type AccountAutomationOverrides = {
+  instagram_account_id: string;
+  default_media_type: string | null;
+  default_image_style: string | null;
 };
 
 function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
@@ -478,6 +481,20 @@ Deno.serve(async (req) => {
           .eq("user_id", userId)
           .eq("active", true);
         const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
+        const accountAutomationById = new Map<string, AccountAutomationOverrides>();
+        if (validIgIds.size > 0) {
+          const { data: accountAutomationRows } = await supabase
+            .from("account_settings")
+            .select("instagram_account_id, default_media_type, default_image_style")
+            .eq("user_id", userId)
+            .in("instagram_account_id", Array.from(validIgIds));
+          for (const row of accountAutomationRows || []) {
+            accountAutomationById.set(
+              (row as AccountAutomationOverrides).instagram_account_id,
+              row as AccountAutomationOverrides,
+            );
+          }
+        }
         // Só existe fallback seguro quando há exatamente uma conta. Com duas
         // ou mais, conteúdo sem vínculo fica aguardando escolha explícita.
         const fallbackAccountId = validIgIds.size === 1 ? igAccs?.[0]?.id : undefined;
@@ -699,11 +716,20 @@ Deno.serve(async (req) => {
         // deve aguardar o resultado dentro da mesma execução: o próximo ciclo
         // agenda os itens que já chegaram a processed.
         const results = await Promise.all(pending.map(async (it) => {
+          const targetIg = it.instagram_account_id && validIgIds.has(it.instagram_account_id)
+            ? it.instagram_account_id
+            : fallbackAccountId;
+          const accountAutomation = targetIg
+            ? accountAutomationById.get(targetIg)
+            : undefined;
           const r = await callFn("process-news", {
             user_id: userId,
             news_item_id: it.id,
-            image_style: u.default_image_style || "template",
-            media_type: u.default_media_type || "feed",
+            image_style: accountAutomation?.default_image_style || u.default_image_style || "template",
+            media_type: normalizeAutopilotMediaType(
+              accountAutomation?.default_media_type,
+              u.default_media_type,
+            ),
           });
           if (!r.ok) {
             await recordFunctionFailure(supabase, userId, "process-news", r);
@@ -790,7 +816,8 @@ Deno.serve(async (req) => {
           ];
         }
 
-        // === REGRAS MESTRES vindas de Automação (user_settings) sobrescrevem channel_settings ===
+        // As regras globais continuam como fallback. A escolha do canal é
+        // aplicada por Instagram somente dentro do loop de agendamento.
         const masterMediaType = (u as any).default_media_type as string | null; // "feed" | "story" | "reel" | null
         const masterHours: number[] = Array.isArray((u as any).preferred_post_hours) && (u as any).preferred_post_hours.length
           ? (u as any).preferred_post_hours
@@ -799,19 +826,6 @@ Deno.serve(async (req) => {
         const masterDailyCap = rawMasterDailyCap < 0
           ? Number.POSITIVE_INFINITY
           : rawMasterDailyCap;
-        // se Automação define um tipo padrão, FORÇA todos os canais a esse tipo
-        if (masterMediaType && ["feed", "story", "reel"].includes(masterMediaType)) {
-          channels = channels.map(c => ({ ...c, active: c.channel === masterMediaType }));
-          // garante que o canal escolhido existe e está ativo
-          if (!channels.some(c => c.channel === masterMediaType && c.active)) {
-            channels.push({
-              channel: masterMediaType as any, active: true,
-              min_interval_minutes: masterMinInterval, allowed_hours: [], max_per_day: masterDailyCap,
-              keywords: [], urgent_keywords: [], is_priority: false,
-            });
-          }
-        }
-
         // Se não houver configuração específica do canal, usa os horários globais.
         // Quando o usuário configurou Feed/Story/Reel, esses horários do canal vencem.
         if (masterHours.length) {
@@ -877,10 +891,18 @@ Deno.serve(async (req) => {
             continue;
           }
           if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
+          const accountAutomation = accountAutomationById.get(targetIg);
+          const accountMediaType = normalizeAutopilotMediaType(
+            accountAutomation?.default_media_type,
+            masterMediaType,
+          );
+          const accountChannels = channelsForAccount(channels, accountMediaType);
           const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
           const cfg = it.content_format === "carrossel"
-            ? channels.find((channel) => channel.channel === "feed" && channel.active) || null
-            : pickChannel(text, channels);
+            // Carrossel é um formato editorial publicado nativamente como
+            // Feed. Ele não pode ser descartado porque outra conta usa Reel.
+            ? carouselFeedChannel(channels)
+            : pickChannel(text, accountChannels);
           if (!cfg) continue;
           const accountTaken = allTakenByIg.get(targetIg) || [];
           const channelTaken = takenByChByIg.get(targetIg) || {
