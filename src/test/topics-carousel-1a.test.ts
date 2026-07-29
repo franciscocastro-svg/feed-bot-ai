@@ -64,7 +64,7 @@ describe("Pautas 1A — geração completa de carrosséis", () => {
   });
 
   it("força Feed no automático e oferece prévia textual ou visual no painel", () => {
-    expect(autopilot).toContain("carouselFeedChannel(channels)");
+    expect(autopilot).toContain("carouselFeedChannel(resolvedChannels)");
     expect(news).toContain("Carrosséis só podem ser agendados no Feed");
     expect(news).toContain("previewing.carousel_media_urls.map");
     expect(news).toContain("previewing.carousel_slides.map");

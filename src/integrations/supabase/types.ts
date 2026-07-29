@@ -184,6 +184,62 @@ export type Database = {
           },
         ]
       }
+      account_channel_settings: {
+        Row: {
+          active: boolean | null
+          allowed_hours: number[] | null
+          channel: string
+          created_at: string
+          id: string
+          instagram_account_id: string
+          is_priority: boolean | null
+          keywords: string[] | null
+          max_per_day: number | null
+          min_interval_minutes: number | null
+          updated_at: string
+          urgent_keywords: string[] | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean | null
+          allowed_hours?: number[] | null
+          channel: string
+          created_at?: string
+          id?: string
+          instagram_account_id: string
+          is_priority?: boolean | null
+          keywords?: string[] | null
+          max_per_day?: number | null
+          min_interval_minutes?: number | null
+          updated_at?: string
+          urgent_keywords?: string[] | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean | null
+          allowed_hours?: number[] | null
+          channel?: string
+          created_at?: string
+          id?: string
+          instagram_account_id?: string
+          is_priority?: boolean | null
+          keywords?: string[] | null
+          max_per_day?: number | null
+          min_interval_minutes?: number | null
+          updated_at?: string
+          urgent_keywords?: string[] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_channel_settings_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       account_template_assignments: {
         Row: {
           created_at: string

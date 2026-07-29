@@ -95,8 +95,8 @@ describe("autopilot carousel routing per Instagram account", () => {
     expect(accountSettings).toContain('<SelectItem value="carousel">');
     expect(accountSettings).toContain("save_creator_profile_with_news_preferences");
     expect(accountSettings).toContain("storedMediaTypeForPreference");
-    expect(autopilot).toContain('select("instagram_account_id, default_media_type, default_image_style")');
+    expect(autopilot).toContain("max_posts_per_day, min_post_interval_minutes, preferred_post_hours");
     expect(autopilot).toContain("accountAutomationById.get(targetIg)");
-    expect(autopilot).toContain("carouselFeedChannel(channels)");
+    expect(autopilot).toContain("carouselFeedChannel(resolvedChannels)");
   });
 });
