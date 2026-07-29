@@ -538,6 +538,7 @@ export type Database = {
       }
       creator_profiles: {
         Row: {
+          carousel_slide_count: number
           created_at: string
           cta_style: string | null
           example_posts: string[]
@@ -547,6 +548,7 @@ export type Database = {
           id: string
           instagram_account_id: string | null
           niche_detail: string | null
+          news_format_preference: string
           signature_phrases: string[]
           target_audience: string | null
           updated_at: string
@@ -554,6 +556,7 @@ export type Database = {
           voice_tone: string | null
         }
         Insert: {
+          carousel_slide_count?: number
           created_at?: string
           cta_style?: string | null
           example_posts?: string[]
@@ -563,6 +566,7 @@ export type Database = {
           id?: string
           instagram_account_id?: string | null
           niche_detail?: string | null
+          news_format_preference?: string
           signature_phrases?: string[]
           target_audience?: string | null
           updated_at?: string
@@ -570,6 +574,7 @@ export type Database = {
           voice_tone?: string | null
         }
         Update: {
+          carousel_slide_count?: number
           created_at?: string
           cta_style?: string | null
           example_posts?: string[]
@@ -579,6 +584,7 @@ export type Database = {
           id?: string
           instagram_account_id?: string | null
           niche_detail?: string | null
+          news_format_preference?: string
           signature_phrases?: string[]
           target_audience?: string | null
           updated_at?: string
@@ -4145,6 +4151,10 @@ export type Database = {
         Returns: Json
       }
       save_creator_profile_for_account: {
+        Args: { _account_id: string; _profile: Json }
+        Returns: string
+      }
+      save_creator_profile_with_news_preferences: {
         Args: { _account_id: string; _profile: Json }
         Returns: string
       }

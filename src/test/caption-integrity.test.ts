@@ -82,7 +82,7 @@ describe("Legendas 2.0-A — identidade, qualidade e engajamento", () => {
 
     expect(processNews).toContain("a: String(item?.instagram_account_id || \"\")");
     expect(processNews).toContain("h: normalizeInstagramHandle(item?._caption_account_handle)");
-    expect(processNews).toContain("v: 8");
+    expect(processNews).toContain("v: 9");
     expect(processNews).toContain("Nao inclua nenhum @handle");
     expect(processNews).toContain("finalizeEditorialCaption");
     expect(publisher).toContain("finalizeEditorialCaption");

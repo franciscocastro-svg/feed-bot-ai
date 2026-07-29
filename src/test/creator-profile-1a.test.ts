@@ -80,7 +80,7 @@ describe("Perfil do Criador 1A", () => {
     expect(featureFlags).not.toContain('"/dashboard/creator-profile"');
     expect(profileUi).toContain("Perfil geral (herança)");
     expect(profileUi).toContain("Herdando o perfil geral");
-    expect(profileUi).toContain("save_creator_profile_for_account");
+    expect(profileUi).toContain("save_creator_profile_with_news_preferences");
     expect(profileUi).toContain("reset_creator_profile_for_account");
   });
 

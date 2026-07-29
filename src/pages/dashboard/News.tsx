@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2, Image as ImageIcon, Calendar, ExternalLink, Check, X, Search, Trash2, Eye, Wand2, Plus, Upload, FileText } from "lucide-react";
+import { Sparkles, Loader2, Image as ImageIcon, Calendar, ExternalLink, Check, X, Search, Trash2, Eye, Wand2, Plus, Upload, FileText, Images } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_OPTIONS = ["all", "pending", "processed", "approved", "scheduled", "posted", "failed", "rejected"];
 type MediaType = "feed" | "reel" | "story";
+type ManualContentFormat = MediaType | "carrossel";
 
 type CarouselSlide = {
   title?: string;
@@ -75,6 +76,8 @@ const NEWS_LIST_COLUMNS = [
   "carousel_slides",
   "carousel_media_urls",
 ].join(",");
+const NEWS_CAROUSEL_POLL_COLUMNS =
+  "id,status,error_message,content_format,carousel_slides,carousel_media_urls,caption,generated_image_url,generated_cover_url";
 
 function friendlyDatabaseMessage(error: unknown, t: (source: string) => string = value => value) {
   const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
@@ -99,6 +102,9 @@ function friendlyProcessingMessage(value: unknown, t: (source: string) => string
   }
   if (/402|créditos|credits|payment_required/i.test(message)) {
     return t("Sem créditos de IA disponíveis. Regularize o saldo e tente novamente.");
+  }
+  if (/fatos suficientes|transformar em carrossel|carrossel factual/i.test(message)) {
+    return t("A matéria não tem fatos suficientes para um carrossel seguro. Complete o texto e tente novamente.");
   }
   return message || t("Não foi possível processar a notícia. Tente novamente.");
 }
@@ -254,7 +260,7 @@ export default function News() {
     const poll = async () => {
       const { data: row } = await supabase.from("news_items").select("*").eq("id", item.id).maybeSingle();
       if (row && (row.status === "processed" || row.status === "failed" || row.status === "rejected")) {
-        if (row.status === "processed" && style === "template") {
+        if (row.status === "processed" && style === "template" && !isCarouselItem(row)) {
           // Compõe o template no navegador (alta qualidade, sem CPU limit do servidor)
           try {
             const { composeAndUploadPost } = await import("@/lib/composePostCanvas");
@@ -279,6 +285,58 @@ export default function News() {
       setTimeout(poll, 3000);
     };
     setTimeout(poll, data?.status === "processed" ? 250 : 4000);
+  };
+
+  const convertToCarousel = async (item: { id: string }) => {
+    setLoad(item.id, true);
+    try {
+      const { data, error } = await supabase.functions.invoke("process-news", {
+        body: {
+          news_item_id: item.id,
+          convert_to_carousel: true,
+          sync: true,
+        },
+      });
+      if (error) throw error;
+      if (data?.already_processing) {
+        toast.info(t("A transformação já está em andamento."));
+      } else if (data?.status === "failed") {
+        throw new Error(data?.error || t("Não foi possível transformar esta notícia em carrossel."));
+      } else {
+        toast.info(t("Transformando a notícia em carrossel..."));
+      }
+
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 90_000) {
+        const { data: row, error: rowError } = await supabase
+          .from("news_items")
+          .select(NEWS_CAROUSEL_POLL_COLUMNS)
+          .eq("id", item.id)
+          .maybeSingle();
+        if (rowError) throw rowError;
+        if (row?.status === "processed" && isCarouselItem(row) && row.carousel_slides.length) {
+          toast.success(t(`Carrossel criado com ${row.carousel_slides.length} slides. Revise antes de agendar.`));
+          setPreviewing(row);
+          await load();
+          return;
+        }
+        if (row?.status === "processed" && row?.error_message) {
+          throw new Error(row.error_message);
+        }
+        if (row?.status === "failed" || row?.status === "rejected") {
+          throw new Error(row.error_message || t("Não foi possível transformar esta notícia em carrossel."));
+        }
+        await new Promise(resolve => setTimeout(resolve, 3_000));
+      }
+      toast.info(t("A transformação continua em segundo plano. Atualize a lista em instantes."));
+      await load();
+    } catch (error: unknown) {
+      const record = error && typeof error === "object" ? error as { message?: string } : {};
+      toast.error(friendlyProcessingMessage(record.message, t));
+      await load();
+    } finally {
+      setLoad(item.id, false);
+    }
   };
 
   const reject = async (id: string) => {
@@ -526,6 +584,12 @@ export default function News() {
                     {n.status === "processed" && (
                       <>
                         {hasNewsPreview(n) && <Button size="sm" variant="outline" onClick={() => setPreviewing(n)}><Eye className="h-3 w-3 mr-1" /> {t("Pré-visualizar")}</Button>}
+                        {!isCarouselItem(n) && (
+                          <Button size="sm" variant="outline" onClick={() => convertToCarousel(n)} disabled={loading[n.id]}>
+                            {loading[n.id] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Images className="h-3 w-3 mr-1" />}
+                            {t("Transformar em carrossel")}
+                          </Button>
+                        )}
                         {!isCarouselItem(n) && <Button size="sm" variant="outline" onClick={() => setCanvasEditing(n)}><Wand2 className="h-3 w-3 mr-1" /> {t("Editar visual")}</Button>}
                         <Button size="sm" variant="outline" onClick={() => setEditing(n)}>{t("Editar legenda")}</Button>
                         <Button size="sm" onClick={() => approve(n, "feed")} disabled={loading[n.id]}>
@@ -637,7 +701,7 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [sourceName, setSourceName] = useState("Conteúdo manual");
-  const [mediaType, setMediaType] = useState<MediaType>("feed");
+  const [mediaType, setMediaType] = useState<ManualContentFormat>("feed");
   const [accountId, setAccountId] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState("");
@@ -751,13 +815,18 @@ function ManualNewsDialog({ open, igAccounts, onClose, onCreated }: {
           </div>
           <div className="space-y-2">
             <Label>{t("Formato principal")}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {(["feed", "story", "reel"] as MediaType[]).map(format => (
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {(["feed", "carrossel", "story", "reel"] as ManualContentFormat[]).map(format => (
                 <button key={format} type="button" onClick={() => setMediaType(format)} className={`rounded-lg border p-3 text-sm font-medium transition ${mediaType === format ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
-                  {format === "feed" ? "Feed 1:1" : format === "story" ? "Story 9:16" : "Reel 9:16"}
+                  {format === "feed" ? "Feed 1:1" : format === "carrossel" ? t("Carrossel") : format === "story" ? "Story 9:16" : "Reel 9:16"}
                 </button>
               ))}
             </div>
+            {mediaType === "carrossel" && (
+              <p className="text-xs text-muted-foreground">
+                {t("A primeira página usará a imagem principal e o fato de maior impacto. As demais páginas explicam a notícia e a última encerra com uma ação.")}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>{t("Imagem principal")} <span className="font-normal text-muted-foreground">{t("(opcional)")}</span></Label>
