@@ -76,6 +76,8 @@ const NEWS_LIST_COLUMNS = [
   "carousel_slides",
   "carousel_media_urls",
 ].join(",");
+const NEWS_CAROUSEL_POLL_COLUMNS =
+  "id,status,error_message,content_format,carousel_slides,carousel_media_urls,caption,generated_image_url,generated_cover_url";
 
 function friendlyDatabaseMessage(error: unknown, t: (source: string) => string = value => value) {
   const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
@@ -308,7 +310,7 @@ export default function News() {
       while (Date.now() - startedAt < 90_000) {
         const { data: row, error: rowError } = await supabase
           .from("news_items")
-          .select(NEWS_LIST_COLUMNS)
+          .select(NEWS_CAROUSEL_POLL_COLUMNS)
           .eq("id", item.id)
           .maybeSingle();
         if (rowError) throw rowError;
