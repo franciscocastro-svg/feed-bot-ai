@@ -15,6 +15,7 @@ import {
   Hash,
   Instagram,
   Link as LinkIcon,
+  ListFilter,
   Loader2,
   Newspaper,
   Pencil,
@@ -41,6 +42,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ALL_SOURCES_FILTER,
+  SHARED_SOURCES_FILTER,
+  isSharedOrUnlinkedSource,
+  sourceMatchesInstagramFilter,
+} from "@/lib/sourceInstagramFilter";
 
 type SourceMode = "rss" | "person" | "topic" | "url";
 type SourceKind = "rss" | "site" | "url" | "person" | "topic" | "google_news";
@@ -149,6 +156,7 @@ const defaultForm = {
 
 export default function Sources() {
   const [sources, setSources] = useState<any[]>([]);
+  const [instagramFilter, setInstagramFilter] = useState(ALL_SOURCES_FILTER);
   const [translationEnabled, setTranslationEnabled] = useState(false);
   const [planName, setPlanName] = useState<string>("");
   const [igAccounts, setIgAccounts] = useState<any[]>([]);
@@ -176,6 +184,27 @@ export default function Sources() {
 
   const includeTerms = useMemo(() => parseTerms(form.include_terms_text), [form.include_terms_text]);
   const excludeTerms = useMemo(() => parseTerms(form.exclude_terms_text), [form.exclude_terms_text]);
+  const filteredSources = useMemo(
+    () => sources.filter((source) =>
+      sourceMatchesInstagramFilter(sourceIgMap[source.id] || [], instagramFilter)
+    ),
+    [instagramFilter, sourceIgMap, sources],
+  );
+  const sourceCountByInstagram = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const linkedIds of Object.values(sourceIgMap)) {
+      for (const instagramId of new Set(linkedIds)) {
+        counts.set(instagramId, (counts.get(instagramId) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [sourceIgMap]);
+  const sharedOrUnlinkedCount = useMemo(
+    () => sources.filter((source) =>
+      isSharedOrUnlinkedSource(sourceIgMap[source.id] || [])
+    ).length,
+    [sourceIgMap, sources],
+  );
 
   const resetForm = () => {
     setEditingId(null);
@@ -1033,14 +1062,57 @@ export default function Sources() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-xl border bg-card/60 p-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="w-full space-y-2 sm:max-w-sm">
+          <Label htmlFor="sources-instagram-filter" className="flex items-center gap-2">
+            <ListFilter className="h-4 w-4 text-primary" />
+            Filtrar fontes por Instagram
+          </Label>
+          <Select value={instagramFilter} onValueChange={setInstagramFilter}>
+            <SelectTrigger id="sources-instagram-filter" aria-label="Filtrar fontes por Instagram">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SOURCES_FILTER}>
+                Todas as contas ({sources.length})
+              </SelectItem>
+              {igAccounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  @{account.username} ({sourceCountByInstagram.get(account.id) || 0})
+                </SelectItem>
+              ))}
+              <SelectItem value={SHARED_SOURCES_FILTER}>
+                Compartilhadas/sem conta ({sharedOrUnlinkedCount})
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          Exibindo <strong className="text-foreground">{filteredSources.length}</strong>{" "}
+          {filteredSources.length === 1 ? "fonte" : "fontes"}
+        </p>
+      </div>
+
       {sources.length === 0 ? (
         <Card className="border-dashed p-6 text-center text-muted-foreground md:p-12">
           <Newspaper className="h-10 w-10 mx-auto mb-3 opacity-50" />
           Nenhuma fonte. Adicione RSS, pessoa, tema ou URL para começar.
         </Card>
+      ) : filteredSources.length === 0 ? (
+        <Card className="border-dashed p-6 text-center text-muted-foreground md:p-12">
+          <ListFilter className="h-10 w-10 mx-auto mb-3 opacity-50" />
+          <p>Nenhuma fonte encontrada para este filtro.</p>
+          <Button
+            type="button"
+            variant="link"
+            onClick={() => setInstagramFilter(ALL_SOURCES_FILTER)}
+          >
+            Mostrar todas as fontes
+          </Button>
+        </Card>
       ) : (
         <div className="grid gap-3">
-          {sources.map((s) => {
+          {filteredSources.map((s) => {
             const linkedIgs = (sourceIgMap[s.id] || [])
               .map((id) => igAccounts.find((ig) => ig.id === id))
               .filter(Boolean);
