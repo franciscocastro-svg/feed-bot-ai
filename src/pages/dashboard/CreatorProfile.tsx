@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Save, UserCircle2 } from "lucide-react";
+import { Images, Loader2, RotateCcw, Save, UserCircle2 } from "lucide-react";
 
 type Profile = {
+  news_format_preference: "single" | "carousel" | "automatic";
+  carousel_slide_count: 5 | 6 | 7;
   niche_detail: string;
   target_audience: string;
   voice_tone: string;
@@ -23,6 +25,8 @@ type Profile = {
 };
 
 const empty: Profile = {
+  news_format_preference: "single",
+  carousel_slide_count: 6,
   niche_detail: "",
   target_audience: "",
   voice_tone: "",
@@ -97,7 +101,7 @@ export default function CreatorProfile() {
   const save = async () => {
     setSaving(true);
     const accountId = selectedScope === GLOBAL_PROFILE ? null : selectedScope;
-    const { error } = await callProfileRpc("save_creator_profile_for_account", {
+    const { error } = await callProfileRpc("save_creator_profile_with_news_preferences", {
       _account_id: accountId,
       _profile: p,
     });
@@ -174,6 +178,63 @@ export default function CreatorProfile() {
               <RotateCcw className="mr-2 h-4 w-4" /> Usar novamente o perfil geral
             </Button>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Images className="h-5 w-5 text-primary" />
+            Formato das notícias
+          </CardTitle>
+          <CardDescription>
+            Escolha como as notícias desta conta serão preparadas. A decisão não mistura conteúdos entre Instagrams.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Formato preferido</Label>
+            <Select
+              value={p.news_format_preference}
+              onValueChange={(value: Profile["news_format_preference"]) =>
+                setP({ ...p, news_format_preference: value })
+              }
+            >
+              <SelectTrigger aria-label="Formato preferido das notícias">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="single">Post com uma imagem</SelectItem>
+                <SelectItem value="carousel">Sempre transformar em carrossel</SelectItem>
+                <SelectItem value="automatic">Automático conforme a matéria</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              No automático, matérias com contexto suficiente viram carrossel; notícias curtas continuam como post único.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Quantidade de slides</Label>
+            <Select
+              value={String(p.carousel_slide_count)}
+              disabled={p.news_format_preference === "single"}
+              onValueChange={(value) =>
+                setP({ ...p, carousel_slide_count: Number(value) as Profile["carousel_slide_count"] })
+              }
+            >
+              <SelectTrigger aria-label="Quantidade de slides do carrossel">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 slides · mais rápido</SelectItem>
+                <SelectItem value="6">6 slides · recomendado</SelectItem>
+                <SelectItem value="7">7 slides · mais completo</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              A capa sempre traz imagem e o fato principal; o último slide encerra com uma chamada para ação.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

@@ -724,7 +724,16 @@ async function composeAndUploadCarouselNode(item, settings) {
 
   for (const slide of slides) {
     let stockImage = null;
-    if (slide.image_mode === "stock" && resolvedStockImages < maxStockImages) {
+    let image = null;
+    // Notícias devem preservar a imagem editorial original na capa. O banco
+    // de imagens fica como fallback; pautas perenes continuam usando Pixabay.
+    if (slide.role === "cover" && item.content_type !== "topic" && item.original_image_url) {
+      image = await loadImageHelper(item.original_image_url, {
+        output: "jpg",
+        assetLabel: "imagem original da notícia na capa do carrossel",
+      });
+    }
+    if (!image && slide.image_mode === "stock" && resolvedStockImages < maxStockImages) {
       try {
         stockImage = await resolveCarouselStockImage({
           query: slide.image_query,
@@ -739,9 +748,12 @@ async function composeAndUploadCarouselNode(item, settings) {
       usedStockAssetIds.add(stockImage.audit.asset_id);
       resolvedStockImages += 1;
     }
-    let image = stockImage
-      ? await loadImageHelper(stockImage.downloadUrl, { output: "jpg", assetLabel: `imagem editorial do slide ${slide.position}` })
-      : null;
+    if (!image && stockImage) {
+      image = await loadImageHelper(stockImage.downloadUrl, {
+        output: "jpg",
+        assetLabel: `imagem editorial do slide ${slide.position}`,
+      });
+    }
     if (!image && slide.role === "cover" && item.original_image_url) {
       image = await loadImageHelper(item.original_image_url, {
         output: "jpg",
@@ -754,7 +766,7 @@ async function composeAndUploadCarouselNode(item, settings) {
     const persistedSlide = {
       ...slide,
       image_mode: image ? "stock" : "text",
-      image_asset: image ? stockImage.audit : null,
+      image_asset: stockImage?.audit || null,
     };
     const { createCanvas } = await getCanvasRuntime();
     const canvas = createCanvas(EDITORIAL_CAROUSEL_WIDTH, EDITORIAL_CAROUSEL_HEIGHT);

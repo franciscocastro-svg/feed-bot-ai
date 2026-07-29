@@ -15,7 +15,14 @@ import {
   creatorProfileFingerprint,
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
+  normalizeCarouselSlideCount,
+  normalizeNewsFormatPreference,
 } from "../_shared/creator-profile.ts";
+import {
+  carouselPromptContract,
+  normalizeTopicCarousel,
+  type TopicCarouselSlide,
+} from "../_shared/topic-carousel.ts";
 import {
   finalizeEditorialCaption,
   normalizeInstagramHandle,
@@ -42,6 +49,47 @@ let geminiUnavailableUntil = 0;
 let groqUnavailableUntil = 0;
 const GROQ_AUTH_CIRCUIT_BREAKER_MS = 6 * 60 * 60_000;
 const AI_PROVIDER_TIMEOUT_MS = 25_000;
+
+type NewsCarouselOptions = {
+  enabled: boolean;
+  slideCount: 5 | 6 | 7;
+};
+
+type NewsCarouselSource = {
+  original_title?: string | null;
+  original_content?: string | null;
+  _article_body?: string | null;
+  _convert_to_carousel?: boolean;
+};
+
+type NewsCarouselAI = {
+  title?: string | null;
+  summary?: string | null;
+  caption?: string | null;
+};
+
+type NewsCarouselProfile = {
+  news_format_preference?: "single" | "carousel" | "automatic" | null;
+  carousel_slide_count?: number | null;
+} | null;
+
+const NO_NEWS_CAROUSEL: NewsCarouselOptions = {
+  enabled: false,
+  slideCount: 6,
+};
+
+function newsCarouselPrompt(options: NewsCarouselOptions) {
+  if (!options.enabled) return "";
+  return `
+FORMATO ADICIONAL OBRIGATORIO — NOTICIA EM CARROSSEL:
+- Gere exatamente ${options.slideCount} slides usando somente fatos presentes na noticia fornecida.
+- A capa precisa conter a manchete e o fato de maior impacto. Nao esconda a informacao principal no slide 2.
+- Distribua contexto, consequencias e detalhes concretos nos slides intermediarios sem repetir frases.
+- O ultimo slide deve concluir o assunto e convidar a pessoa a acompanhar novas informacoes, sem inventar previsoes.
+- A imagem da capa deve representar a noticia. Prefira a imagem original fornecida pelo sistema; image_query serve apenas como fallback visual generico.
+${carouselPromptContract()}
+`;
+}
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -211,7 +259,11 @@ function extractJsonObject(text: string): any {
   }
 }
 
-function normalizeRewritePayload(parsed: any, item: any): any {
+function normalizeRewritePayload(
+  parsed: any,
+  item: any,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+): any {
   const fallback = fallbackRewrite(item);
   const hashtags = Array.isArray(parsed?.hashtags)
     ? parsed.hashtags
@@ -228,6 +280,7 @@ function normalizeRewritePayload(parsed: any, item: any): any {
     caption: dedupeCaptionText(String(parsed?.caption || fallback.caption)),
     reel_caption: dedupeCaptionText(String(parsed?.reel_caption || parsed?.caption || fallback.reel_caption)),
     hashtags,
+    slides: carouselOptions.enabled && Array.isArray(parsed?.slides) ? parsed.slides : null,
   };
 }
 
@@ -257,7 +310,13 @@ function acceptCaptionWithoutQualityRetry<T extends CaptionQualityPayload>(parse
   return parsed;
 }
 
-function buildGroqRewriteMessages(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1) {
+function buildGroqRewriteMessages(
+  item: any,
+  tone: string,
+  srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
+  attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+) {
   const articleBody = item._article_body ? String(item._article_body).slice(0, 9000) : "";
   const sourceText = [
     `Titulo: ${sanitizeNewsTitle(item.original_title || "")}`,
@@ -281,8 +340,9 @@ Caption do feed: longa, util, com paragrafos curtos, entre ${AI_FEED_CAPTION_MIN
 Caption do reel: rica e direta, entre ${AI_REEL_CAPTION_MIN} e ${AI_REEL_CAPTION_MAX} caracteres.
 Hashtags: entre 5 e 8, sem #, minusculas e estritamente relevantes ao tema.
 ${profileBlock}${srcOpts.translate ? `\nA fonte pode estar em ${LANG_NAMES[srcOpts.lang || "auto"] || "outro idioma"}; traduza tudo para PT-BR natural.` : ""}${srcOpts.cultural ? "\nExplique referencias culturais somente com informacoes presentes na fonte. Nao estime cotacoes, conversoes, datas ou contexto ausente." : ""}${retryNote}
+${newsCarouselPrompt(carouselOptions)}
 Responda APENAS um JSON valido com estas chaves:
-{"title":"...","subtitle":"...","hook":"...","summary":"...","caption":"...","reel_caption":"...","hashtags":["..."]}`;
+{"title":"...","subtitle":"...","hook":"...","summary":"...","caption":"...","reel_caption":"...","hashtags":["..."]${carouselOptions.enabled ? ',"slides":[{"title":"...","body":"...","emphasis":["..."],"image_mode":"text ou stock","image_query":"... ou null","image_alt":"... ou null"}]' : ""}}`;
 
   return [
     { role: "system", content: system },
@@ -290,7 +350,13 @@ Responda APENAS um JSON valido com estas chaves:
   ];
 }
 
-async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+async function rewriteWithGroq(
+  item: any,
+  tone: string,
+  srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
+  attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+): Promise<any> {
   const key = Deno.env.get("GROQ_API_KEY");
   if (!key) throw new Error("GROQ_API_KEY ausente");
   if (Date.now() < groqUnavailableUntil) {
@@ -302,7 +368,7 @@ async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant",
-      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt, carouselOptions),
       temperature: 0.45,
       max_tokens: 3600,
       response_format: { type: "json_object" },
@@ -320,7 +386,7 @@ async function rewriteWithGroq(item: any, tone: string, srcOpts: { lang?: string
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "{}";
-  const parsed = normalizeRewritePayload(extractJsonObject(content), item);
+  const parsed = normalizeRewritePayload(extractJsonObject(content), item, carouselOptions);
   return acceptCaptionWithoutQualityRetry(parsed, "Groq");
 }
 
@@ -399,7 +465,13 @@ async function recordGeminiUsage(event: {
   }
 }
 
-async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+async function rewriteWithGemini(
+  item: any,
+  tone: string,
+  srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
+  attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+): Promise<any> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new Error("GEMINI_API_KEY ausente");
   if (Date.now() < geminiUnavailableUntil) {
@@ -409,7 +481,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
   const model = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
   const requestBody = JSON.stringify({
     model,
-    messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+    messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt, carouselOptions),
     temperature: 0.45,
     max_tokens: 3600,
     reasoning_effort: "none",
@@ -474,7 +546,7 @@ async function rewriteWithGemini(item: any, tone: string, srcOpts: { lang?: stri
 
   if (!data) throw new Error("Gemini AI não retornou conteúdo após as tentativas");
   const content = data.choices?.[0]?.message?.content || "{}";
-  const parsed = normalizeRewritePayload(extractJsonObject(content), item);
+  const parsed = normalizeRewritePayload(extractJsonObject(content), item, carouselOptions);
   return acceptCaptionWithoutQualityRetry(parsed, "Gemini");
 }
 
@@ -483,6 +555,7 @@ async function rewriteWithLovableFactLocked(
   tone: string,
   srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
   attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
 ): Promise<any> {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) throw new Error("LOVABLE_API_KEY ausente");
@@ -491,7 +564,7 @@ async function rewriteWithLovableFactLocked(
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "google/gemini-2.5-pro",
-      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt),
+      messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt, carouselOptions),
       temperature: 0.25,
       max_tokens: 5000,
       response_format: { type: "json_object" },
@@ -501,7 +574,7 @@ async function rewriteWithLovableFactLocked(
   if (!res.ok) throw new Error(`AI ${res.status}: ${(await res.text()).slice(0, 500)}`);
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content || "{}";
-  const parsed = normalizeRewritePayload(extractJsonObject(raw), item);
+  const parsed = normalizeRewritePayload(extractJsonObject(raw), item, carouselOptions);
   return acceptCaptionWithoutQualityRetry(parsed, "Lovable/Gemini");
 }
 
@@ -593,7 +666,13 @@ async function fetchArticleBody(url: string): Promise<string> {
   }
 }
 
-async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+async function rewriteWithAI(
+  item: any,
+  tone: string,
+  srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
+  attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+): Promise<any> {
   // ===== CACHE: chave por URL+config (mesmo item RSS pra N usuários -> 1 chamada IA) =====
   // Só ativa no primeiro attempt (retry por legenda curta força nova chamada).
   // E só pra itens com original_url estável.
@@ -607,9 +686,10 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
         p: creatorProfileFingerprint(item?._creator_profile),
         a: String(item?.instagram_account_id || ""),
         h: normalizeInstagramHandle(item?._caption_account_handle),
+        carousel: carouselOptions.enabled ? carouselOptions.slideCount : 0,
         provider: getTextAiProvider(),
         model: getTextAiModel(),
-        v: 8, // perfil e identidade da conta participam da chave
+        v: 9, // perfil, identidade e formato da conta participam da chave
       }))
     : null;
   if (cacheKey) {
@@ -621,7 +701,7 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
   }
 
   const __origRewrite = rewriteWithAIRaw;
-  const parsed = await __origRewrite(item, tone, srcOpts, attempt);
+  const parsed = await __origRewrite(item, tone, srcOpts, attempt, carouselOptions);
   if (cacheKey) {
     // Só cacheia se as legendas vieram em tamanho aceitável (qualidade).
     const ok = (parsed?.caption?.length || 0) >= AI_FEED_CAPTION_MIN && (parsed?.reel_caption?.length || 0) >= AI_REEL_CAPTION_MIN;
@@ -630,16 +710,22 @@ async function rewriteWithAI(item: any, tone: string, srcOpts: { lang?: string; 
   return parsed;
 }
 
-async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {}, attempt = 1): Promise<any> {
+async function rewriteWithAIRaw(
+  item: any,
+  tone: string,
+  srcOpts: { lang?: string; translate?: boolean; cultural?: boolean } = {},
+  attempt = 1,
+  carouselOptions: NewsCarouselOptions = NO_NEWS_CAROUSEL,
+): Promise<any> {
   const provider = getTextAiProvider();
   if (provider === "gemini") {
     try {
-      return await rewriteWithGemini(item, tone, srcOpts, attempt);
+      return await rewriteWithGemini(item, tone, srcOpts, attempt, carouselOptions);
     } catch (e) {
       console.warn("[gemini] falhou; tentando provedor de reserva", e);
       if (Deno.env.get("GROQ_API_KEY")) {
         try {
-          return await rewriteWithGroq(item, tone, srcOpts, attempt);
+          return await rewriteWithGroq(item, tone, srcOpts, attempt, carouselOptions);
         } catch (groqError) {
           console.warn("[groq] reserva falhou; voltando para provedor Lovable/Gemini", groqError);
         }
@@ -648,12 +734,12 @@ async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: strin
     }
   } else if (provider === "groq") {
     try {
-      return await rewriteWithGroq(item, tone, srcOpts, attempt);
+      return await rewriteWithGroq(item, tone, srcOpts, attempt, carouselOptions);
     } catch (e) {
       console.warn("[groq] falhou; tentando Gemini direto", e);
       if (Deno.env.get("GEMINI_API_KEY")) {
         try {
-          return await rewriteWithGemini(item, tone, srcOpts, attempt);
+          return await rewriteWithGemini(item, tone, srcOpts, attempt, carouselOptions);
         } catch (geminiError) {
           console.warn("[gemini] reserva falhou; tentando Lovable/Gemini", geminiError);
         }
@@ -662,7 +748,7 @@ async function rewriteWithAIRaw(item: any, tone: string, srcOpts: { lang?: strin
     }
   }
 
-  return await rewriteWithLovableFactLocked(item, tone, srcOpts, attempt);
+  return await rewriteWithLovableFactLocked(item, tone, srcOpts, attempt, carouselOptions);
 }
 
 function cleanWords(text: string): string[] {
@@ -811,6 +897,104 @@ function fallbackRewrite(item: any) {
     reel_caption: caption,
     hashtags,
   };
+}
+
+function shouldCreateNewsCarousel(
+  item: NewsCarouselSource,
+  profile: NewsCarouselProfile,
+  requestedMediaType: string,
+) {
+  if (item?._convert_to_carousel || requestedMediaType === "carrossel") return true;
+  const preference = normalizeNewsFormatPreference(profile?.news_format_preference);
+  if (preference === "carousel") return true;
+  if (preference !== "automatic") return false;
+  const source = normalizeCaptionText(`${item?._article_body || ""}\n${item?.original_content || ""}`);
+  return source.length >= 900 && extractUsefulSentences(source, 12).length >= 5;
+}
+
+function shortFactHeading(sentence: string, index: number) {
+  const cleaned = normalizeCaptionText(sentence).replace(/[.!?]+$/g, "");
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const candidate = words.slice(0, 8).join(" ");
+  if (candidate.length >= 18) return candidate.slice(0, 72);
+  const labels = ["O que aconteceu", "O contexto", "O ponto principal", "O impacto", "O que se sabe"];
+  return labels[index % labels.length];
+}
+
+function fallbackNewsCarouselSlides(
+  item: NewsCarouselSource,
+  ai: NewsCarouselAI,
+  slideCount: 5 | 6 | 7,
+): TopicCarouselSlide[] {
+  const source = normalizeCaptionText([
+    item?._article_body || "",
+    item?.original_content || "",
+    ai?.summary || "",
+    ai?.caption || "",
+  ].filter(Boolean).join("\n\n"));
+  const facts = extractUsefulSentences(source, 16);
+  if (facts.length < slideCount - 1) {
+    throw new Error("A notícia ainda não possui fatos suficientes para um carrossel seguro.");
+  }
+  const slides = [
+    {
+      title: ai?.title || item?.original_title || "Notícia em destaque",
+      body: facts[0],
+      emphasis: [],
+      image_mode: "stock",
+      image_query: "breaking news editorial",
+      image_alt: "Imagem relacionada à notícia",
+    },
+    ...facts.slice(1, slideCount - 1).map((fact, index) => ({
+      title: shortFactHeading(fact, index),
+      body: fact,
+      emphasis: [],
+      image_mode: "text",
+      image_query: null,
+      image_alt: null,
+    })),
+    {
+      title: "O que acompanhar agora",
+      body: "Acompanhe as próximas informações e compartilhe este resumo com quem precisa entender o assunto.",
+      emphasis: ["próximas informações"],
+      image_mode: "text",
+      image_query: null,
+      image_alt: null,
+    },
+  ];
+  return normalizeTopicCarousel(slides, ai?.title || item?.original_title || "Notícia");
+}
+
+function numericClaimsAreSupported(slides: unknown, item: NewsCarouselSource) {
+  if (!Array.isArray(slides)) return false;
+  const source = normalizeCaptionText([
+    item?.original_title || "",
+    item?.original_content || "",
+    item?._article_body || "",
+  ].join("\n"));
+  const sourceNumbers = new Set(source.match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+  const slideNumbers = slides
+    .flatMap((slide) => {
+      const record = slide && typeof slide === "object" ? slide as Record<string, unknown> : {};
+      return `${record.title || ""} ${record.body || ""}`.match(/\b\d+(?:[.,]\d+)?%?\b/g) || [];
+    });
+  return slideNumbers.every((value) => sourceNumbers.has(value));
+}
+
+function normalizeNewsCarouselSlides(
+  rawSlides: unknown,
+  item: NewsCarouselSource,
+  ai: NewsCarouselAI,
+  slideCount: 5 | 6 | 7,
+) {
+  if (Array.isArray(rawSlides) && rawSlides.length === slideCount && numericClaimsAreSupported(rawSlides, item)) {
+    try {
+      return normalizeTopicCarousel(rawSlides, ai?.title || item?.original_title || "Notícia");
+    } catch (error) {
+      console.warn("[news-carousel] slides da IA rejeitados; usando composição factual", error);
+    }
+  }
+  return fallbackNewsCarouselSlides(item, ai, slideCount);
 }
 
 function isAiCreditError(e: unknown) {
@@ -1069,11 +1253,20 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       item.original_content || "",
       (item as any)._article_body || "",
     ], creatorProfile);
+    const createCarousel = shouldCreateNewsCarousel(item, creatorProfile, requestedMediaType);
+    const carouselOptions: NewsCarouselOptions = {
+      enabled: createCarousel,
+      slideCount: normalizeCarouselSlideCount(
+        item?._carousel_slide_count || creatorProfile?.carousel_slide_count,
+      ),
+    };
     try {
       ai = await rewriteWithAI(
         item,
         creatorProfile?.voice_tone || settings?.ai_tone || "engajante e descontraído",
         srcOpts,
+        1,
+        carouselOptions,
       );
     } catch (e) {
       if (!isAiCreditError(e)) throw e;
@@ -1085,6 +1278,9 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       usedFallback = true;
       ai = fallbackRewrite(item);
     }
+    const carouselSlides = createCarousel
+      ? normalizeNewsCarouselSlides(ai?.slides, item, ai, carouselOptions.slideCount)
+      : null;
     assertCreatorProfileCompliance([
       ai.title || "",
       ai.subtitle || "",
@@ -1093,6 +1289,7 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       ai.caption || "",
       ai.reel_caption || "",
       ...(Array.isArray(ai.hashtags) ? ai.hashtags : []),
+      ...(carouselSlides || []).flatMap((slide) => [slide.title, slide.body]),
     ], creatorProfile);
 
     // A Edge Function prepara apenas texto e fonte visual. A composição pesada
@@ -1120,8 +1317,10 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       }
     }
 
-    if (!photoUrl) throw new Error("Sem foto disponível para esta notícia");
-    const safePhotoUrl = assertSafeHttpUrl(photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim());
+    if (!photoUrl && !createCarousel) throw new Error("Sem foto disponível para esta notícia");
+    const safePhotoUrl = photoUrl
+      ? assertSafeHttpUrl(photoUrl.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim())
+      : null;
     const identity = resolveEditorialIdentity(settings, accountUsername);
     assertEditorialCopy(ai.title, ai.subtitle);
     const handle = normalizeInstagramHandle(accountUsername || identity.brandHandle);
@@ -1207,6 +1406,9 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     // O publish-scheduler já exige essa flag e nunca publica o arquivo parcial.
     const { data: processedRow, error: updErr } = await supabase.from("news_items").update({
       status: "processed",
+      content_format: createCarousel ? "carrossel" : item.content_format,
+      carousel_slides: carouselSlides,
+      carousel_media_urls: null,
       rewritten_title: ai.title,
       rewritten_summary: ai.summary,
       caption: finalCaption,
@@ -1242,10 +1444,24 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
         fallback: usedFallback,
         render_queued: true,
         media_type: intendedMediaType,
+        content_format: createCarousel ? "carrossel" : item.content_format || intendedMediaType,
+        carousel_slide_count: carouselSlides?.length || null,
       },
     });
     return { status: "processed" as const };
   } catch (e) {
+    if (item._convert_to_carousel) {
+      const failureMessage = processingErrorMessage(e);
+      const { error: restoreError } = await supabase.from("news_items").update({
+        status: "processed",
+        error_message: `Não foi possível transformar em carrossel: ${failureMessage}`,
+        next_retry_at: null,
+      }).eq("id", item.id).eq("user_id", userId).eq("status", "processing");
+      if (restoreError) {
+        console.error("[process-news] failed to restore news after carousel conversion", restoreError.message);
+      }
+      return { status: "processed" as const, conversion_failed: true, error: failureMessage };
+    }
     const isCreatorProfileBlock = (e as Error & { code?: string })?.code === "creator_profile_forbidden";
     if (isCreatorProfileBlock) {
       const failureMessage = processingErrorMessage(e);
@@ -1296,7 +1512,13 @@ Deno.serve(async (req) => {
     const providedSecret = req.headers.get("x-internal-secret");
     const isInternal = !!internalSecretEnv && providedSecret === internalSecretEnv;
     const body = await req.json();
-    const { news_item_id, image_style = "template", media_type = "" } = body;
+    const {
+      news_item_id,
+      image_style = "template",
+      media_type = "",
+      convert_to_carousel = false,
+      carousel_slide_count = null,
+    } = body;
     let userId: string;
     let accessClient;
     if (isInternal) {
@@ -1320,7 +1542,18 @@ Deno.serve(async (req) => {
     const { data: item, error } = await accessClient.from("news_items").select("*").eq("id", news_item_id).eq("user_id", userId).maybeSingle();
     if (error || !item) return jsonResponse({ error: "news item not found", request_id: requestId }, 404, requestId);
 
-    const decision = decideNewsClaim(item.status, item.updated_at);
+    const isCarouselConversion = convert_to_carousel === true;
+    if (isCarouselConversion && item.content_format === "carrossel") {
+      return jsonResponse({ ok: true, duplicate_ignored: true, content_format: "carrossel", request_id: requestId }, 200, requestId);
+    }
+    if (isCarouselConversion && item.status !== "processed") {
+      return jsonResponse({
+        error: "Apenas notícias processadas e ainda não publicadas podem virar carrossel.",
+        request_id: requestId,
+      }, 409, requestId);
+    }
+
+    const decision = isCarouselConversion ? "claim" : decideNewsClaim(item.status, item.updated_at);
     if (decision === "already_processing") {
       return jsonResponse({ ok: false, already_processing: true, request_id: requestId }, 200, requestId);
     }
@@ -1335,7 +1568,9 @@ Deno.serve(async (req) => {
       .update({ status: "processing", error_message: null, next_retry_at: null })
       .eq("id", item.id)
       .eq("user_id", userId);
-    claimQuery = decision === "reclaim_stale"
+    claimQuery = isCarouselConversion
+      ? claimQuery.eq("status", "processed")
+      : decision === "reclaim_stale"
       ? claimQuery.eq("status", "processing").lt("updated_at", new Date(Date.now() - STALE_NEWS_PROCESSING_MS).toISOString())
       : claimQuery.in("status", ["pending", "failed"]);
     const { data: claimed, error: claimError } = await claimQuery
@@ -1346,6 +1581,12 @@ Deno.serve(async (req) => {
     }
     if (!claimed) {
       return jsonResponse({ ok: false, already_processing: true, request_id: requestId }, 200, requestId);
+    }
+    if (isCarouselConversion) {
+      claimed._convert_to_carousel = true;
+      claimed._carousel_slide_count = carousel_slide_count == null
+        ? null
+        : normalizeCarouselSlideCount(carousel_slide_count);
     }
 
     // Executa em background para não estourar o limite de CPU do runtime.

@@ -1,5 +1,7 @@
 export type CreatorProfile = {
   instagram_account_id?: string | null;
+  news_format_preference?: "single" | "carousel" | "automatic" | null;
+  carousel_slide_count?: number | null;
   niche_detail?: string | null;
   target_audience?: string | null;
   voice_tone?: string | null;
@@ -35,10 +37,21 @@ const cleanList = (value: unknown, maxItems = 20, maxLength = 240) =>
     .filter(Boolean)
     .slice(0, maxItems);
 
+export function normalizeNewsFormatPreference(value: unknown): "single" | "carousel" | "automatic" {
+  return value === "carousel" || value === "automatic" ? value : "single";
+}
+
+export function normalizeCarouselSlideCount(value: unknown): 5 | 6 | 7 {
+  const parsed = Number(value);
+  return parsed === 5 || parsed === 7 ? parsed : 6;
+}
+
 export function normalizeCreatorProfile(profile: CreatorProfile | null | undefined): CreatorProfile | null {
   if (!profile) return null;
   return {
     instagram_account_id: profile.instagram_account_id || null,
+    news_format_preference: normalizeNewsFormatPreference(profile.news_format_preference),
+    carousel_slide_count: normalizeCarouselSlideCount(profile.carousel_slide_count),
     niche_detail: clean(profile.niche_detail),
     target_audience: clean(profile.target_audience),
     voice_tone: clean(profile.voice_tone),
@@ -60,7 +73,7 @@ export async function loadEffectiveCreatorProfile(
   if (instagramAccountId) {
     const { data, error } = await client
       .from("creator_profiles")
-      .select("instagram_account_id,niche_detail,target_audience,voice_tone,expertise_summary,signature_phrases,forbidden_words,cta_style,example_posts,extra_notes")
+      .select("instagram_account_id,news_format_preference,carousel_slide_count,niche_detail,target_audience,voice_tone,expertise_summary,signature_phrases,forbidden_words,cta_style,example_posts,extra_notes")
       .eq("user_id", userId)
       .eq("instagram_account_id", instagramAccountId)
       .maybeSingle();
@@ -70,7 +83,7 @@ export async function loadEffectiveCreatorProfile(
 
   const { data, error } = await client
     .from("creator_profiles")
-    .select("instagram_account_id,niche_detail,target_audience,voice_tone,expertise_summary,signature_phrases,forbidden_words,cta_style,example_posts,extra_notes")
+    .select("instagram_account_id,news_format_preference,carousel_slide_count,niche_detail,target_audience,voice_tone,expertise_summary,signature_phrases,forbidden_words,cta_style,example_posts,extra_notes")
     .eq("user_id", userId)
     .is("instagram_account_id", null)
     .maybeSingle();
@@ -94,6 +107,8 @@ export function creatorProfilePrompt(profile: CreatorProfile | null | undefined)
       : "",
     value.example_posts?.length ? `- Referencias de estilo:\n${value.example_posts.map((item, index) => `  [${index + 1}] ${item}`).join("\n")}` : "",
     value.extra_notes ? `- Instrucoes adicionais: ${value.extra_notes}` : "",
+    `- Formato preferido para noticias: ${normalizeNewsFormatPreference(value.news_format_preference)}.`,
+    `- Quantidade preferida de slides: ${normalizeCarouselSlideCount(value.carousel_slide_count)}.`,
     "Nao invente experiencia pessoal, credenciais, resultados ou opinioes que nao estejam neste perfil.",
     "Entregue somente conteudo factual e contextual. Nao inclua CTA, pedido para seguir, @handle, link, fonte ou credito de imagem; o sistema finaliza a identidade depois.",
   ];
