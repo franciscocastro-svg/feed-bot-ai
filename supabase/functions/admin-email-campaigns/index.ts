@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
         const sub: any = subs.get(p.id) || { plan: "free", status: "active" };
         if (audience === "active") return ["active", "trialing"].includes(sub.status);
         if (audience === "paying") return sub.plan !== "free" && ["active", "trialing"].includes(sub.status);
-        if (["free", "starter", "pro", "business"].includes(audience)) return sub.plan === audience;
+        if (["free", "starter", "pro", "business", "agency"].includes(audience)) return sub.plan === audience;
         return true;
       });
       const contacts: Contact[] = [];

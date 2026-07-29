@@ -27,7 +27,7 @@ const emptyForm = {
 
 const audienceLabels: Record<string, string> = {
   all_opted_in: "Todos que autorizaram", active: "Clientes ativos", paying: "Clientes pagantes",
-  free: "Plano Free", starter: "Plano Starter", pro: "Plano Pro", business: "Plano Business",
+  free: "Plano Free", starter: "Plano Creator", pro: "Plano Pro", business: "Plano Business", agency: "Plano Agência",
 };
 const statusLabels: Record<string, string> = { draft: "Rascunho", scheduled: "Agendada", sending: "Enviando", sent: "Enviada", failed: "Falhou", cancelled: "Cancelada" };
 const invokeCampaignFunction = (body: Record<string, unknown>) => supabase.functions.invoke("admin-email-campaigns", { body });

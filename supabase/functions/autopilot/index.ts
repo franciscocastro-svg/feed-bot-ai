@@ -20,6 +20,7 @@ import {
   type AutopilotChannelConfig,
 } from "../_shared/autopilot-media-routing.ts";
 import {
+  capDailyPublications,
   resolveAccountChannelSettings,
   type AccountChannelSettingsOverride,
   type ChannelSettingsOverride,
@@ -832,20 +833,23 @@ Deno.serve(async (req) => {
         // acidentalmente o ritmo de outra.
         const { data: chRows } = await supabase.from("channel_settings").select("*").eq("user_id", userId);
 
-        // O limite global continua protegendo o total do cliente. O resolvedor
-        // também aplica o limite específico de cada Instagram e de cada canal.
+        // Cada Instagram tem seu próprio teto diário. O plano limita a conta,
+        // e os canais continuam com seus limites e intervalos independentes.
         const masterMediaType = (u as any).default_media_type as string | null; // "feed" | "story" | "reel" | null
-        const rawMasterDailyCap = (u as any).max_posts_per_day ?? 5;
-        const masterDailyCap = rawMasterDailyCap < 0
-          ? Number.POSITIVE_INFINITY
-          : rawMasterDailyCap;
 
-        // === RESTRIÇÃO DE PLANO: madrugada (22h–7h BRT) só p/ Pro/Business ===
+        // === RESTRIÇÃO DE PLANO: madrugada (22h–7h BRT) só p/ Pro/Business/Agência ===
         const { data: planRow } = await supabase.rpc("get_user_plan", { _user_id: userId });
         const userPlan = (planRow as string) || "free";
-        const canPostOvernight = userPlan === "pro" || userPlan === "business";
+        const canPostOvernight = userPlan === "pro" || userPlan === "business" || userPlan === "agency";
+        const { data: planLimits } = await supabase
+          .from("plan_limits")
+          .select("max_posts_per_day")
+          .eq("plan", userPlan)
+          .maybeSingle();
+        const planDailyCap = planLimits?.max_posts_per_day ?? 5;
 
-        // limite global diário (soma de todos os canais) = max_posts_per_day
+        // Contagem diária separada por Instagram. Feed, Reel, Story e um
+        // carrossel completo contam igualmente como uma publicação.
         const todayStart0 = new Date(); todayStart0.setHours(0,0,0,0);
         const todayEnd0 = new Date(todayStart0); todayEnd0.setDate(todayEnd0.getDate() + 1);
         const activeScheduledToday = (existingScheduled || []).filter((s) => {
@@ -857,10 +861,6 @@ Deno.serve(async (req) => {
           const d = new Date(row.posted_at);
           return d >= todayStart0 && d < todayEnd0;
         });
-        const scheduledTodayCount = activeScheduledToday.length + postedTodayRows.length;
-        let remainingDailyCap = masterDailyCap < 0
-          ? Number.POSITIVE_INFINITY
-          : Math.max(0, masterDailyCap - scheduledTodayCount);
         const dailyCountByIg = new Map<string, number>();
         for (const row of activeScheduledToday) {
           if (!row.instagram_account_id) continue;
@@ -881,7 +881,6 @@ Deno.serve(async (req) => {
         const scheduledThisRunIgIds = new Set<string>();
         for (const it of rankedReady) {
           if (alreadyScheduledNews.has(it.id)) continue;
-          if (remainingDailyCap <= 0) break; // respeita limite global da Automação
           // Com múltiplas contas, somente itens com destino válido entram na
           // fila. O fallback continua seguro para clientes com uma única conta.
           const targetIg = (it.instagram_account_id && validIgIds.has(it.instagram_account_id))
@@ -920,7 +919,10 @@ Deno.serve(async (req) => {
               return { ...channel, allowed_hours: allowed.length ? allowed : DAY_HOURS };
             });
           }
-          const accountCap = resolvedSettings.maxPostsPerDay;
+          const accountCap = capDailyPublications(
+            resolvedSettings.maxPostsPerDay,
+            planDailyCap,
+          );
           if (accountCap >= 0 && (dailyCountByIg.get(targetIg) || 0) >= accountCap) continue;
           const accountMediaType = normalizeAutopilotMediaType(
             resolvedSettings.defaultMediaType,
@@ -967,7 +969,6 @@ Deno.serve(async (req) => {
             accountTaken.push(slot);
             takenByChByIg.set(targetIg, channelTaken);
             allTakenByIg.set(targetIg, accountTaken);
-            remainingDailyCap--;
             dailyCountByIg.set(targetIg, (dailyCountByIg.get(targetIg) || 0) + 1);
             activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
             scheduledThisRunIgIds.add(targetIg);

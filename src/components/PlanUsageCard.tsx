@@ -29,7 +29,7 @@ export function PlanUsageCard() {
   const [opening, setOpening] = useState(false);
   if (loading || !usage) return null;
 
-  const isPaid = usage.plan !== "free" && usage.plan !== "expired";
+  const isStripeManaged = ["starter", "pro", "business"].includes(usage.plan);
 
   const openPortal = async () => {
     setOpening(true);
@@ -54,23 +54,33 @@ export function PlanUsageCard() {
         <Badge variant="secondary" className="text-xs">{usage.plan}</Badge>
       </div>
       <div className="space-y-2.5">
-        <UsageRow label="Reels IA (mês)" used={usage.reels_used} limit={usage.reels_limit} />
         <UsageRow label="Imagens IA (mês)" used={usage.images_used} limit={usage.images_limit} />
         <UsageRow label="Contas Instagram" used={usage.ig_accounts_used} limit={usage.ig_accounts_limit} />
         <UsageRow label="Fontes RSS" used={usage.rss_sources_used} limit={usage.rss_sources_limit} />
-        <UsageRow label="Posts hoje" used={usage.posts_today} limit={usage.posts_per_day_limit} />
+        <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-xs">
+          <div className="flex justify-between gap-3">
+            <span className="text-muted-foreground">Publicações hoje (todas as contas)</span>
+            <span className="font-medium">{usage.posts_today}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-muted-foreground">Limite diário</span>
+            <span className="font-medium">
+              {isUnlimited(usage.posts_per_day_limit) ? "Ilimitado" : `${usage.posts_per_day_limit} por conta`}
+            </span>
+          </div>
+        </div>
         <UsageRow
           label="Cortes IA hoje"
           used={(usage.cuts_used_today || 0) + (usage.cuts_reserved_today || 0)}
           limit={usage.cuts_limit ?? 0}
         />
       </div>
-      {usage.plan !== "business" && (
+      {usage.plan !== "agency" && (
         <Button asChild size="sm" variant="outline" className="w-full">
           <Link to="/pricing"><Sparkles className="h-3.5 w-3.5 mr-1" /> Fazer upgrade</Link>
         </Button>
       )}
-      {isPaid && (
+      {isStripeManaged && (
         <Button size="sm" variant="ghost" className="w-full" onClick={openPortal} disabled={opening}>
           <CreditCard className="h-3.5 w-3.5 mr-1" /> Gerenciar assinatura
         </Button>

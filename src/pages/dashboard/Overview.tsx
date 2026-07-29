@@ -192,9 +192,6 @@ export default function Overview() {
   const nextPost = queue[0];
   const nextPostDate = nextPost?.scheduled_for ? new Date(nextPost.scheduled_for) : null;
   const minutesToNext = nextPostDate ? Math.max(0, Math.round((nextPostDate.getTime() - Date.now()) / 60000)) : null;
-  const postsRemaining = usage && !isUnlimited(usage.posts_per_day_limit)
-    ? Math.max(0, usage.posts_per_day_limit - usage.posts_today)
-    : null;
   const estimatedHoursSaved = Math.round(stats.postedToday * 8 / 60 * 10) / 10;
   const healthItems: HealthItem[] = [
     {
@@ -316,8 +313,18 @@ export default function Overview() {
             </div>
             {usage ? (
               <div className="space-y-4">
-                <UsageRow label="Posts hoje" used={usage.posts_today} limit={usage.posts_per_day_limit} color="bg-gradient-to-r from-primary-glow to-primary" />
-                <UsageRow label="Reels (mês)" used={usage.reels_used} limit={usage.reels_limit} color="bg-primary" />
+                <div className="rounded-lg border border-border/60 bg-background/40 p-3 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Publicações hoje (total)</span>
+                    <span className="font-semibold">{usage.posts_today}</span>
+                  </div>
+                  <div className="mt-1.5 flex justify-between gap-3">
+                    <span className="text-muted-foreground">Limite diário</span>
+                    <span className="font-semibold">
+                      {isUnlimited(usage.posts_per_day_limit) ? "Ilimitado" : `${usage.posts_per_day_limit} por conta`}
+                    </span>
+                  </div>
+                </div>
                 <UsageRow label="Imagens (mês)" used={usage.images_used} limit={usage.images_limit} color="bg-primary-glow" />
                 <UsageRow label="Contas IG" used={usage.ig_accounts_used} limit={usage.ig_accounts_limit} color="bg-muted-foreground" />
               </div>
@@ -376,10 +383,14 @@ export default function Overview() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground font-medium">Ritmo do dia</p>
               <p className="text-lg font-bold mt-1">
-                {postsRemaining === null ? "Sem limite" : `${postsRemaining} restantes`}
+                {usage
+                  ? isUnlimited(usage.posts_per_day_limit)
+                    ? "Sem limite"
+                    : `${usage.posts_per_day_limit}/dia por conta`
+                  : "Carregando"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {settings?.max_posts_per_day ? `meta configurada: ${settings.max_posts_per_day}/dia` : "controlado pelo plano"}
+                Feed, Reel, Carrossel e Story somados separadamente em cada Instagram
               </p>
             </div>
           </div>

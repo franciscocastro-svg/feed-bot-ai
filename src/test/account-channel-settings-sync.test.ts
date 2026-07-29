@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  capDailyPublications,
   resolveAccountChannelSettings,
   type AccountAutomationSettings,
   type AccountChannelSettingsOverride,
@@ -30,6 +31,14 @@ const globalChannels = [
 ];
 
 describe("account and channel settings synchronization", () => {
+  it("caps each Instagram account independently at the commercial plan limit", () => {
+    expect(capDailyPublications(70, 20)).toBe(20);
+    expect(capDailyPublications(12, 30)).toBe(12);
+    expect(capDailyPublications(-1, 40)).toBe(40);
+    expect(capDailyPublications(25, -1)).toBe(25);
+    expect(capDailyPublications(-1, -1)).toBe(-1);
+  });
+
   it("keeps the global channel as fallback when the account has no overrides", () => {
     const resolved = resolveAccountChannelSettings({
       globalSettings,
