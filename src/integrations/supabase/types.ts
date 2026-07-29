@@ -547,8 +547,8 @@ export type Database = {
           forbidden_words: string[]
           id: string
           instagram_account_id: string | null
-          niche_detail: string | null
           news_format_preference: string
+          niche_detail: string | null
           signature_phrases: string[]
           target_audience: string | null
           updated_at: string
@@ -565,8 +565,8 @@ export type Database = {
           forbidden_words?: string[]
           id?: string
           instagram_account_id?: string | null
-          niche_detail?: string | null
           news_format_preference?: string
+          niche_detail?: string | null
           signature_phrases?: string[]
           target_audience?: string | null
           updated_at?: string
@@ -583,8 +583,8 @@ export type Database = {
           forbidden_words?: string[]
           id?: string
           instagram_account_id?: string | null
-          niche_detail?: string | null
           news_format_preference?: string
+          niche_detail?: string | null
           signature_phrases?: string[]
           target_audience?: string | null
           updated_at?: string
