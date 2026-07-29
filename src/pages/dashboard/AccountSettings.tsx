@@ -231,7 +231,10 @@ export default function AccountSettings() {
 
   const clearOverrides = async () => {
     if (!confirm(t("Apagar todas as personalizações desta conta? Ela voltará a usar o padrão global."))) return;
-    await supabase.from("account_settings").delete().eq("instagram_account_id", id!);
+    await Promise.all([
+      supabase.from("account_settings").delete().eq("instagram_account_id", id!),
+      supabase.from("account_channel_settings").delete().eq("instagram_account_id", id!),
+    ]);
     setForm(empty);
     toast.success(t("Personalizações removidas — agora usa o padrão global"));
     const { data: eff } = await supabase.rpc("get_effective_account_settings", { _account_id: id! });
@@ -366,6 +369,29 @@ export default function AccountSettings() {
             <Switch checked={form.auto_approve ?? !!effective.auto_approve}
               onCheckedChange={v => setForm({ ...form, auto_approve: v })} />
           </div>
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4 border-primary/30">
+        <div>
+          <div className="flex items-center gap-2">
+            <Instagram className="h-5 w-5 text-primary" />
+            <h2 className="font-display text-xl font-semibold">{t("Feed, Stories e Reels")}</h2>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("Os três canais acompanham automaticamente o intervalo, os horários e o limite desta conta. Abra um canal somente se quiser personalizá-lo sem afetar os demais.")}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Button variant="outline" asChild>
+            <Link to={`/dashboard/channels/feed?account=${id}`}>📷 {t("Configurar Feed")}</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to={`/dashboard/channels/story?account=${id}`}>⭐ {t("Configurar Stories")}</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to={`/dashboard/channels/reel?account=${id}`}>🎬 {t("Configurar Reels")}</Link>
+          </Button>
         </div>
       </Card>
 

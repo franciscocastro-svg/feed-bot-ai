@@ -171,10 +171,10 @@ export default function Settings() {
         <div className="flex items-center gap-2">
           <h1 className="font-display text-3xl font-bold">{t("Configurações")}</h1>
           <ContextHelp label={t("Configurações globais")} title={t("Padrão global")}>
-            {t("Estas opções servem como padrão para suas contas. Se você tiver mais de uma conta Instagram, também pode personalizar marca, ritmo e tom individualmente.")}
+            {t("Estas opções servem como padrão para suas contas e canais. Feed, Stories e Reels acompanham automaticamente qualquer mudança enquanto não tiverem uma personalização própria.")}
           </ContextHelp>
         </div>
-        <p className="text-muted-foreground mt-1">{t("Padrão global da automação e identidade da marca.")}</p>
+        <p className="text-muted-foreground mt-1">{t("Padrão global da automação, das contas e dos canais que estiverem herdando.")}</p>
       </div>
 
       <Card className="p-5 space-y-3" data-testid="interface-language-card">
@@ -346,6 +346,7 @@ export default function Settings() {
             {t("Intervalo mínimo entre posts (minutos)")}
           </FieldLabel>
           <Input id="min-post-interval" type="number" min={10} value={s.min_post_interval_minutes ?? 10} onChange={e => setS({ ...s, min_post_interval_minutes: Math.max(+e.target.value || 10, 10) })} />
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("Contas e canais sem personalização usam este intervalo automaticamente.")}</p>
         </div>
         <div>
           <FieldLabel htmlFor="default-niche" helpLabel={t("Nicho padrão")} help={t("Tema principal usado pela IA para contextualizar notícias e publicações.")}>{t("Nicho padrão")}</FieldLabel>
@@ -401,6 +402,7 @@ export default function Settings() {
         <div>
           <FieldLabel htmlFor="preferred-hours" helpLabel={t("Melhores horários")} help={t("Informe horas de 0 a 23 separadas por vírgula. Exemplo: 8,12,18,21. A automação prioriza esses horários.")}>{t("Melhores horários")}</FieldLabel>
           <Input id="preferred-hours" value={(s.preferred_post_hours || []).join(",")} onChange={e => setS({ ...s, preferred_post_hours: e.target.value.split(",").map((x: string) => +x.trim()).filter(Number.isFinite) })} placeholder="8,12,18,21" />
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("Contas e canais sem horários próprios acompanham esta lista.")}</p>
         </div>
         <div className="flex items-center justify-between">
           <FieldLabel helpLabel={t("Aprovação automática")} help={t("Quando ativada, a publicação pula a etapa de aprovação manual.")}>{t("Aprovação automática")}</FieldLabel>

@@ -11,7 +11,6 @@ import {
   editorialNewsScore,
   MIN_POST_INTERVAL_MINUTES,
   nextAllowedPublicationAt,
-  resolveGlobalPostInterval,
   type EditorialNews,
 } from "../_shared/editorial-policy.ts";
 import {
@@ -20,6 +19,11 @@ import {
   normalizeAutopilotMediaType,
   type AutopilotChannelConfig,
 } from "../_shared/autopilot-media-routing.ts";
+import {
+  resolveAccountChannelSettings,
+  type AccountChannelSettingsOverride,
+  type ChannelSettingsOverride,
+} from "../_shared/account-channel-settings.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,6 +111,9 @@ type AccountAutomationOverrides = {
   instagram_account_id: string;
   default_media_type: string | null;
   default_image_style: string | null;
+  max_posts_per_day: number | null;
+  min_post_interval_minutes: number | null;
+  preferred_post_hours: number[] | null;
 };
 
 function pickChannel(text: string, channels: ChannelCfg[]): ChannelCfg | null {
@@ -373,7 +380,6 @@ Deno.serve(async (req) => {
 
     for (const u of users || []) {
       const userId = u.user_id;
-      const masterMinInterval = resolveGlobalPostInterval((u as any).min_post_interval_minutes);
       const userSummary: any = { userId, steps: {} };
       try {
         userSummary.steps.fetch = "done (global)";
@@ -482,17 +488,34 @@ Deno.serve(async (req) => {
           .eq("active", true);
         const validIgIds = new Set((igAccs || []).map((a: any) => a.id));
         const accountAutomationById = new Map<string, AccountAutomationOverrides>();
+        const accountChannelsById = new Map<string, AccountChannelSettingsOverride[]>();
         if (validIgIds.size > 0) {
-          const { data: accountAutomationRows } = await supabase
-            .from("account_settings")
-            .select("instagram_account_id, default_media_type, default_image_style")
-            .eq("user_id", userId)
-            .in("instagram_account_id", Array.from(validIgIds));
+          const [{ data: accountAutomationRows }, { data: accountChannelRows }] =
+            await Promise.all([
+              supabase
+                .from("account_settings")
+                .select("instagram_account_id, default_media_type, default_image_style, max_posts_per_day, min_post_interval_minutes, preferred_post_hours")
+                .eq("user_id", userId)
+                .in("instagram_account_id", Array.from(validIgIds)),
+              supabase
+                .from("account_channel_settings")
+                .select("instagram_account_id, channel, active, min_interval_minutes, allowed_hours, max_per_day, keywords, urgent_keywords, is_priority")
+                .eq("user_id", userId)
+                .in("instagram_account_id", Array.from(validIgIds)),
+            ]);
           for (const row of accountAutomationRows || []) {
             accountAutomationById.set(
               (row as AccountAutomationOverrides).instagram_account_id,
               row as AccountAutomationOverrides,
             );
+          }
+          for (const row of accountChannelRows || []) {
+            const accountId = String(
+              (row as AccountChannelSettingsOverride).instagram_account_id,
+            );
+            const current = accountChannelsById.get(accountId) || [];
+            current.push(row as AccountChannelSettingsOverride);
+            accountChannelsById.set(accountId, current);
           }
         }
         // Só existe fallback seguro quando há exatamente uma conta. Com duas
@@ -804,69 +827,55 @@ Deno.serve(async (req) => {
           );
         }
 
-        // carrega configurações de canais (cria defaults se faltar)
+        // O padrão de cada canal continua global. Overrides por Instagram são
+        // resolvidos dinamicamente dentro do loop para uma conta nunca herdar
+        // acidentalmente o ritmo de outra.
         const { data: chRows } = await supabase.from("channel_settings").select("*").eq("user_id", userId);
-        const hasSavedChannelSettings = (chRows || []).length > 0;
-        let channels: ChannelCfg[] = (chRows || []) as any;
-        if (!channels.length) {
-          channels = [
-            { channel: "feed", active: true, min_interval_minutes: 60, allowed_hours: [8,9,10,11,12,13,14,15,16,17,18,19,20,21], max_per_day: 5, keywords: [], urgent_keywords: [], is_priority: false },
-            { channel: "story", active: true, min_interval_minutes: 30, allowed_hours: [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22], max_per_day: 10, keywords: [], urgent_keywords: ["urgente","exclusivo","morre","prisão","vaza"], is_priority: true },
-            { channel: "reel", active: true, min_interval_minutes: 120, allowed_hours: [12,18,21], max_per_day: 3, keywords: [], urgent_keywords: [], is_priority: false },
-          ];
-        }
 
-        // As regras globais continuam como fallback. A escolha do canal é
-        // aplicada por Instagram somente dentro do loop de agendamento.
+        // O limite global continua protegendo o total do cliente. O resolvedor
+        // também aplica o limite específico de cada Instagram e de cada canal.
         const masterMediaType = (u as any).default_media_type as string | null; // "feed" | "story" | "reel" | null
-        const masterHours: number[] = Array.isArray((u as any).preferred_post_hours) && (u as any).preferred_post_hours.length
-          ? (u as any).preferred_post_hours
-          : [];
         const rawMasterDailyCap = (u as any).max_posts_per_day ?? 5;
         const masterDailyCap = rawMasterDailyCap < 0
           ? Number.POSITIVE_INFINITY
           : rawMasterDailyCap;
-        // Se não houver configuração específica do canal, usa os horários globais.
-        // Quando o usuário configurou Feed/Story/Reel, esses horários do canal vencem.
-        if (masterHours.length) {
-          channels = channels.map(c => ({
-            ...c,
-            allowed_hours: hasSavedChannelSettings && c.allowed_hours?.length ? c.allowed_hours : masterHours,
-          }));
-        }
-
-        // O intervalo global é autoritativo; cada canal mantém apenas suas
-        // regras editoriais, horários e limite diário.
-        channels = channels.map(c => ({
-          ...c,
-          min_interval_minutes: masterMinInterval,
-        }));
 
         // === RESTRIÇÃO DE PLANO: madrugada (22h–7h BRT) só p/ Pro/Business ===
         const { data: planRow } = await supabase.rpc("get_user_plan", { _user_id: userId });
         const userPlan = (planRow as string) || "free";
         const canPostOvernight = userPlan === "pro" || userPlan === "business";
-        if (!canPostOvernight) {
-          const DAY_HOURS = [8,9,10,11,12,13,14,15,16,17,18,19,20,21];
-          channels = channels.map(c => ({
-            ...c,
-            allowed_hours: c.allowed_hours.length
-              ? c.allowed_hours.filter(h => DAY_HOURS.includes(h))
-              : DAY_HOURS,
-          }));
-          channels = channels.map(c => c.allowed_hours.length ? c : { ...c, allowed_hours: DAY_HOURS });
-        }
 
         // limite global diário (soma de todos os canais) = max_posts_per_day
         const todayStart0 = new Date(); todayStart0.setHours(0,0,0,0);
         const todayEnd0 = new Date(todayStart0); todayEnd0.setDate(todayEnd0.getDate() + 1);
-        const scheduledTodayCount = (existingScheduled || []).filter((s: any) => {
+        const activeScheduledToday = (existingScheduled || []).filter((s) => {
           const d = new Date(s.scheduled_for);
           return d >= todayStart0 && d < todayEnd0;
-        }).length;
+        });
+        const postedTodayRows = postedRows.filter((row) => {
+          if (!row.posted_at) return false;
+          const d = new Date(row.posted_at);
+          return d >= todayStart0 && d < todayEnd0;
+        });
+        const scheduledTodayCount = activeScheduledToday.length + postedTodayRows.length;
         let remainingDailyCap = masterDailyCap < 0
           ? Number.POSITIVE_INFINITY
           : Math.max(0, masterDailyCap - scheduledTodayCount);
+        const dailyCountByIg = new Map<string, number>();
+        for (const row of activeScheduledToday) {
+          if (!row.instagram_account_id) continue;
+          dailyCountByIg.set(
+            row.instagram_account_id,
+            (dailyCountByIg.get(row.instagram_account_id) || 0) + 1,
+          );
+        }
+        for (const row of postedTodayRows) {
+          if (!row.instagram_account_id) continue;
+          dailyCountByIg.set(
+            row.instagram_account_id,
+            (dailyCountByIg.get(row.instagram_account_id) || 0) + 1,
+          );
+        }
 
         const scheduledNow: { id: string; channel: string }[] = [];
         const scheduledThisRunIgIds = new Set<string>();
@@ -892,16 +901,37 @@ Deno.serve(async (req) => {
           }
           if ((activeScheduledCountByIg.get(targetIg) || 0) >= MAX_ACTIVE_QUEUE_PER_ACCOUNT) continue;
           const accountAutomation = accountAutomationById.get(targetIg);
+          const resolvedSettings = resolveAccountChannelSettings({
+            globalSettings: {
+              default_media_type: masterMediaType,
+              max_posts_per_day: u.max_posts_per_day,
+              min_post_interval_minutes: u.min_post_interval_minutes,
+              preferred_post_hours: u.preferred_post_hours,
+            },
+            accountSettings: accountAutomation,
+            globalChannels: (chRows || []) as ChannelSettingsOverride[],
+            accountChannels: accountChannelsById.get(targetIg) || [],
+          });
+          let resolvedChannels = resolvedSettings.channels as ChannelCfg[];
+          if (!canPostOvernight) {
+            const DAY_HOURS = [8,9,10,11,12,13,14,15,16,17,18,19,20,21];
+            resolvedChannels = resolvedChannels.map((channel) => {
+              const allowed = channel.allowed_hours.filter((hour) => DAY_HOURS.includes(hour));
+              return { ...channel, allowed_hours: allowed.length ? allowed : DAY_HOURS };
+            });
+          }
+          const accountCap = resolvedSettings.maxPostsPerDay;
+          if (accountCap >= 0 && (dailyCountByIg.get(targetIg) || 0) >= accountCap) continue;
           const accountMediaType = normalizeAutopilotMediaType(
-            accountAutomation?.default_media_type,
+            resolvedSettings.defaultMediaType,
             masterMediaType,
           );
-          const accountChannels = channelsForAccount(channels, accountMediaType);
+          const accountChannels = channelsForAccount(resolvedChannels, accountMediaType);
           const text = `${it.rewritten_title || it.original_title || ""} ${it.rewritten_summary || it.original_content || ""}`;
           const cfg = it.content_format === "carrossel"
             // Carrossel é um formato editorial publicado nativamente como
             // Feed. Ele não pode ser descartado porque outra conta usa Reel.
-            ? carouselFeedChannel(channels)
+            ? carouselFeedChannel(resolvedChannels)
             : pickChannel(text, accountChannels);
           if (!cfg) continue;
           const accountTaken = allTakenByIg.get(targetIg) || [];
@@ -912,13 +942,13 @@ Deno.serve(async (req) => {
           };
           const notBeforeMs = nextAllowedPublicationAt(
             lastPostedByAccount.get(targetIg),
-            masterMinInterval,
+            resolvedSettings.minIntervalAcrossAccount,
           );
           const slot = nextSlotForChannel(
             cfg,
             channelTaken[cfg.channel],
             accountTaken,
-            masterMinInterval,
+            resolvedSettings.minIntervalAcrossAccount,
             notBeforeMs,
           );
           if (!slot) continue;
@@ -938,6 +968,7 @@ Deno.serve(async (req) => {
             takenByChByIg.set(targetIg, channelTaken);
             allTakenByIg.set(targetIg, accountTaken);
             remainingDailyCap--;
+            dailyCountByIg.set(targetIg, (dailyCountByIg.get(targetIg) || 0) + 1);
             activeScheduledCountByIg.set(targetIg, (activeScheduledCountByIg.get(targetIg) || 0) + 1);
             scheduledThisRunIgIds.add(targetIg);
             dupeRows.push({

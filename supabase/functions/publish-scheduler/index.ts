@@ -6,9 +6,14 @@ import {
   isScheduledBeyondFreshnessWindow,
   SCHEDULED_NEWS_MAX_AGE_HOURS,
 } from "../_shared/autopilot-policy.ts";
-import { resolveGlobalPostInterval } from "../_shared/editorial-policy.ts";
 import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
 import { finalizeEditorialCaption } from "../_shared/caption-integrity.ts";
+import {
+  resolveAccountChannelSettings,
+  type AccountChannelSettingsOverride,
+  type ChannelSettingsOverride,
+  type EffectiveAccountChannelSettings,
+} from "../_shared/account-channel-settings.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -433,12 +438,6 @@ const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 const toBRT = (d: Date) => new Date(d.getTime() - BRT_OFFSET_MS);
 const fromBRT = (d: Date) => new Date(d.getTime() + BRT_OFFSET_MS);
 
-function normalizedHours(value: unknown): number[] {
-  return Array.isArray(value)
-    ? Array.from(new Set(value.map(Number).filter((h) => Number.isFinite(h) && h >= 0 && h <= 23))).sort((a, b) => a - b)
-    : [];
-}
-
 function isAllowedHour(date: Date, allowedHours: number[]) {
   return !allowedHours.length || allowedHours.includes(toBRT(date).getUTCHours());
 }
@@ -694,33 +693,85 @@ Deno.serve(async (req) => {
 
     // Posts per day limit + intervalo mínimo entre posts (configurável)
     const { data: settings } = await supabase.from("user_settings")
-      .select("max_posts_per_day, min_post_interval_minutes, preferred_post_hours, meta_usage_pause_threshold")
+      .select("max_posts_per_day, min_post_interval_minutes, preferred_post_hours, default_media_type, meta_usage_pause_threshold")
       .eq("user_id", userId).maybeSingle();
     const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-    const { count: postedToday } = await supabase.from("scheduled_posts").select("id", { count: "exact", head: true })
+    const { data: postedTodayRows } = await supabase.from("scheduled_posts")
+      .select("instagram_account_id, media_type")
       .eq("user_id", userId).eq("status", "posted").gte("posted_at", startOfDay.toISOString());
+    const postedToday = postedTodayRows?.length || 0;
+    const postedByAccount = new Map<string, number>();
+    const postedByAccountChannel = new Map<string, number>();
+    for (const row of postedTodayRows || []) {
+      if (!row.instagram_account_id) continue;
+      postedByAccount.set(
+        row.instagram_account_id,
+        (postedByAccount.get(row.instagram_account_id) || 0) + 1,
+      );
+      const mediaType = row.media_type === "story"
+        ? "story"
+        : row.media_type === "reel" ? "reel" : "feed";
+      const key = `${row.instagram_account_id}:${mediaType}`;
+      postedByAccountChannel.set(key, (postedByAccountChannel.get(key) || 0) + 1);
+    }
 
     const dailyCap = settings?.max_posts_per_day ?? 5;
     const isUnlimited = dailyCap < 0;
-    const remaining = isUnlimited ? Infinity : Math.max(0, dailyCap - (postedToday || 0));
+    const remaining = isUnlimited ? Infinity : Math.max(0, dailyCap - postedToday);
     const hasDailyCapacity = isUnlimited || remaining > 0;
 
-    const minIntervalMin = resolveGlobalPostInterval(settings?.min_post_interval_minutes);
-    const globalAllowedHours = normalizedHours(settings?.preferred_post_hours);
-    const { data: channelRows } = await supabase.from("channel_settings")
-      .select("channel, min_interval_minutes, allowed_hours")
-      .eq("user_id", userId);
-    const channelConfig = new Map<string, { minIntervalMin: number; allowedHours: number[] }>();
-    for (const row of (channelRows || []) as any[]) {
-      const hours = normalizedHours(row.allowed_hours);
-      channelConfig.set(row.channel, {
-        minIntervalMin,
-        allowedHours: hours.length ? hours : globalAllowedHours,
-      });
+    const [
+      { data: channelRows },
+      { data: accountRows },
+      { data: accountChannelRows },
+    ] = await Promise.all([
+      supabase.from("channel_settings").select("*").eq("user_id", userId),
+      supabase
+        .from("account_settings")
+        .select("instagram_account_id, default_media_type, max_posts_per_day, min_post_interval_minutes, preferred_post_hours")
+        .eq("user_id", userId),
+      supabase
+        .from("account_channel_settings")
+        .select("instagram_account_id, channel, active, min_interval_minutes, allowed_hours, max_per_day, keywords, urgent_keywords, is_priority")
+        .eq("user_id", userId),
+    ]);
+    const accountSettingsById = new Map(
+      (accountRows || []).map((row) => [String(row.instagram_account_id), row]),
+    );
+    const accountChannelsById = new Map<string, AccountChannelSettingsOverride[]>();
+    for (const row of accountChannelRows || []) {
+      const accountId = String(
+        (row as AccountChannelSettingsOverride).instagram_account_id,
+      );
+      const current = accountChannelsById.get(accountId) || [];
+      current.push(row as AccountChannelSettingsOverride);
+      accountChannelsById.set(accountId, current);
     }
+    const resolvedByAccount = new Map<string, EffectiveAccountChannelSettings>();
+    const resolveForAccount = (accountId?: string | null) => {
+      const cacheKey = accountId || "__global";
+      const cached = resolvedByAccount.get(cacheKey);
+      if (cached) return cached;
+      const resolved = resolveAccountChannelSettings({
+        globalSettings: settings,
+        accountSettings: accountId ? accountSettingsById.get(accountId) : null,
+        globalChannels: (channelRows || []) as ChannelSettingsOverride[],
+        accountChannels: accountId ? accountChannelsById.get(accountId) || [] : [],
+      });
+      resolvedByAccount.set(cacheKey, resolved);
+      return resolved;
+    };
     const getPostConfig = (post: any) => {
       const mediaType = post?.media_type === "story" ? "story" : post?.media_type === "reel" ? "reel" : "feed";
-      return channelConfig.get(mediaType) || { minIntervalMin, allowedHours: globalAllowedHours };
+      const resolved = resolveForAccount(post?.instagram_account_id);
+      const channel = resolved.channels.find((item) => item.channel === mediaType)!;
+      return {
+        active: channel.active,
+        minIntervalMin: channel.min_interval_minutes,
+        allowedHours: channel.allowed_hours,
+        maxPerDay: channel.max_per_day,
+        accountMaxPerDay: resolved.maxPostsPerDay,
+      };
     };
 
     let processed = 0;
@@ -807,6 +858,30 @@ Deno.serve(async (req) => {
       const containerAgeMs = Date.now() - (Number.isFinite(createdAt) ? createdAt : Date.now());
       const isExpiredWaiting = containerAgeMs >= AWAITING_CONTAINER_TTL_MINUTES * 60_000;
       const postCfg = getPostConfig(p);
+      if (!postCfg.active) {
+        await supabase.from("scheduled_posts").update({
+          container_last_checked_at: nowIso,
+          error_message: `Canal ${p.media_type || "feed"} desativado para esta conta. Aguardando reativação.`,
+        }).eq("id", p.id);
+        continue;
+      }
+      const accountPostedToday = postedByAccount.get(acc?.id || "") || 0;
+      const mediaType = p.media_type === "story"
+        ? "story"
+        : p.media_type === "reel" ? "reel" : "feed";
+      const channelPostedToday =
+        postedByAccountChannel.get(`${acc?.id || ""}:${mediaType}`) || 0;
+      if (
+        (postCfg.accountMaxPerDay >= 0 &&
+          accountPostedToday >= postCfg.accountMaxPerDay) ||
+        (postCfg.maxPerDay >= 0 && channelPostedToday >= postCfg.maxPerDay)
+      ) {
+        await supabase.from("scheduled_posts").update({
+          container_last_checked_at: nowIso,
+          error_message: "Container pronto, aguardando o próximo limite diário desta conta.",
+        }).eq("id", p.id);
+        continue;
+      }
 
       if (!acc || !acc.ig_user_id || !acc.access_token) {
         await supabase.from("scheduled_posts").update({
@@ -1038,6 +1113,47 @@ Deno.serve(async (req) => {
       const news = p.news_items;
       const mt = p.media_type === "reel" ? "reel" : p.media_type === "story" ? "story" : "feed";
       const postCfg = getPostConfig(p);
+      const accountId = p.instagram_account_id as string | null;
+      if (!postCfg.active) {
+        const nextSlot = nextAllowedSpacedSlot(
+          Date.now() + 24 * 60 * 60_000,
+          [],
+          postCfg.minIntervalMin * 60_000,
+          postCfg.allowedHours,
+        );
+        await supabase.from("scheduled_posts").update({
+          scheduled_for: new Date(nextSlot).toISOString(),
+          error_message: `Canal ${mt} desativado para esta conta. Aguardando reativação.`,
+        }).eq("id", p.id).eq("status", "scheduled");
+        continue;
+      }
+      const accountPostedToday = accountId
+        ? postedByAccount.get(accountId) || 0
+        : 0;
+      const channelPostedToday = accountId
+        ? postedByAccountChannel.get(`${accountId}:${mt}`) || 0
+        : 0;
+      const accountLimitReached =
+        postCfg.accountMaxPerDay >= 0 &&
+        accountPostedToday >= postCfg.accountMaxPerDay;
+      const channelLimitReached =
+        postCfg.maxPerDay >= 0 &&
+        channelPostedToday >= postCfg.maxPerDay;
+      if (accountLimitReached || channelLimitReached) {
+        const nextSlot = nextAllowedSpacedSlot(
+          Date.now() + 24 * 60 * 60_000,
+          [],
+          postCfg.minIntervalMin * 60_000,
+          postCfg.allowedHours,
+        );
+        await supabase.from("scheduled_posts").update({
+          scheduled_for: new Date(nextSlot).toISOString(),
+          error_message: accountLimitReached
+            ? `Limite diário desta conta atingido (${postCfg.accountMaxPerDay}/dia)`
+            : `Limite diário do canal ${mt} atingido (${postCfg.maxPerDay}/dia)`,
+        }).eq("id", p.id).eq("status", "scheduled");
+        continue;
+      }
       const waitedMs = Date.now() - new Date(p.created_at).getTime();
       const useFallback = waitedMs >= FALLBACK_AFTER_MS;
       const managedReelVideo = mt === "reel"
@@ -1227,6 +1343,7 @@ Deno.serve(async (req) => {
 
     const expiredAccountIds = new Set<string>();
     for (const p of dueList) {
+      const postCfg = getPostConfig(p);
       const { data: lockedPost, error: lockError } = await supabase.from("scheduled_posts")
         .update({ status: "posting" })
         .eq("id", p.id)
@@ -1234,7 +1351,9 @@ Deno.serve(async (req) => {
         .select("id")
         .maybeSingle();
       if (lockError || !lockedPost) {
-        const next = new Date(Date.now() + minIntervalMin * 60_000).toISOString();
+        const next = new Date(
+          Date.now() + postCfg.minIntervalMin * 60_000,
+        ).toISOString();
         await supabase.from("scheduled_posts").update({
           scheduled_for: next,
           error_message: "Outra publicação desta conta já está em envio. Reagendado para evitar bloqueio do Instagram.",
@@ -1267,7 +1386,6 @@ Deno.serve(async (req) => {
         // chamada à Meta e pode ficar obsoleta se outro cron/manual publicar
         // a mesma conta enquanto esta execução aguardava. Revalidamos o
         // intervalo depois de marcar "posting", imediatamente antes do envio.
-        const postCfg = getPostConfig(p);
         if (acc.id) {
           const { data: latestPosted } = await supabase.from("scheduled_posts")
             .select("posted_at")
@@ -1374,7 +1492,9 @@ Deno.serve(async (req) => {
         const editorialReady = !!news?.editorial_ready;
         const allowRawFallback = mediaType === "story";
         if (!mediaUrl || (mediaType === "reel" && !managedReelVideo) || (!editorialReady && !(allowRawFallback && pastFallbackWindow))) {
-          const next = new Date(Date.now() + minIntervalMin * 60_000).toISOString();
+          const next = new Date(
+            Date.now() + postCfg.minIntervalMin * 60_000,
+          ).toISOString();
           const reelNotReady = p.media_type === "reel" && !managedReelVideo;
           await supabase.from("scheduled_posts").update({
             status: "scheduled",
@@ -1516,7 +1636,7 @@ Deno.serve(async (req) => {
             .in("status", ACTIVE_QUEUE_STATUSES)
             .eq("instagram_account_id", acc.id)
             .neq("id", p.id);
-          const stepMs = minIntervalMin * 60_000;
+          const stepMs = postCfg.minIntervalMin * 60_000;
           const takenTimes = (takenSameAccount || [])
             .map((row: any) => new Date(row.scheduled_for).getTime())
             .filter((time: number) => Number.isFinite(time))
