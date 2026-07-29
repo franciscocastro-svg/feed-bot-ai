@@ -6,7 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_PRICE_LOOKUP_KEYS = new Set(["starter_monthly", "pro_monthly"]);
+// Agência é contratada exclusivamente pelo atendimento comercial. Somente os
+// três planos de autosserviço podem iniciar checkout com cartão.
+const ALLOWED_PRICE_LOOKUP_KEYS = new Set([
+  "starter_monthly",
+  "pro_monthly",
+  "business_monthly",
+]);
 const CARD_BACKED_TRIAL_DAYS = 7;
 
 function allowedOrigins(): string[] {

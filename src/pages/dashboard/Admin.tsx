@@ -51,7 +51,7 @@ type Row = {
   last_activity: string | null;
 };
 
-const PLANS = ["free", "starter", "pro", "business"];
+const PLANS = ["free", "starter", "pro", "business", "agency"];
 const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 const EXPENSE_CATEGORIES = ["IA", "Servidor", "Tráfego pago", "Ferramentas", "Equipe", "Outros"];
 const ADMIN_TABS = [

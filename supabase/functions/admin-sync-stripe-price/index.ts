@@ -8,8 +8,9 @@ const corsHeaders = {
 
 // Maps internal plan -> Stripe price lookup_key + product_id
 const PLAN_MAP: Record<string, { lookup_key: string; product_id: string; product_name: string }> = {
-  starter: { lookup_key: "starter_monthly", product_id: "starter_plan", product_name: "Starter" },
+  starter: { lookup_key: "starter_monthly", product_id: "starter_plan", product_name: "Creator" },
   pro: { lookup_key: "pro_monthly", product_id: "pro_plan", product_name: "Pro" },
+  business: { lookup_key: "business_monthly", product_id: "business_plan", product_name: "Business" },
 };
 
 Deno.serve(async (req) => {

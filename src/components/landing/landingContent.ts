@@ -51,7 +51,10 @@ export type LandingPlan = {
   max_rss_sources: number | null;
   max_reels_per_month: number | null;
   max_images_per_month: number | null;
+  max_templates: number | null;
+  max_cuts_per_day: number | null;
   auto_publish_enabled: boolean | null;
+  translation_enabled: boolean | null;
 };
 
 export const navLinks = [

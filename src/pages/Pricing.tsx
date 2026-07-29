@@ -23,7 +23,8 @@ const PRICE_ID_MAP: Record<string, string | null> = {
   free: null,
   starter: "starter_monthly",
   pro: "pro_monthly",
-  business: null, // negotiable / contact sales
+  business: "business_monthly",
+  agency: null,
 };
 
 const HIGHLIGHT_PLAN = "pro";
@@ -34,16 +35,20 @@ const PLAN_POSITIONING: Record<string, { bestFor: string; promise: string }> = {
     promise: "O acesso agora exige cartão para ativar o teste.",
   },
   starter: {
-    bestFor: "Teste com cartão",
-    promise: "7 dias para validar o fluxo antes da primeira cobrança.",
+    bestFor: "Para começar com automação de verdade",
+    promise: "Mantenha seu Instagram ativo todos os dias sem produzir cada publicação manualmente.",
   },
   pro: {
-    bestFor: "Criadores e agências",
-    promise: "7 dias grátis com cartão e mais volume para escalar com controle.",
+    bestFor: "Para criadores e pequenas equipes",
+    promise: "Gerencie três perfis com conteúdo, horários e estratégias independentes.",
   },
   business: {
-    bestFor: "Operações com várias contas",
-    promise: "Para portais, times e projetos que precisam de acompanhamento próximo.",
+    bestFor: "Para marcas e operações com várias contas",
+    promise: "Escale várias marcas sem misturar fontes, filas, horários ou identidade editorial.",
+  },
+  agency: {
+    bestFor: "Para agências, portais e grandes operações",
+    promise: "Uma estrutura personalizada para administrar uma carteira maior de clientes.",
   },
 };
 
@@ -106,25 +111,62 @@ function formatPrice(brl: number | null | undefined, isNegotiable: boolean): str
   return `R$ ${Number(brl).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtLimit(n: number | null | undefined, suffix: string): string {
-  if (n === null || n === undefined) return `${suffix} ilimitado`;
-  if (n === -1) return `${suffix} ilimitado`;
-  return `${n} ${suffix}`;
-}
-
 function buildFeatures(p: PlanLimit): string[] {
-  const features: string[] = [];
-  features.push(fmtLimit(p.max_ig_accounts, p.max_ig_accounts === 1 ? "conta Instagram" : "contas Instagram"));
-  features.push(fmtLimit(p.max_posts_per_day, "posts/dia"));
-  features.push(fmtLimit(p.max_rss_sources, "fontes RSS"));
-  features.push(fmtLimit(p.max_reels_per_month, "reels IA/mês"));
-  features.push(fmtLimit(p.max_images_per_month, "imagens IA/mês"));
-  features.push(fmtLimit(p.max_templates, p.max_templates === 1 ? "template" : "templates"));
-  if (p.auto_publish_enabled) features.push("Auto-publicação");
-  if (p.translation_enabled) features.push("Tradução & adaptação BR 🌍");
-  const support = p.is_negotiable ? "Suporte por WhatsApp" : (p.plan === "pro" ? "Suporte prioritário" : "Suporte por email");
-  features.push(support);
-  return features;
+  const accounts = p.max_ig_accounts === 1
+    ? "1 conta Instagram"
+    : `${p.max_ig_accounts ?? "—"} contas Instagram`;
+  const posts = `Até ${p.max_posts_per_day ?? "—"} publicações/dia por conta`;
+  const sources = `${p.max_rss_sources ?? "—"} fontes de conteúdo`;
+  const cuts = `${p.max_cuts_per_day ?? 0} ${p.max_cuts_per_day === 1 ? "corte inteligente" : "cortes inteligentes"} por dia`;
+
+  if (p.plan === "starter") {
+    return [
+      accounts,
+      posts,
+      "Feed, Reels, Carrosséis e Stories",
+      sources,
+      "Perfil de voz personalizado",
+      cuts,
+      "Autopiloto e agendamento",
+      "Suporte por email",
+    ];
+  }
+  if (p.plan === "pro") {
+    return [
+      accounts,
+      posts,
+      "Feed, Reels, Carrosséis e Stories",
+      sources,
+      "Voz e nicho independentes por conta",
+      cuts,
+      "Tradução e adaptação de conteúdo",
+      "Suporte prioritário",
+    ];
+  }
+  if (p.plan === "business") {
+    return [
+      accounts,
+      posts,
+      "Feed, Reels, Carrosséis e Stories",
+      sources,
+      "Autopiloto independente por conta",
+      cuts,
+      `${p.max_templates ?? "Mais"} templates e personalizações`,
+      "Suporte prioritário",
+    ];
+  }
+  if (p.plan === "agency") {
+    return [
+      "20+ contas Instagram ou configuração personalizada",
+      "Volume de publicações personalizado por conta",
+      "Operação independente para cada cliente",
+      "Fontes, templates e cortes personalizados",
+      "Configuração assistida",
+      "Acompanhamento operacional",
+      "Atendimento exclusivo pelo WhatsApp",
+    ];
+  }
+  return [accounts, posts, sources];
 }
 
 export default function Pricing() {
@@ -179,7 +221,7 @@ export default function Pricing() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Planos do Flux & Feed — preços e recursos"
-        description="Planos do Flux & Feed para automatizar Instagram com IA: reescrita por IA, geração de Reels, agendamento e publicação pela API oficial da Meta."
+        description="Planos do Flux & Feed para automatizar Instagram com IA: conteúdo, Feed, Reels, Carrosséis, Stories, agendamento e publicação pela API oficial da Meta."
         path="/pricing"
       />
       <PaymentTestModeBanner />
@@ -210,18 +252,18 @@ export default function Pricing() {
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4 max-w-7xl mx-auto">
             {plans.filter((p) => p.plan !== "free").map((p) => {
               const isCurrent = usage?.plan === p.plan;
               const highlight = p.plan === HIGHLIGHT_PLAN;
               const priceId = PRICE_ID_MAP[p.plan] ?? null;
-              const isBusinessContact = p.is_negotiable;
+              const isAgencyContact = p.plan === "agency" && p.is_negotiable;
               const features = buildFeatures(p);
               const positioning = PLAN_POSITIONING[p.plan] || {
                 bestFor: "Plano flexível",
                 promise: "Escolha o volume ideal para sua rotina.",
               };
-              const subtitle = isBusinessContact ? "negociado" : "/mês após 7 dias";
+              const subtitle = isAgencyContact ? "personalizado" : "/mês após 7 dias";
 
               return (
                 <Card key={p.plan} className={`p-6 flex flex-col relative min-h-[460px] ${highlight ? "border-primary shadow-lg ring-2 ring-primary/20 pt-8" : ""}`}>
@@ -235,7 +277,7 @@ export default function Pricing() {
                     <h2 className="text-xl font-bold leading-tight">{p.display_name || p.plan}</h2>
                     <p className="text-xs font-medium text-primary leading-tight">{positioning.bestFor}</p>
                     <div className="flex flex-wrap items-end gap-x-2 gap-y-1 pt-1">
-                      <span className={`font-bold leading-none ${isBusinessContact ? "text-3xl" : "text-4xl"}`}>
+                      <span className={`font-bold leading-none ${isAgencyContact ? "text-3xl" : "text-4xl"}`}>
                         {formatPrice(p.price_brl, p.is_negotiable)}
                       </span>
                       <span className="text-sm text-muted-foreground pb-1">{subtitle}</span>
@@ -252,15 +294,15 @@ export default function Pricing() {
                   </ul>
                   {isCurrent ? (
                     <Button disabled variant="secondary" className="w-full">Plano atual</Button>
-                  ) : isBusinessContact ? (
+                  ) : isAgencyContact ? (
                     <Button
                       variant="outline"
                       className="w-full"
                       onClick={() => {
-                        window.open(buildSupportWhatsAppUrl("Quero o plano Business"), "_blank", "noopener,noreferrer");
+                        window.open(buildSupportWhatsAppUrl("Quero conhecer o plano Agência"), "_blank", "noopener,noreferrer");
                       }}
                     >
-                      <MessageCircle className="h-4 w-4 mr-2" /> Falar com vendas
+                      <MessageCircle className="h-4 w-4 mr-2" /> Falar com um especialista
                     </Button>
                   ) : priceId ? (
                     <Button onClick={() => openCheckout(priceId)} className="w-full" variant={highlight ? "default" : "outline"}>
@@ -275,6 +317,11 @@ export default function Pricing() {
               );
             })}
           </div>
+        )}
+        {!loading && (
+          <p className="mx-auto max-w-3xl text-center text-xs text-muted-foreground">
+            O limite diário é separado por conta Instagram e engloba Feed, Reels, Carrosséis e Stories. Um carrossel completo conta como uma publicação.
+          </p>
         )}
 
         <section className="rounded-2xl border border-border/60 bg-card/70 p-6 md:p-8">

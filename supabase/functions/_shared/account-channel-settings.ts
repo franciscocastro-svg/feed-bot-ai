@@ -117,6 +117,24 @@ function positiveInteger(value: unknown, fallback: number, minimum = 1): number 
   return Math.max(minimum, Math.floor(parsed));
 }
 
+/**
+ * Applies the commercial daily limit to one Instagram account.
+ *
+ * The configured value may come from the global profile or from an account
+ * override. A finite plan limit is always the upper bound; -1 means unlimited.
+ */
+export function capDailyPublications(
+  configuredLimit: unknown,
+  planLimit: unknown,
+  fallback = 5,
+): number {
+  const configured = positiveInteger(configuredLimit, fallback);
+  const plan = positiveInteger(planLimit, fallback);
+  if (plan < 0) return configured;
+  if (configured < 0) return plan;
+  return Math.min(configured, plan);
+}
+
 function normalizedInterval(value: unknown, fallback: number): number {
   const parsed = finiteNumber(value);
   return parsed === null ? fallback : Math.max(10, Math.floor(parsed));

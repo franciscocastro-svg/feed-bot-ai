@@ -47,7 +47,9 @@ export default function Terms() {
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">4. Planos e pagamentos</h2>
-            <p>Os planos são cobrados de forma recorrente mensal via Stripe. Você pode cancelar a qualquer momento — o acesso permanece até o fim do período já pago. Não há reembolsos proporcionais salvo exigência legal.</p>
+            <p>
+              Os planos Creator, Pro e Business são cobrados de forma recorrente mensal via Stripe. O plano Agência possui contratação sob consulta e condições comerciais apresentadas pelo atendimento oficial no WhatsApp. Você pode cancelar uma assinatura recorrente a qualquer momento — o acesso permanece até o fim do período já pago. Não há reembolsos proporcionais salvo exigência legal.
+            </p>
           </div>
           <div>
             <h2 className="text-2xl font-semibold mb-2">5. Contas conectadas e permissões</h2>

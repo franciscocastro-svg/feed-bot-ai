@@ -11,9 +11,8 @@ const NUM_FIELDS: { key: string; label: string; hint?: string }[] = [
   { key: "price_brl", label: "Preço (BRL)" },
   { key: "trial_days", label: "Período de teste (dias)" },
   { key: "max_ig_accounts", label: "Contas IG", hint: "-1 = ilimitado" },
-  { key: "max_posts_per_day", label: "Posts/dia", hint: "-1 = ilimitado" },
+  { key: "max_posts_per_day", label: "Publicações/dia por conta", hint: "Soma Feed, Reel, Carrossel e Story; -1 = ilimitado" },
   { key: "max_rss_sources", label: "Fontes RSS", hint: "-1 = ilimitado" },
-  { key: "max_reels_per_month", label: "Reels/mês", hint: "-1 = ilimitado" },
   { key: "max_images_per_month", label: "Imagens/mês", hint: "-1 = ilimitado" },
   { key: "max_templates", label: "Templates", hint: "-1 = ilimitado" },
   { key: "max_cuts_per_day", label: "Cortes IA/dia", hint: "-1 = ilimitado, 0 = desativado" },
@@ -66,7 +65,7 @@ export function PlanLimitsEditor() {
     }
 
     // Sync price to Stripe (only for paid, non-negotiable plans)
-    if (["starter", "pro"].includes(plan.plan) && payload.price_brl > 0 && !payload.is_negotiable) {
+    if (["starter", "pro", "business"].includes(plan.plan) && payload.price_brl > 0 && !payload.is_negotiable) {
       const env = (import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN as string | undefined)?.startsWith("pk_test_") ? "sandbox" : "live";
       const { data: syncRes, error: syncErr } = await supabase.functions.invoke("admin-sync-stripe-price", {
         body: { plan: plan.plan, price_brl: payload.price_brl, environment: env },

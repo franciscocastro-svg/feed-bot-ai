@@ -5,21 +5,24 @@ import { Button } from "@/components/ui/button";
 import type { LandingPlan } from "./landingContent";
 
 const PLAN_SUBTITLES: Record<string, string> = {
-  starter: "Para uma conta em crescimento",
-  pro: "Para criadores e agências",
-  business: "Para operação com várias contas",
+  starter: "Para começar com automação de verdade",
+  pro: "Para criadores e pequenas equipes",
+  business: "Para marcas e operações com várias contas",
+  agency: "Para agências, portais e grandes operações",
 };
 
 const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean }> = {
-  starter: { label: "Assinar Starter", to: "/pricing?plan=starter_monthly" },
-  pro: { label: "Assinar Pro", to: "/pricing?plan=pro_monthly" },
-  business: { label: "Falar com vendas", whatsapp: true },
+  starter: { label: "Testar Creator por 7 dias", to: "/pricing?plan=starter_monthly" },
+  pro: { label: "Começar 7 dias com Pro", to: "/pricing?plan=pro_monthly" },
+  business: { label: "Testar Business por 7 dias", to: "/pricing?plan=business_monthly" },
+  agency: { label: "Falar com um especialista", whatsapp: true },
 };
 
 const PLAN_BEST_FOR: Record<string, string> = {
-  starter: "Uma marca, um nicho e uma rotina simples.",
-  pro: "Mais contas, volume e suporte prioritário.",
-  business: "Times, portais e operações em escala.",
+  starter: "Mantenha seu Instagram ativo sem produzir cada publicação manualmente.",
+  pro: "Gerencie três perfis com conteúdo, horários e estratégias independentes.",
+  business: "Escale várias marcas sem misturar fontes, filas ou identidade editorial.",
+  agency: "Estrutura personalizada para administrar uma carteira maior de clientes.",
 };
 
 function fmtBRL(value: number | null | undefined, negotiable: boolean): string {
@@ -28,21 +31,26 @@ function fmtBRL(value: number | null | undefined, negotiable: boolean): string {
   return `R$ ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-function fmtLimit(value: number | null | undefined, label: string): string {
-  if (value === null || value === undefined || value === -1) return `${label} ilimitado`;
-  return `${value} ${label}`;
-}
-
 function buildFeatures(plan: LandingPlan): string[] {
-  return [
-    fmtLimit(plan.max_ig_accounts, plan.max_ig_accounts === 1 ? "conta Instagram" : "contas Instagram"),
-    fmtLimit(plan.max_posts_per_day, "posts/dia"),
-    fmtLimit(plan.max_rss_sources, "fontes RSS"),
-    fmtLimit(plan.max_reels_per_month, "reels IA/mês"),
-    fmtLimit(plan.max_images_per_month, "imagens IA/mês"),
-    ...(plan.auto_publish_enabled ? ["Auto-publicação"] : []),
-    plan.is_negotiable ? "Suporte por WhatsApp" : plan.plan === "pro" ? "Suporte prioritário" : "Suporte por email",
-  ];
+  const accounts = plan.max_ig_accounts === 1
+    ? "1 conta Instagram"
+    : `${plan.max_ig_accounts ?? "—"} contas Instagram`;
+  const posts = `Até ${plan.max_posts_per_day ?? "—"} publicações/dia por conta`;
+  const sources = `${plan.max_rss_sources ?? "—"} fontes de conteúdo`;
+  const cuts = `${plan.max_cuts_per_day ?? 0} ${plan.max_cuts_per_day === 1 ? "corte inteligente" : "cortes inteligentes"} por dia`;
+  if (plan.plan === "starter") {
+    return [accounts, posts, "Todos os formatos", sources, "Perfil de voz personalizado", cuts, "Autopiloto", "Suporte por email"];
+  }
+  if (plan.plan === "pro") {
+    return [accounts, posts, "Todos os formatos", sources, "Voz e nicho por conta", cuts, "Tradução de conteúdo", "Suporte prioritário"];
+  }
+  if (plan.plan === "business") {
+    return [accounts, posts, "Todos os formatos", sources, "Autopiloto por conta", cuts, `${plan.max_templates ?? "Mais"} templates`, "Suporte prioritário"];
+  }
+  if (plan.plan === "agency") {
+    return ["20+ contas ou configuração personalizada", "Volume personalizado por conta", "Operação independente por cliente", "Fontes, templates e cortes personalizados", "Configuração assistida", "Atendimento pelo WhatsApp"];
+  }
+  return [accounts, posts, sources];
 }
 
 type PricingSectionProps = {
@@ -70,8 +78,8 @@ export function PricingSection({ plans, status, whatsappUrl }: PricingSectionPro
         </p>
       </div>
 
-      <div className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {status === "loading" && [...Array(3)].map((_, index) => (
+      <div className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {status === "loading" && [...Array(4)].map((_, index) => (
           <div key={index} className="h-[450px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.035]" aria-hidden="true" />
         ))}
 
@@ -177,7 +185,7 @@ export function PricingSection({ plans, status, whatsappUrl }: PricingSectionPro
       </div>
 
       <p className="mx-auto mt-7 max-w-2xl text-center text-xs leading-5 text-muted-foreground">
-        Todos os planos usam publicação pela API oficial da Meta. O ritmo de postagem depende das regras configuradas e das políticas do Instagram.
+        O limite diário é separado por Instagram e inclui Feed, Reels, Carrosséis e Stories. Um carrossel completo conta como uma publicação. Todos os planos usam a API oficial da Meta.
       </p>
     </section>
   );

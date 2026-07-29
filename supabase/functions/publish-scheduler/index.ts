@@ -9,6 +9,7 @@ import {
 import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
 import { finalizeEditorialCaption } from "../_shared/caption-integrity.ts";
 import {
+  capDailyPublications,
   resolveAccountChannelSettings,
   type AccountChannelSettingsOverride,
   type ChannelSettingsOverride,
@@ -699,7 +700,6 @@ Deno.serve(async (req) => {
     const { data: postedTodayRows } = await supabase.from("scheduled_posts")
       .select("instagram_account_id, media_type")
       .eq("user_id", userId).eq("status", "posted").gte("posted_at", startOfDay.toISOString());
-    const postedToday = postedTodayRows?.length || 0;
     const postedByAccount = new Map<string, number>();
     const postedByAccountChannel = new Map<string, number>();
     for (const row of postedTodayRows || []) {
@@ -715,10 +715,15 @@ Deno.serve(async (req) => {
       postedByAccountChannel.set(key, (postedByAccountChannel.get(key) || 0) + 1);
     }
 
-    const dailyCap = settings?.max_posts_per_day ?? 5;
-    const isUnlimited = dailyCap < 0;
-    const remaining = isUnlimited ? Infinity : Math.max(0, dailyCap - postedToday);
-    const hasDailyCapacity = isUnlimited || remaining > 0;
+    const { data: currentPlan } = await supabase.rpc("get_user_plan", {
+      _user_id: userId,
+    });
+    const { data: planLimits } = await supabase
+      .from("plan_limits")
+      .select("max_posts_per_day")
+      .eq("plan", (currentPlan as string) || "free")
+      .maybeSingle();
+    const planDailyCap = planLimits?.max_posts_per_day ?? 5;
 
     const [
       { data: channelRows },
@@ -770,7 +775,10 @@ Deno.serve(async (req) => {
         minIntervalMin: channel.min_interval_minutes,
         allowedHours: channel.allowed_hours,
         maxPerDay: channel.max_per_day,
-        accountMaxPerDay: resolved.maxPostsPerDay,
+        accountMaxPerDay: capDailyPublications(
+          resolved.maxPostsPerDay,
+          planDailyCap,
+        ),
       };
     };
 
@@ -1057,12 +1065,6 @@ Deno.serve(async (req) => {
 
     if (processed > 0) {
       return new Response(JSON.stringify({ processed, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, duplicate_queue_cancelled: duplicateQueueCancelled }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!hasDailyCapacity) {
-      return new Response(JSON.stringify({ processed: 0, awaiting_checked: awaitingChecked, awaiting_recovered: awaitingRecovered, duplicate_queue_cancelled: duplicateQueueCancelled, reason: "daily limit reached" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
