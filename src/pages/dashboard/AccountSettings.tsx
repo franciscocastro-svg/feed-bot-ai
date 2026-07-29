@@ -10,6 +10,13 @@ import { toast } from "sonner";
 import { Upload, Loader2, ArrowLeft, Instagram } from "lucide-react";
 import { ContextHelp, FieldLabel } from "@/components/ContextHelp";
 import { useLanguage } from "@/contexts/LanguageContext";
+import {
+  accountPublicationPreference,
+  newsFormatForPublicationPreference,
+  storedMediaTypeForPreference,
+  type AccountPublicationPreference,
+  type NewsFormatPreference,
+} from "@/lib/accountPublicationPreference";
 
 // Per-IG-account settings. Empty/null values inherit from global user_settings.
 // We store ONLY the override values; the page shows current effective values
@@ -30,13 +37,28 @@ type EffectiveSettings = {
   auto_approve?: boolean | null;
 };
 
+type CreatorProfilePayload = Record<string, unknown> & {
+  news_format_preference?: NewsFormatPreference;
+  carousel_slide_count?: number;
+  _inherited?: boolean;
+  _exists?: boolean;
+};
+
+type ProfileRpcResult = {
+  data: CreatorProfilePayload | null;
+  error: { message: string } | null;
+};
+
+type ProfileRpc = (name: string, args: Record<string, unknown>) => Promise<ProfileRpcResult>;
+const callProfileRpc = supabase.rpc.bind(supabase) as unknown as ProfileRpc;
+
 const empty = {
   brand_name: "",
   brand_handle: "",
   brand_logo_url: "",
   default_niche: "",
   ai_tone: "",
-  default_media_type: "" as "" | "reel" | "feed" | "story",
+  default_media_type: "" as AccountPublicationPreference,
   default_image_style: "" as "" | "template" | "ai",
   reel_audio_url: "",
   max_posts_per_day: "" as number | "",
@@ -56,6 +78,10 @@ export default function AccountSettings() {
   const [userId, setUserId] = useState<string>("");
   const [form, setForm] = useState(empty);
   const [effective, setEffective] = useState<EffectiveSettings>({});
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfilePayload>({});
+  const [globalNewsFormat, setGlobalNewsFormat] = useState<NewsFormatPreference>("single");
+  const [initialPublicationPreference, setInitialPublicationPreference] =
+    useState<AccountPublicationPreference>("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,14 +91,33 @@ export default function AccountSettings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
-      const [{ data: acc }, { data: override }, { data: eff }] = await Promise.all([
+      const [
+        { data: acc },
+        { data: override },
+        { data: eff },
+        { data: profile },
+        { data: globalProfile },
+      ] = await Promise.all([
         supabase.from("instagram_accounts").select("id,user_id,username,ig_user_id,page_id,niche,active,created_at,updated_at,custom_hashtags,token_expires_at,last_verified_at,verification_status").eq("id", id).maybeSingle(),
         supabase.from("account_settings").select("*").eq("instagram_account_id", id).maybeSingle(),
         supabase.rpc("get_effective_account_settings", { _account_id: id }),
+        callProfileRpc("get_creator_profile_for_account", { _account_id: id }),
+        callProfileRpc("get_creator_profile_for_account", { _account_id: null }),
       ]);
       if (!acc) { toast.error(t("Conta não encontrada")); navigate("/dashboard/accounts"); return; }
       setAccount(acc);
       setEffective((eff as any) || {});
+      const currentProfile = profile || {};
+      const publicationPreference = accountPublicationPreference(
+        override?.default_media_type,
+        currentProfile.news_format_preference,
+      );
+      setCreatorProfile(currentProfile);
+      setGlobalNewsFormat(newsFormatForPublicationPreference(
+        "",
+        globalProfile?.news_format_preference,
+      ));
+      setInitialPublicationPreference(publicationPreference);
       if (override) {
         setForm({
           brand_name: override.brand_name || "",
@@ -80,7 +125,7 @@ export default function AccountSettings() {
           brand_logo_url: override.brand_logo_url || "",
           default_niche: override.default_niche || "",
           ai_tone: override.ai_tone || "",
-          default_media_type: (override.default_media_type as any) || "",
+          default_media_type: publicationPreference,
           default_image_style: (override.default_image_style as any) || "",
           reel_audio_url: override.reel_audio_url || "",
           max_posts_per_day: override.max_posts_per_day ?? "",
@@ -113,6 +158,7 @@ export default function AccountSettings() {
       .split(",")
       .map((x) => parseInt(x.trim()))
       .filter((n) => Number.isFinite(n) && n >= 0 && n <= 23);
+    const storedMediaType = storedMediaTypeForPreference(form.default_media_type);
     const payload = {
       user_id: userId,
       instagram_account_id: id,
@@ -121,7 +167,9 @@ export default function AccountSettings() {
       brand_logo_url: form.brand_logo_url || null,
       default_niche: form.default_niche.trim() || null,
       ai_tone: form.ai_tone.trim() || null,
-      default_media_type: form.default_media_type || null,
+      // Instagram publica carrossel no canal Feed. "carousel" é apenas a
+      // escolha amigável da tela e nunca é persistida como media_type.
+      default_media_type: storedMediaType || null,
       default_image_style: form.default_image_style || null,
       reel_audio_url: form.reel_audio_url || null,
       max_posts_per_day: form.max_posts_per_day === "" ? null : Number(form.max_posts_per_day),
@@ -129,11 +177,53 @@ export default function AccountSettings() {
       preferred_post_hours: hours.length ? hours : null,
       auto_approve: form.auto_approve,
     };
+    const shouldSynchronizeProfile =
+      form.default_media_type !== initialPublicationPreference;
+    const synchronizedProfile = shouldSynchronizeProfile
+      ? {
+          ...creatorProfile,
+          news_format_preference: newsFormatForPublicationPreference(
+            form.default_media_type,
+            globalNewsFormat,
+          ),
+          carousel_slide_count: creatorProfile.carousel_slide_count || 6,
+        }
+      : creatorProfile;
+
+    if (shouldSynchronizeProfile) {
+      const { error: profileError } = await callProfileRpc(
+        "save_creator_profile_with_news_preferences",
+        {
+          _account_id: id,
+          _profile: synchronizedProfile,
+        },
+      );
+      if (profileError) {
+        setSaving(false);
+        return toast.error(t("Não foi possível sincronizar o formato das notícias:") + " " + profileError.message);
+      }
+    }
+
     const { error } = await supabase
       .from("account_settings")
       .upsert(payload, { onConflict: "instagram_account_id" });
+    if (error) {
+      if (shouldSynchronizeProfile) {
+        if (creatorProfile._inherited || !creatorProfile._exists) {
+          await callProfileRpc("reset_creator_profile_for_account", { _account_id: id });
+        } else {
+          await callProfileRpc("save_creator_profile_with_news_preferences", {
+            _account_id: id,
+            _profile: creatorProfile,
+          });
+        }
+      }
+      setSaving(false);
+      return toast.error(error.message);
+    }
     setSaving(false);
-    if (error) return toast.error(error.message);
+    setCreatorProfile(synchronizedProfile);
+    setInitialPublicationPreference(form.default_media_type);
     toast.success(t("Configurações da conta salvas"));
     const { data: eff } = await supabase.rpc("get_effective_account_settings", { _account_id: id });
     setEffective((eff as any) || {});
@@ -234,13 +324,14 @@ export default function AccountSettings() {
           <Input id="account-ai-tone" value={form.ai_tone} onChange={e => setForm({ ...form, ai_tone: e.target.value })} placeholder={ph(effective.ai_tone)} />
         </div>
         <div>
-          <FieldLabel helpLabel={t("tipo de publicação desta conta")} help={t("Formato preferido desta conta quando a automação não definir outro. Você pode manter o padrão global.")}>{t("Tipo de publicação padrão")}</FieldLabel>
-          <Select value={form.default_media_type || "__inherit"} onValueChange={v => setForm({ ...form, default_media_type: (v === "__inherit" ? "" : v) as any })}>
+          <FieldLabel helpLabel={t("tipo de publicação desta conta")} help={t("Formato preferido desta conta quando a automação não definir outro. Carrossel usa o canal Feed do Instagram e sincroniza o Perfil de Criador desta conta.")}>{t("Tipo de publicação padrão")}</FieldLabel>
+          <Select value={form.default_media_type || "__inherit"} onValueChange={v => setForm({ ...form, default_media_type: (v === "__inherit" ? "" : v) as AccountPublicationPreference })}>
             <SelectTrigger><SelectValue placeholder={ph(effective.default_media_type)} /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__inherit">{t("Usar padrão global")} ({effective.default_media_type || "—"})</SelectItem>
               <SelectItem value="reel">🎬 Reel</SelectItem>
               <SelectItem value="feed">📷 Feed</SelectItem>
+              <SelectItem value="carousel">🖼️ {t("Carrossel (Feed)")}</SelectItem>
               <SelectItem value="story">⭐ Story</SelectItem>
             </SelectContent>
           </Select>
