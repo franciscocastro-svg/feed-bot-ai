@@ -61,7 +61,7 @@ REGRAS:
 - Hashtags: 8-15, mix de nicho e amplas, em pt-BR.
 - Título curto (até 80 chars) para usar em capa.${carouselContract}
 
-Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa","slides":[{"title":"...","body":"...","emphasis":["..."],"image_mode":"text","image_query":null,"image_alt":null}]}`;
+Retorne APENAS JSON: {"title":"...","caption":"...","hashtags":["#..."],"cover_text":"frase curta da capa","slides":[{"title":"...","body":"...","emphasis":["..."],"image_mode":"stock","image_query":"concrete photographic query in English","image_queries":["first concrete English visual query","second concrete English visual query"],"image_alt":"descrição curta em pt-BR"}]}`;
 
   const userPrompt = `Pauta: "${topic.title}"\nGere o conteúdo no formato ${format}.`;
 

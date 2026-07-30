@@ -670,10 +670,26 @@ function normalizeCarouselSlidesForWorker(value) {
   if (!Array.isArray(value) || value.length < 5 || value.length > 7) {
     throw new Error("Carrossel sem contrato válido de 5 a 7 slides.");
   }
+  const visualQueries = (slide) => {
+    const candidates = [
+      slide?.image_query,
+      ...(Array.isArray(slide?.image_queries) ? slide.image_queries : []),
+    ];
+    const seen = new Set();
+    return candidates
+      .map((query) => String(query || "").trim())
+      .filter((query) => {
+        const key = query.toLocaleLowerCase("en-US");
+        if (!query || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 3);
+  };
   const requestedCoverImage = value.find((slide, index) =>
     index < value.length - 1
     && slide?.image_mode === "stock"
-    && String(slide?.image_query || "").trim()
+    && visualQueries(slide).length > 0
   );
   return value.map((slide, index) => {
     const title = String(slide?.title || "").trim();
@@ -681,15 +697,18 @@ function normalizeCarouselSlidesForWorker(value) {
     if (!title || (index > 0 && !body)) {
       throw new Error(`Slide ${index + 1} do carrossel está incompleto.`);
     }
+    const imageQueries = index === 0
+      ? (visualQueries(slide).length ? visualQueries(slide) : visualQueries(requestedCoverImage))
+      : [];
     return normalizeEditorialCarouselSlide({
       ...slide,
       title,
       body,
-      image_query: index === 0
-        ? String(slide?.image_query || requestedCoverImage?.image_query || title).trim()
-        : null,
+      image_mode: index === 0 && imageQueries.length ? "stock" : "text",
+      image_query: imageQueries[0] || null,
+      image_queries: imageQueries,
       image_alt: index === 0
-        ? String(slide?.image_alt || requestedCoverImage?.image_alt || title).trim()
+        ? String(slide?.image_alt || requestedCoverImage?.image_alt || "").trim() || null
         : null,
     }, index, value.length);
   });
@@ -737,6 +756,7 @@ async function composeAndUploadCarouselNode(item, settings) {
       try {
         stockImage = await resolveCarouselStockImage({
           query: slide.image_query,
+          queries: slide.image_queries,
           excludedIds: usedStockAssetIds,
           cacheFile: path.join(TEMP_DIR, "carousel-stock-cache.json"),
         });
@@ -761,7 +781,9 @@ async function composeAndUploadCarouselNode(item, settings) {
       });
     }
     if (slide.role === "cover" && !image) {
-      throw new Error("A capa do carrossel precisa de uma imagem relevante; nenhuma imagem segura foi encontrada.");
+      console.warn(
+        `[carousel:${item.id}] nenhuma imagem temática segura foi encontrada; usando capa tipográfica.`,
+      );
     }
     const persistedSlide = {
       ...slide,

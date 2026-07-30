@@ -61,6 +61,7 @@ describe("Notícias em carrossel por Perfil do Criador", () => {
     expect(originalImageCheck).toBeGreaterThan(-1);
     expect(stockLookup).toBeGreaterThan(originalImageCheck);
     expect(worker).toContain("image_asset: stockImage?.audit || null");
-    expect(worker).toContain("A capa do carrossel precisa de uma imagem relevante");
+    expect(worker).toContain("nenhuma imagem temática segura foi encontrada; usando capa tipográfica");
+    expect(worker).not.toContain("A capa do carrossel precisa de uma imagem relevante");
   });
 });

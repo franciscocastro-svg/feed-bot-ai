@@ -6,6 +6,7 @@ export type TopicCarouselSlide = {
   emphasis: string[];
   image_mode: "text" | "stock";
   image_query: string | null;
+  image_queries: string[];
   image_alt: string | null;
   image_asset?: {
     provider: "pixabay";
@@ -15,6 +16,9 @@ export type TopicCarouselSlide = {
     query: string;
     license_url: string;
     selected_at: string;
+    relevance_score?: number;
+    matched_terms?: string[];
+    cache_version?: string;
   } | null;
 };
 
@@ -23,7 +27,8 @@ const MAX_SLIDES = 7;
 const MAX_STOCK_SLIDES = 1;
 const MAX_TITLE_LENGTH = 72;
 const MAX_BODY_LENGTH = 190;
-const MAX_IMAGE_QUERY_WORDS = 5;
+const MAX_IMAGE_QUERIES = 3;
+const MAX_IMAGE_QUERY_WORDS = 6;
 
 function cleanText(value: unknown, maxLength: number) {
   return String(value || "")
@@ -40,15 +45,25 @@ function cleanImageQuery(value: unknown) {
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned) return null;
-  return cleaned;
+  return cleaned.split(/\s+/).slice(0, MAX_IMAGE_QUERY_WORDS).join(" ");
 }
 
-function coverImageQuery(value: unknown, fallbackTitle: string) {
-  const requested = cleanImageQuery(value);
-  if (requested) return requested;
-  const fallback = cleanImageQuery(fallbackTitle);
-  if (!fallback) return "editorial news concept";
-  return fallback.split(/\s+/).slice(0, MAX_IMAGE_QUERY_WORDS).join(" ");
+function cleanImageQueries(record: Record<string, unknown>) {
+  const candidates = [
+    record.image_query,
+    ...(Array.isArray(record.image_queries) ? record.image_queries : []),
+  ];
+  const seen = new Set<string>();
+  const queries: string[] = [];
+  for (const candidate of candidates) {
+    const query = cleanImageQuery(candidate);
+    const key = query?.toLocaleLowerCase("en-US");
+    if (!query || !key || seen.has(key)) continue;
+    seen.add(key);
+    queries.push(query);
+    if (queries.length === MAX_IMAGE_QUERIES) break;
+  }
+  return queries;
 }
 
 function normalizeEmphasis(value: unknown, title: string, body: string) {
@@ -82,7 +97,7 @@ export function normalizeTopicCarousel(
     .find((record, index) =>
       index < requestedSlides.length - 1
       && record.image_mode === "stock"
-      && Boolean(cleanImageQuery(record.image_query))
+      && cleanImageQueries(record).length > 0
     );
   const normalized = requestedSlides.map<TopicCarouselSlide>((slide, index) => {
     const record = slide && typeof slide === "object" ? slide as Record<string, unknown> : {};
@@ -92,13 +107,15 @@ export function normalizeTopicCarousel(
     if (!body) throw new Error(`Carrossel inválido: o slide ${index + 1} está sem conteúdo.`);
     const isLastRequestedSlide = index === Math.min(rawSlides.length, MAX_SLIDES) - 1;
     const isCover = index === 0;
+    const ownQueries = cleanImageQueries(record);
     const coverStock = isCover
-      ? (cleanImageQuery(record.image_query) ? record : requestedStock)
+      ? (ownQueries.length ? record : requestedStock)
       : null;
-    const wantsStock = isCover && !isLastRequestedSlide && MAX_STOCK_SLIDES > 0;
-    const imageQuery = wantsStock
-      ? coverImageQuery(coverStock?.image_query, title || fallbackTitle)
-      : null;
+    const imageQueries = coverStock ? cleanImageQueries(coverStock) : [];
+    const wantsStock = isCover
+      && !isLastRequestedSlide
+      && MAX_STOCK_SLIDES > 0
+      && imageQueries.length > 0;
     return {
       position: index + 1,
       role: isCover ? "cover" : "content",
@@ -106,7 +123,8 @@ export function normalizeTopicCarousel(
       body,
       emphasis: normalizeEmphasis(record.emphasis, title, body),
       image_mode: wantsStock ? "stock" : "text",
-      image_query: wantsStock ? imageQuery : null,
+      image_query: wantsStock ? imageQueries[0] : null,
+      image_queries: wantsStock ? imageQueries : [],
       image_alt: wantsStock ? cleanText(coverStock?.image_alt, 140) || title : null,
     };
   });
@@ -126,6 +144,7 @@ export function normalizeTopicCarousel(
     body: normalized[normalized.length - 1].body || cleanText(fallbackCta, MAX_BODY_LENGTH),
     image_mode: "text",
     image_query: null,
+    image_queries: [],
     image_alt: null,
   };
   return normalized;
@@ -136,9 +155,12 @@ export function carouselPromptContract() {
 Slide 1: capa com gancho curto. Slides intermediários: uma ideia concreta por slide. Último slide: conclusão e CTA.
 O slide 1 deve concentrar a manchete e a informação mais impactante do carrossel, sem guardar o principal fato para o slide 2.
 Escreva como um carrossel editorial minimalista: 24 a 38 palavras por slide, frases curtas, muito respiro e nenhuma parede de texto.
-Cada objeto deve seguir {"title":"até 72 caracteres","body":"até 190 caracteres","emphasis":["até 3 trechos exatos do title/body"],"image_mode":"text ou stock","image_query":"2 a 5 palavras genéricas em inglês ou null","image_alt":"descrição curta em pt-BR ou null"}.
-Use image_mode="stock" obrigatoriamente no slide 1, com uma imagem diretamente relacionada à manchete. Todos os outros slides e o CTA final devem ser text.
-As buscas visuais devem representar conceitos genéricos; nunca peça pessoa pública, marca, logotipo, conta social ou evento exato.
+Cada objeto deve seguir {"title":"até 72 caracteres","body":"até 190 caracteres","emphasis":["até 3 trechos exatos do title/body"],"image_mode":"text ou stock","image_query":"consulta visual principal em inglês ou null","image_queries":["2 ou 3 alternativas em inglês"],"image_alt":"descrição curta em pt-BR ou null"}.
+No slide 1, use image_mode="stock" somente quando puder criar consultas visuais seguras e diretamente relacionadas à manchete. Todos os outros slides e o CTA final devem ser text.
+Para a capa, considere em conjunto o tema, a pauta, o título, o nicho, o público e o Perfil de Criador informados no prompt.
+Cada consulta deve ter 3 a 6 palavras concretas em inglês e descrever algo que uma fotografia realmente mostraria, por exemplo "praying hands open bible sunrise". Crie 2 ou 3 alternativas específicas.
+Não use termos abstratos ou genéricos como "concept", "motivation", "success", "business background" ou "technology". Não use notebook, café, mesa ou escritório se esses objetos não forem parte explícita do assunto.
+Nunca peça pessoa pública, marca, logotipo, conta social ou evento exato. Se não houver representação visual segura, use image_mode="text", image_query=null e image_queries=[] para gerar uma capa tipográfica.
 Escolha em emphasis apenas frases curtas que merecem negrito e que existam literalmente no title ou body.
 Não escreva fonte, URL, crédito, nome do banco de imagens ou marcadores "Slide N" na legenda, no title ou no body.`;
 }

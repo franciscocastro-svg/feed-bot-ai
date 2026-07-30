@@ -21,6 +21,11 @@ const scheduled = read("src/pages/dashboard/Scheduled.tsx");
 const slides = Array.from({ length: 6 }, (_, index) => ({
   title: index === 0 ? "Gancho principal" : `Ideia ${index}`,
   body: index === 0 ? "Informação de impacto na capa" : `Explicação concreta do slide ${index + 1}`,
+  image_mode: index === 0 ? "stock" : "text",
+  image_query: index === 0 ? "team planning strategy whiteboard" : null,
+  image_queries: index === 0
+    ? ["team planning strategy whiteboard", "founder writing goals whiteboard"]
+    : [],
 }));
 
 describe("Pautas 1A — geração completa de carrosséis", () => {

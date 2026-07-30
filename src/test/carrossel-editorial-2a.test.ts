@@ -8,8 +8,11 @@ import {
 } from "../../supabase/functions/_shared/topic-carousel";
 import {
   buildPixabaySearchUrl,
+  MIN_STOCK_RELEVANCE_SCORE,
   normalizeStockImageQuery,
   resolveCarouselStockImage,
+  scorePixabayHit,
+  STOCK_CACHE_VERSION,
 } from "../../worker/carouselStockImages.js";
 import {
   EDITORIAL_CAROUSEL_HEIGHT,
@@ -35,6 +38,9 @@ function makeSlides() {
     emphasis: index === 1 ? ["conteúdo factual", "trecho inexistente"] : [],
     image_mode: index > 0 && index < 3 ? "stock" : "text",
     image_query: index > 0 && index < 3 ? `business concept ${index}` : null,
+    image_queries: index > 0 && index < 3
+      ? [`business concept ${index}`, `team meeting whiteboard ${index}`]
+      : [],
     image_alt: index > 0 && index < 3 ? "Fotografia editorial genérica" : null,
   }));
 }
@@ -48,6 +54,7 @@ describe("Carrossel Editorial 2A", () => {
       role: "cover",
       image_mode: "stock",
       image_query: "business concept 1",
+      image_queries: ["business concept 1", "team meeting whiteboard 1"],
     });
     expect(result.slice(1).every((slide) => slide.image_mode === "text")).toBe(true);
     expect(result[1].emphasis).toEqual(["conteúdo factual"]);
@@ -58,24 +65,29 @@ describe("Carrossel Editorial 2A", () => {
       image_alt: null,
     });
 
-    const legacy = normalizeTopicCarousel(
+    const withoutSafeVisualQuery = normalizeTopicCarousel(
       makeSlides().map(({ title, body }) => ({ title, body })),
       "Título",
     );
-    expect(legacy[0]).toMatchObject({
-      image_mode: "stock",
-      image_query: "Um gancho que prende",
+    expect(withoutSafeVisualQuery[0]).toMatchObject({
+      image_mode: "text",
+      image_query: null,
+      image_queries: [],
     });
-    expect(legacy.slice(1).every((slide) => slide.image_mode === "text")).toBe(true);
+    expect(withoutSafeVisualQuery.every((slide) => slide.image_mode === "text")).toBe(true);
   });
 
-  it("instrui a IA a pedir apenas imagens genéricas e nunca expor fonte na legenda", () => {
+  it("instrui a IA a criar consultas concretas usando pauta e Perfil de Criador", () => {
     const contract = carouselPromptContract();
     expect(contract).toContain('image_mode":"text ou stock');
+    expect(contract).toContain('"image_queries"');
     expect(contract).toContain("24 a 38 palavras por slide");
-    expect(contract).toContain('image_mode="stock" obrigatoriamente no slide 1');
+    expect(contract).toContain("tema, a pauta, o título, o nicho, o público e o Perfil de Criador");
+    expect(contract).toContain("3 a 6 palavras concretas em inglês");
+    expect(contract).toContain("notebook, café, mesa ou escritório");
+    expect(contract).toContain('image_mode="text", image_query=null');
     expect(contract).toContain("informação mais impactante");
-    expect(contract).toContain("nunca peça pessoa pública, marca, logotipo");
+    expect(contract).toContain("Nunca peça pessoa pública, marca, logotipo");
     expect(contract).toContain("Não escreva fonte, URL, crédito");
   });
 
@@ -89,6 +101,16 @@ describe("Carrossel Editorial 2A", () => {
     )).toMatchObject({ role: "cta", image_mode: "text" });
     expect(normalizeEditorialCarouselSlide(
       { title: "Capa", body: "Impacto", image_mode: "text" },
+      0,
+      6,
+    )).toMatchObject({ role: "cover", image_mode: "text" });
+    expect(normalizeEditorialCarouselSlide(
+      {
+        title: "Capa",
+        body: "Impacto",
+        image_mode: "stock",
+        image_query: "praying hands open bible",
+      },
       0,
       6,
     )).toMatchObject({ role: "cover", image_mode: "stock" });
@@ -119,6 +141,7 @@ describe("Carrossel Editorial 2A", () => {
     expect(requestUrl.origin).toBe("https://pixabay.com");
     expect(requestUrl.searchParams.get("orientation")).toBe("vertical");
     expect(requestUrl.searchParams.get("safesearch")).toBe("true");
+    expect(requestUrl.searchParams.get("per_page")).toBe("30");
 
     const cacheDir = mkdtempSync(join(tmpdir(), "carousel-stock-test-"));
     temporaryDirectories.push(cacheDir);
@@ -130,6 +153,7 @@ describe("Carrossel Editorial 2A", () => {
         largeImageURL: "https://cdn.example.test/asset.jpg",
         pageURL: "https://pixabay.com/photos/example-42/",
         user: "photographer",
+        tags: "finance, growth, chart",
       }],
     }), { status: 200 }));
     const result = await resolveCarouselStockImage({
@@ -146,7 +170,10 @@ describe("Carrossel Editorial 2A", () => {
       asset_id: 42,
       contributor: "photographer",
       query: "finance growth",
+      cache_version: STOCK_CACHE_VERSION,
+      matched_terms: ["finance"],
     });
+    expect(result?.audit.relevance_score).toBeGreaterThanOrEqual(MIN_STOCK_RELEVANCE_SCORE);
     expect(JSON.stringify(result?.audit)).not.toContain("secret-key");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
@@ -163,6 +190,7 @@ describe("Carrossel Editorial 2A", () => {
         largeImageURL: "https://cdn.example.test/cached.jpg",
         pageURL: "https://pixabay.com/photos/cached-77/",
         user: "author",
+        tags: "team, collaboration, meeting",
       }],
     }), { status: 200 }));
     const first = await resolveCarouselStockImage({
@@ -182,12 +210,82 @@ describe("Carrossel Editorial 2A", () => {
     expect(second).toEqual(first);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(readFileSync(cacheFile, "utf8")).not.toContain('"key"');
+    expect(readFileSync(cacheFile, "utf8")).toContain(`pixabay:${STOCK_CACHE_VERSION}:team collaboration`);
 
     await expect(resolveCarouselStockImage({
       query: "team collaboration",
       apiKey: "",
       fetchImpl: vi.fn(),
     })).resolves.toBeNull();
+  });
+
+  it("pontua todos os resultados e rejeita a foto popular genérica sem relação", async () => {
+    const generic = {
+      id: 1,
+      imageWidth: 2400,
+      imageHeight: 3200,
+      largeImageURL: "https://cdn.example.test/coffee.jpg",
+      pageURL: "https://pixabay.com/photos/laptop-coffee-office-1/",
+      tags: "laptop, coffee, office, desk",
+      user: "generic",
+    };
+    const thematic = {
+      id: 2,
+      imageWidth: 2400,
+      imageHeight: 3200,
+      largeImageURL: "https://cdn.example.test/prayer.jpg",
+      pageURL: "https://pixabay.com/photos/prayer-bible-sunrise-2/",
+      tags: "prayer, hands, bible, sunrise",
+      user: "thematic",
+    };
+    expect(scorePixabayHit(generic, "praying hands open bible").score)
+      .toBe(Number.NEGATIVE_INFINITY);
+    expect(scorePixabayHit(thematic, "praying hands open bible").score)
+      .toBeGreaterThanOrEqual(MIN_STOCK_RELEVANCE_SCORE);
+
+    const cacheDir = mkdtempSync(join(tmpdir(), "carousel-stock-ranking-test-"));
+    temporaryDirectories.push(cacheDir);
+    const result = await resolveCarouselStockImage({
+      query: "praying hands open bible",
+      queries: ["open bible morning sunrise"],
+      apiKey: "key",
+      cacheFile: join(cacheDir, "cache.json"),
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({
+        hits: [generic, thematic],
+      }), { status: 200 })),
+    });
+    expect(result?.audit.asset_id).toBe(2);
+    expect(result?.audit.matched_terms).toEqual(expect.arrayContaining(["hands", "bible"]));
+  });
+
+  it("usa capa tipográfica quando nenhuma busca alternativa tem correspondência segura", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "carousel-stock-negative-cache-test-"));
+    temporaryDirectories.push(cacheDir);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      hits: [{
+        id: 3,
+        imageWidth: 2400,
+        imageHeight: 3200,
+        largeImageURL: "https://cdn.example.test/generic.jpg",
+        pageURL: "https://pixabay.com/photos/office-laptop-coffee-3/",
+        tags: "office, laptop, coffee, desk",
+        user: "generic",
+      }],
+    }), { status: 200 }));
+    const options = {
+      query: "praying hands open bible",
+      queries: ["open bible morning sunrise"],
+      apiKey: "key",
+      cacheFile: join(cacheDir, "cache.json"),
+      fetchImpl,
+      now: 2_000_000,
+    };
+    await expect(resolveCarouselStockImage(options)).resolves.toBeNull();
+    await expect(resolveCarouselStockImage({
+      ...options,
+      now: 2_000_500,
+    })).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("integra o renderer sem alterar a legenda pública", () => {
@@ -203,7 +301,8 @@ describe("Carrossel Editorial 2A", () => {
     expect(statSync(verifiedBadgePath).size).toBeGreaterThan(1_000);
     expect(worker).not.toContain("caption: resolvedSlides");
     expect(worker).toContain("const maxStockImages = 1");
-    expect(worker).toContain("A capa do carrossel precisa de uma imagem relevante");
+    expect(worker).toContain("nenhuma imagem temática segura foi encontrada; usando capa tipográfica");
+    expect(worker).not.toContain("A capa do carrossel precisa de uma imagem relevante");
     expect(worker).toContain("const WORKER_POLL_INTERVAL_MS = 5_000");
     expect(worker).toContain("setTimeout(resolve, WORKER_POLL_INTERVAL_MS)");
   });
