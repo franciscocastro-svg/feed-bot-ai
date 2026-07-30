@@ -33,6 +33,10 @@ export function normalizeEditorialCarouselSlide(slide, index, total) {
   const role = index === 0 ? "cover" : index === total - 1 ? "cta" : "content";
   const title = clean(slide?.title, MAX_TITLE_LENGTH);
   const body = clean(slide?.body, MAX_BODY_LENGTH);
+  const hasVisualQuery = Boolean(
+    clean(slide?.image_query, 80)
+    || (Array.isArray(slide?.image_queries) && slide.image_queries.some((query) => clean(query, 80))),
+  );
   return {
     ...slide,
     position: index + 1,
@@ -40,7 +44,9 @@ export function normalizeEditorialCarouselSlide(slide, index, total) {
     title,
     body,
     emphasis: validEmphasis(slide?.emphasis, title, body),
-    image_mode: role === "cover" ? "stock" : "text",
+    image_mode: role === "cover" && slide?.image_mode === "stock" && hasVisualQuery
+      ? "stock"
+      : "text",
   };
 }
 
