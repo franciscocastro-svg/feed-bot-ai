@@ -12,6 +12,8 @@ import {
 import {
   assertCreatorProfileCompliance,
   creatorCaptionExtras,
+  creatorCtaStyle,
+  creatorEditorialConflicts,
   creatorProfileFingerprint,
   creatorProfilePrompt,
   loadEffectiveCreatorProfile,
@@ -1345,12 +1347,23 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
     const hashtagsLine = safeHashtags.slice(0, 8).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const reelHashtagsLine = safeHashtags.slice(0, 5).map((h: string) => `#${h.replace(/^#/, "")}`).join(" ");
     const usefulCaption = ensureUsefulCaption(ai.caption, item, ai.title, ai.summary);
-    const creatorExtras = creatorCaptionExtras(creatorProfile);
+    const captionVariationSeed = `${item.id}:${handle}`;
+    const creatorExtras = creatorCaptionExtras(creatorProfile, captionVariationSeed);
+    const safeCreatorCtaStyle = creatorCtaStyle(creatorProfile);
+    const creatorConflicts = creatorEditorialConflicts(creatorProfile);
+    if (creatorConflicts.length > 0) {
+      console.warn("[creator-profile] unsafe CTA guidance ignored", {
+        account_id: item.instagram_account_id || null,
+        conflict_codes: creatorConflicts,
+      });
+    }
     const finalCaption = finalizeEditorialCaption(
       usefulCaption,
       {
         accountHandle: handle,
         signatureBlocks: creatorExtras,
+        ctaStyle: safeCreatorCtaStyle,
+        variationSeed: captionVariationSeed,
         hashtagsLine,
         maxLength: 1700,
       },
@@ -1361,6 +1374,8 @@ async function doProcessing(supabase: any, item: any, userId: string, image_styl
       {
         accountHandle: handle,
         signatureBlocks: creatorExtras,
+        ctaStyle: safeCreatorCtaStyle,
+        variationSeed: captionVariationSeed,
         hashtagsLine: reelHashtagsLine,
         maxLength: 1100,
       },

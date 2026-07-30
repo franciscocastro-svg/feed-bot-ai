@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   assertCreatorProfileCompliance,
   creatorCaptionExtras,
+  creatorCtaStyle,
+  creatorEditorialConflicts,
   creatorProfileFingerprint,
   creatorProfilePrompt,
   findForbiddenCreatorTerm,
@@ -61,6 +63,40 @@ describe("Perfil do Criador 1A", () => {
     ]);
     expect(creatorProfilePrompt(profile)).toContain("apenas referencia de tom");
     expect(creatorProfilePrompt(profile)).toContain("Nao inclua CTA");
+  });
+
+  it("rotates signature phrases deterministically without crossing creator profiles", () => {
+    const rotatingProfile = {
+      ...profile,
+      signature_phrases: [
+        "Dinheiro simples, decisão consciente.",
+        "Clareza hoje, tranquilidade amanhã.",
+        "Cada real precisa de um propósito.",
+      ],
+    };
+    const selected = new Set(
+      Array.from({ length: 20 }, (_, index) =>
+        creatorCaptionExtras(rotatingProfile, `account-a:news-${index}`)[0]
+      ),
+    );
+    expect(selected.size).toBeGreaterThan(1);
+    expect(creatorCaptionExtras(rotatingProfile, "account-a:news-2"))
+      .toEqual(creatorCaptionExtras(rotatingProfile, "account-a:news-2"));
+  });
+
+  it("rejects conflicting CTA guidance without leaking it into the generation prompt", () => {
+    const conflicting = {
+      ...profile,
+      cta_style: "Clique no link da bio e chame no WhatsApp @outra_conta.",
+    };
+    expect(creatorEditorialConflicts(conflicting)).toEqual([
+      "cta_external_link",
+      "cta_external_contact",
+      "cta_account_handle",
+    ]);
+    expect(creatorCtaStyle(conflicting)).toBe("");
+    expect(creatorProfilePrompt(conflicting)).not.toContain("Clique no link da bio");
+    expect(creatorCtaStyle(profile)).toBe(profile.cta_style);
   });
 
   it("isolates profiles by account and protects every mutation with owner-checked RPCs", () => {
