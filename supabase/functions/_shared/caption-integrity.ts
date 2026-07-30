@@ -7,7 +7,7 @@ const SOURCE_LINE_RE =
 const CTA_START_RE =
   /^(?:siga|segue|seguir|acompanhe|acompanhar|comente|comenta|salve|salva|compartilhe|compartilha|curta|marque|envie|mande|acesse|visite|confira|qual\s+[ée]\s+a\s+sua\s+opini[aã]o|o\s+que\s+voc[eê]\s+(?:acha|achou|pensa))/i;
 const CTA_ANYWHERE_RE =
-  /\b(?:siga|segue|acompanhe|comente|comenta|salve|salva|compartilhe|compartilha|curta|marque|envie|mande)\b/i;
+  /\b(?:siga|segue|acompanhe|comente|comenta|conte|deixe|participe|salve|salva|compartilhe|compartilha|curta|marque|envie|mande)\b/i;
 
 function normalizeWhitespace(value: string): string {
   return value
@@ -47,6 +47,13 @@ function stripCallsAndHandles(value: string): string {
       /\b(?:fechar|finalizar|terminar)\s+(?:a\s+legenda\s+)?(?:convidando|com)\s+(?:para|pra)\s+(?:a\s+)?a[cç][aã]o\b[\s\S]*$/iu,
       "",
     );
+    const plainParagraph = stripLeadingDecorators(withoutInstruction);
+    if (
+      HANDLE_TOKEN_RE.test(withoutInstruction) &&
+      (CTA_START_RE.test(plainParagraph) || CTA_ANYWHERE_RE.test(withoutInstruction))
+    ) {
+      return "";
+    }
     const sentences = withoutInstruction.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
     const kept = sentences.flatMap((sentence) => {
       const plain = stripLeadingDecorators(sentence);
@@ -86,6 +93,108 @@ function normalizeComparable(value: string): string {
     .trim();
 }
 
+function stableListIndex(seed: string, length: number): number {
+  if (length <= 1) return 0;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index++) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % length;
+}
+
+function dedupeEditorialText(value: string, seenSentences: Set<string>): string {
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const sentences = paragraph.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+      return sentences
+        .filter((sentence) => {
+          const key = normalizeComparable(stripLeadingDecorators(sentence));
+          if (!key || seenSentences.has(key)) return false;
+          seenSentences.add(key);
+          return true;
+        })
+        .map((sentence) => sentence.trim())
+        .join(" ");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function safeDirectQuestion(value: string): string {
+  const question = value.match(/(?:^|[.!]\s+)([^.!?]{12,180}\?)/u)?.[1] || "";
+  return question
+    .replace(HANDLE_RE, "")
+    .replace(URL_RE, "")
+    .replace(/[?]+$/u, "")
+    .trim();
+}
+
+function engagementQuestion(style: string, seed: string): string {
+  const normalizedStyle = normalizeComparable(style);
+  const directQuestion = safeDirectQuestion(style);
+  const tailored = directQuestion
+    ? [directQuestion]
+    : normalizedStyle.includes("duvida")
+      ? [
+        "Qual dúvida sobre este assunto você quer ver respondida",
+        "Que pergunta essa informação deixou para você",
+        "Qual ponto você gostaria de entender melhor",
+        "O que ainda precisa ser esclarecido sobre esse tema",
+      ]
+      : normalizedStyle.includes("surpreend") || normalizedStyle.includes("babado")
+        ? [
+          "O que mais surpreendeu você nesta notícia",
+          "Qual detalhe dessa história mais chamou sua atenção",
+          "Que parte dessa informação teve mais impacto para você",
+          "O que você não esperava encontrar nessa notícia",
+        ]
+        : normalizedStyle.includes("aplica") || normalizedStyle.includes("pratica")
+          ? [
+            "Como você aplicaria essa informação na prática",
+            "Qual ação prática você tomaria primeiro",
+            "O que você colocaria em prática a partir disso",
+            "Que mudança concreta você faria agora",
+          ]
+          : normalizedStyle.includes("consequencia") || normalizedStyle.includes("reflet")
+            ? [
+              "Que consequência desta notícia merece mais atenção",
+              "Qual impacto você considera mais importante",
+              "O que essa mudança pode provocar na prática",
+              "Como isso pode afetar os próximos acontecimentos",
+            ]
+            : normalizedStyle.includes("opiniao") || normalizedStyle.includes("acha") ||
+                normalizedStyle.includes("pensa")
+              ? [
+                "Qual é a sua opinião sobre esta notícia",
+                "Como você enxerga essa situação",
+                "Você concorda com essa leitura",
+                "O que você pensa sobre esse cenário",
+              ]
+              : [];
+  const defaults = [
+    "Qual ponto desta notícia mais chamou sua atenção",
+    "Como você avalia essa informação",
+    "O que pode mudar a partir desta notícia",
+    "Que consequência desse fato merece mais atenção",
+  ];
+  const choices = tailored.length ? tailored : defaults;
+  return choices[stableListIndex(seed, choices.length)];
+}
+
+function engagementCta(accountHandle: string, style: string, seed: string): string {
+  const question = engagementQuestion(style, seed);
+  const actions = [
+    `Conte nos comentários e siga @${accountHandle} para acompanhar os próximos destaques`,
+    `Deixe sua opinião e acompanhe @${accountHandle} para receber as próximas notícias`,
+    `Participe da conversa e siga @${accountHandle} para não perder as próximas atualizações`,
+    `Comente e acompanhe @${accountHandle} para ver os próximos destaques`,
+  ];
+  const action = actions[stableListIndex(`${seed}:action`, actions.length)];
+  return `💬 ${action}: ${question}?`;
+}
+
 export function normalizeInstagramHandle(value: unknown): string {
   return String(value || "")
     .trim()
@@ -113,6 +222,8 @@ export function sanitizeEditorialCaptionBody(value: unknown): string {
 export type FinalizeEditorialCaptionOptions = {
   accountHandle: string;
   signatureBlocks?: string[];
+  ctaStyle?: string;
+  variationSeed?: string;
   hashtagsLine?: string;
   maxLength?: number;
 };
@@ -140,15 +251,13 @@ export function finalizeEditorialCaption(
     sanitizeEditorialCaptionBody(bodyWithoutHashtags),
     ...(options.signatureBlocks || []).map(sanitizeEditorialCaptionBody),
   ].filter(Boolean);
-  const seen = new Set<string>();
-  const uniqueBlocks = blocks.filter((block) => {
-    const key = normalizeComparable(block);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const seenSentences = new Set<string>();
+  const uniqueBlocks = blocks
+    .map((block) => dedupeEditorialText(block, seenSentences))
+    .filter(Boolean);
 
-  const cta = `💬 O que você pensa sobre esta notícia? Comente e siga @${accountHandle} para acompanhar os próximos destaques.`;
+  const variationSeed = `${accountHandle}:${options.variationSeed || normalizeComparable(rawBody).slice(0, 160)}`;
+  const cta = engagementCta(accountHandle, String(options.ctaStyle || ""), variationSeed);
   const hashtagBlock = hashtags.join(" ");
   const suffix = [cta, hashtagBlock].filter(Boolean).join("\n\n");
   const maxLength = Math.max(320, options.maxLength || 1700);

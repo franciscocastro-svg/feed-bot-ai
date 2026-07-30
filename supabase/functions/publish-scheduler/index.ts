@@ -9,6 +9,12 @@ import {
 import { planStableQueueSlots } from "../_shared/scheduled-queue.ts";
 import { finalizeEditorialCaption } from "../_shared/caption-integrity.ts";
 import {
+  creatorCaptionExtras,
+  creatorCtaStyle,
+  loadEffectiveCreatorProfile,
+  type CreatorProfile,
+} from "../_shared/creator-profile.ts";
+import {
   capDailyPublications,
   resolveAccountChannelSettings,
   type AccountChannelSettingsOverride,
@@ -326,6 +332,7 @@ function buildSafePublishCaption(
   news: any,
   mediaType: "feed" | "reel" | "story",
   accountUsername: string,
+  creatorProfile: CreatorProfile | null = null,
 ): { caption: string; usedFallback: boolean } {
   if (mediaType === "story") return { caption: "", usedFallback: false };
 
@@ -335,17 +342,22 @@ function buildSafePublishCaption(
   const cleanPreferred = normalizePublishCaption(preferred);
   const hashtagsLine = buildHashtagsLine(news?.hashtags);
   const hasHashtags = /(^|\s)#\w+/u.test(cleanPreferred);
+  const captionVariationSeed = `${news?.id || news?.original_title || "news"}:${accountUsername}`;
+  const captionOptions = {
+    accountHandle: accountUsername,
+    signatureBlocks: creatorCaptionExtras(creatorProfile, captionVariationSeed),
+    ctaStyle: creatorCtaStyle(creatorProfile),
+    variationSeed: captionVariationSeed,
+    hashtagsLine,
+    maxLength: mediaType === "reel" ? 1100 : 1700,
+  };
 
   if (cleanPreferred.length >= MIN_PUBLISH_CAPTION_CHARS) {
     const withTags = hashtagsLine && !hasHashtags
       ? `${cleanPreferred}\n\n${hashtagsLine}`
       : cleanPreferred;
     return {
-      caption: finalizeEditorialCaption(withTags, {
-        accountHandle: accountUsername,
-        hashtagsLine,
-        maxLength: mediaType === "reel" ? 1100 : 1700,
-      }),
+      caption: finalizeEditorialCaption(withTags, captionOptions),
       usedFallback: false,
     };
   }
@@ -372,11 +384,7 @@ function buildSafePublishCaption(
     : "🚨 Notícia importante\n\n💬 O que você achou dessa notícia?";
 
   return {
-    caption: finalizeEditorialCaption(fallback, {
-      accountHandle: accountUsername,
-      hashtagsLine,
-      maxLength: mediaType === "reel" ? 1100 : 1700,
-    }),
+    caption: finalizeEditorialCaption(fallback, captionOptions),
     usedFallback: true,
   };
 }
@@ -1526,7 +1534,25 @@ Deno.serve(async (req) => {
           });
           continue;
         }
-        const safeCaption = buildSafePublishCaption(news, mediaType, acc.username);
+        let creatorProfile: CreatorProfile | null = null;
+        try {
+          creatorProfile = await loadEffectiveCreatorProfile(
+            supabase,
+            userId!,
+            acc.id,
+          );
+        } catch (profileError) {
+          console.warn("[publish-scheduler] creator profile unavailable; using safe defaults", {
+            account_id: acc.id,
+            error_type: profileError instanceof Error ? profileError.name : "unknown",
+          });
+        }
+        const safeCaption = buildSafePublishCaption(
+          news,
+          mediaType,
+          acc.username,
+          creatorProfile,
+        );
         const captionToUse = safeCaption.caption;
         if (safeCaption.usedFallback && news?.id) {
           const captionPatch = mediaType === "reel"
@@ -1600,7 +1626,22 @@ Deno.serve(async (req) => {
           // post existe no perfil — se sim, marca como publicado.
           if (p.media_type === "feed") {
             try {
-              const captionToCheck = buildSafePublishCaption(news, "feed", acc.username).caption;
+              let creatorProfile: CreatorProfile | null = null;
+              try {
+                creatorProfile = await loadEffectiveCreatorProfile(
+                  supabase,
+                  userId!,
+                  acc.id,
+                );
+              } catch {
+                // Ghost recovery remains available with safe defaults.
+              }
+              const captionToCheck = buildSafePublishCaption(
+                news,
+                "feed",
+                acc.username,
+                creatorProfile,
+              ).caption;
               const ghostId = await findRecentlyPublishedMediaId(acc.ig_user_id, acc.access_token, captionToCheck);
               if (ghostId) {
                 await supabase.from("scheduled_posts").update({

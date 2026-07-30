@@ -36,6 +36,23 @@ const cleanList = (value: unknown, maxItems = 20, maxLength = 240) =>
     .map((item) => clean(item, maxLength))
     .filter(Boolean)
     .slice(0, maxItems);
+const CTA_EXTERNAL_LINK_RE =
+  /\b(?:https?:\/\/|www\.|link\s+(?:na|da|do)\s+bio|clique|acesse|visite)\b/i;
+const CTA_EXTERNAL_CONTACT_RE =
+  /\b(?:whats?app|direct|dm|telefone|e-?mail)\b/i;
+const CTA_COMMERCE_RE =
+  /\b(?:compre|assine|checkout|pix|pague|pagamento)\b/i;
+const CTA_HANDLE_RE = /@[a-z0-9._]{1,30}/i;
+
+function stableListIndex(seed: string, length: number): number {
+  if (length <= 1) return 0;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index++) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % length;
+}
 
 export function normalizeNewsFormatPreference(value: unknown): "single" | "carousel" | "automatic" {
   return value === "carousel" || value === "automatic" ? value : "single";
@@ -94,6 +111,7 @@ export async function loadEffectiveCreatorProfile(
 export function creatorProfilePrompt(profile: CreatorProfile | null | undefined): string {
   const value = normalizeCreatorProfile(profile);
   if (!value) return "";
+  const safeCtaStyle = creatorCtaStyle(value);
   const lines = [
     "PERFIL DO CRIADOR DESTA CONTA (obrigatorio):",
     value.niche_detail ? `- Nicho: ${value.niche_detail}` : "",
@@ -102,8 +120,8 @@ export function creatorProfilePrompt(profile: CreatorProfile | null | undefined)
     value.expertise_summary ? `- Autoridade real: ${value.expertise_summary}` : "",
     value.signature_phrases?.length ? `- Frases de assinatura (use no maximo uma, quando natural): ${value.signature_phrases.join(" | ")}` : "",
     value.forbidden_words?.length ? `- TERMOS/TEMAS PROIBIDOS: ${value.forbidden_words.join(" | ")}` : "",
-    value.cta_style
-      ? `- Estilo de engajamento (apenas referencia de tom; nao copie literalmente nem inclua @handles): ${value.cta_style}`
+    safeCtaStyle
+      ? `- Estilo de engajamento (apenas referencia de tom; nao copie literalmente nem inclua @handles): ${safeCtaStyle}`
       : "",
     value.example_posts?.length ? `- Referencias de estilo:\n${value.example_posts.map((item, index) => `  [${index + 1}] ${item}`).join("\n")}` : "",
     value.extra_notes ? `- Instrucoes adicionais: ${value.extra_notes}` : "",
@@ -147,12 +165,47 @@ export function assertCreatorProfileCompliance(
   throw error;
 }
 
-export function creatorCaptionExtras(profile: CreatorProfile | null | undefined): string[] {
+export type CreatorEditorialConflict =
+  | "cta_external_link"
+  | "cta_external_contact"
+  | "cta_direct_commerce"
+  | "cta_account_handle"
+  | "cta_forbidden_term";
+
+export function creatorEditorialConflicts(
+  profile: CreatorProfile | null | undefined,
+): CreatorEditorialConflict[] {
+  const value = normalizeCreatorProfile(profile);
+  const ctaStyle = value?.cta_style || "";
+  if (!ctaStyle) return [];
+
+  const conflicts: CreatorEditorialConflict[] = [];
+  if (CTA_EXTERNAL_LINK_RE.test(ctaStyle)) conflicts.push("cta_external_link");
+  if (CTA_EXTERNAL_CONTACT_RE.test(ctaStyle)) conflicts.push("cta_external_contact");
+  if (CTA_COMMERCE_RE.test(ctaStyle)) conflicts.push("cta_direct_commerce");
+  if (CTA_HANDLE_RE.test(ctaStyle)) conflicts.push("cta_account_handle");
+  if (findForbiddenCreatorTerm(ctaStyle, value)) conflicts.push("cta_forbidden_term");
+  return conflicts;
+}
+
+export function creatorCtaStyle(profile: CreatorProfile | null | undefined): string {
+  const value = normalizeCreatorProfile(profile);
+  if (!value?.cta_style || creatorEditorialConflicts(value).length > 0) return "";
+  return value.cta_style;
+}
+
+export function creatorCaptionExtras(
+  profile: CreatorProfile | null | undefined,
+  variationSeed = "",
+): string[] {
   const value = normalizeCreatorProfile(profile);
   if (!value) return [];
-  const extras: string[] = [];
-  if (value.signature_phrases?.[0]) extras.push(value.signature_phrases[0]);
-  return extras;
+  const signatures = value.signature_phrases || [];
+  if (!signatures.length) return [];
+  const signatureIndex = variationSeed
+    ? stableListIndex(variationSeed, signatures.length)
+    : 0;
+  return [signatures[signatureIndex]];
 }
 
 export function creatorProfileFingerprint(profile: CreatorProfile | null | undefined): string {

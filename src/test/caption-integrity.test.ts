@@ -73,7 +73,65 @@ describe("Legendas 2.0-A — identidade, qualidade e engajamento", () => {
       hashtagsLine: "#um #dois #tres #quatro #cinco #seis #sete #oito #nove #dez",
     });
     expect(result.match(/#[\p{L}\p{N}_]+/gu)).toHaveLength(8);
-    expect(result.match(/Comente e siga/gi)).toHaveLength(1);
+    expect(result.match(/💬/g)).toHaveLength(1);
+    expect(result.match(/@conta\.oficial/g)).toHaveLength(1);
+  });
+
+  it("deduplicates repeated sentences and a signature already present in the body", () => {
+    const result = finalizeEditorialCaption(
+      [
+        "A medida foi confirmada nesta manhã.",
+        "Aprenda, aplique e evolua.",
+        "Aprenda, aplique e evolua. 👀",
+      ].join("\n\n"),
+      {
+        accountHandle: "conta.oficial",
+        signatureBlocks: ["Aprenda, aplique e evolua."],
+        variationSeed: "news-duplicate",
+      },
+    );
+
+    expect(result.match(/Aprenda, aplique e evolua/gi)).toHaveLength(1);
+  });
+
+  it("applies creator CTA guidance with stable per-account variations", () => {
+    const results = Array.from({ length: 16 }, (_, index) =>
+      finalizeEditorialCaption(
+        "A decisão muda o planejamento de pequenos negócios.",
+        {
+          accountHandle: "negocios.oficial",
+          ctaStyle: "Finalize com uma pergunta prática sobre como aplicar a informação.",
+          variationSeed: `negocios.oficial:news-${index}`,
+        },
+      )
+    );
+
+    expect(new Set(results).size).toBeGreaterThan(1);
+    for (const result of results) {
+      expect(captionHandles(result)).toEqual(["negocios.oficial"]);
+      expect(result).toMatch(
+        /Como você aplicaria essa informação na prática|Qual ação prática|O que você colocaria em prática|Que mudança concreta/i,
+      );
+    }
+  });
+
+  it("remains idempotent with creator signature and CTA preferences", () => {
+    const options = {
+      accountHandle: "conta.oficial",
+      signatureBlocks: ["Informação clara, decisão consciente."],
+      ctaStyle: "Pergunte qual dúvida o leitor quer ver respondida.",
+      variationSeed: "conta.oficial:news-42",
+      hashtagsLine: "#economia #mercado",
+    };
+    const first = finalizeEditorialCaption(
+      "A nova regra entra em vigor na próxima semana.",
+      options,
+    );
+    const second = finalizeEditorialCaption(first, options);
+
+    expect(second).toBe(first);
+    expect(second.match(/Informação clara, decisão consciente/gi)).toHaveLength(1);
+    expect(captionHandles(second)).toEqual(["conta.oficial"]);
   });
 
   it("isolates AI cache by account and applies the final guard before publication", () => {
@@ -86,7 +144,8 @@ describe("Legendas 2.0-A — identidade, qualidade e engajamento", () => {
     expect(processNews).toContain("Nao inclua nenhum @handle");
     expect(processNews).toContain("finalizeEditorialCaption");
     expect(publisher).toContain("finalizeEditorialCaption");
-    expect(publisher).toContain("buildSafePublishCaption(news, mediaType, acc.username)");
-    expect(publisher).toContain("buildSafePublishCaption(news, \"feed\", acc.username)");
+    expect(publisher).toContain("buildSafePublishCaption(");
+    expect(publisher).toContain("loadEffectiveCreatorProfile");
+    expect(publisher).toContain("creatorProfile");
   });
 });
