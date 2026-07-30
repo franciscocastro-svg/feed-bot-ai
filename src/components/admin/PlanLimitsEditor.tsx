@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 const NUM_FIELDS: { key: string; label: string; hint?: string }[] = [
   { key: "price_brl", label: "Preço (BRL)" },
@@ -66,9 +67,8 @@ export function PlanLimitsEditor() {
 
     // Sync price to Stripe (only for paid, non-negotiable plans)
     if (["starter", "pro", "business"].includes(plan.plan) && payload.price_brl > 0 && !payload.is_negotiable) {
-      const env = (import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN as string | undefined)?.startsWith("pk_test_") ? "sandbox" : "live";
       const { data: syncRes, error: syncErr } = await supabase.functions.invoke("admin-sync-stripe-price", {
-        body: { plan: plan.plan, price_brl: payload.price_brl, environment: env },
+        body: { plan: plan.plan, price_brl: payload.price_brl, environment: getStripeEnvironment() },
       });
       if (syncErr || (syncRes as any)?.error) {
         const rollback: any = {};
