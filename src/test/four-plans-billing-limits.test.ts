@@ -45,9 +45,10 @@ describe("four commercial plans and billing limits", () => {
     expect(checkout).toContain('"business_monthly"');
     expect(checkout).not.toContain('"agency_monthly"');
     expect(pricing).toContain('business: "business_monthly"');
-    expect(pricing).toContain("Quero conhecer o plano Agência");
+    expect(pricing).toContain("buildAgencyContactEmailUrl()");
+    expect(pricing).toContain("Negociar por email");
     expect(landingPricing).toContain('business: { label: "Testar Business por 7 dias"');
-    expect(landingPricing).toContain('agency: { label: "Falar com um especialista", whatsapp: true }');
+    expect(landingPricing).toContain('agency: { label: "Negociar por email", email: true }');
     expect(stripeSync).toContain("business_monthly");
     expect(stripeSync).not.toContain("agency_monthly");
   });

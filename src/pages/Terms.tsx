@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { BrandLogo } from "@/components/BrandLogo";
-import { buildSupportWhatsAppUrl, SUPPORT_WHATSAPP_DISPLAY } from "@/lib/contact";
+import { AGENCY_CONTACT_EMAIL, buildSupportWhatsAppUrl, SUPPORT_WHATSAPP_DISPLAY } from "@/lib/contact";
 
 export default function Terms() {
   return (
@@ -48,7 +48,7 @@ export default function Terms() {
           <div>
             <h2 className="text-2xl font-semibold mb-2">4. Planos e pagamentos</h2>
             <p>
-              Os planos Creator, Pro e Business são cobrados de forma recorrente mensal via Stripe. O plano Agência possui contratação sob consulta e condições comerciais apresentadas pelo atendimento oficial no WhatsApp. Você pode cancelar uma assinatura recorrente a qualquer momento — o acesso permanece até o fim do período já pago. Não há reembolsos proporcionais salvo exigência legal.
+              Os planos Creator, Pro e Business são cobrados de forma recorrente mensal via Stripe. O plano Agência possui contratação sob consulta e condições comerciais apresentadas pelo email oficial <a className="text-primary underline" href={`mailto:${AGENCY_CONTACT_EMAIL}`}>{AGENCY_CONTACT_EMAIL}</a>. Você pode cancelar uma assinatura recorrente a qualquer momento — o acesso permanece até o fim do período já pago. Não há reembolsos proporcionais salvo exigência legal.
             </p>
           </div>
           <div>

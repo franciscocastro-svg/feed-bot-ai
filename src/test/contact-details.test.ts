@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AGENCY_CONTACT_EMAIL,
+  buildAgencyContactEmailUrl,
   buildSupportWhatsAppUrl,
   SUPPORT_WHATSAPP_DISPLAY,
   SUPPORT_WHATSAPP_NUMBER,
@@ -31,5 +33,14 @@ describe("contato oficial por WhatsApp", () => {
 
     expect(linkedNumbers.length).toBeGreaterThan(0);
     expect(new Set(linkedNumbers)).toEqual(new Set([SUPPORT_WHATSAPP_NUMBER]));
+  });
+});
+
+describe("contato comercial do plano Agência", () => {
+  it("abre o email oficial com assunto e mensagem preenchidos", () => {
+    expect(AGENCY_CONTACT_EMAIL).toBe("contato@fluxifeed.com");
+    expect(buildAgencyContactEmailUrl()).toBe(
+      "mailto:contato@fluxifeed.com?subject=Plano%20Ag%C3%AAncia%20%E2%80%94%20Flux%20%26%20Feed&body=Ol%C3%A1!%20Quero%20conhecer%20o%20plano%20Ag%C3%AAncia%20do%20Flux%20%26%20Feed%20e%20negociar%20uma%20configura%C3%A7%C3%A3o%20para%20minha%20opera%C3%A7%C3%A3o.",
+    );
   });
 });
