@@ -50,6 +50,7 @@ Deno.serve(async (req) => {
       .select("stripe_customer_id")
       .eq("user_id", user.id)
       .eq("environment", env)
+      .not("stripe_customer_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
