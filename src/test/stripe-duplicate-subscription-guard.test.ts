@@ -11,6 +11,7 @@ import {
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const checkout = read("supabase/functions/create-checkout/index.ts");
+const portal = read("supabase/functions/create-portal-session/index.ts");
 const checkoutUi = read("src/components/StripeEmbeddedCheckout.tsx");
 
 const subscription = (
@@ -68,6 +69,28 @@ describe("Stripe duplicate subscription guard", () => {
     expect(customerForCheckout(null, "verified@example.com")).toEqual({
       customer_email: "verified@example.com",
     });
+  });
+
+  it("finds the existing Customer when a newer free row has no Stripe link", () => {
+    const rows = [
+      subscription({
+        plan: "free",
+        status: "active",
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+      }),
+      subscription({
+        stripe_customer_id: "cus_existing",
+        stripe_subscription_id: "sub_existing",
+      }),
+    ];
+
+    expect(reusableCustomerId(rows)).toBe("cus_existing");
+    expect(portal).toContain('.eq("user_id", user.id)');
+    expect(portal).toContain('.eq("environment", env)');
+    expect(portal).toContain('.not("stripe_customer_id", "is", null)');
+    expect(portal.indexOf('.not("stripe_customer_id", "is", null)'))
+      .toBeLessThan(portal.indexOf('.order("created_at"'));
   });
 
   it("fails closed in the backend and provides the current-subscription portal in the UI", () => {
