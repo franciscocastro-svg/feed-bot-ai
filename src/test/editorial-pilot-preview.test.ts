@@ -44,6 +44,10 @@ const buildFor = (
     now: new Date("2026-07-31T12:00:00.000Z"),
   });
 
+const profileWith = (
+  overrides: Partial<EditorialPilotProfileInput>,
+): EditorialPilotProfileInput => ({ ...profile, ...overrides });
+
 describe("Piloto Editorial Inteligente — prévia local", () => {
   it("monta uma proposta versionada, válida e isolada pela conta escolhida", async () => {
     const proposal = await buildFor(accountA);
@@ -95,6 +99,89 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     expect(proposal.guardrails.regulated_domain).toBe(true);
     expect(proposal.guardrails.source_required).toBe(true);
     expect(proposal.guardrails.human_review_required).toBe(true);
+  });
+
+  it("classifica fofoca sem interpretar 'brasileiras' ou uma menção incidental a leis como Direito", async () => {
+    const proposal = await buildFor(accountA, profileWith({
+      niche_detail: "Notícias e entretenimento sobre celebridades brasileiras, influenciadores, reality shows, televisão, música e assuntos virais",
+      target_audience: "brasileiros de 18 a 44 anos que acompanham celebridades e realities",
+      expertise_summary: "curadoria de entretenimento e repercussão nas redes",
+      extra_notes: "acompanhar leis de publicidade sem transformar o perfil em conteúdo jurídico",
+    }));
+    const queries = proposal.source_suggestions.map(({ query }) => query).join(" ");
+    const notes = proposal.guardrails.notes.join(" ");
+
+    expect(proposal.guardrails.regulated_domain).toBe(false);
+    expect(proposal.strategy.positioning).toContain("entretenimento responsável");
+    expect(proposal.strategy.positioning).not.toContain("jurídica");
+    expect(proposal.strategy.pillars).toEqual([
+      "fatos confirmados", "bastidores e contexto", "repercussão nas redes", "conversa com a audiência",
+    ]);
+    expect(queries).toContain("entretenimento");
+    expect(queries).not.toMatch(/OAB|Anvisa|Banco Central/);
+    expect(notes).toContain("distinguir fato, declaração e rumor");
+    expect(notes).not.toContain("aconselhamento jurídico individual");
+    expect(proposal.topic_suggestions.every(({ title }) => title.includes("brasileiros de 18 a 44 anos"))).toBe(true);
+  });
+
+  it("mantém Direito coerente entre estratégia, fontes, público e proteções", async () => {
+    const proposal = await buildFor(accountA, profileWith({
+      niche_detail: "Advocacia e Direito empresarial para pequenas empresas",
+      target_audience: "donos de pequenos negócios",
+      expertise_summary: "advogada empresarial com atuação preventiva",
+      extra_notes: "explicar legislação sem aconselhamento individual",
+    }));
+    const queries = proposal.source_suggestions.map(({ query }) => query).join(" ");
+    const notes = proposal.guardrails.notes.join(" ");
+
+    expect(proposal.guardrails.regulated_domain).toBe(true);
+    expect(proposal.strategy.positioning).toContain("Educação jurídica responsável");
+    expect(proposal.strategy.pillars).toContain("direitos explicados");
+    expect(queries).toMatch(/OAB|tribunais/);
+    expect(queries).not.toMatch(/Anvisa|Banco Central|CVM/);
+    expect(notes).toContain("aconselhamento jurídico individual");
+    expect(notes).toContain("legislação e a jurisprudência vigentes");
+    expect(proposal.topic_suggestions.every(({ title }) => title.includes("donos de pequenos negócios"))).toBe(true);
+  });
+
+  it("mantém Saúde coerente entre estratégia, fontes, público e proteções", async () => {
+    const proposal = await buildFor(accountA, profileWith({
+      niche_detail: "Odontologia preventiva e saúde bucal",
+      target_audience: "famílias que buscam prevenção odontológica",
+      expertise_summary: "dentista com prática clínica baseada em evidências",
+      extra_notes: "educação sem diagnóstico individual",
+    }));
+    const queries = proposal.source_suggestions.map(({ query }) => query).join(" ");
+    const notes = proposal.guardrails.notes.join(" ");
+
+    expect(proposal.guardrails.regulated_domain).toBe(true);
+    expect(proposal.strategy.positioning).toContain("Educação em saúde baseada em evidências");
+    expect(proposal.strategy.pillars).toContain("educação em saúde");
+    expect(queries).toMatch(/Ministério da Saúde|Anvisa/);
+    expect(queries).not.toMatch(/OAB|Banco Central|CVM/);
+    expect(notes).toContain("diagnóstico, prescrição ou promessa de cura");
+    expect(notes).toContain("revisão profissional para conteúdo clínico");
+    expect(proposal.topic_suggestions.every(({ title }) => title.includes("famílias que buscam prevenção odontológica"))).toBe(true);
+  });
+
+  it("mantém Finanças coerente entre estratégia, fontes, público e proteções", async () => {
+    const proposal = await buildFor(accountA, profileWith({
+      niche_detail: "Educação financeira e investimentos para iniciantes",
+      target_audience: "adultos organizando orçamento e primeiros investimentos",
+      expertise_summary: "educador financeiro focado em gestão de risco",
+      extra_notes: "não recomendar ativos individualmente",
+    }));
+    const queries = proposal.source_suggestions.map(({ query }) => query).join(" ");
+    const notes = proposal.guardrails.notes.join(" ");
+
+    expect(proposal.guardrails.regulated_domain).toBe(true);
+    expect(proposal.strategy.positioning).toContain("Educação financeira clara");
+    expect(proposal.strategy.pillars).toContain("gestão de risco");
+    expect(queries).toMatch(/Banco Central|CVM/);
+    expect(queries).not.toMatch(/OAB|Anvisa/);
+    expect(notes).toContain("promessa de rentabilidade");
+    expect(notes).toContain("riscos, data e contexto");
+    expect(proposal.topic_suggestions.every(({ title }) => title.includes("adultos organizando orçamento"))).toBe(true);
   });
 
   it("mantém a feature flag desligada por padrão", () => {

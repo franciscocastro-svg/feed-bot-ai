@@ -24,13 +24,16 @@ export type EditorialPilotInput = {
 };
 
 type DomainPreset = {
+  terms: string[];
   regulated: boolean;
   positioning: string;
   pillars: string[];
   searches: Array<{ kind: "rss" | "site" | "topic"; query: string; reason: string; risk: "low" | "medium" | "high" }>;
+  protectionNotes: string[];
 };
 
 const DEFAULT_PRESET: DomainPreset = {
+  terms: [],
   regulated: false,
   positioning: "Conteúdo útil, autoral e conectado às dúvidas reais do público.",
   pillars: ["educação prática", "autoridade", "bastidores", "conversa com a comunidade"],
@@ -39,39 +42,106 @@ const DEFAULT_PRESET: DomainPreset = {
     { kind: "site", query: "entidades e publicações especializadas do setor", reason: "Priorizar referências reconhecidas antes de sugerir fontes reais.", risk: "medium" },
     { kind: "rss", query: "blogs técnicos com atualização recorrente", reason: "Encontrar conteúdo perene e atualizações do mercado.", risk: "medium" },
   ],
+  protectionNotes: ["Não apresentar afirmações factuais sem fonte identificável."],
 };
 
-const PRESETS: Array<{ pattern: RegExp; preset: Partial<DomainPreset> }> = [
+const PRESETS: DomainPreset[] = [
   {
-    pattern: /advoc|direito|jur[ií]dic|lei|contabil|tribut/i,
-    preset: {
-      regulated: true,
-      positioning: "Educação jurídica responsável, sem promessa de resultado nem aconselhamento individual.",
-      pillars: ["direitos explicados", "prevenção", "mudanças regulatórias", "autoridade profissional"],
-    },
+    terms: [
+      "advogado", "advogada", "advogados", "advogadas", "advocacia", "direito",
+      "jurídica", "jurídico", "jurídicas", "jurídicos", "lei", "leis", "legislação",
+      "tributário", "tributária", "tributários", "tributárias", "direito empresarial",
+      "direito trabalhista", "direito civil",
+    ],
+    regulated: true,
+    positioning: "Educação jurídica responsável, sem promessa de resultado nem aconselhamento individual.",
+    pillars: ["direitos explicados", "prevenção", "mudanças regulatórias", "autoridade profissional"],
+    searches: [
+      { kind: "topic", query: "mudanças legislativas e dúvidas jurídicas recorrentes", reason: "Mapear dúvidas jurídicas reais sem substituir aconselhamento profissional.", risk: "low" },
+      { kind: "site", query: "legislação, tribunais, OAB e órgãos públicos oficiais", reason: "Priorizar fontes jurídicas oficiais e atuais.", risk: "medium" },
+      { kind: "rss", query: "informativos jurídicos oficiais e publicações técnicas atualizadas", reason: "Acompanhar mudanças legais com autoria e data.", risk: "medium" },
+    ],
+    protectionNotes: [
+      "Não oferecer aconselhamento jurídico individual nem promessa de resultado.",
+      "Confirmar a legislação e a jurisprudência vigentes antes da publicação.",
+    ],
   },
   {
-    pattern: /medic|sa[uú]de|odont|nutri|psic|cl[ií]nic|farm[aá]c/i,
-    preset: {
-      regulated: true,
-      positioning: "Educação em saúde baseada em evidências, sem diagnóstico ou promessa de cura.",
-      pillars: ["educação em saúde", "prevenção", "mitos e verdades", "rotina profissional"],
-    },
+    terms: [
+      "medicina", "médico", "médica", "médicos", "médicas", "saúde", "odontologia",
+      "dentista", "dentistas", "nutrição", "nutricionista", "nutricionistas", "psicologia",
+      "psicólogo", "psicóloga", "psicólogos", "psicólogas", "clínica", "clínicas", "farmácia",
+    ],
+    regulated: true,
+    positioning: "Educação em saúde baseada em evidências, sem diagnóstico ou promessa de cura.",
+    pillars: ["educação em saúde", "prevenção", "mitos e verdades", "rotina profissional"],
+    searches: [
+      { kind: "topic", query: "dúvidas de saúde, prevenção e evidências recentes", reason: "Mapear dúvidas educativas sem fazer diagnóstico.", risk: "low" },
+      { kind: "site", query: "Ministério da Saúde, Anvisa, sociedades médicas e instituições oficiais", reason: "Priorizar referências sanitárias e profissionais reconhecidas.", risk: "medium" },
+      { kind: "rss", query: "publicações científicas e informativos de saúde com revisão editorial", reason: "Encontrar evidências atuais com autoria e contexto.", risk: "medium" },
+    ],
+    protectionNotes: [
+      "Não oferecer diagnóstico, prescrição ou promessa de cura.",
+      "Usar evidências e fontes reconhecidas, com revisão profissional para conteúdo clínico.",
+    ],
   },
   {
-    pattern: /finan|invest|econom|trader|cripto|contab/i,
-    preset: {
-      regulated: true,
-      positioning: "Educação financeira clara, sem promessa de rentabilidade ou recomendação individual.",
-      pillars: ["educação financeira", "cenários explicados", "gestão de risco", "hábitos financeiros"],
-    },
+    terms: [
+      "finanças", "financeiro", "financeira", "financeiros", "financeiras", "investimentos",
+      "investimento", "economia", "economista", "economistas", "trader", "traders",
+      "criptomoedas", "cripto", "contabilidade", "contador", "contadora", "contadores",
+    ],
+    regulated: true,
+    positioning: "Educação financeira clara, sem promessa de rentabilidade ou recomendação individual.",
+    pillars: ["educação financeira", "cenários explicados", "gestão de risco", "hábitos financeiros"],
+    searches: [
+      { kind: "topic", query: "educação financeira, indicadores e riscos relevantes", reason: "Explicar decisões financeiras sem recomendar ativos individualmente.", risk: "low" },
+      { kind: "site", query: "Banco Central, CVM e órgãos oficiais do mercado financeiro", reason: "Priorizar indicadores e regras publicados por fontes oficiais.", risk: "medium" },
+      { kind: "rss", query: "indicadores econômicos e publicações financeiras com autoria e data", reason: "Contextualizar cenários, datas e riscos com fontes rastreáveis.", risk: "medium" },
+    ],
+    protectionNotes: [
+      "Não fazer recomendação individual nem promessa de rentabilidade.",
+      "Explicitar riscos, data e contexto, mantendo revisão humana antes da publicação.",
+    ],
   },
   {
-    pattern: /empreend|marketing|neg[oó]ci|vendas|tecnolog|intelig[eê]ncia artificial/i,
-    preset: {
-      positioning: "Aplicação prática de estratégia, tecnologia e execução para evolução profissional.",
-      pillars: ["estratégia prática", "tecnologia aplicada", "casos e aprendizados", "mentalidade de execução"],
-    },
+    terms: [
+      "fofoca", "fofocas", "celebridade", "celebridades", "famoso", "famosa", "famosos",
+      "famosas", "influenciador", "influenciadora", "influenciadores", "influenciadoras",
+      "reality", "reality show", "reality shows", "televisão", "entretenimento", "música",
+      "artistas", "assuntos virais",
+    ],
+    regulated: false,
+    positioning: "Notícias e entretenimento responsável, com contexto, confirmação e distinção clara entre fato e rumor.",
+    pillars: ["fatos confirmados", "bastidores e contexto", "repercussão nas redes", "conversa com a audiência"],
+    searches: [
+      { kind: "topic", query: "tendências confirmadas, lançamentos e repercussões do entretenimento", reason: "Mapear assuntos relevantes sem transformar rumor em fato.", risk: "low" },
+      { kind: "site", query: "perfis oficiais, assessorias e veículos reconhecidos de entretenimento", reason: "Priorizar confirmações e declarações rastreáveis.", risk: "medium" },
+      { kind: "rss", query: "portais de entretenimento com autoria, data e atualização recorrente", reason: "Acompanhar novidades com origem e data verificáveis.", risk: "medium" },
+    ],
+    protectionNotes: [
+      "Confirmar a fonte e distinguir fato, declaração e rumor.",
+      "Evitar especulação difamatória, invasão de privacidade e julgamento sem evidência.",
+    ],
+  },
+  {
+    terms: [
+      "empreendedorismo", "empreendedor", "empreendedora", "empreendedores", "marketing",
+      "negócio", "negócios", "vendas", "tecnologia", "inteligência artificial", "produtividade",
+      "empresa", "empresas",
+    ],
+    regulated: false,
+    positioning: "Aplicação prática de estratégia, tecnologia e execução para evolução profissional.",
+    pillars: ["estratégia prática", "tecnologia aplicada", "casos e aprendizados", "mentalidade de execução"],
+    searches: [
+      { kind: "topic", query: "tendências de gestão, tecnologia e execução empresarial", reason: "Mapear dúvidas e oportunidades práticas do mercado.", risk: "low" },
+      { kind: "site", query: "instituições empresariais, pesquisas e casos documentados", reason: "Priorizar evidências e casos rastreáveis.", risk: "medium" },
+      { kind: "rss", query: "publicações de negócios e tecnologia com autoria e atualização recorrente", reason: "Encontrar conteúdo atual e perene com origem identificável.", risk: "medium" },
+    ],
+    protectionNotes: [
+      "Não prometer resultados comerciais garantidos.",
+      "Distinguir caso, opinião e evidência, identificando as fontes utilizadas.",
+    ],
   },
 ];
 
@@ -81,6 +151,22 @@ function clean(value: string, fallback: string): string {
 
 function normalizeList(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeDomainText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function containsDomainTerm(value: string, term: string): boolean {
+  const text = normalizeDomainText(value);
+  const normalizedTerm = normalizeDomainText(term);
+  return normalizedTerm.length > 0 && ` ${text} `.includes(` ${normalizedTerm} `);
 }
 
 function stableProfile(profile: EditorialPilotProfileInput) {
@@ -104,9 +190,21 @@ async function sha256(value: string): Promise<string> {
 }
 
 function selectPreset(profile: ReturnType<typeof stableProfile>): DomainPreset {
-  const haystack = `${profile.niche_detail} ${profile.expertise_summary} ${profile.extra_notes}`;
-  const match = PRESETS.find(({ pattern }) => pattern.test(haystack));
-  return { ...DEFAULT_PRESET, ...(match?.preset || {}) };
+  const weightedFields = [
+    { value: profile.niche_detail, weight: 4 },
+    { value: profile.expertise_summary, weight: 2 },
+    { value: profile.extra_notes, weight: 1 },
+  ];
+  const ranked = PRESETS.map((preset, index) => ({
+    preset,
+    index,
+    score: weightedFields.reduce(
+      (score, field) => score + preset.terms.filter((term) => containsDomainTerm(field.value, term)).length * field.weight,
+      0,
+    ),
+  })).sort((a, b) => b.score - a.score || a.index - b.index);
+
+  return ranked[0]?.score > 0 ? ranked[0].preset : DEFAULT_PRESET;
 }
 
 function contentMix(preference: EditorialPilotProfileInput["news_format_preference"]) {
@@ -123,7 +221,7 @@ export async function buildEditorialPilotProposal(input: EditorialPilotInput): P
   const sourceSuggestions = preset.searches.map((source, index) => ({
     client_ref: `source-${index + 1}`,
     ...source,
-    query: `${source.query}: ${profile.niche_detail}`,
+    query: clean(`${source.query} — foco: ${profile.niche_detail}`, source.query),
     requires_review: true as const,
   }));
   const preferredFormats = profile.news_format_preference === "single"
@@ -171,6 +269,7 @@ export async function buildEditorialPilotProposal(input: EditorialPilotInput): P
       notes: [
         "Nenhuma fonte, pauta, configuração ou publicação é criada por esta prévia.",
         "Validar cada sugestão antes de uma futura ativação.",
+        ...preset.protectionNotes,
         ...(preset.regulated ? ["Revisão humana obrigatória para conteúdo de área regulada."] : []),
       ],
     },
