@@ -6,14 +6,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Check, CreditCard, Instagram, Loader2, MessageCircle, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { ArrowLeft, Check, CreditCard, Instagram, Loader2, Mail, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { StripeEmbeddedCheckout } from "@/components/StripeEmbeddedCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { usePlanUsage } from "@/hooks/usePlanUsage";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
-import { buildSupportWhatsAppUrl } from "@/lib/contact";
+import { buildAgencyContactEmailUrl } from "@/lib/contact";
 import { trackMetaEvent } from "@/lib/metaPixel";
 
 type PlanLimit = Database["public"]["Tables"]["plan_limits"]["Row"];
@@ -163,7 +163,7 @@ function buildFeatures(p: PlanLimit): string[] {
       "Fontes, templates e cortes personalizados",
       "Configuração assistida",
       "Acompanhamento operacional",
-      "Atendimento exclusivo pelo WhatsApp",
+      "Negociação personalizada por email",
     ];
   }
   return [accounts, posts, sources];
@@ -295,14 +295,10 @@ export default function Pricing() {
                   {isCurrent ? (
                     <Button disabled variant="secondary" className="w-full">Plano atual</Button>
                   ) : isAgencyContact ? (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        window.open(buildSupportWhatsAppUrl("Quero conhecer o plano Agência"), "_blank", "noopener,noreferrer");
-                      }}
-                    >
-                      <MessageCircle className="h-4 w-4 mr-2" /> Falar com um especialista
+                    <Button variant="outline" className="w-full" asChild>
+                      <a href={buildAgencyContactEmailUrl()}>
+                        <Mail className="h-4 w-4 mr-2" /> Negociar por email
+                      </a>
                     </Button>
                   ) : priceId ? (
                     <Button onClick={() => openCheckout(priceId)} className="w-full" variant={highlight ? "default" : "outline"}>

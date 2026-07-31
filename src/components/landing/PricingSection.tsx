@@ -1,7 +1,8 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, MessageCircle, Star } from "lucide-react";
+import { Check, Mail, MessageCircle, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { buildAgencyContactEmailUrl } from "@/lib/contact";
 import type { LandingPlan } from "./landingContent";
 
 const PLAN_SUBTITLES: Record<string, string> = {
@@ -11,11 +12,11 @@ const PLAN_SUBTITLES: Record<string, string> = {
   agency: "Para agências, portais e grandes operações",
 };
 
-const PLAN_CTA: Record<string, { label: string; to?: string; whatsapp?: boolean }> = {
+const PLAN_CTA: Record<string, { label: string; to?: string; email?: boolean }> = {
   starter: { label: "Testar Creator por 7 dias", to: "/pricing?plan=starter_monthly" },
   pro: { label: "Começar 7 dias com Pro", to: "/pricing?plan=pro_monthly" },
   business: { label: "Testar Business por 7 dias", to: "/pricing?plan=business_monthly" },
-  agency: { label: "Falar com um especialista", whatsapp: true },
+  agency: { label: "Negociar por email", email: true },
 };
 
 const PLAN_BEST_FOR: Record<string, string> = {
@@ -48,7 +49,7 @@ function buildFeatures(plan: LandingPlan): string[] {
     return [accounts, posts, "Todos os formatos", sources, "Autopiloto por conta", cuts, `${plan.max_templates ?? "Mais"} templates`, "Suporte prioritário"];
   }
   if (plan.plan === "agency") {
-    return ["20+ contas ou configuração personalizada", "Volume personalizado por conta", "Operação independente por cliente", "Fontes, templates e cortes personalizados", "Configuração assistida", "Atendimento pelo WhatsApp"];
+    return ["20+ contas ou configuração personalizada", "Volume personalizado por conta", "Operação independente por cliente", "Fontes, templates e cortes personalizados", "Configuração assistida", "Negociação personalizada por email"];
   }
   return [accounts, posts, sources];
 }
@@ -167,10 +168,10 @@ export function PricingSection({ plans, status, whatsappUrl }: PricingSectionPro
                 ))}
               </ul>
 
-              {cta.whatsapp ? (
+              {cta.email ? (
                 <Button variant="outline" asChild className="h-12 w-full">
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                    <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <a href={buildAgencyContactEmailUrl()}>
+                    <Mail className="mr-2 h-4 w-4" aria-hidden="true" />
                     {cta.label}
                   </a>
                 </Button>
