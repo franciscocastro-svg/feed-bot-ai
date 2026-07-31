@@ -20,3 +20,12 @@ export function isPathVisible(path: string, opts: { isAdmin: boolean; userId?: s
   const betas = BETA_USER_IDS[path] || [];
   return !!opts.userId && betas.includes(opts.userId);
 }
+
+export function resolveBooleanFeatureFlag(value: string | boolean | undefined): boolean {
+  if (typeof value === "boolean") return value;
+  return value?.trim().toLowerCase() === "true";
+}
+
+export function isEditorialPilotPreviewEnabled(): boolean {
+  return resolveBooleanFeatureFlag(import.meta.env.VITE_FEATURE_EDITORIAL_PILOT_PREVIEW);
+}
