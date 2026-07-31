@@ -403,8 +403,6 @@ export default function Pricing() {
           {selectedPriceId && (
             <StripeEmbeddedCheckout
               priceId={selectedPriceId}
-              customerEmail={user?.email || undefined}
-              userId={user?.id}
             />
           )}
         </DialogContent>
