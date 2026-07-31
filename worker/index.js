@@ -43,6 +43,7 @@ import {
   EDITORIAL_CAROUSEL_WIDTH,
   normalizeEditorialCarouselSlide,
 } from "./editorialCarousel.js";
+import { resolveAccountRenderSettings } from "./accountIdentity.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -1153,15 +1154,21 @@ async function generateReelVideoFromJob(job) {
         return originalVideoUrl;
       }
 
-      const { data: settings, error: settingsError } = await supabase
-        .from("user_settings")
-        .select("brand_handle, brand_name, brand_logo_url, reel_audio_url")
-        .eq("user_id", job.user_id)
-        .maybeSingle();
-
-      if (settingsError) {
-        throw settingsError;
+      let instagramAccountId = item.instagram_account_id || null;
+      if (job.scheduled_post_id) {
+        const { data: scheduledPost, error: scheduledPostError } = await supabase
+          .from("scheduled_posts")
+          .select("instagram_account_id")
+          .eq("id", job.scheduled_post_id)
+          .maybeSingle();
+        if (scheduledPostError) throw scheduledPostError;
+        instagramAccountId = scheduledPost?.instagram_account_id || instagramAccountId;
       }
+
+      const settings = await loadEffectivePostSettings({
+        user_id: job.user_id,
+        instagram_account_id: instagramAccountId,
+      });
 
       console.log(`[job:${job.id}] Gerando capa editorial do Reel...`);
       sourceUrl = await composeAndUploadStoryNode(item, settings, { withFollowCta: true });
@@ -3108,9 +3115,59 @@ async function recoverFailedNewsReels() {
 
 async function loadEffectivePostSettings(post) {
   if (post.instagram_account_id) {
-    const { data, error } = await supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id });
-    if (!error && data) return data;
-    if (error) console.warn(`Aviso: não consegui buscar configurações efetivas da conta ${post.instagram_account_id}:`, error.message || error);
+    const [
+      { data: effectiveSettings, error: effectiveSettingsError },
+      { data: account, error: accountError },
+      { data: accountIdentity, error: accountIdentityError },
+    ] = await Promise.all([
+      supabase.rpc("get_effective_account_settings", { _account_id: post.instagram_account_id }),
+      supabase
+        .from("instagram_accounts")
+        .select("user_id, username")
+        .eq("id", post.instagram_account_id)
+        .maybeSingle(),
+      supabase
+        .from("account_settings")
+        .select("brand_handle, brand_name, brand_logo_url")
+        .eq("instagram_account_id", post.instagram_account_id)
+        .eq("user_id", post.user_id)
+        .maybeSingle(),
+    ]);
+
+    if (accountError) throw accountError;
+    if (!account || account.user_id !== post.user_id) {
+      throw new Error("Conta Instagram inválida para o usuário da publicação");
+    }
+    if (accountIdentityError) throw accountIdentityError;
+
+    if (!effectiveSettingsError && effectiveSettings) {
+      return resolveAccountRenderSettings({
+        effectiveSettings,
+        accountSettings: accountIdentity,
+        accountUsername: account.username,
+        accountScoped: true,
+      });
+    }
+    if (effectiveSettingsError) {
+      console.warn(
+        `Aviso: não consegui buscar configurações efetivas da conta ${post.instagram_account_id}:`,
+        effectiveSettingsError.message || effectiveSettingsError,
+      );
+    }
+
+    const { data: globalSettings, error: globalSettingsError } = await supabase
+      .from("user_settings")
+      .select("brand_handle, brand_name, brand_logo_url, reel_audio_url, default_template_id, default_feed_template_id, default_story_template_id, default_reel_template_id")
+      .eq("user_id", post.user_id)
+      .maybeSingle();
+    if (globalSettingsError) throw globalSettingsError;
+
+    return resolveAccountRenderSettings({
+      effectiveSettings: globalSettings || {},
+      accountSettings: accountIdentity,
+      accountUsername: account.username,
+      accountScoped: true,
+    });
   }
 
   const { data, error } = await supabase
