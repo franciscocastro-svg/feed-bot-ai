@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { EditorialPilotPreview } from "@/components/editorial-pilot/EditorialPilotPreview";
+import { isEditorialPilotPreviewEnabled } from "@/config/featureFlags";
 import { toast } from "sonner";
 import { Images, Loader2, RotateCcw, Save, UserCircle2 } from "lucide-react";
 
@@ -57,6 +59,9 @@ export default function CreatorProfile() {
   const [selectedScope, setSelectedScope] = useState(GLOBAL_PROFILE);
   const [inherited, setInherited] = useState(false);
   const [profileExists, setProfileExists] = useState(false);
+  const editorialPilotPreviewEnabled = isEditorialPilotPreviewEnabled();
+  const selectedInstagramAccount =
+    accounts.find((account) => account.id === selectedScope) || null;
 
   useEffect(() => {
     (async () => {
@@ -313,6 +318,23 @@ export default function CreatorProfile() {
           </div>
         </CardContent>
       </Card>
+
+      {editorialPilotPreviewEnabled && selectedInstagramAccount && (
+        <EditorialPilotPreview
+          account={selectedInstagramAccount}
+          profile={{
+            news_format_preference: p.news_format_preference,
+            niche_detail: p.niche_detail,
+            target_audience: p.target_audience,
+            voice_tone: p.voice_tone,
+            expertise_summary: p.expertise_summary,
+            signature_phrases: p.signature_phrases,
+            forbidden_words: p.forbidden_words,
+            cta_style: p.cta_style,
+            extra_notes: p.extra_notes,
+          }}
+        />
+      )}
 
       <div className="flex justify-end sticky bottom-4">
         <Button onClick={save} disabled={saving} size="lg">
