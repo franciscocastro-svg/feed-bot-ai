@@ -295,7 +295,12 @@ Implantação parcial autorizada em 2026-08-01:
 - a causa é a colisão entre a variável PL/pgSQL `source_id` e a coluna `source_id` usada como alvo de inferência;
 - a transação reverteu integralmente: zero aplicações, zero fontes `editorial-pilot` e zero pautas `editorial_pilot`;
 - `20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql`, versão registrada pela plataforma, recria a RPC com `v_source_id`, `ON CONFLICT ON CONSTRAINT news_source_instagram_accounts_pkey` e `GET DIAGNOSTICS link_row_count = ROW_COUNT`;
-- o smoke posterior confirmou 1 ledger, 7 fontes resolvidas/vinculadas e 4 pautas, sem publicação automática; o replay ainda está pendente.
+- o CI completo aprovou secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, gates de migrations/MCP e build;
+- o PR #55 foi integrado em `d0dc3da`; a Lovable substituiu o nome do arquivo pela versão registrada, atualizou somente o caminho do teste e não republicou Edge/frontend;
+- a `main` avançou automaticamente para `2b65b49`; 18/18 testes direcionados passaram na plataforma;
+- o terceiro smoke autenticado exibiu “Plano editorial aplicado com segurança” e registrou 4 fontes novas, 4 vínculos novos e 4 pautas;
+- a consulta final somente leitura confirmou 1 ledger para a proposta, 7/7 fontes resolvidas, 7/7 vinculadas, 4/4 pautas presentes, zero ignoradas e `replayed=false` na primeira aplicação;
+- nenhuma publicação foi criada; o replay efetivo continua pendente antes do rollout.
 
 ## Melhoria local — qualidade e relevância das imagens
 
@@ -314,8 +319,6 @@ Implementação na branch `codex/improve-news-image-quality`:
 - o teste real selecionou `https://cdn.revistafama.com/.../mide-memo-schutz-casa-famosos.jpg`, medido em 1200×747;
 - 38 testes direcionados passaram; o CI completo aprovou secret scan em 665 arquivos, lint ratchet, typecheck, 562 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates e build;
 - nenhuma Edge Function, frontend, worker VPS, dado, migration ou produção foi alterada nesta etapa local.
-- o CI completo aprovou secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, gates de migrations/MCP e build;
-- a correção não exige republicar `discover-rss` ou o frontend; somente a migration precisa ser aplicada após merge autorizado.
 
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
@@ -331,6 +334,8 @@ Commits relevantes:
 - `1cb14c5` — merge do PR #53 com a correção da confirmação e das fontes.
 - `3512454` — merge automático Lovable após aplicar a compatibilidade e regenerar tipos.
 - `47a6652` — merge do PR #54 que remove a migration duplicada e mantém o histórico canônico.
+- `d0dc3da` — merge do PR #55 com a correção SQLSTATE `42702`.
+- `2b65b49` — merge automático Lovable que registra `20260801194149` e ajusta o teste.
 
 ## Decisões que devem ser preservadas
 

@@ -240,6 +240,8 @@ O smoke seguinte encontrou uma segunda incompatibilidade na própria RPC: `sourc
 
 Validação local da correção `42702`: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP e build de produção aprovados.
 
+Validação externa posterior: a aplicação criou 1 ledger, resolveu e vinculou as 7 fontes selecionadas e criou as 4 pautas previstas. O resultado transacional registrou 4 fontes novas, 4 vínculos novos, 4 pautas novas e zero pautas ignoradas; nenhuma publicação foi criada. O replay efetivo pela interface permanece como último smoke antes do rollout.
+
 Validação da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP, build de produção e check remoto `Validate application` aprovados.
 
 A regeneração de schema executada pela Lovable após o deploy criou o commit `e290ac0` diretamente na `main`. O diff altera somente `src/integrations/supabase/types.ts`, adicionando o ledger/RPC e atualizando nullability inferida de `admin_subscription_overview`; não altera SQL nem lógica de runtime.

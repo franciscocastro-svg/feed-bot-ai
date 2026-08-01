@@ -68,9 +68,10 @@
 - [x] Integrar a reconciliação pelo PR #54 no merge `47a6652`.
 - [x] Reproduzir o segundo smoke e identificar `source_id` ambíguo no `ON CONFLICT` com SQLSTATE `42702`.
 - [x] Confirmar novamente zero aplicações, fontes e pautas após o rollback.
-- [x] Criar e registrar `20260801194149` com `v_source_id`, PK explícita e contagem por `ROW_COUNT`.
+- [x] Criar a correção, registrada pela plataforma como `20260801194149`, com `v_source_id`, PK explícita e contagem por `ROW_COUNT`.
 - [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
-- [x] Integrar/aplicar a correção e aprovar o smoke principal com 7 fontes, 4 pautas e 1 ledger.
+- [x] Integrar o PR #55 no merge `d0dc3da` e aplicar a correção sob a versão registrada `20260801194149`.
+- [x] Aprovar o smoke principal: 7 fontes resolvidas/vinculadas, 4 pautas, 1 ledger e nenhuma publicação.
 - [ ] Repetir a mesma proposta para confirmar `replayed=true` antes de decidir a flag de produção.
 
 ### Qualidade de imagens — concluída localmente
@@ -260,7 +261,7 @@
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
-- [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; smoke autenticado ainda pendente.
+- [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; a etapa posterior avançou até revelar e corrigir o SQLSTATE `42702`.
 - [x] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` corrigido e registrado em `20260801194149`; smoke autenticado aprovado.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
