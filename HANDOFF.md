@@ -18,12 +18,12 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### `main` auditada
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
-- `origin/main`: `c0106d3f5a40776896263378941e8834341d669d` — `Sincronizou Preview e verificou`.
+- `origin/main`: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch de continuidade: `codex/reconcile-main-docs`, criada diretamente sobre `c0106d3`.
 - Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
 - Branch enviada a `origin/codex/reconcile-main-docs`.
-- PR rascunho: [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42), base `main`.
+- PR [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42): checks verdes e merge concluído em `78379d9`.
 - Os commits relatados do Piloto Editorial e da classificação foram confirmados na ancestralidade da `main`.
 
 ### Pasta original preservada
@@ -57,9 +57,10 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Estado | Situação | Tratamento |
 |---|---|---|
 | Pasta original | antiga e com trabalho local | preservar |
-| `origin/main` | consolidada em `c0106d3` | base da continuidade |
-| Branch de continuidade | versionada, enviada e no PR rascunho #42 | aguardar checks/revisão |
-| Produção | não auditada nesta tarefa | verificar cada serviço separadamente |
+| `origin/main` | consolidada em `78379d9` | base da continuidade |
+| Branch do PR #42 | integrada em `main` | preservar histórico |
+| Frontend Lovable | publicado em `78379d9` | validar cliente autenticado |
+| Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
 
@@ -172,7 +173,8 @@ Commits relevantes:
 - `3f3ca74` — preview Fase 1;
 - `6597c64` — classificação de domínio;
 - `cfccbf5` — merge do PR #41;
-- `c0106d3` — sincronização atual da `main`.
+- `c0106d3` — base anterior usada na reconciliação.
+- `78379d9` — merge do PR #42 e SHA publicado no frontend.
 
 ## Decisões que devem ser preservadas
 
@@ -248,11 +250,22 @@ O banco e a RPC atuais liberam o candidato. A falha comprovada está no gate de 
 - `src/test/subscription-access.test.ts` cobre 14 casos de classificação;
 - `src/test/protected-route-access.test.tsx` cobre 5 fluxos do componente, inclusive Pix/manual e retry.
 
-Essa correção foi commitada inicialmente em `021065a`, enviada para `origin/codex/reconcile-main-docs` e aberta no PR rascunho #42. Ainda não foi integrada em `main`, sincronizada/publicada pelo Lovable nem implantada em produção.
+Essa correção foi commitada inicialmente em `021065a`, integrada pelo PR #42 no merge `78379d9`, sincronizada pelo Lovable e publicada no frontend.
+
+### Publicação e smoke tests
+
+- GitHub Actions: “Validate application” aprovado em 1m52s;
+- Lovable confirmou `latest_commit_sha=78379d98de79f73a75a86e2b692fbaceceac4597`;
+- deployment Lovable: `dda0fdfd-9c57-4eb2-864c-21a8f0a8b223`;
+- `https://feed-bot-ai.lovable.app` redireciona para `https://fluxifeed.com`;
+- home carregou com o título e H1 esperados, sem erro de console;
+- `/auth` carregou formulário de e-mail/senha e provedores Google/Apple, sem erro de console;
+- `/dashboard` sem sessão redirecionou para `/auth`, sem erro de console.
+
+O fluxo autenticado do cliente Pix/manual ainda precisa ser validado pelo próprio cliente; nenhuma credencial ou PII foi usada no smoke test.
 
 ## Estado externo ainda pendente
 
-- SHA do frontend publicado;
 - migrations aplicadas no Supabase;
 - versões das Edge Functions;
 - processos/versão do worker VPS;
@@ -265,13 +278,10 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. acompanhar os checks do PR rascunho #42 e corrigir qualquer falha;
-2. revisar o diff e confirmar o SHA final da branch;
-3. integrar em `main` somente após checks verdes;
-4. confirmar a sincronização do commit no Lovable antes de publicar;
-5. publicar por deployment controlado com SHA exato e rollback;
-6. validar o acesso do cliente e a mensagem de erro após o deploy;
-7. continuar a auditoria comercial externa.
+1. integrar esta atualização documental pós-deploy em `main`;
+2. pedir ao cliente Pix/manual que entre novamente e valide o acesso ao dashboard;
+3. registrar o resultado sem incluir PII;
+4. continuar a auditoria comercial externa de migrations, Edge Functions, Stripe, Meta e VPS.
 
 ## Checklist de manutenção
 

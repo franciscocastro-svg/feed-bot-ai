@@ -6,18 +6,18 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 ## Estado confirmado desta árvore
 
-Documentação reconciliada em **2026-08-01** com a `origin/main` atualizada.
+Documentação reconciliada em **2026-08-01** com a `origin/main` e o frontend publicado atualizados.
 
-- Base confirmada: `c0106d3` (`Sincronizou Preview e verificou`).
-- Branch de continuidade: `codex/reconcile-main-docs`, criada sobre `c0106d3` em uma worktree limpa, enviada ao GitHub e aberta no PR rascunho [#42](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42).
+- `origin/main` confirmada: `78379d9`, merge do PR [#42](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42).
+- O PR #42 integrou a correção Pix/manual, 19 testes de regressão e os cinco documentos reconciliados.
 - Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
 - Validação atual: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 538 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
-- Produção continua **não confirmada**: merge no Git não prova deployment do frontend, migrations, Edge Functions, Stripe ou worker VPS.
+- Frontend publicado confirmado no Lovable com `latest_commit_sha=78379d9`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). Migrations, Edge Functions, Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
 Use estas etiquetas na documentação:
 
-- **Confirmado na `main`:** inspecionado em `c0106d3`.
+- **Confirmado na `main`:** inspecionado até `78379d9`.
 - **Confirmado por teste local:** reproduzido na worktree limpa.
 - **Revalidar externamente:** depende de GitHub Actions, Supabase, Stripe, Meta, Lovable ou VPS.
 
@@ -171,4 +171,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A auditoria somente leitura confirmou que o candidato Pix/manual atual recebe `has_access=true` em `live` e `sandbox`. A branch corrige o frontend para não transformar falha técnica ou outro motivo de bloqueio em exigência de cartão e remove o bypass que poderia liberar conteúdo com `has_access=false`. A implementação foi versionada no commit inicial `021065a`, enviada ao GitHub e aberta no PR rascunho #42. O próximo passo é aguardar os checks do PR, revisar o diff e só então integrar em `main` para iniciar a sincronização e o deployment controlado no Lovable; nenhuma produção foi alterada.
+A auditoria somente leitura confirmou que o candidato Pix/manual atual recebe `has_access=true` em `live` e `sandbox`. A correção foi integrada pelo PR #42, sincronizada no Lovable e publicada no frontend com o merge `78379d9`. Smoke tests públicos confirmaram a home, a tela de autenticação e o redirecionamento de `/dashboard` para `/auth` sem sessão, sem erros de console. O próximo passo é validar o acesso autenticado do cliente Pix/manual e continuar a auditoria externa de migrations, Edge Functions, Stripe, Meta e VPS.
