@@ -73,7 +73,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Piloto Editorial 2A | integrado na `main` em `ad39d3e`; migration `20260801170000` aplicada | publicar `discover-rss` somente com sessão administrativa autorizada; frontend permanece pendente |
+| Piloto Editorial 2A | integrado em `ad39d3e`; migration `20260801170000` e `discover-rss` implantadas | validar preview autenticado; frontend permanece pendente |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -243,16 +243,20 @@ Validações executadas até aqui:
 - `npm run ci` completo aprovado: secret scan em 663 arquivos, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build;
 - o servidor Vite iniciou sem erros; o teste visual integrado ficou limitado pelo redirecionamento legítimo para `/auth` sem uma sessão local.
 
-Estado externo: a migration foi implantada e verificada; Edge Function, frontend e flag ainda não foram implantados.
+Estado externo: migration e Edge Function foram implantadas e verificadas; frontend e flag ainda não foram implantados.
 
 Implantação parcial autorizada em 2026-08-01:
 
 - `20260801170000` foi executada no banco conectado e registrada em `supabase_migrations.schema_migrations` com o SQL versionado;
 - `editorial_pilot_applications` e `apply_editorial_pilot_proposal(...)` existem;
 - `authenticated` possui execução da RPC, `anon` não possui e o ledger tinha zero aplicações na verificação inicial;
-- a tentativa de publicar somente `discover-rss` com Supabase CLI 2.111.0 falhou antes do deploy com `Access token not provided`;
-- nenhuma Edge Function ou versão de frontend foi alterada por essa tentativa;
-- não acionar o agente Lovable para contornar esse bloqueio sem autorização específica de consumo de créditos.
+- a tentativa inicial de publicar somente `discover-rss` com Supabase CLI 2.111.0 falhou antes do deploy com `Access token not provided`;
+- após autorização específica do usuário, a Lovable publicou `discover-rss` a partir de `1278649` em 2026-08-01 17:43:35 UTC;
+- a Lovable informou `booted` em 27 ms e afirmou que não alterou código ou commit, além de não alterar migration, dados, frontend, variáveis ou outras funções;
+- a auditoria Git imediatamente posterior contradisse apenas a parte de código/commit: a `main` avançou de `1278649` para `e290ac0` (“Publicou discover-rss”), com mudança exclusiva em `src/integrations/supabase/types.ts`;
+- o diff gerado adiciona o tipo de `editorial_pilot_applications`, a assinatura de `apply_editorial_pilot_proposal` e atualiza nullability inferida de `admin_subscription_overview`; não modifica a Edge Function nem o SQL;
+- smoke independente sem credenciais confirmou HTTP 401 e `{"error":"unauthorized"}`;
+- a função valida `Authorization`, `auth.getUser()` e `is_approved` no próprio código; `verify_jwt` não está declarado no `config.toml`.
 
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
@@ -401,17 +405,16 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - webhooks e retenção de logs;
 - token e publicação Meta em conta de teste;
 - flag real do Piloto em produção.
-- migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` e frontend da Fase 2A ainda não publicados.
+- migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` publicada; frontend da Fase 2A ainda não publicado.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. obter uma sessão administrativa autorizada do Supabase e publicar somente `discover-rss`;
-3. confirmar que a função publicada exige autenticação e executa a nova revalidação;
-4. publicar o frontend e executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
-5. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
+2. validar o preview do frontend com uma conta autenticada, confirmando que a interface da Fase 2A está visível;
+3. publicar o frontend e executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
+4. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
 
 ## Checklist de manutenção
 

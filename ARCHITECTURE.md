@@ -228,6 +228,10 @@ Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera cont
 
 O frontend nunca grava diretamente os itens do plano. A Edge Function é a fronteira de validação externa; a RPC `SECURITY DEFINER`, com `search_path` fixo e `auth.uid()`, é a fronteira transacional. Falha de feed, limite de plano ou pauta inválida aborta toda a aplicação.
 
+Estado implantado em 2026-08-01: migration/RPC e `discover-rss` publicadas; uma chamada sem credenciais recebeu 401. O frontend e a flag de produção permanecem pendentes de smoke autenticado.
+
+A regeneração de schema executada pela Lovable após o deploy criou o commit `e290ac0` diretamente na `main`. O diff altera somente `src/integrations/supabase/types.ts`, adicionando o ledger/RPC e atualizando nullability inferida de `admin_subscription_overview`; não altera SQL nem lógica de runtime.
+
 ## APIs e contratos
 
 ### Edge Functions

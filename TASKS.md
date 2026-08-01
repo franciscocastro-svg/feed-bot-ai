@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, com migration aplicada e Edge/frontend pendentes.
+Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, com migration e Edge aplicadas e frontend pendente.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -45,7 +45,9 @@
 - [x] Integrar o PR documental #52 no merge `1278649`.
 - [x] Aplicar e registrar `20260801170000_editorial_pilot_phase_2a.sql` no Supabase conectado.
 - [x] Confirmar tabela/RPC, permissão para `authenticated`, bloqueio de `anon` e ledger inicialmente vazio.
-- [ ] Publicar somente `discover-rss`; tentativa segura não alterou o ambiente porque o CLI exige uma sessão administrativa ausente nesta máquina.
+- [x] Publicar somente `discover-rss` pela Lovable e confirmar externamente a rejeição anônima com HTTP 401.
+- [x] Auditar a divergência da resposta Lovable: o deploy criou `e290ac0` na `main`, alterando somente os tipos Supabase regenerados.
+- [ ] Validar typecheck, testes e build sobre `e290ac0` antes de publicar o frontend.
 - [ ] Publicar o frontend e executar o smoke autenticado antes de decidir a ativação da flag em produção.
 
 ### Reconciliação desta continuidade
@@ -221,7 +223,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Fase 2A parcialmente implantada:** migration aplicada e verificada; `discover-rss` e frontend ainda não foram publicados, e a flag continua desligada por padrão.
+- [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
