@@ -22,6 +22,7 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - O PR [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) foi integrado na `main` pelo merge `ad39d3e` e conecta o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. A entrega ainda não foi implantada.
 - O pipeline completo da Fase 2A passou localmente: secret scan em 663 arquivos, typecheck, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
 - O check remoto `Validate application` do PR #51 foi aprovado para o head final `401d849` antes do merge.
+- O registro pós-merge está no PR documental rascunho [#52](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), sem alterações de produto ou deploy.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 

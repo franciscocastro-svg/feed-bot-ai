@@ -41,6 +41,7 @@
 - [x] Executar `npm run ci`: 551 testes principais, 33 de deploy e 15 de reconciliação aprovados; build verde.
 - [x] Enviar a branch, abrir o PR rascunho #51 e obter `Validate application` verde no head `ad3411a`.
 - [x] Revalidar o head final `401d849` e integrar o PR #51 no merge `ad39d3e`.
+- [x] Abrir o PR documental rascunho #52 e obter `Validate application` verde no commit `0098c25`.
 
 ### Reconciliação desta continuidade
 

@@ -27,7 +27,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Branch funcional `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e head final `401d849`.
 - PR [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) integrado na `main` pelo merge `ad39d3e04f416a913c8d559ebedc9c3707834d0d`.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
-- Branch documental atual: `codex/record-editorial-pilot-merge`, criada a partir do merge `ad39d3e`.
+- Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
+- PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
 - Registro pós-release: commit `e7fe5eb`, integrado pelo PR #46 no merge documental `a36efda`.
 - Commits posteriores que alterem somente estes documentos podem avançar o SHA da `main` sem mudar o release funcional `6b362bf`.
@@ -396,7 +397,7 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. integrar o registro documental pós-merge;
+2. revisar e integrar o PR documental rascunho #52;
 3. obter autorização explícita de implantação;
 4. aplicar `20260801170000` e publicar `discover-rss` antes do frontend;
 5. publicar o frontend e executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
