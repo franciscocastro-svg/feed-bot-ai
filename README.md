@@ -19,9 +19,10 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - A área administrativa publicada exibe `Creator`, `Pro`, `Business` e `Agência`; a chave interna `starter` permanece apenas como contrato técnico compatível com banco e Stripe.
 - O financeiro publicado prioriza o valor efetivamente registrado no Pix por cliente, inclusive em planos negociáveis como Agência.
 - O smoke autenticado confirmou Agência, limites 50/60/100, valor Pix de R$ 1.500,00 e MRR recalculado, sem erro do aplicativo no console.
-- A branch `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e PR rascunho [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) conectam o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. A entrega ainda não está na `main` nem implantada.
+- O PR [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) foi integrado na `main` pelo merge `ad39d3e` e conecta o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. A entrega ainda não foi implantada.
 - O pipeline completo da Fase 2A passou localmente: secret scan em 663 arquivos, typecheck, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
-- O check remoto `Validate application` do PR #51 foi aprovado para o head documental `ad3411a`; commits documentais posteriores devem ser revalidados antes do merge.
+- O check remoto `Validate application` do PR #51 foi aprovado para o head final `401d849` antes do merge.
+- O registro pós-merge está no PR documental rascunho [#52](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), sem alterações de produto ou deploy.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -182,4 +183,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A Fase 2A do Piloto Editorial está implementada localmente e precisa passar pelo pipeline completo, revisão do diff e publicação controlada. A implantação exige, nesta ordem: integrar a branch, aplicar a migration `20260801170000`, publicar `discover-rss`, publicar o frontend e executar um smoke autenticado antes de decidir a ativação da flag em produção.
+A Fase 2A do Piloto Editorial está integrada e validada na `main`. O próximo passo exige autorização de implantação e deve seguir esta ordem: aplicar a migration `20260801170000`, publicar `discover-rss`, publicar o frontend e executar um smoke autenticado antes de decidir a ativação da flag em produção.
