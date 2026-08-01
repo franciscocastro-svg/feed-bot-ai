@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Save, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
+import { containDestinationRect, coverSourceRect, qualityAwareContainDestinationRect } from "../../supabase/functions/_shared/image-framing.js";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const SIZE = 1080;
@@ -82,7 +82,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 function proxify(url: string, w = 1080, h?: number) {
   const clean = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
   const hp = h ? `&h=${h}&fit=cover` : "";
-  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}${hp}&output=jpg`;
+  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}${hp}&we&output=jpg`;
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -124,7 +124,14 @@ function drawSmartPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x:
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(0,0,0,0.16)";
   ctx.fillRect(x, y, w, h);
-  drawContainPhoto(ctx, img, x, y, w, h);
+  const destination = qualityAwareContainDestinationRect(img.width, img.height, x, y, w, h, 4);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (destination.capped) {
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 28;
+  }
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
   ctx.restore();
 }
 

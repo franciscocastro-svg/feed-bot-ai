@@ -5,6 +5,7 @@ import {
   containDestinationRect,
   coverSourceRect,
   protectedPhotoSvg,
+  qualityAwareContainDestinationRect,
 } from "../../supabase/functions/_shared/image-framing.js";
 
 const readProjectFile = (relativePath: string) =>
@@ -23,6 +24,26 @@ describe("smart editorial image framing", () => {
     const rect = containDestinationRect(1600, 900, 0, 0, 1080, 1920);
     expect(rect.x).toBeCloseTo(0);
     expect(rect.y).toBeCloseTo(656.25);
+    expect(rect.width).toBeCloseTo(1080);
+    expect(rect.height).toBeCloseTo(607.5);
+  });
+
+  it("caps enlargement of a tiny fallback while keeping it centered", () => {
+    const rect = qualityAwareContainDestinationRect(100, 100, 0, 0, 1080, 1920, 4);
+
+    expect(rect).toMatchObject({
+      x: 340,
+      y: 760,
+      width: 400,
+      height: 400,
+      capped: true,
+    });
+  });
+
+  it("does not shrink a sufficiently large editorial image", () => {
+    const rect = qualityAwareContainDestinationRect(1600, 900, 0, 0, 1080, 1920, 4);
+
+    expect(rect.capped).toBe(false);
     expect(rect.width).toBeCloseTo(1080);
     expect(rect.height).toBeCloseTo(607.5);
   });
@@ -59,5 +80,8 @@ describe("smart editorial image framing", () => {
     expect(post).toContain("drawProtectedPhoto(ctx, photoImg");
     expect(story).toContain("drawProtectedPhoto(ctx, photoImg");
     expect(worker).toContain("drawProtectedImage(ctx, photoImg");
+    expect(post).toContain("qualityAwareContainDestinationRect");
+    expect(story).toContain("qualityAwareContainDestinationRect");
+    expect(worker).toContain("qualityAwareContainDestinationRect");
   });
 });

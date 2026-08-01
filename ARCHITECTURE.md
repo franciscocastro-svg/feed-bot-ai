@@ -82,7 +82,7 @@ Rotas públicas cobrem autenticação, verificação/recuperação, preços, che
 
 #### Compartilhados
 
-`supabase/functions/_shared/` concentra autenticação, autorização, Stripe, perfil, política editorial, integridade de legendas, configurações conta/canal, roteamento de mídia, templates, observabilidade, captura, timezone e contratos de carrossel.
+`supabase/functions/_shared/` concentra autenticação, autorização, Stripe, perfil, política editorial, integridade de legendas, configurações conta/canal, roteamento de mídia, templates, observabilidade, captura, timezone e contratos de carrossel. `source-capture.ts` também classifica candidatos visuais da própria matéria por origem, resolução declarada e sinais de miniatura, sem fazer busca externa por imagem.
 
 Regras usadas por mais de um consumidor devem ficar em módulos compartilhados para reduzir divergência entre UI, Edge Functions e worker.
 
@@ -97,6 +97,7 @@ Responsabilidades:
 - gerar Reels, cortes, legendas e overlays;
 - selecionar/carregar imagens temáticas;
 - reutilizar artefatos quando seguro;
+- limitar a ampliação do primeiro plano quando somente uma miniatura pequena estiver disponível, mantendo-a sobre fundo editorial protegido;
 - armazenar arquivos finais;
 - fazer retry e registrar saúde/capacidades.
 
@@ -148,7 +149,8 @@ sequenceDiagram
     participant M as Meta
 
     C->>F: capturar fontes ativas
-    F->>D: inserir/deduplicar news_items
+    F->>F: trocar miniatura fraca pela melhor imagem da própria matéria quando possível
+    F->>D: inserir/deduplicar news_items e atualizar imagens fracas existentes
     D-->>P: item pendente e conta de destino
     P->>P: validar fonte, perfil, política e IA
     P->>D: conteúdo processado/agendável
@@ -234,9 +236,11 @@ A correção implantada está em `20260801185731_1bf2df3e-ee4b-42a8-80ca-548153f
 
 A validação externa confirmou 59 fontes com fingerprint preenchido, nova publicação de `discover-rss` e rejeição anônima HTTP 401. A Lovable criou o merge automático `3512454`, com a migration no timestamp efetivamente registrado e os tipos da RPC regenerados. A cópia anterior `20260801183000` não representa uma segunda mudança de schema e foi removida na reconciliação para impedir dupla aplicação em ambientes futuros.
 
-O smoke seguinte encontrou uma segunda incompatibilidade na própria RPC: `source_id` era simultaneamente uma variável PL/pgSQL e uma coluna do alvo `ON CONFLICT`, produzindo SQLSTATE `42702`. `20260801193000_fix_editorial_pilot_source_link_conflict.sql` recria somente a função, usa `v_source_id`, referencia `news_source_instagram_accounts_pkey` por nome e usa `GET DIAGNOSTICS ... ROW_COUNT` para contar apenas vínculos realmente inseridos. A transação continua atômica e o replay continua protegido pelo ledger.
+O smoke seguinte encontrou uma segunda incompatibilidade na própria RPC: `source_id` era simultaneamente uma variável PL/pgSQL e uma coluna do alvo `ON CONFLICT`, produzindo SQLSTATE `42702`. A versão registrada `20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql` recria somente a função, usa `v_source_id`, referencia `news_source_instagram_accounts_pkey` por nome e usa `GET DIAGNOSTICS ... ROW_COUNT` para contar apenas vínculos realmente inseridos. A transação continua atômica e o replay continua protegido pelo ledger. O smoke posterior confirmou 7 fontes vinculadas, 4 pautas e 1 ledger, sem publicação.
 
 Validação local da correção `42702`: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP e build de produção aprovados.
+
+Validação externa posterior: a aplicação criou 1 ledger, resolveu e vinculou as 7 fontes selecionadas e criou as 4 pautas previstas. O resultado transacional registrou 4 fontes novas, 4 vínculos novos, 4 pautas novas e zero pautas ignoradas; nenhuma publicação foi criada. O replay efetivo pela interface permanece como último smoke antes do rollout.
 
 Validação da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP, build de produção e check remoto `Validate application` aprovados.
 
@@ -262,7 +266,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A branch corretiva contém 182 migrations versionadas; a `main` possui 181. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000` e compatibilidade `20260801185731` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A correção `20260801193000` permanece somente no Git até autorização; ela não altera tabelas nem dados, apenas recria a RPC. Domínios representativos:
+A `main` contém 182 migrations versionadas. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A última não altera tabelas nem dados, apenas recria a RPC. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|
@@ -327,6 +331,8 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 | Limites resolvidos somente em `live` | impedir que uma assinatura de teste altere plano ou quotas de produção |
 | Valor Pix como fonte financeira | planos negociáveis devem usar o valor efetivamente registrado, não preço-base nulo |
 | Chaves de plano separadas dos nomes públicos | preservar compatibilidade `starter` no banco/Stripe e mostrar Creator na interface |
+| Imagem principal limitada à própria matéria | melhorar resolução sem trocar o assunto por uma busca visual genérica |
+| Miniatura preservada como último recurso | evitar perder completamente a mídia quando o veículo não expõe alternativa melhor |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 

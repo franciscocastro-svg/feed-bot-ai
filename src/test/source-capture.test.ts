@@ -5,14 +5,19 @@ import {
   buildSearchQueryVariants,
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
+  choosePreferredArticleImage,
   decodeBingNewsArticleUrl,
+  enrichPreviewItemsWithImages,
   filterItemsForSource,
   fetchTextSmart,
+  findArticleImage,
+  isLikelyLowResolutionImageUrl,
   parseAtomItems,
   parseHtmlListing,
   pickLeastLoadedInstagram,
   parseRssItems,
   previewSource,
+  rankArticleImageCandidates,
 } from "../../supabase/functions/_shared/source-capture.ts";
 
 describe("source capture utilities", () => {
@@ -54,6 +59,77 @@ describe("source capture utilities", () => {
 
     expect(items).toHaveLength(1);
     expect(items[0].image).toBe("https://www.bing.com/th?id=OVFT.exemplo&pid=News");
+  });
+
+  it("recognizes search thumbnails as weak but preserves them as the final fallback", () => {
+    const thumbnail = "https://www.bing.com/th?id=OVFT.exemplo&pid=News";
+
+    expect(isLikelyLowResolutionImageUrl(thumbnail)).toBe(true);
+    expect(choosePreferredArticleImage(thumbnail, null)).toBe(thumbnail);
+    expect(choosePreferredArticleImage(thumbnail, "https://cdn.example.com/article-1600x900.jpg"))
+      .toBe("https://cdn.example.com/article-1600x900.jpg");
+  });
+
+  it("ranks the article main image above a declared 100px thumbnail", () => {
+    const html = `
+      <html><head>
+        <script type="application/ld+json">
+          {"@type":"NewsArticle","thumbnailUrl":{"url":"/thumb.jpg","width":100,"height":100}}
+        </script>
+        <meta property="og:image" content="https://cdn.example.com/memo-main.jpg" />
+        <meta property="og:image:width" content="1600" />
+        <meta property="og:image:height" content="900" />
+      </head><body><article><h1>Memo Schutz</h1></article></body></html>`;
+
+    const ranked = rankArticleImageCandidates(html, "https://example.com/materia/memo-schutz");
+
+    expect(ranked[0]).toMatchObject({
+      url: "https://cdn.example.com/memo-main.jpg",
+      source: "og",
+      width: 1600,
+      height: 900,
+    });
+    expect(ranked.some((candidate) => candidate.url === "https://example.com/thumb.jpg")).toBe(true);
+  });
+
+  it("selects a high-resolution image from the article without searching outside that page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <html><head>
+        <meta property="og:image" content="https://cdn.example.com/memo-main.jpg" />
+        <meta property="og:image:width" content="1600" />
+        <meta property="og:image:height" content="900" />
+      </head><body><article><img src="/thumb-100x100.jpg" width="100" height="100" /></article></body></html>
+    `, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    })));
+
+    await expect(findArticleImage("https://example.com/materia/memo-schutz"))
+      .resolves.toBe("https://cdn.example.com/memo-main.jpg");
+  });
+
+  it("upgrades a weak preview image and keeps it when article enrichment fails", async () => {
+    const thumbnail = "https://www.bing.com/th?id=OVFT.exemplo&pid=News";
+    const item = {
+      title: "Memo Schutz em novo reality",
+      link: "https://example.com/materia/memo-schutz",
+      image: thumbnail,
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("indisponível", { status: 503 })));
+
+    const failed = await enrichPreviewItemsWithImages([item], { maxItems: 1, budgetMs: 1000, perItemTimeoutMs: 500 });
+    expect(failed.items[0].image).toBe(thumbnail);
+    expect(failed.enriched).toBe(0);
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <meta property="og:image" content="https://cdn.example.com/memo-main.jpg" />
+      <meta property="og:image:width" content="1600" />
+      <meta property="og:image:height" content="900" />
+    `, { status: 200, headers: { "content-type": "text/html" } })));
+
+    const upgraded = await enrichPreviewItemsWithImages([item], { maxItems: 1, budgetMs: 1000, perItemTimeoutMs: 500 });
+    expect(upgraded.items[0].image).toBe("https://cdn.example.com/memo-main.jpg");
+    expect(upgraded.enriched).toBe(1);
   });
 
   it("extracts the publisher URL from Bing News wrappers", () => {

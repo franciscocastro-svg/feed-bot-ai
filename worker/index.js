@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
-import { containDestinationRect, coverSourceRect } from "../supabase/functions/_shared/image-framing.js";
+import { containDestinationRect, coverSourceRect, qualityAwareContainDestinationRect } from "../supabase/functions/_shared/image-framing.js";
 import { loadPublishedTemplate } from "../supabase/functions/_shared/template-versioning.js";
 import { brandFontStack } from "../supabase/functions/_shared/brand-kit.js";
 import { buildAssSubtitleFile } from "./subtitleStyles.js";
@@ -408,7 +408,14 @@ function drawProtectedImage(ctx, img, x, y, w, h) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.fillRect(x, y, w, h);
-  drawContainImage(ctx, img, x, y, w, h);
+  const destination = qualityAwareContainDestinationRect(img.width, img.height, x, y, w, h, 4);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (destination.capped) {
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 28;
+  }
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
   ctx.restore();
 }
 

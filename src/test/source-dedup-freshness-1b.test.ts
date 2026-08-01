@@ -18,6 +18,11 @@ describe("Qualidade de Fontes 1B", () => {
     expect(fetchRssSource).toContain("SOURCE_DEDUPE_LOOKBACK_HOURS = 7 * 24");
   });
 
+  it("upgrades a weak image on an existing duplicate without discarding its fallback", () => {
+    expect(fetchRssSource).toContain("isLikelyLowResolutionImageUrl(duplicate.original_image_url)");
+    expect(fetchRssSource).toContain("choosePreferredArticleImage(duplicate.original_image_url, img) || img");
+  });
+
   it("enforces the same seven-day tombstone in the database trigger", () => {
     expect(dedupeMigration).toContain("now() - interval '7 days'");
     expect(dedupeMigration).toContain("pg_catalog.pg_advisory_xact_lock");

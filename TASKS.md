@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. O segundo smoke do Piloto Editorial revelou SQLSTATE `42702` na RPC; o rollback ficou zerado e a correção append-only está em validação.
+Última atualização: **2026-08-01**. O smoke do Piloto Editorial passou após a correção SQLSTATE `42702`; a melhoria de qualidade de imagens está concluída localmente e aguarda integração/implantação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -68,9 +68,23 @@
 - [x] Integrar a reconciliação pelo PR #54 no merge `47a6652`.
 - [x] Reproduzir o segundo smoke e identificar `source_id` ambíguo no `ON CONFLICT` com SQLSTATE `42702`.
 - [x] Confirmar novamente zero aplicações, fontes e pautas após o rollback.
-- [x] Criar `20260801193000` com `v_source_id`, PK explícita e contagem por `ROW_COUNT`.
+- [x] Criar a correção, registrada pela plataforma como `20260801194149`, com `v_source_id`, PK explícita e contagem por `ROW_COUNT`.
 - [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
-- [ ] Integrar/aplicar `20260801193000` e repetir o smoke de aplicação/replay antes de decidir a flag de produção.
+- [x] Integrar o PR #55 no merge `d0dc3da` e aplicar a correção sob a versão registrada `20260801194149`.
+- [x] Aprovar o smoke principal: 7 fontes resolvidas/vinculadas, 4 pautas, 1 ledger e nenhuma publicação.
+- [ ] Repetir a mesma proposta para confirmar `replayed=true` antes de decidir a flag de produção.
+
+### Qualidade de imagens — concluída localmente
+
+- [x] Diagnosticar a matéria real: miniatura Bing 100×100 ampliada para 1080×1920.
+- [x] Classificar miniaturas e candidatos da própria matéria por metadados, origem e resolução declarada.
+- [x] Priorizar `primaryImageOfPage`, JSON-LD, `og:image`, figuras e `srcset` sem pesquisar imagens externas pelo tema.
+- [x] Preservar a miniatura original quando nenhuma alternativa relacionada estiver disponível.
+- [x] Atualizar duplicatas existentes quando sua imagem armazenada for reconhecidamente fraca.
+- [x] Limitar a ampliação do fallback pequeno no navegador e no worker, com fundo protegido e suavização alta.
+- [x] Confirmar no caso real a imagem relacionada de 1200×747.
+- [x] Aprovar 38 testes direcionados, typecheck e CI completo com 562 testes principais, 33 de deploy, 15 de reconciliação e build.
+- [ ] Integrar a branch, republicar `fetch-rss`, `preview-source` e `discover-rss`, implantar worker/frontend no mesmo SHA e executar smoke visual.
 
 ### Reconciliação desta continuidade
 
@@ -113,7 +127,8 @@
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** integrar/aplicar a correção SQLSTATE `42702`, executar o smoke autenticado no preview e decidir rollout/publicação do frontend de produção.
+- [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
+- [ ] **Qualidade de imagens:** integrar e implantar Edge Functions, worker e frontend no mesmo SHA; regenerar o caso de teste.
 
 ## Próximas tarefas
 
@@ -208,7 +223,7 @@
 ### P1 — confiabilidade editorial
 
 - [ ] Medir repetição de tema, legenda, CTA e imagem.
-- [ ] Priorizar imagem original quando legal e tecnicamente adequada.
+- [x] Priorizar a imagem principal da própria matéria quando tecnicamente adequada, mantendo fallback.
 - [ ] Avaliar imagens temáticas por relevância e licença.
 - [ ] Usar capa tipográfica quando não houver imagem segura.
 - [ ] Melhorar fallback quando todos os provedores falharem.
@@ -246,8 +261,8 @@
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
-- [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; smoke autenticado ainda pendente.
-- [ ] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` reproduzido sem escrita; migration `20260801193000` preparada e ainda não aplicada.
+- [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; a etapa posterior avançou até revelar e corrigir o SQLSTATE `42702`.
+- [x] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` corrigido e registrado em `20260801194149`; smoke autenticado aprovado.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
@@ -255,7 +270,7 @@
 - [ ] `.env.development` rastreado contém configuração de preview; confirmar que produção não herda esse arquivo.
 - [ ] Alguns bloqueios de acesso não apresentam o `reason` real.
 - [ ] Provedores de IA podem retornar 503; fila deve preservar retry e causa sanitizada.
-- [ ] Imagens ainda podem ser repetidas ou pouco relacionadas.
+- [ ] Imagens ainda podem ser repetidas; a nova seleção evita busca externa e limita os candidatos à própria matéria, mas o smoke publicado permanece pendente.
 - [ ] Retenção curta de logs pode impedir diagnóstico de webhook.
 - [ ] `AuthContext.tsx` tem dois warnings ESLint preexistentes, sem erros.
 

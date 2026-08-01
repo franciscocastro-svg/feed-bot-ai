@@ -37,6 +37,37 @@ export function containDestinationRect(imageWidth, imageHeight, x, y, boxWidth, 
   };
 }
 
+export function qualityAwareContainDestinationRect(
+  imageWidth,
+  imageHeight,
+  x,
+  y,
+  boxWidth,
+  boxHeight,
+  maxUpscale = 4,
+) {
+  const destination = containDestinationRect(imageWidth, imageHeight, x, y, boxWidth, boxHeight);
+  const iw = finitePositive(imageWidth, 1);
+  const ih = finitePositive(imageHeight, 1);
+  const safeMaxUpscale = Math.max(1, Number(maxUpscale) || 1);
+  const containedScale = Math.min(destination.width / iw, destination.height / ih);
+  if (containedScale <= safeMaxUpscale) return { ...destination, capped: false };
+
+  const bx = Number.isFinite(Number(x)) ? Number(x) : 0;
+  const by = Number.isFinite(Number(y)) ? Number(y) : 0;
+  const bw = finitePositive(boxWidth, 1);
+  const bh = finitePositive(boxHeight, 1);
+  const width = iw * safeMaxUpscale;
+  const height = ih * safeMaxUpscale;
+  return {
+    x: bx + (bw - width) / 2,
+    y: by + (bh - height) / 2,
+    width,
+    height,
+    capped: true,
+  };
+}
+
 function safeSvgId(value) {
   return String(value || "smart-frame").replace(/[^a-z0-9_-]/gi, "-");
 }

@@ -25,6 +25,14 @@ export type ParsedSourceItem = {
   _score?: number;
 };
 
+export type ArticleImageCandidate = {
+  url: string;
+  source: "primary" | "jsonld" | "og" | "figure" | "srcset" | "image" | "thumbnail";
+  width: number | null;
+  height: number | null;
+  score: number;
+};
+
 export type SourceDiagnostics = {
   parse_type: "rss" | "atom" | "html" | "none";
   items_found: number;
@@ -881,26 +889,110 @@ export function decodeBingNewsArticleUrl(rawUrl: string): string | null {
   }
 }
 
-function extractAllCandidates(html: string): string[] {
-  const out: string[] = [];
-  const push = (u?: string | null) => {
-    if (u && typeof u === "string" && !out.includes(u)) out.push(u);
+type RawArticleImageCandidate = Omit<ArticleImageCandidate, "score" | "width" | "height"> & {
+  width?: number | null;
+  height?: number | null;
+};
+
+const ARTICLE_IMAGE_SOURCE_WEIGHT: Record<ArticleImageCandidate["source"], number> = {
+  primary: 720,
+  jsonld: 640,
+  og: 620,
+  figure: 520,
+  srcset: 500,
+  image: 320,
+  thumbnail: 120,
+};
+
+function positiveDimension(value: unknown): number | null {
+  const parsed = Number(String(value ?? "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function htmlAttribute(tag: string, name: string): string | null {
+  const escaped = escapeRegExp(name);
+  return tag.match(new RegExp(`\\b${escaped}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1] || null;
+}
+
+function hintedDimensions(rawUrl: string): { width: number | null; height: number | null } {
+  try {
+    const url = new URL(decodeEntities(rawUrl).replace(/\\u0026/g, "&"));
+    const width = ["width", "w", "wid", "imagewidth"].map((key) => positiveDimension(url.searchParams.get(key))).find(Boolean) || null;
+    const height = ["height", "h", "hei", "imageheight"].map((key) => positiveDimension(url.searchParams.get(key))).find(Boolean) || null;
+    return { width, height };
+  } catch {
+    return { width: null, height: null };
+  }
+}
+
+export function isLikelyLowResolutionImageUrl(rawUrl?: string | null): boolean {
+  if (!rawUrl) return false;
+  try {
+    const url = new URL(decodeEntities(rawUrl).replace(/\\u0026/g, "&"));
+    const pathAndQuery = `${url.pathname} ${url.search}`.toLowerCase();
+    if (/bing\.com$/i.test(url.hostname) && url.pathname === "/th" && url.searchParams.get("pid")?.toLowerCase() === "news") return true;
+    if (/(^|[/_-])(thumb|thumbnail|tiny|small|mini)([/_-]|\.|$)/i.test(pathAndQuery)) return true;
+    const { width, height } = hintedDimensions(url.toString());
+    return (width !== null && width < 640) || (height !== null && height < 360);
+  } catch {
+    return /(?:thumb|thumbnail|pid=News)/i.test(rawUrl);
+  }
+}
+
+export function choosePreferredArticleImage(
+  currentImage?: string | null,
+  articleImage?: string | null,
+): string | null {
+  const current = currentImage && !isLikelyLogo(currentImage) ? currentImage : null;
+  const article = articleImage && !isLikelyLogo(articleImage) ? articleImage : null;
+  if (!article) return current;
+  if (!current) return article;
+
+  const currentIsWeak = isLikelyLowResolutionImageUrl(current);
+  const articleIsWeak = isLikelyLowResolutionImageUrl(article);
+  if (currentIsWeak) return article;
+  return articleIsWeak ? current : article;
+}
+
+function extractRawArticleImageCandidates(html: string): RawArticleImageCandidate[] {
+  const out: RawArticleImageCandidate[] = [];
+  const push = (
+    rawUrl: unknown,
+    source: ArticleImageCandidate["source"],
+    width: unknown = null,
+    height: unknown = null,
+  ) => {
+    const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+    if (!url) return;
+    const hints = hintedDimensions(url);
+    out.push({
+      url,
+      source,
+      width: positiveDimension(width) || hints.width,
+      height: positiveDimension(height) || hints.height,
+    });
   };
-  const pushImageValue = (value: unknown) => {
+  const pushImageValue = (value: unknown, source: ArticleImageCandidate["source"] = "jsonld") => {
     if (!value) return;
-    if (typeof value === "string") return push(value);
-    if (Array.isArray(value)) return value.forEach(pushImageValue);
+    if (typeof value === "string") return push(value, source);
+    if (Array.isArray(value)) return value.forEach((entry) => pushImageValue(entry, source));
     if (typeof value === "object") {
       const obj = value as Record<string, unknown>;
-      push(String(obj.url || ""));
-      push(String(obj.contentUrl || ""));
-      push(String(obj.thumbnailUrl || ""));
-      push(String(obj["@id"] || ""));
+      const width = obj.width;
+      const height = obj.height;
+      push(obj.url, source, width, height);
+      push(obj.contentUrl, source, width, height);
+      push(obj["@id"], source, width, height);
+      push(obj.thumbnailUrl, "thumbnail", width, height);
     }
   };
   const pushSrcset = (srcset?: string | null) => {
     if (!srcset) return;
-    for (const part of srcset.split(",")) push(part.trim().split(/\s+/)[0]);
+    for (const part of srcset.split(",")) {
+      const [url, descriptor = ""] = part.trim().split(/\s+/, 2);
+      const width = descriptor.endsWith("w") ? positiveDimension(descriptor) : null;
+      push(url, "srcset", width, null);
+    }
   };
 
   const jsonldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -911,9 +1003,9 @@ function extractAllCandidates(html: string): string[] {
       const nodes = Array.isArray(data) ? data : ((data["@graph"] || [data]) as unknown[]);
       for (const node of nodes) {
         const n = node as Record<string, unknown>;
-        pushImageValue(n?.image);
-        pushImageValue(n?.thumbnailUrl);
-        pushImageValue(n?.primaryImageOfPage);
+        pushImageValue(n?.primaryImageOfPage, "primary");
+        pushImageValue(n?.image, "jsonld");
+        pushImageValue(n?.thumbnailUrl, "thumbnail");
       }
     } catch {
       // ignore malformed JSON-LD
@@ -922,29 +1014,71 @@ function extractAllCandidates(html: string): string[] {
 
   const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
   const articleHtml = articleMatch ? articleMatch[0] : html;
-  const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+)["']/gi;
+  const figRe = /<figure[\s\S]*?<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+)["'][^>]*>/gi;
   let fm: RegExpExecArray | null;
-  while ((fm = figRe.exec(articleHtml)) !== null) push(fm[1]);
+  while ((fm = figRe.exec(articleHtml)) !== null) {
+    const tag = fm[0].slice(fm[0].lastIndexOf("<img"));
+    push(fm[1], "figure", htmlAttribute(tag, "width"), htmlAttribute(tag, "height"));
+    pushSrcset(htmlAttribute(tag, "srcset") || htmlAttribute(tag, "data-srcset"));
+  }
 
-  const ogPatterns = [
-    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/gi,
-    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/gi,
-  ];
-  for (const pattern of ogPatterns) {
-    let om: RegExpExecArray | null;
-    while ((om = pattern.exec(html)) !== null) push(om[1]);
+  const ogWidth = html.match(/<meta[^>]+property=["']og:image:width["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image:width["']/i)?.[1];
+  const ogHeight = html.match(/<meta[^>]+property=["']og:image:height["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image:height["']/i)?.[1];
+  const metaRe = /<meta\b[^>]*>/gi;
+  let om: RegExpExecArray | null;
+  while ((om = metaRe.exec(html)) !== null) {
+    const tag = om[0];
+    const property = (htmlAttribute(tag, "property") || htmlAttribute(tag, "name") || "").toLowerCase();
+    const content = htmlAttribute(tag, "content");
+    if (!content || !/^(og:image(?::secure_url)?|twitter:image(?::src)?)$/.test(property)) continue;
+    push(content, "og", ogWidth, ogHeight);
   }
 
   const srcsetRe = /<(?:img|source)[^>]+(?:srcset|data-srcset)=["']([^"']+)["']/gi;
   let sm: RegExpExecArray | null;
   while ((sm = srcsetRe.exec(articleHtml)) !== null) pushSrcset(sm[1]);
 
-  const imgRe = /<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi;
+  const imgRe = /<img[^>]+(?:src|data-src|data-original|data-lazy-src|data-original-src|data-img-src)=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["'][^>]*>/gi;
   let im: RegExpExecArray | null;
-  while ((im = imgRe.exec(articleHtml)) !== null) push(im[1]);
+  while ((im = imgRe.exec(articleHtml)) !== null) {
+    push(im[1], "image", htmlAttribute(im[0], "width"), htmlAttribute(im[0], "height"));
+  }
 
   return out;
+}
+
+export function rankArticleImageCandidates(html: string, pageUrl: string): ArticleImageCandidate[] {
+  const bestByUrl = new Map<string, ArticleImageCandidate>();
+  for (const raw of extractRawArticleImageCandidates(html)) {
+    const url = toAbsoluteUrl(raw.url, pageUrl);
+    if (!url || isLikelyLogo(url)) continue;
+    try {
+      assertSafeHttpUrl(url);
+    } catch {
+      continue;
+    }
+    const width = raw.width || null;
+    const height = raw.height || null;
+    const pixelBonus = width && height ? Math.min(420, Math.round(Math.sqrt(width * height) / 3)) : 0;
+    const widthBonus = width ? Math.min(180, Math.round(width / 10)) : 0;
+    const lowResolutionPenalty = isLikelyLowResolutionImageUrl(url)
+      || (width !== null && width < 640)
+      || (height !== null && height < 360)
+      ? 520
+      : 0;
+    const candidate: ArticleImageCandidate = {
+      url,
+      source: raw.source,
+      width,
+      height,
+      score: ARTICLE_IMAGE_SOURCE_WEIGHT[raw.source] + pixelBonus + widthBonus - lowResolutionPenalty,
+    };
+    const previous = bestByUrl.get(url);
+    if (!previous || candidate.score > previous.score) bestByUrl.set(url, candidate);
+  }
+  return Array.from(bestByUrl.values()).sort((a, b) => b.score - a.score);
 }
 
 function extractGoogleNewsPublisherUrl(html: string): string | null {
@@ -986,20 +1120,7 @@ export async function findArticleImage(pageUrl: string, timeoutMs = 15000): Prom
       }
     }
 
-    const origin = new URL(page.finalUrl).origin;
-    const candidates = extractAllCandidates(page.html)
-      .map((u) => (u.startsWith("//") ? "https:" + u : u.startsWith("/") ? origin + u : u))
-      .filter((u) => /^https?:\/\//i.test(u))
-      .filter((u) => {
-        try {
-          assertSafeHttpUrl(u);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .filter((u) => !isLikelyLogo(u));
-    return candidates[0] || null;
+    return rankArticleImageCandidates(page.html, page.finalUrl)[0]?.url || null;
   } catch {
     return null;
   }
@@ -1037,16 +1158,17 @@ export async function enrichPreviewItemsWithImages(
     while (cursor < maxItems) {
       const index = cursor++;
       const item = output[index];
-      if (item.image && !isLikelyLogo(item.image)) continue;
-      item.image = null;
+      const fallbackImage = item.image && !isLikelyLogo(item.image) ? item.image : null;
+      if (fallbackImage && !isLikelyLowResolutionImageUrl(fallbackImage)) continue;
+      item.image = fallbackImage;
       const remaining = deadline - Date.now();
       if (remaining <= 250) return;
       const timeoutMs = Math.min(perItemTimeoutMs, remaining);
       const articleUrl = await resolveArticleUrl(item.link, Math.max(500, Math.floor(timeoutMs / 2)));
       const image = await findArticleImage(articleUrl, Math.max(500, deadline - Date.now()));
-      if (!image || isLikelyLogo(image)) continue;
-      item.image = image;
-      enriched++;
+      const preferred = choosePreferredArticleImage(fallbackImage, image);
+      item.image = preferred;
+      if (preferred && preferred !== fallbackImage) enriched++;
     }
   };
 
