@@ -22,7 +22,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
-- Branch documental pós-release: `codex/document-pix-live-release`, criada sobre `6b362bf`.
+- Registro pós-release: commit `e7fe5eb`, integrado pelo PR #46 no merge documental `a36efda`.
+- Commits posteriores que alterem somente estes documentos podem avançar o SHA da `main` sem mudar o release funcional `6b362bf`.
 - Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
 - Branch enviada a `origin/codex/reconcile-main-docs`.
 - PR [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42): checks verdes e merge concluído em `78379d9`.
