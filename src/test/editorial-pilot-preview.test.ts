@@ -263,6 +263,13 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
       resolve(process.cwd(), "supabase/migrations/20260801170000_editorial_pilot_phase_2a.sql"),
       "utf8",
     );
+    const sourceLinkFix = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260801193000_fix_editorial_pilot_source_link_conflict.sql",
+      ),
+      "utf8",
+    );
 
     expect(edge).toContain("no_valid_sources");
     expect(edge).toContain('"apply_editorial_pilot_proposal"');
@@ -270,7 +277,12 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     expect(migration).toContain("editorial_pilot_application_unique");
     expect(migration).toContain("SECURITY DEFINER");
     expect(migration).toContain("WHERE account.id = _account_id");
-    expect(migration).toContain("ON CONFLICT (source_id, instagram_account_id) DO NOTHING");
+    expect(sourceLinkFix).toContain("v_source_id uuid");
+    expect(sourceLinkFix).toContain(
+      "ON CONFLICT ON CONSTRAINT news_source_instagram_accounts_pkey DO NOTHING",
+    );
+    expect(sourceLinkFix).toContain("GET DIAGNOSTICS link_row_count = ROW_COUNT");
+    expect(sourceLinkFix).not.toContain("ON CONFLICT (source_id, instagram_account_id)");
   });
 
   it("reconcilia a dependência de fingerprint ausente no banco publicado", () => {

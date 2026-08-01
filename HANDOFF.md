@@ -27,7 +27,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Branch funcional `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e head final `401d849`.
 - PR [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) integrado na `main` pelo merge `ad39d3e04f416a913c8d559ebedc9c3707834d0d`.
 - PR [#53 — Fix editorial pilot application and source discovery](https://github.com/franciscocastro-svg/feed-bot-ai/pull/53) integrado no merge `1cb14c572d10d331267afb15f35a6f440334ecca`.
-- A implantação Lovable criou o merge automático `3512454aba1daa7fc507238f136089959b3a3774`; a branch atual `codex/reconcile-editorial-pilot-migration` reconcilia a migration duplicada com o timestamp efetivamente registrado.
+- A implantação Lovable criou o merge automático `3512454aba1daa7fc507238f136089959b3a3774`; a branch `codex/reconcile-editorial-pilot-migration` reconciliou a migration duplicada com o timestamp efetivamente registrado.
+- O PR #54 integrou a reconciliação no merge `47a6652c851ff3f3a0629f4677264d0d947b2894`. A branch atual `codex/fix-editorial-pilot-source-link` corrige o SQLSTATE `42702` encontrado no segundo smoke.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
 - Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
 - PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.
@@ -75,7 +76,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Piloto Editorial 2A | correção integrada em `1cb14c5`; compatibilidade e Edge implantadas; preview pronto | reconciliar migration duplicada e repetir smoke autenticado |
+| Piloto Editorial 2A | compatibilidade/Edge implantadas; segundo smoke falhou sem escrita por variável ambígua | integrar/aplicar `20260801193000` e repetir smoke |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -283,6 +284,18 @@ Implantação parcial autorizada em 2026-08-01:
 - apesar de informar que não criou commit, a operação criou `3512454` na `main`, adicionando a migration timestampada e tipos regenerados;
 - como `3512454` deixou também a cópia idêntica `20260801183000` já presente, a branch de reconciliação remove essa cópia não registrada e mantém somente `20260801185731`, coerente com o histórico do Supabase.
 
+#### Segundo smoke autenticado — SQLSTATE 42702
+
+- a nova descoberta apresentou sete fontes válidas, incluindo G1 Pop Arte, Quem, Metrópoles, monitoramento temático e outras fontes recentes;
+- a confirmação de sete fontes e quatro pautas retornou a mensagem segura `editorial_apply_failed`;
+- o log PostgreSQL identificou `column reference "source_id" is ambiguous` na linha do `ON CONFLICT` de `news_source_instagram_accounts`;
+- a PK composta existe e está correta; enum, colunas de pauta, triggers e limite de fontes também foram verificados;
+- a causa é a colisão entre a variável PL/pgSQL `source_id` e a coluna `source_id` usada como alvo de inferência;
+- a transação reverteu integralmente: zero aplicações, zero fontes `editorial-pilot` e zero pautas `editorial_pilot`;
+- `20260801193000_fix_editorial_pilot_source_link_conflict.sql` recria a RPC com `v_source_id`, `ON CONFLICT ON CONSTRAINT news_source_instagram_accounts_pkey` e `GET DIAGNOSTICS link_row_count = ROW_COUNT`;
+- o CI completo aprovou secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, gates de migrations/MCP e build;
+- a correção não exige republicar `discover-rss` ou o frontend; somente a migration precisa ser aplicada após merge autorizado.
+
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
 Commits relevantes:
@@ -296,6 +309,7 @@ Commits relevantes:
 - `1278649` — merge do PR documental #52.
 - `1cb14c5` — merge do PR #53 com a correção da confirmação e das fontes.
 - `3512454` — merge automático Lovable após aplicar a compatibilidade e regenerar tipos.
+- `47a6652` — merge do PR #54 que remove a migration duplicada e mantém o histórico canônico.
 
 ## Decisões que devem ser preservadas
 
@@ -434,15 +448,17 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - flag real do Piloto em produção.
 - migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` publicada; frontend da Fase 2A ainda não publicado.
 - migration corretiva registrada como `20260801185731` e nova versão de `discover-rss` implantadas; preview pronto, frontend de produção ainda não publicado.
+- correção SQLSTATE `42702` em `20260801193000` ainda não aplicada.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. integrar a reconciliação que mantém somente a migration registrada `20260801185731`;
-3. repetir o smoke autenticado no preview, confirmando descoberta, aplicação, replay, isolamento e ausência de duplicatas;
-4. somente depois decidir se o frontend será publicado e se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
+2. integrar a migration `20260801193000` que corrige a variável ambígua;
+3. com autorização explícita, aplicar somente essa migration, sem republicar Edge ou frontend;
+4. repetir o smoke autenticado no preview, confirmando aplicação, replay, isolamento e ausência de duplicatas;
+5. somente depois decidir se o frontend será publicado e se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
 
 ## Checklist de manutenção
 
