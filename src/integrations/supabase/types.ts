@@ -1239,6 +1239,7 @@ export type Database = {
           quality_score: number
           query: string | null
           source_config: Json
+          source_fingerprint: string | null
           source_kind: Database["public"]["Enums"]["source_kind"]
           source_language: string
           source_type: Database["public"]["Enums"]["source_type"]
@@ -1270,6 +1271,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
@@ -1301,6 +1303,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
@@ -3237,6 +3240,16 @@ export type Database = {
           p_request_id: string
         }
         Returns: boolean
+      }
+      compute_source_fingerprint: {
+        Args: {
+          _country: string
+          _language: string
+          _query: string
+          _source_kind: Database["public"]["Enums"]["source_kind"]
+          _url: string
+        }
+        Returns: string
       }
       compute_subscription_access: {
         Args: { _environment: string; _user_id: string }
