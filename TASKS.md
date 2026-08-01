@@ -47,7 +47,7 @@
 - [x] Confirmar tabela/RPC, permissão para `authenticated`, bloqueio de `anon` e ledger inicialmente vazio.
 - [x] Publicar somente `discover-rss` pela Lovable e confirmar externamente a rejeição anônima com HTTP 401.
 - [x] Auditar a divergência da resposta Lovable: o deploy criou `e290ac0` na `main`, alterando somente os tipos Supabase regenerados.
-- [ ] Validar typecheck, testes e build sobre `e290ac0` antes de publicar o frontend.
+- [x] Validar `e290ac0` com CI completo: 551 testes principais, 33 de deploy, 15 de reconciliação, typecheck e build aprovados.
 - [ ] Publicar o frontend e executar o smoke autenticado antes de decidir a ativação da flag em produção.
 
 ### Reconciliação desta continuidade

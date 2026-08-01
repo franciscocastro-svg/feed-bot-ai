@@ -26,6 +26,7 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - A migration `20260801170000_editorial_pilot_phase_2a.sql` foi aplicada e registrada no Supabase conectado em 2026-08-01. A tabela e a RPC existem, `authenticated` pode executar, `anon` não pode e ainda não há aplicações gravadas.
 - `discover-rss` foi publicada pela Lovable a partir de `1278649` em 2026-08-01 17:43:35 UTC. Um smoke independente confirmou `401 {"error":"unauthorized"}` sem credenciais. O frontend não foi publicado e a flag de produção não foi ativada.
 - Apesar de a resposta operacional afirmar que não criaria commit, a sincronização da Lovable criou diretamente na `main` o commit `e290ac0` (“Publicou discover-rss”), atualizando somente `src/integrations/supabase/types.ts` com a tabela/RPC recém-implantadas e nullability regenerada. A divergência foi identificada e documentada antes do frontend.
+- O CI completo foi reexecutado sobre `e290ac0`: 551 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, gates editoriais/MCP e build aprovados.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 

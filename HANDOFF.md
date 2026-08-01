@@ -257,6 +257,7 @@ Implantação parcial autorizada em 2026-08-01:
 - o diff gerado adiciona o tipo de `editorial_pilot_applications`, a assinatura de `apply_editorial_pilot_proposal` e atualiza nullability inferida de `admin_subscription_overview`; não modifica a Edge Function nem o SQL;
 - smoke independente sem credenciais confirmou HTTP 401 e `{"error":"unauthorized"}`;
 - a função valida `Authorization`, `auth.getUser()` e `is_approved` no próprio código; `verify_jwt` não está declarado no `config.toml`.
+- após incorporar `e290ac0` na branch documental, `npm run ci` passou integralmente: 551 testes principais, 33 de deploy, 15 de reconciliação, typecheck, gates editoriais/MCP e build.
 
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
