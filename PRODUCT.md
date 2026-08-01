@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** para o release Pix live `6b362bf`.
+Atualizado em **2026-08-01** para a correção candidata de Agência e financeiro Pix sobre o release `6b362bf`.
 
 ## Visão de produto
 
@@ -83,10 +83,12 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - assinatura manual/Pix compatível com acesso sem cartão;
 - ação financeira explícita para escolher plano, registrar valor e liberar/renovar exatamente um mês em `live`;
 - visão administrativa que distingue `live`, Stripe, Pix e cadastro existente somente em `sandbox`;
+- nomes públicos consistentes na administração: Creator, Pro, Business e Agência;
+- MRR e listagens financeiras que usam o valor registrado por cliente quando o pagamento é Pix;
 - gate de acesso fail-closed com mensagens distintas para checkout, e-mail, aprovação, expiração, bloqueio e indisponibilidade técnica;
 - limites e preços-base armazenados no banco.
 
-Lacuna confirmada em 2026-08-01: o gate de acesso reconhece Agência em `live`, mas o resolvedor legado de limites pode escolher Business `sandbox`; o MRR também ignora o valor negociado do Pix Agência. A correção está planejada e ainda não foi implementada.
+Correção preparada em 2026-08-01: o resolvedor legado de limites passa a escolher somente a assinatura `live` não terminal mais recente, o financeiro prioriza o valor Pix registrado e a UI deixa de expor a chave técnica `starter`. A implantação em Supabase/Lovable e o smoke autenticado ainda estão pendentes.
 
 ### Piloto Editorial Inteligente — Fase 1
 
@@ -168,7 +170,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - Pix/manual pode liberar acesso sem customer Stripe;
 - toda confirmação manual/Pix feita pela área administrativa é de produção (`live`), registra plano, valor, data e administrador e vale um mês;
 - renovar um Pix ainda vigente acrescenta um mês ao vencimento atual; uma assinatura vencida recebe um mês a partir da confirmação;
-- Pix nunca sobrescreve uma assinatura Stripe `live`; conflitos devem parar de forma segura;
+- Pix substitui automaticamente somente tentativas Stripe `live` já canceladas, inadimplentes ou expiradas; estados ativos, em teste, atrasados dentro da cobrança, pausados ou incompletos exigem cancelamento no Stripe antes da liberação manual;
 - acesso manual exige plano pago, status ativo, aprovação, verificação, vigência e ausência de bloqueio/reembolso;
 - sandbox e live nunca se misturam;
 - UI usa somente chave publicável; secrets ficam no backend;
@@ -233,8 +235,9 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 ### Agora — prontidão e confiabilidade
 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
-- corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
-- contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
+- [concluído localmente] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
+- [concluído localmente] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
+- integrar, aplicar a migration, publicar no Lovable e validar Agência/Pix autenticado;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter o Piloto restrito a preview até aprovação de rollout.

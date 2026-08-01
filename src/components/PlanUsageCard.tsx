@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { useState } from "react";
 import { toast } from "sonner";
+import { planLabel } from "@/lib/billing";
 
 function UsageRow({ label, used, limit }: { label: string; used: number; limit: number }) {
   const unlimited = isUnlimited(limit);
@@ -51,7 +52,7 @@ export function PlanUsageCard() {
           <Crown className="h-4 w-4 text-primary" />
           <span className="font-semibold text-sm">{usage.display_name}</span>
         </div>
-        <Badge variant="secondary" className="text-xs">{usage.plan}</Badge>
+        <Badge variant="secondary" className="text-xs">{planLabel(usage.plan)}</Badge>
       </div>
       <div className="space-y-2.5">
         <UsageRow label="Imagens IA (mês)" used={usage.images_used} limit={usage.images_limit} />

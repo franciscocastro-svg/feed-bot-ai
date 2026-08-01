@@ -19,6 +19,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
 - Release funcional publicada: `6b362bfda7aea7418a818c8ec4e40fa3451f94c1` — merge do PR #45.
+- Base documental atual da branch: `a3c558b` — merge do PR #48.
+- Branch em trabalho: `codex/fix-agency-billing-plan-labels`, criada de `origin/main` em `a3c558b`.
+- Correção Agência/financeiro implementada localmente; ainda não integrada nem publicada.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
@@ -65,6 +68,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
+| Correção Agência | branch local com migration `20260801144500` e frontend | CI verde; publicação pendente |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -116,6 +120,16 @@ Após implementar o fluxo administrativo Pix live nesta continuidade, `npm run c
 - lint ratchet: 422 erros preexistentes, abaixo do limite 447;
 - typecheck e lints por fases: aprovados, mantendo dois warnings preexistentes em `AuthContext.tsx`;
 - suíte principal: 544 testes aprovados e 33 ignorados;
+- deploy hermético: 33 testes aprovados;
+- reconciliação: 15 testes aprovados;
+- worker, gates editoriais/MCP e build Vite: aprovados.
+
+Após implementar a correção Agência/financeiro nesta continuidade, `npm run ci` passou integralmente:
+
+- secret scan: 661 arquivos aprovados;
+- lint ratchet: 422 erros preexistentes, abaixo do limite 447;
+- typecheck e lints por fases: aprovados, mantendo dois warnings preexistentes em `AuthContext.tsx`;
+- suíte principal: 548 testes aprovados e 33 ignorados;
 - deploy hermético: 33 testes aprovados;
 - reconciliação: 15 testes aprovados;
 - worker, gates editoriais/MCP e build Vite: aprovados.
@@ -273,7 +287,7 @@ Comportamento:
 - smoke do bundle: nova RPC e diálogo Pix presentes no artefato público;
 - teste autenticado do cliente: aprovado em 2026-08-01.
 
-## Bug P0 — Agência aparece/limita como Business e receita fica zerada
+## Bug P0 — Agência aparecia/limitava como Business e receita ficava zerada
 
 Auditoria somente leitura concluída em 2026-08-01, sem registrar PII:
 
@@ -286,7 +300,16 @@ Auditoria somente leitura concluída em 2026-08-01, sem registrar PII:
 - o MRR da área financeira usa `plan_limits.price_brl`; Agência tem preço negociável nulo e aparece como R$ 0;
 - o banco conserva corretamente `manual_amount_paid_brl=1500.00`, mas o frontend não usa esse campo no MRR, receita por plano ou “Valor/mês”.
 
-Conclusão: são dois bugs reais. O gate e a liberação Agência funcionam, mas limites/exibição do plano são degradados para Business e a receita manual é omitida.
+Correção implementada na branch atual:
+
+- `20260801144500_live_plan_and_pix_fallback.sql` torna `get_user_plan()` determinístico e exclusivo de `live`;
+- `src/lib/billing.ts` centraliza `starter` → Creator, `agency` → Agência e o valor mensal por origem do pagamento;
+- admin, editor de limites e cartão de uso exibem nomes públicos consistentes;
+- MRR, receita por plano e assinantes pagantes usam o valor manual quando o pagamento é Pix;
+- a RPC Pix substitui automaticamente apenas Stripe `canceled`, `unpaid` ou `incomplete_expired`; demais estados continuam bloqueados para evitar cobrança dupla;
+- `src/test/live-agency-billing.test.ts` cobre isolamento live/sandbox, nomes, receita Pix negociável e fallback Stripe terminado.
+
+Estado: código e CI concluídos; Supabase e frontend de produção ainda continuam no comportamento anterior até integração/publicação.
 
 O fluxo comercial confirmado permanece:
 
@@ -294,7 +317,7 @@ O fluxo comercial confirmado permanece:
 - sem assinatura válida, o gate continua bloqueado e direciona ao checkout;
 - Pix confirmado pelo admin cria/renova acesso `live` sem cartão;
 - Agência não abre checkout automático e é negociada por contato/Pix;
-- se uma tentativa Stripe já criou IDs em uma linha `live` não terminal, a RPC Pix atual recusa sobrescrevê-la; falta um fluxo explícito de conversão/cancelamento seguro.
+- tentativas Stripe já terminadas podem virar Pix; qualquer estado ainda capaz de cobrar exige cancelamento no Stripe antes da liberação manual.
 
 ### Publicação histórica do gate — PR #42
 
@@ -323,13 +346,13 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. obter aprovação para corrigir o P0 Agência;
-2. criar migration que torne `get_user_plan()`/limites determinísticos em `live` e alinhados ao gate;
-3. alterar o financeiro para usar o valor manual Pix por cliente, inclusive Agência;
-4. adicionar regressões para Agência live + Business sandbox e MRR negociável;
-5. definir o fluxo seguro para converter uma tentativa Stripe live em Pix sem sobrescrever dados de cobrança;
-6. atualizar os cinco documentos, integrar e publicar;
-7. continuar a auditoria comercial externa de Edge Functions, Stripe, Meta e VPS.
+1. commitar e enviar `codex/fix-agency-billing-plan-labels` ao GitHub;
+2. integrar a branch após os checks remotos;
+3. aplicar e registrar `20260801144500_live_plan_and_pix_fallback.sql` no Supabase de produção;
+4. sincronizar/publicar o SHA integrado no Lovable;
+5. executar smoke autenticado confirmando Agência, limites 50/60/100, MRR Pix e ausência do nome `starter` na UI;
+6. atualizar os cinco documentos com SHAs/deploy reais;
+7. iniciar a próxima etapa na área Perfil do Criador.
 
 ## Checklist de manutenção
 

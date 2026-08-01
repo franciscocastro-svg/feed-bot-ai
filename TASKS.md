@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Fluxo Pix live integrado e publicado em `6b362bf`; migration e liberação live do cliente confirmadas.
+Última atualização: **2026-08-01**. Correção Agência/financeiro implementada e validada na branch `codex/fix-agency-billing-plan-labels`; integração e publicação ainda pendentes.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -65,7 +65,8 @@
 ## Em desenvolvimento
 
 - [x] **Pix administrativo live:** implementação, implantação e teste autenticado do cliente concluídos.
-- [ ] **Agência live:** corrigir resolvedor legado que escolhe Business sandbox e contabilizar o valor Pix no financeiro.
+- [x] **Agência live — implementação local:** resolvedor, financeiro, nomes e fallback Pix corrigidos; CI completo verde.
+- [ ] **Agência live — publicação:** integrar, aplicar migration, sincronizar Lovable e executar smoke autenticado.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
@@ -98,11 +99,14 @@
 - [x] Reproduzir `get_user_plan()` e `get_current_usage()` retornando Business por selecionar uma linha sandbox sem filtro determinístico.
 - [x] Reproduzir MRR Agência em R$ 0 apesar de existir valor Pix manual de R$ 1.500,00.
 - [x] Confirmar que Creator, Pro e Business continuam no checkout Stripe com cartão e Agência permanece comercial/Pix.
-- [ ] Criar migration que resolva plano/limites pelo entitlement `live` válido.
-- [ ] Fazer MRR, receita por plano e assinantes pagantes priorizarem `manual_amount_paid_brl` em pagamentos Pix.
-- [ ] Cobrir Agência live + Business sandbox e receita Pix negociável com testes de regressão.
-- [ ] Definir conversão segura Stripe→Pix para tentativas Stripe que já tenham IDs live; a RPC atual recusa sobrescrita.
-- [ ] Rodar CI, atualizar os cinco documentos, integrar e publicar após aprovação.
+- [x] Criar migration que resolva plano/limites pelo entitlement `live` válido.
+- [x] Fazer MRR, receita por plano e assinantes pagantes priorizarem `manual_amount_paid_brl` em pagamentos Pix.
+- [x] Cobrir Agência live + Business sandbox e receita Pix negociável com testes de regressão.
+- [x] Definir fallback seguro Stripe→Pix: substituir somente estados já terminados e bloquear estados que ainda possam cobrar.
+- [x] Normalizar os nomes públicos no admin e cartão de uso sem renomear as chaves internas.
+- [x] Rodar CI completo: 548 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
+- [ ] Integrar a branch e aplicar `20260801144500` no Supabase.
+- [ ] Sincronizar/publicar no Lovable e executar smoke autenticado de Agência, limites e financeiro.
 
 ### Histórico do gate de acesso — PR #42
 
@@ -190,8 +194,8 @@
 ### Críticos/altos
 
 - [x] **Liberação Pix no ambiente errado:** causa confirmada e corrigida; migration, assinatura live e frontend foram publicados.
-- [ ] **Agência degradada para Business nos limites:** bug real confirmado no resolvedor legado; gate de acesso continua Agência.
-- [ ] **Receita Agência zerada:** bug real confirmado no frontend financeiro; valor Pix existe no banco, mas não entra no MRR.
+- [x] **Agência degradada para Business nos limites — código:** corrigido e coberto por regressão; falta aplicar a migration em produção.
+- [x] **Receita Agência zerada — código:** o valor Pix registrado agora tem prioridade; falta publicar o frontend.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
