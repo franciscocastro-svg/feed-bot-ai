@@ -232,7 +232,7 @@ Estado implantado em 2026-08-01: migration/RPC e `discover-rss` publicadas; uma 
 
 A correção ainda não implantada está em `20260801183000_editorial_pilot_source_fingerprint_compat.sql`: adiciona a coluna, função, trigger e backfill sem criar índice único potencialmente destrutivo. A Edge passa a devolver `editorial_apply_failed` sem expor detalhes internos e o frontend distingue falha de descoberta de falha de aplicação. Na descoberta, feeds de editorias verificadas são priorizados e aceitos pela validade/frescor do próprio endpoint; sugestões externas continuam sujeitas ao medidor de relevância.
 
-Validação local da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP e build de produção aprovados.
+Validação da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP, build de produção e check remoto `Validate application` aprovados.
 
 A regeneração de schema executada pela Lovable após o deploy criou o commit `e290ac0` diretamente na `main`. O diff altera somente `src/integrations/supabase/types.ts`, adicionando o ledger/RPC e atualizando nullability inferida de `admin_subscription_overview`; não altera SQL nem lógica de runtime.
 

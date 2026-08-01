@@ -115,7 +115,7 @@ O deploy da função gerou automaticamente o commit `e290ac0` na `main`, restrit
 - repetir a mesma proposta não duplica fontes, vínculos nem pautas;
 - nenhuma publicação é criada e a cadência continua apenas como sugestão.
 
-O primeiro teste autenticado da confirmação não persistiu dados porque o banco publicado não possuía a infraestrutura histórica de fingerprint esperada pela RPC. A correção preparada no PR #53 adiciona essa compatibilidade, apresenta uma mensagem específica de falha de aplicação e melhora a descoberta de entretenimento: Quem e Metrópoles usam endpoints oficiais verificados, o fallback UOL Splash 404 foi removido e títulos de artistas, TV, música e relacionamentos deixam de ser falsamente rejeitados. O CI completo está verde; a migration, a Edge e o frontend corrigidos ainda aguardam implantação autorizada.
+O primeiro teste autenticado da confirmação não persistiu dados porque o banco publicado não possuía a infraestrutura histórica de fingerprint esperada pela RPC. A correção preparada no PR #53 adiciona essa compatibilidade, apresenta uma mensagem específica de falha de aplicação e melhora a descoberta de entretenimento: Quem e Metrópoles usam endpoints oficiais verificados, o fallback UOL Splash 404 foi removido e títulos de artistas, TV, música e relacionamentos deixam de ser falsamente rejeitados. CI local e check remoto estão verdes; a migration, a Edge e o frontend corrigidos ainda aguardam implantação autorizada.
 
 ## Funcionalidades planejadas
 

@@ -60,7 +60,7 @@
 - [x] Substituir URLs inválidas por Quem e Metrópoles oficiais, remover UOL Splash 404 e ampliar a relevância de entretenimento.
 - [x] Aprovar 48 testes direcionados, TypeScript e ESLint dos arquivos alterados.
 - [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
-- [ ] Atualizar o PR #53 e obter o check remoto verde.
+- [x] Atualizar o PR #53 e obter o check remoto `Validate application` verde no commit funcional `80debad`.
 - [ ] Após autorização: integrar o PR, aplicar `20260801183000`, republicar `discover-rss` e publicar o frontend corrigido.
 - [ ] Repetir o smoke autenticado de aplicação/replay e somente então decidir a flag de produção.
 

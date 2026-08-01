@@ -273,6 +273,7 @@ Implantação parcial autorizada em 2026-08-01:
 - o feed oficial de Quem (`https://revistaquem.globo.com/rss/quem`) e a editoria de Metrópoles (`https://www.metropoles.com/entretenimento/feed`) respondem com XML válido e substituem os falsos negativos;
 - o fallback UOL Splash retornava 404 e foi removido; o vocabulário de entretenimento foi ampliado para artistas, TV, música, shows e relacionamentos;
 - 48 testes direcionados passaram; o CI completo aprovou secret scan em 664 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build;
+- o PR #53 foi atualizado com o diagnóstico/correção e o check remoto `Validate application` passou para o commit funcional `80debad` em 1m55s;
 - `check:edge-functions`, que não integra `npm run ci`, não executou isoladamente porque Deno não está instalado nesta máquina;
 - nenhuma migration, Edge Function, frontend, dado ou feature flag foi alterado em produção durante essa correção.
 
