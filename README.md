@@ -6,20 +6,23 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 ## Estado confirmado desta árvore
 
-Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o frontend Pix live publicados.
+Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco publicado e a correção Agência preparada na branch `codex/fix-agency-billing-plan-labels`.
 
 - Release funcional publicada confirmada: `6b362bf`, merge do PR [#45](https://github.com/franciscocastro-svg/feed-bot-ai/pull/45), com fluxo administrativo Pix sempre em `live`.
 - O PR #42 integrou a correção Pix/manual, 19 testes de regressão e os cinco documentos reconciliados.
 - Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
-- Validação do release: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 544 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
+- Validação da correção Agência: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 548 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
 - O Lovable sincronizou e publicou `6b362bf`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). O bundle público contém a nova ação Pix.
 - A migration `20260801134000` foi aplicada e registrada no histórico do Supabase. O cliente afetado recebeu assinatura Creator/`starter` Pix em `live`, válida por um mês, a RPC confirmou `has_access=true` e o cliente confirmou o acesso autenticado.
+- A migration candidata `20260801144500` faz o resolvedor legado de limites consultar somente a assinatura `live` não terminal mais recente e permite substituir por Pix apenas tentativas Stripe já canceladas, inadimplentes ou expiradas. Ela ainda precisa ser integrada e aplicada em produção.
+- A área administrativa preparada nesta branch exibe `Creator`, `Pro`, `Business` e `Agência`; a chave interna `starter` permanece apenas como contrato técnico compatível com banco e Stripe.
+- O financeiro preparado nesta branch prioriza o valor efetivamente registrado no Pix por cliente, inclusive em planos negociáveis como Agência.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
 Use estas etiquetas na documentação:
 
-- **Confirmado na `main`:** código funcional Pix live integrado em `6b362bf`.
+- **Confirmado na `main`:** código funcional Pix live integrado em `6b362bf`; correção Agência ainda está na branch candidata.
 - **Confirmado externamente:** migration, liberação do cliente e publicação Lovable executadas em 2026-08-01.
 - **Confirmado por teste local:** reproduzido na worktree limpa.
 - **Revalidar externamente:** depende de GitHub Actions, Supabase, Stripe, Meta, Lovable ou VPS.
@@ -144,7 +147,7 @@ O gate `entrega-segura-1a-deploy.test.ts` pode depender de `/usr/bin/grep` em al
 - **Supabase:** Auth, Postgres, RLS/RPC, Storage, cron e Edge Functions.
 - **Meta:** OAuth/manual, tokens, publicação, métricas e consumo de API.
 - **Stripe:** Creator, Pro e Business usam checkout com cartão; Agência usa contato comercial.
-- **Pix/manual:** o administrador financeiro informa plano e valor recebido; o sistema cria ou renova por um mês uma assinatura `live`, sem cartão ou IDs Stripe.
+- **Pix/manual:** o administrador financeiro informa plano e valor recebido; o sistema cria ou renova por um mês uma assinatura `live`, sem cartão ou IDs Stripe. Tentativas Stripe já terminadas podem ser substituídas; assinaturas Stripe ainda ativas exigem cancelamento prévio.
 - **IA:** Gemini, Groq e Lovable em fluxos distintos; xAI é opcional para análise de cortes no worker.
 - **VPS:** renderização, captura, cortes, mídia e processos PM2.
 
@@ -174,4 +177,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-O cliente Pix confirmou que já consegue entrar. A auditoria seguinte identificou o próximo P0: uma assinatura Agência Pix `live` está ativa e registra o valor negociado, mas `get_user_plan()` ainda pode selecionar uma linha Business `sandbox`, fazendo limites e cartão de uso aparecerem como Business. O financeiro também calcula Agência pelo preço-base nulo e ignora o valor manual. O próximo passo exato é tornar a resolução de plano `live` determinística e fazer MRR/listagens usarem `manual_amount_paid_brl` para Pix.
+A correção Agência está implementada e validada localmente: limites usam somente `live`, o valor Pix entra no MRR/listagens e os nomes públicos dos planos foram normalizados. O próximo passo exato é integrar a branch, aplicar `20260801144500` no Supabase, publicar pelo fluxo Git → Lovable e executar smoke tests autenticados. Com isso confirmado, o desenvolvimento segue para a área Perfil do Criador.

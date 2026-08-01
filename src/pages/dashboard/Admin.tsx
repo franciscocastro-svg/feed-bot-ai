@@ -23,6 +23,7 @@ import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
 import { RoadmapCard } from "@/components/admin/RoadmapCard";
 import { statusLabelPt } from "@/lib/statusLabels";
+import { planLabel, subscriptionMonthlyValue } from "@/lib/billing";
 
 const TokenHealth = lazy(() => import("./TokenHealth"));
 const MetaApiHealth = lazy(() => import("./MetaApiHealth"));
@@ -380,7 +381,7 @@ export default function Admin() {
     const byPlan: Record<string, { count: number; total: number }> = {};
     let total = 0;
     rows.filter(r => r.plan !== "free" && r.sub_status === "active").forEach(r => {
-      const price = planPrices[r.plan] || 0;
+      const price = subscriptionMonthlyValue(r, planPrices);
       total += price;
       if (!byPlan[r.plan]) byPlan[r.plan] = { count: 0, total: 0 };
       byPlan[r.plan].count++;
@@ -549,7 +550,7 @@ export default function Admin() {
       .eq("terminal_state", false)
       .select("id");
     if (error) toast.error(error.message);
-    else { toast.success(`Plano alterado para ${data?.length || 0} usuário(s)`); setSelected(new Set()); setBulkOpen(false); load(); }
+    else { toast.success(`Plano ${planLabel(bulkPlan)} aplicado a ${data?.length || 0} usuário(s)`); setSelected(new Set()); setBulkOpen(false); load(); }
   };
 
   const toggleSelect = (uid: string) => {
@@ -622,7 +623,7 @@ export default function Admin() {
 
     if (error) {
       if (error.message.includes("live_stripe_subscription_exists")) {
-        return toast.error("Este cliente já possui uma assinatura Stripe live. O Pix não pode sobrescrevê-la.");
+        return toast.error("Este cliente possui uma assinatura Stripe live que ainda não terminou. Cancele-a no Stripe antes de liberar o Pix.");
       }
       return toast.error(`Não foi possível liberar o Pix: ${error.message}`);
     }
@@ -869,7 +870,7 @@ export default function Admin() {
               {Object.entries(mrr.byPlan).length === 0 && <p className="text-sm text-muted-foreground">Sem assinantes pagantes ainda.</p>}
               {Object.entries(mrr.byPlan).map(([plan, info]) => (
                 <div key={plan} className="flex items-center justify-between text-sm">
-                  <Badge variant="outline" className="capitalize">{plan}</Badge>
+                  <Badge variant="outline">{planLabel(plan)}</Badge>
                   <span className="text-muted-foreground">{info.count} cliente(s)</span>
                   <span className="font-medium">{fmtBRL(info.total)}</span>
                 </div>
@@ -995,7 +996,7 @@ export default function Admin() {
                       <td className="p-2">{approvalBadge(r.approval_status)}</td>
                       <td className="p-2">
                         <div className="flex flex-col gap-1">
-                          <Badge variant="outline" className="w-fit capitalize">{r.plan}</Badge>
+                          <Badge variant="outline" className="w-fit">{planLabel(r.plan)}</Badge>
                           {statusBadge(r.sub_status)}
                           {!r.has_live_subscription && r.has_sandbox_subscription && (
                             <span className="text-[10px] font-medium text-amber-500">Somente sandbox — sem acesso real</span>
@@ -1393,8 +1394,8 @@ export default function Admin() {
                   {Object.entries(mrr.byPlan).length === 0 && <p className="text-sm text-muted-foreground">Sem assinantes pagantes ainda.</p>}
                   {Object.entries(mrr.byPlan).map(([plan, info]) => (
                     <div key={plan} className="flex items-center justify-between text-sm border-b border-border/50 pb-1.5">
-                      <Badge variant="outline" className="capitalize">{plan}</Badge>
-                      <div className="text-muted-foreground">{info.count} × {fmtBRL(planPrices[plan] || 0)}</div>
+                      <Badge variant="outline">{planLabel(plan)}</Badge>
+                      <div className="text-muted-foreground">{info.count} cliente(s)</div>
                       <div className="font-bold text-green-600">{fmtBRL(info.total)}</div>
                     </div>
                   ))}
@@ -1483,10 +1484,10 @@ export default function Admin() {
                         <div className="font-medium">{r.display_name || "—"}</div>
                         <div className="text-xs text-muted-foreground">{r.email}</div>
                       </td>
-                      <td className="p-2"><Badge variant="outline" className="capitalize">{r.plan}</Badge></td>
+                      <td className="p-2"><Badge variant="outline">{planLabel(r.plan)}</Badge></td>
                       <td className="p-2">{statusBadge(r.sub_status)}</td>
                       <td className="p-2 text-xs">{r.expires_at ? new Date(r.expires_at).toLocaleDateString("pt-BR") : "—"}</td>
-                      <td className="p-2 text-right font-medium">{fmtBRL(planPrices[r.plan] || 0)}</td>
+                      <td className="p-2 text-right font-medium">{fmtBRL(subscriptionMonthlyValue(r, planPrices))}</td>
                     </tr>
                   ))}
                   {rows.filter(r => r.plan !== "free").length === 0 && (
@@ -1610,7 +1611,7 @@ export default function Admin() {
           <DialogHeader><DialogTitle>Mudar plano de {selected.size} usuário(s)</DialogTitle></DialogHeader>
           <Select value={bulkPlan} onValueChange={setBulkPlan}>
             <SelectTrigger><SelectValue/></SelectTrigger>
-            <SelectContent>{PLANS.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}</SelectContent>
+            <SelectContent>{PLANS.map(p => <SelectItem key={p} value={p}>{planLabel(p)}</SelectItem>)}</SelectContent>
           </Select>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancelar</Button>
@@ -1651,7 +1652,7 @@ export default function Admin() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PIX_PLANS.map(plan => (
-                    <SelectItem key={plan} value={plan} className="capitalize">{plan}</SelectItem>
+                    <SelectItem key={plan} value={plan}>{planLabel(plan)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1703,7 +1704,7 @@ export default function Admin() {
               <label className="text-sm font-medium mb-1 block">Plano</label>
               <Select value={editPlan} onValueChange={setEditPlan}>
                 <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>{PLANS.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}</SelectContent>
+                <SelectContent>{PLANS.map(p => <SelectItem key={p} value={p}>{planLabel(p)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
@@ -1766,7 +1767,7 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
           <div className="space-y-5 mt-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge className="bg-emerald-600">LIVE</Badge>
-              <Badge variant="outline" className="capitalize">{row.plan}</Badge>
+              <Badge variant="outline">{planLabel(row.plan)}</Badge>
               <Badge variant="outline">{statusLabelPt(row.sub_status)}</Badge>
               <Badge variant="outline">{statusLabelPt(row.approval_status)}</Badge>
               {row.payment_method === "pix" && <Badge className="bg-cyan-600">PIX</Badge>}

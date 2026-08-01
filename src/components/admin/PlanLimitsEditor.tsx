@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { planLabel } from "@/lib/billing";
 
 const NUM_FIELDS: { key: string; label: string; hint?: string }[] = [
   { key: "price_brl", label: "Preço (BRL)" },
@@ -85,12 +86,12 @@ export function PlanLimitsEditor() {
           await load();
         }
       } else if ((syncRes as any)?.unchanged) {
-        toast.success(`${plan.plan} atualizado (preço Stripe inalterado)`);
+        toast.success(`${planLabel(plan.plan)} atualizado (preço Stripe inalterado)`);
       } else {
-        toast.success(`${plan.plan} atualizado e preço sincronizado no Stripe ✓`);
+        toast.success(`${planLabel(plan.plan)} atualizado e preço sincronizado no Stripe ✓`);
       }
     } else {
-      toast.success(`${plan.plan} atualizado`);
+      toast.success(`${planLabel(plan.plan)} atualizado`);
     }
     setSavingId(null);
   };
@@ -103,7 +104,7 @@ export function PlanLimitsEditor() {
         <Card key={p.plan}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-base">
-              <span className="capitalize">{p.plan}</span>
+              <span>{planLabel(p.plan)}</span>
               <Input
                 value={p.display_name || ""}
                 onChange={(e) => update(p.plan, "display_name", e.target.value)}
@@ -143,7 +144,7 @@ export function PlanLimitsEditor() {
             </div>
             <Button size="sm" onClick={() => save(p)} disabled={savingId === p.plan} className="w-full">
               {savingId === p.plan ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-              Salvar {p.plan}
+              Salvar {planLabel(p.plan)}
             </Button>
           </CardContent>
         </Card>
