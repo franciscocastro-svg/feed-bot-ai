@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. `main` e frontend confirmados em `78379d9`.
+Última atualização: **2026-08-01**. Código funcional e frontend confirmados em `78379d9`; commits posteriores desta continuidade são somente documentais.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -60,10 +60,10 @@
 - [x] Integrar o PR #42 em `main` no merge `78379d9`.
 - [x] Confirmar que o Lovable sincronizou exatamente `78379d9`.
 - [x] Publicar o frontend e executar smoke tests públicos de home, autenticação e rota protegida.
+- [x] Integrar o registro pós-deploy pelo PR #43 e finalizar os cinco documentos.
 
 ## Em desenvolvimento
 
-- [ ] **Integração documental:** registrar merge e deploy desta entrega na `main` por uma atualização documental final.
 - [ ] **Acesso Pix/manual:** correção integrada e publicada; falta validar a sessão autenticada do cliente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
@@ -156,8 +156,8 @@
 ### Críticos/altos
 
 - [x] **Correção Pix/manual implantada:** frontend publicado no SHA `78379d9`; falta a validação autenticada do cliente.
-- [ ] **Estado externo parcialmente confirmado:** Git e frontend estão em `78379d9`, mas isso não comprova migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Registro pós-deploy pendente de integração:** esta atualização documental final precisa entrar na `main`.
+- [ ] **Estado externo parcialmente confirmado:** o código funcional e o frontend estão em `78379d9`, mas isso não comprova migrations, preços, Edge Functions, Meta ou VPS.
+- [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
 
