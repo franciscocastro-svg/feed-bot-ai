@@ -266,10 +266,11 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     const sourceLinkFix = readFileSync(
       resolve(
         process.cwd(),
-        "supabase/migrations/20260801193000_fix_editorial_pilot_source_link_conflict.sql",
+        "supabase/migrations/20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql",
       ),
       "utf8",
     );
+
 
     expect(edge).toContain("no_valid_sources");
     expect(edge).toContain('"apply_editorial_pilot_proposal"');
