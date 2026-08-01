@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** para a correção candidata de Agência e financeiro Pix sobre o release `6b362bf`.
+Atualizado em **2026-08-01** para a correção Agência/financeiro publicada em `e163226`.
 
 ## Arquitetura geral
 
@@ -198,7 +198,7 @@ Uma assinatura manual/Pix não exige cartão nem customer Stripe. `admin_upsert_
 
 `admin_subscription_overview` substitui o fallback ambíguo da listagem antiga. A visão usa somente a linha não terminal `live` como assinatura de produção e expõe separadamente se existe registro `sandbox`. A UI mostra badges `LIVE`, `PIX` ou `Stripe` e avisa “somente sandbox” sem conceder acesso real.
 
-Na correção candidata, `get_user_plan()` filtra `environment='live'`, ignora linhas terminais, ordena por criação/ID e valida status, aprovação, e-mail, vigência, reembolso e congelamento antes de entregar o plano aos limites. Assim, uma linha Business `sandbox` não pode degradar uma Agência Pix `live`. No frontend, `src/lib/billing.ts` centraliza nomes públicos e o valor mensal: pagamentos Pix priorizam `manual_amount_paid_brl`; Stripe usa `plan_limits.price_brl`.
+Desde `e163226`, `get_user_plan()` filtra `environment='live'`, ignora linhas terminais, ordena por criação/ID e valida status, aprovação, e-mail, vigência, reembolso e congelamento antes de entregar o plano aos limites. Assim, uma linha Business `sandbox` não pode degradar uma Agência Pix `live`. No frontend, `src/lib/billing.ts` centraliza nomes públicos e o valor mensal: pagamentos Pix priorizam `manual_amount_paid_brl`; Stripe usa `plan_limits.price_brl`.
 
 Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. A auditoria de 2026-08-01 mostrou que o cliente afetado tinha `has_access=true` apenas em sandbox e `no_subscription` em live, comprovando que a liberação anterior ocorreu no ambiente errado.
 
@@ -241,7 +241,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 178 migrations versionadas; esta branch acrescenta a migration candidata `20260801144500`, ainda não aplicada. A migration Pix `20260801134000` foi aplicada e registrada no histórico do Supabase em 2026-08-01. Domínios representativos:
+A `main` contém 179 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

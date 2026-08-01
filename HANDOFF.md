@@ -19,9 +19,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
 - Release funcional publicada: `6b362bfda7aea7418a818c8ec4e40fa3451f94c1` — merge do PR #45.
+- Correção Agência/financeiro publicada: `e163226209a640bc88fac9193579c8d92c1c1eea` — merge do PR #49.
 - Base documental atual da branch: `a3c558b` — merge do PR #48.
-- Branch em trabalho: `codex/fix-agency-billing-plan-labels`, criada de `origin/main` em `a3c558b`.
-- Correção Agência/financeiro implementada localmente; ainda não integrada nem publicada.
+- Branch funcional: `codex/fix-agency-billing-plan-labels`; commit `ec685d8`; integrada pelo PR #49.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
@@ -68,7 +68,8 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Correção Agência | branch local com migration `20260801144500` e frontend | CI verde; publicação pendente |
+| Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
+| Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -309,7 +310,15 @@ Correção implementada na branch atual:
 - a RPC Pix substitui automaticamente apenas Stripe `canceled`, `unpaid` ou `incomplete_expired`; demais estados continuam bloqueados para evitar cobrança dupla;
 - `src/test/live-agency-billing.test.ts` cobre isolamento live/sandbox, nomes, receita Pix negociável e fallback Stripe terminado.
 
-Estado: código e CI concluídos; Supabase e frontend de produção ainda continuam no comportamento anterior até integração/publicação.
+Estado publicado e confirmado:
+
+- PR #49 integrado no merge `e163226`, com “Validate application” aprovado em 1m54s;
+- migration `20260801144500` aplicada e registrada no histórico do Supabase;
+- consulta pós-migration resolveu `agency` e limites 50 contas, 60 publicações/dia e 100 fontes;
+- Lovable sincronizou exatamente `e163226` e publicou o deployment `845c71ef-092d-4842-81c9-b0053fe25f9d`;
+- bundle público contém os novos nomes, cálculo Pix e proteção de conflito Stripe;
+- smoke autenticado mostrou Agência, R$ 1.500,00 no financeiro e MRR total recalculado;
+- não houve erro do aplicativo no console; dois avisos observados pertenciam a uma extensão externa do Chrome.
 
 O fluxo comercial confirmado permanece:
 
@@ -346,13 +355,11 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. commitar e enviar `codex/fix-agency-billing-plan-labels` ao GitHub;
-2. integrar a branch após os checks remotos;
-3. aplicar e registrar `20260801144500_live_plan_and_pix_fallback.sql` no Supabase de produção;
-4. sincronizar/publicar o SHA integrado no Lovable;
-5. executar smoke autenticado confirmando Agência, limites 50/60/100, MRR Pix e ausência do nome `starter` na UI;
-6. atualizar os cinco documentos com SHAs/deploy reais;
-7. iniciar a próxima etapa na área Perfil do Criador.
+1. reler integralmente os cinco documentos no início da próxima etapa;
+2. auditar a implementação atual de Perfil do Criador contra produto, arquitetura e tarefas;
+3. listar o que já funciona, lacunas e inconsistências sem alterar código;
+4. definir o primeiro recorte funcional pendente e apresentar um plano para aprovação;
+5. somente depois da aprovação iniciar a programação dessa área.
 
 ## Checklist de manutenção
 
