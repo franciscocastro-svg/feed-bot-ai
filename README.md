@@ -21,6 +21,7 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - O smoke autenticado confirmou Agência, limites 50/60/100, valor Pix de R$ 1.500,00 e MRR recalculado, sem erro do aplicativo no console.
 - A branch `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e PR rascunho [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) conectam o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. A entrega ainda não está na `main` nem implantada.
 - O pipeline completo da Fase 2A passou localmente: secret scan em 663 arquivos, typecheck, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
+- O check remoto `Validate application` do PR #51 foi aprovado para o head documental `ad3411a`; commits documentais posteriores devem ser revalidados antes do merge.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 

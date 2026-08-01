@@ -39,6 +39,7 @@
 - [x] Preservar cadência e publicações sem mutação nesta fase.
 - [x] Adicionar testes de seleção, contrato, isolamento e idempotência.
 - [x] Executar `npm run ci`: 551 testes principais, 33 de deploy e 15 de reconciliação aprovados; build verde.
+- [x] Enviar a branch, abrir o PR rascunho #51 e obter `Validate application` verde no head `ad3411a`.
 
 ### Reconciliação desta continuidade
 
