@@ -19,10 +19,19 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - A área administrativa publicada exibe `Creator`, `Pro`, `Business` e `Agência`; a chave interna `starter` permanece apenas como contrato técnico compatível com banco e Stripe.
 - O financeiro publicado prioriza o valor efetivamente registrado no Pix por cliente, inclusive em planos negociáveis como Agência.
 - O smoke autenticado confirmou Agência, limites 50/60/100, valor Pix de R$ 1.500,00 e MRR recalculado, sem erro do aplicativo no console.
-- O PR [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) foi integrado na `main` pelo merge `ad39d3e` e conecta o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. A entrega ainda não foi implantada.
+- O PR [#51](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) foi integrado na `main` pelo merge `ad39d3e` e conecta o Perfil do Criador à descoberta real de RSS/monitoramento temático, com seleção, resumo e aplicação transacional/idempotente. Migration e Edge Function já foram implantadas; o frontend ainda não foi publicado.
 - O pipeline completo da Fase 2A passou localmente: secret scan em 663 arquivos, typecheck, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
 - O check remoto `Validate application` do PR #51 foi aprovado para o head final `401d849` antes do merge.
-- O registro pós-merge está no PR documental rascunho [#52](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), sem alterações de produto ou deploy.
+- O registro pós-merge do PR documental [#52](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52) foi integrado na `main` pelo merge `1278649`, sem alterações de produto ou deploy.
+- A migration `20260801170000_editorial_pilot_phase_2a.sql` foi aplicada e registrada no Supabase conectado em 2026-08-01. A tabela e a RPC existem, `authenticated` pode executar, `anon` não pode e ainda não há aplicações gravadas.
+- `discover-rss` foi publicada pela Lovable a partir de `1278649` em 2026-08-01 17:43:35 UTC. Um smoke independente confirmou `401 {"error":"unauthorized"}` sem credenciais. O frontend não foi publicado e a flag de produção não foi ativada.
+- Apesar de a resposta operacional afirmar que não criaria commit, a sincronização da Lovable criou diretamente na `main` o commit `e290ac0` (“Publicou discover-rss”), atualizando somente `src/integrations/supabase/types.ts` com a tabela/RPC recém-implantadas e nullability regenerada. A divergência foi identificada e documentada antes do frontend.
+- O CI completo foi reexecutado sobre `e290ac0`: 551 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, gates editoriais/MCP e build aprovados.
+- O primeiro teste autenticado do preview encontrou fontes reais, mas a confirmação falhou sem gravar fontes, pautas ou ledger. A causa exata foi a ausência, no banco publicado, de `news_sources.source_fingerprint` e de `compute_source_fingerprint(...)`, dependências que a RPC da Fase 2A presumiu disponíveis.
+- A correção está preparada na branch/PR rascunho #53: migration aditiva de compatibilidade `20260801183000`, erro de aplicação tratado separadamente na interface e na Edge, catálogo de entretenimento atualizado com os feeds oficiais de Quem e Metrópoles e relevância ampliada. Essa correção ainda não foi aplicada ou publicada.
+- A auditoria das rejeições confirmou como corretas Fofocalizando (amostra antiga), Contigo! (endereço indisponível) e Observatório da TV (RSS 404). Quem e Metrópoles eram falsos negativos; o fallback antigo do UOL Splash também retornava 404 e foi removido.
+- O CI completo da correção passou: secret scan em 664 arquivos, typecheck, lints, 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build Vite.
+- O check remoto `Validate application` do PR #53 também foi aprovado para o commit funcional `80debad`.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -183,4 +192,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A Fase 2A do Piloto Editorial está integrada e validada na `main`. O próximo passo exige autorização de implantação e deve seguir esta ordem: aplicar a migration `20260801170000`, publicar `discover-rss`, publicar o frontend e executar um smoke autenticado antes de decidir a ativação da flag em produção.
+Revisar e integrar a correção do PR #53. Depois, com autorização explícita, aplicar `20260801183000_editorial_pilot_source_fingerprint_compat.sql`, republicar somente `discover-rss` e o frontend corrigido e repetir o teste autenticado de confirmação. Não testar novamente antes desses três artefatos estarem implantados; a flag de produção só deve ser decidida após o smoke passar.

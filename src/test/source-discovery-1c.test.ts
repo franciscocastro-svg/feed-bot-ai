@@ -34,12 +34,28 @@ describe("Qualidade de Fontes 1C", () => {
     ], fitness).relevant).toBe(false);
   });
 
+  it("recognizes entertainment headlines without requiring a generic category word", () => {
+    const entertainment = resolveNicheDiscoveryProfile("fofocas e celebridades");
+    expect(measureNicheRelevance([
+      { title: "Humorista comenta separação após reality" },
+      { title: "Cantora anuncia novo show com ator famoso" },
+    ], entertainment)).toMatchObject({ total: 2, matching: 2, relevant: true });
+  });
+
   it("never falls back to generic G1 or UOL feeds for arbitrary text", () => {
     expect(discoverRssSource).not.toContain("G1 Últimas");
     expect(discoverRssSource).not.toContain("UOL Notícias");
     expect(discoverRssSource).toContain("topicSuggestion()");
     expect(discoverRssSource).toContain("allowRelaxedSearch: false");
     expect(discoverRssSource).toContain("measureNicheRelevance");
+  });
+
+  it("prioritizes verified entertainment feeds over AI-only suggestions", () => {
+    expect(discoverRssSource).toContain("https://revistaquem.globo.com/rss/quem");
+    expect(discoverRssSource).toContain("https://www.metropoles.com/entretenimento/feed");
+    expect(discoverRssSource).not.toContain("https://rss.uol.com.br/feed/splash.xml");
+    expect(discoverRssSource).toContain("[...curatedFeeds(), topicSuggestion(), ...suggestions]");
+    expect(discoverRssSource).toContain("categoryTrusted");
   });
 
   it("shows discovery origin and niche adherence before insertion", () => {

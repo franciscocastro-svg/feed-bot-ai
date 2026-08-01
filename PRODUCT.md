@@ -102,7 +102,9 @@ Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somen
 
 ### Piloto Editorial Inteligente — Fase 2A
 
-Integrado na `main` pelo PR #51/merge `ad39d3e`; ainda não implantado:
+Integrado na `main` pelo PR #51/merge `ad39d3e`; schema/RPC e `discover-rss` implantados em 2026-08-01, mas ainda indisponível no frontend de produção até a publicação controlada da interface:
+
+O deploy da função gerou automaticamente o commit `e290ac0` na `main`, restrito aos tipos Supabase regenerados; o comportamento de produto da Fase 2A não foi modificado.
 
 - a ação de análise usa o nicho do Perfil do Criador para pesquisar fontes reais;
 - feeds RSS e monitoramentos temáticos são validados por conteúdo recente e relevância;
@@ -113,12 +115,14 @@ Integrado na `main` pelo PR #51/merge `ad39d3e`; ainda não implantado:
 - repetir a mesma proposta não duplica fontes, vínculos nem pautas;
 - nenhuma publicação é criada e a cadência continua apenas como sugestão.
 
+O primeiro teste autenticado da confirmação não persistiu dados porque o banco publicado não possuía a infraestrutura histórica de fingerprint esperada pela RPC. A correção preparada no PR #53 adiciona essa compatibilidade, apresenta uma mensagem específica de falha de aplicação e melhora a descoberta de entretenimento: Quem e Metrópoles usam endpoints oficiais verificados, o fallback UOL Splash 404 foi removido e títulos de artistas, TV, música e relacionamentos deixam de ser falsamente rejeitados. CI local e check remoto estão verdes; a migration, a Edge e o frontend corrigidos ainda aguardam implantação autorizada.
+
 ## Funcionalidades planejadas
 
 ### Piloto Editorial — Fase 2
 
 1. concluir a edição manual da proposta antes da aplicação;
-2. implantar e validar a seleção, o resumo e a confirmação da Fase 2A;
+2. implantar a correção de compatibilidade da confirmação e repetir o smoke autenticado de seleção, resumo, aplicação e replay;
 3. adicionar uma ação explícita de desfazer uma aplicação;
 4. permitir aplicar preferências de cadência separadamente;
 5. registrar métricas de qualidade por conta.
@@ -251,7 +255,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
 - [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
-- revisar e publicar de forma controlada a Fase 2A do Perfil do Criador;
+- validar o preview e concluir de forma controlada a publicação do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.

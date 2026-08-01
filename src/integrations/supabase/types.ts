@@ -1239,6 +1239,7 @@ export type Database = {
           quality_score: number
           query: string | null
           source_config: Json
+          source_fingerprint: string | null
           source_kind: Database["public"]["Enums"]["source_kind"]
           source_language: string
           source_type: Database["public"]["Enums"]["source_type"]
@@ -1270,6 +1271,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]
@@ -1301,6 +1303,7 @@ export type Database = {
           quality_score?: number
           query?: string | null
           source_config?: Json
+          source_fingerprint?: string | null
           source_kind?: Database["public"]["Enums"]["source_kind"]
           source_language?: string
           source_type?: Database["public"]["Enums"]["source_type"]

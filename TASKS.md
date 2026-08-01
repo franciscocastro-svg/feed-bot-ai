@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, ainda sem deploy.
+Última atualização: **2026-08-01**. O primeiro teste autenticado do Piloto Editorial revelou uma dependência de fingerprint ausente no banco; a correção está preparada no PR rascunho #53 e ainda não foi implantada.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -27,7 +27,7 @@
 - [x] Piloto Editorial Fase 1 em preview local sem escrita.
 - [x] Classificação de fofoca, Direito, Saúde e Finanças com teste para “brasileiras”.
 
-### Concluído na `main` pelo PR #51 — ainda não implantado
+### Concluído na `main` pelo PR #51 — implantação parcial
 
 - [x] Auditar integralmente Perfil do Criador, Piloto Editorial e descoberta de fontes.
 - [x] Conectar o Piloto à descoberta real de RSS e monitoramento temático em modo sem escrita.
@@ -42,6 +42,27 @@
 - [x] Enviar a branch, abrir o PR rascunho #51 e obter `Validate application` verde no head `ad3411a`.
 - [x] Revalidar o head final `401d849` e integrar o PR #51 no merge `ad39d3e`.
 - [x] Abrir o PR documental rascunho #52 e obter `Validate application` verde no commit `0098c25`.
+- [x] Integrar o PR documental #52 no merge `1278649`.
+- [x] Aplicar e registrar `20260801170000_editorial_pilot_phase_2a.sql` no Supabase conectado.
+- [x] Confirmar tabela/RPC, permissão para `authenticated`, bloqueio de `anon` e ledger inicialmente vazio.
+- [x] Publicar somente `discover-rss` pela Lovable e confirmar externamente a rejeição anônima com HTTP 401.
+- [x] Auditar a divergência da resposta Lovable: o deploy criou `e290ac0` na `main`, alterando somente os tipos Supabase regenerados.
+- [x] Validar `e290ac0` com CI completo: 551 testes principais, 33 de deploy, 15 de reconciliação, typecheck e build aprovados.
+- [ ] Publicar o frontend e executar o smoke autenticado antes de decidir a ativação da flag em produção.
+
+### Correção do primeiro teste autenticado — PR #53
+
+- [x] Reproduzir a falha da confirmação sem persistência e identificar o erro PostgreSQL `42883`.
+- [x] Confirmar contagens zero no ledger, nas fontes e nas pautas criadas pelo piloto após a falha.
+- [x] Criar migration aditiva de compatibilidade para coluna, função, trigger e backfill de fingerprint.
+- [x] Separar mensagens de descoberta e aplicação e sanitizar o erro retornado pela Edge.
+- [x] Auditar as fontes rejeitadas e distinguir rejeições corretas de falsos negativos.
+- [x] Substituir URLs inválidas por Quem e Metrópoles oficiais, remover UOL Splash 404 e ampliar a relevância de entretenimento.
+- [x] Aprovar 48 testes direcionados, TypeScript e ESLint dos arquivos alterados.
+- [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
+- [x] Atualizar o PR #53 e obter o check remoto `Validate application` verde no commit funcional `80debad`.
+- [ ] Após autorização: integrar o PR, aplicar `20260801183000`, republicar `discover-rss` e publicar o frontend corrigido.
+- [ ] Repetir o smoke autenticado de aplicação/replay e somente então decidir a flag de produção.
 
 ### Reconciliação desta continuidade
 
@@ -84,7 +105,7 @@
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** integrar o PR, aplicar migration/Edge Function, executar smoke autenticado e decidir rollout da flag.
+- [ ] **Piloto Editorial:** integrar a correção do PR #53, aplicar a migration de compatibilidade, republicar Edge/frontend, executar smoke autenticado e decidir rollout da flag.
 
 ## Próximas tarefas
 
@@ -216,7 +237,8 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Fase 2A ainda não implantada:** PR #51 integrado; migration, `discover-rss` e frontend não foram publicados; a flag continua desligada por padrão.
+- [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
+- [ ] **Confirmação bloqueada por drift de schema:** causa identificada e correção versionada, mas `20260801183000`, Edge e frontend corrigidos ainda não foram implantados.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
