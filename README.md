@@ -1,110 +1,174 @@
-# Flux & Feed — Automação de Conteúdo para Instagram com IA
+# Flux & Feed
 
-O **Flux & Feed** (Feed Bot AI) é uma plataforma SaaS que automatiza a captação de notícias via feeds RSS, realiza a reescrita inteligente do conteúdo com Inteligência Artificial (**Gemini 2.5 Pro**) em legendas ricas e hashtags e publica de forma totalmente automatizada no Instagram através da API oficial do Facebook (Meta Graph API).
+Plataforma SaaS de automação editorial e publicação para Instagram. O Flux & Feed transforma notícias, fontes RSS, pautas e vídeos em conteúdo preparado para Feed, Reels, Stories e carrosséis, mantendo identidade, limites e configurações independentes por conta Instagram.
 
----
+> **Regra de contexto:** antes de trabalhar no projeto, leia integralmente `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`, `TASKS.md` e `HANDOFF.md`. Esses arquivos são a fonte principal de contexto; o histórico de chats é apenas complementar.
 
-## 🚀 Funcionalidades Principais
+## Estado confirmado desta árvore
 
-* **Captação Multicanais**: Conexão e leitura de feeds RSS públicos estruturados, com extração robusta do conteúdo do artigo na íntegra.
-* **Reescrita Editorial com IA**: Redação automática de títulos virais, resumos e legendas longas otimizadas com emojis e blocos de conteúdo para o Instagram Feed e Reels.
-* **Geração Visual de Postagens**: Composição dinâmica de imagens 1080x1080 (Feed) e capas 1080x1920 (Reels/Stories) usando templates de nicho pré-definidos ou imagens geradas por IA.
-* **Geração de Vídeo Reels**: Automação de criativos transformando criativos 9:16 e trilhas sonoras em arquivos de vídeo MP4 prontos para o Instagram.
-* **Agendamento Inteligente & Espaçamento**: Fila de publicação automática que respeita os limites diários do plano e distribui posts de forma a evitar spam e bloqueios na Meta.
-* **Auto-Freio de Quota da Meta**: Monitoramento de limites da API da Meta para travar envios temporariamente se o uso de cota estiver crítico (>80%).
-* **Verificação Ativa de Saúde dos Tokens**: Monitoramento e renovação automática de tokens do Facebook de longa duração (OAuth de 60 dias).
+Documentação reconciliada em **2026-08-01** com a `origin/main` atualizada.
 
----
+- Base confirmada: `c0106d3` (`Sincronizou Preview e verificou`).
+- Branch de documentação: `codex/reconcile-main-docs`, criada sobre `c0106d3` em uma worktree limpa.
+- Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
+- Validação atual: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 538 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
+- Produção continua **não confirmada**: merge no Git não prova deployment do frontend, migrations, Edge Functions, Stripe ou worker VPS.
+- A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
-## 🏗️ Arquitetura do Sistema
+Use estas etiquetas na documentação:
 
-O projeto é estruturado em três camadas principais:
+- **Confirmado na `main`:** inspecionado em `c0106d3`.
+- **Confirmado por teste local:** reproduzido na worktree limpa.
+- **Revalidar externamente:** depende de GitHub Actions, Supabase, Stripe, Meta, Lovable ou VPS.
 
-### 1. Frontend (Vite + React)
-* Localizado em `/src`.
-* Interface responsiva, com visual premium e animações fluidas via **Framer Motion** e design system baseado em **TailwindCSS** e **Shadcn/UI**.
-* Utiliza `@tanstack/react-query` para gerenciar estado assíncrono com cache local de 2 minutos para otimizar chamadas ao Supabase.
-* Dashboard administrativo do proprietário (`/dashboard/admin`) e painel de controle do usuário.
+## Objetivo do sistema
 
-### 2. Backend & Banco de Dados (Supabase)
-* **PostgreSQL**: Tabelas sob políticas de segurança RLS (Row Level Security) ativas para isolar dados de cada usuário.
-* **Tabelas Principais**:
-  * `profiles`: Informações básicas do usuário.
-  * `news_sources`: Canais RSS monitorados.
-  * `news_items`: Registro de matérias captadas, conteúdo reescrito pela IA e caminhos de arquivos criativos.
-  * `scheduled_posts`: Fila cronológica de agendamento de posts (status: `scheduled`, `posting`, `posted`, `failed`).
-  * `instagram_accounts`: Credenciais, IDs comerciais e Access Tokens obtidos via OAuth da Meta.
-  * `post_templates`: Estilos visuais personalizados (fontes, cores, posicionamento de caixas) criados pelo usuário.
-  * `meta_api_usage`: Logs de uso de quota extraídos dos headers da Meta.
-* **Storage Buckets**:
-  * `post-images`: Armazena criativos finais PNG e Reels em vídeo MP4.
-  * `template-backgrounds`: Armazena as imagens de fundo enviadas pelo usuário para compor seus templates.
+O Flux & Feed reduz o trabalho manual necessário para manter perfis de Instagram ativos. O sistema:
 
-### 3. Edge Functions (Deno Deploy)
-Localizadas em `/supabase/functions`. São chamadas via triggers HTTP ou agendadas via Supabase pg_cron. As mais importantes:
-* `process-news`: Acionada por webhook. Executa o Gemini para reescrever a notícia, faz a adaptação cultural (conversão de moedas, termos brasileiros), busca a imagem de melhor qualidade da matéria e gera o criativo editorial.
-* `publish-scheduler`: Roda a cada minuto em segundo plano. Seleciona os posts devido da fila, valida o intervalo mínimo configurado entre posts, analisa a cota da Meta e faz a publicação oficial do post.
-* `instagram-oauth-start` / `instagram-oauth-callback`: Gerenciam o fluxo de login comercial com o Facebook para obter e renovar tokens de acesso com segurança.
+1. captura notícias e temas de fontes configuradas;
+2. filtra, deduplica e adapta conteúdo ao nicho e à voz de cada conta;
+3. gera arte, legenda, Reel, Story ou carrossel;
+4. agenda e publica pela API oficial da Meta;
+5. acompanha filas, limites, assinaturas e saúde operacional;
+6. transforma vídeos longos em cortes curtos com o worker e FFmpeg;
+7. propõe, em preview local, uma estratégia editorial por Instagram.
 
----
+## Tecnologias
 
-## 💻 Desenvolvimento Local
+| Camada | Tecnologias principais |
+|---|---|
+| Frontend | React 18, TypeScript, Vite 5, Tailwind CSS, Radix UI, TanStack Query, React Router 7, Zod |
+| Backend | Supabase/PostgreSQL, Supabase Auth, Storage e Edge Functions em Deno/TypeScript |
+| Processamento | Node.js, `@napi-rs/canvas`, FFmpeg/ffprobe e yt-dlp |
+| IA | Gemini, Groq e gateway Lovable; xAI/Grok opcional no worker para análise de cortes |
+| Publicação | Meta Instagram Graph API |
+| Pagamentos | Stripe Checkout, Billing Portal, webhooks e reconciliação; liberação manual/Pix no banco |
+| Qualidade | Vitest, TypeScript, ESLint por fases, secret scan, lint ratchet e gates operacionais |
+| Operação | VPS com PM2, nginx, fila durável e webhook de deploy controlado |
+
+OpenRouter permanece apenas no backlog. Não confundir o adaptador xAI já existente no worker com uma integração OpenRouter.
+
+## Estrutura de pastas
+
+```text
+.
+├── docs/                   # Runbooks, diagnósticos e documentação histórica
+├── ops/                    # Evidências e artefatos operacionais
+├── public/                 # Assets públicos do frontend
+├── quality/                # Baselines e controles de qualidade
+├── scripts/                # CI, auditorias, deploy e reconciliação
+├── src/
+│   ├── components/         # UI e componentes de negócio
+│   ├── config/             # Feature flags
+│   ├── contexts/           # Autenticação, idioma e estado transversal
+│   ├── integrations/       # Cliente e tipos do Supabase
+│   ├── lib/                # Regras e contratos compartilhados
+│   ├── pages/              # Site, autenticação, dashboard e administração
+│   └── test/               # Testes de regressão e contratos
+├── supabase/
+│   ├── functions/          # Edge Functions e módulos `_shared`
+│   └── migrations/         # Histórico SQL append-only
+├── worker/                 # Render, mídia, cortes e filas da VPS
+├── README.md
+├── PRODUCT.md
+├── ARCHITECTURE.md
+├── TASKS.md
+└── HANDOFF.md
+```
+
+## Como executar
 
 ### Pré-requisitos
-* Node.js v18 ou superior.
-* Supabase CLI instalado.
 
-### Configuração do Projeto
-1. Clone o repositório e instale as dependências:
-   ```bash
-   npm install
-   ```
-2. Inicialize o arquivo de variáveis de ambiente a partir do contrato versionado:
-   ```bash
-   cp .env.example .env
-   ```
-   Preencha apenas valores públicos `VITE_*` no frontend. Segredos de servidor
-   pertencem ao cofre da Lovable/Supabase ou ao `.env` privado do worker. Consulte
-   `docs/PHASE-1B-ENVIRONMENT-SECURITY.md` para a separação completa.
-3. Inicie o servidor de desenvolvimento local:
-   ```bash
-   npm run dev
-   ```
+- Node.js 20 ou versão compatível mais recente;
+- npm;
+- acesso a um projeto Supabase para fluxos integrados;
+- FFmpeg, ffprobe e yt-dlp para o worker;
+- Supabase CLI/Deno quando houver validação de Edge Functions ou migrations.
 
-### Execução de Testes
-Para rodar os testes unitários do agendador e utilitários:
+### Instalação
+
 ```bash
-npm run test
+npm ci
+cp .env.example .env.local
+npm run dev
 ```
 
-Para executar todas as proteções locais, incluindo a verificação de segredos:
-```bash
-npm run ci
+O Vite usa, por padrão, a porta `8080`. Preencha `.env.local` somente com valores adequados ao ambiente e nunca versione chaves secretas.
+
+### Variáveis do frontend
+
+```dotenv
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+VITE_PAYMENTS_CLIENT_TOKEN=
+VITE_FEATURE_EDITORIAL_PILOT_PREVIEW=false
+
+# Opcionais
+VITE_META_PIXEL_ID=
+VITE_GOOGLE_ANALYTICS_ID=
+VITE_FFMPEG_CORE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
----
+`VITE_PAYMENTS_CLIENT_TOKEN` deve ser uma chave publicável Stripe: `pk_test_` em sandbox e `pk_live_` em produção. O arquivo rastreado `.env.development` habilita o Piloto apenas para desenvolvimento/preview; `.env.example` mantém a flag desligada.
 
-## 🚀 Deploy de Banco e Edge Functions
+### Worker
 
-### Banco de Dados
-Para empurrar novas migrations locais para a nuvem do Supabase:
-```bash
-supabase db push
-```
+O worker usa `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no backend, além das credenciais dos provedores habilitados. Consulte `worker/.env.example` e `worker/README.md`. Secrets nunca pertencem ao frontend.
 
-### Deploy de Funções
-Para implantar todas as Edge Functions:
-```bash
-supabase functions deploy
-```
-*Lembre-se de configurar as variáveis de ambiente necessárias (como `APP_ORIGIN`, `LOVABLE_API_KEY`, `INTERNAL_CRON_SECRET` e `SUPABASE_SERVICE_ROLE_KEY`) no painel de controle do Supabase em Edge Functions -> Secrets.*
+## Scripts importantes
 
-### Provedor de texto Gemini
+| Script | Uso |
+|---|---|
+| `npm run dev` | servidor Vite local |
+| `npm run build` | build de produção |
+| `npm run typecheck` | TypeScript do app e scripts Node |
+| `npm run test` | suíte Vitest |
+| `npm run check:worker` | sintaxe dos módulos do worker |
+| `npm run check:delivery` | gates herméticos de deploy e reconciliação |
+| `npm run check:production-audit` | contrato da auditoria de produção |
+| `npm run check:secrets` | detecção de credenciais indevidas |
+| `npm run check:lint-ratchet` | prevenção de regressão do baseline de lint |
+| `npm run check:edge-functions` | cobertura das Edge Functions |
+| `npm run check:mcp-build` | build reprodutível do MCP |
+| `npm run ci` | pipeline local completo |
 
-Para usar o Gemini diretamente na reescrita de notícias, configure os secrets:
+O gate `entrega-segura-1a-deploy.test.ts` pode depender de `/usr/bin/grep` em alguns sandboxes. A validação de 2026-08-01 passou integralmente na worktree limpa.
 
-- `AI_TEXT_PROVIDER=gemini`
-- `GEMINI_API_KEY=<chave do Google AI Studio>`
-- `GEMINI_TEXT_MODEL=gemini-2.5-flash-lite` (opcional; este já é o padrão)
+## Integrações e ofertas
 
-Se o Gemini falhar, `process-news` tenta a Groq quando `GROQ_API_KEY` estiver configurada e, por último, o gateway atual quando `LOVABLE_API_KEY` estiver disponível.
+- **Supabase:** Auth, Postgres, RLS/RPC, Storage, cron e Edge Functions.
+- **Meta:** OAuth/manual, tokens, publicação, métricas e consumo de API.
+- **Stripe:** Creator, Pro e Business usam checkout com cartão; Agência usa contato comercial.
+- **Pix/manual:** pode liberar acesso sem Stripe Customer se ambiente, plano, status, aprovação, e-mail e vigência forem válidos.
+- **IA:** Gemini, Groq e Lovable em fluxos distintos; xAI é opcional para análise de cortes no worker.
+- **VPS:** renderização, captura, cortes, mídia e processos PM2.
+
+Ofertas confirmadas no código:
+
+| Plano | Preço-base no banco | Instagram | Publicações/dia por Instagram |
+|---|---:|---:|---:|
+| Creator (`starter`) | R$ 97,97 | 1 | 20 |
+| Pro | R$ 197,97 | 3 | 30 |
+| Business | R$ 437,97 | 10 | 40 |
+| Agência | negociável | 50 | 60 |
+
+Os valores reais do catálogo Stripe live precisam ser revalidados externamente antes de venda.
+
+## Convenções obrigatórias
+
+1. **Isolamento por conta:** todo fluxo específico usa `instagram_account_id`.
+2. **Fail-closed:** autorização, credencial, contrato, orçamento ou estado inválido interrompem a ação sensível.
+3. **Secrets no backend:** nunca colocar service role, token Meta ou chave secreta em `VITE_*`, logs, commits ou prompts.
+4. **Contratos validados:** respostas de IA e payloads críticos usam JSON estruturado e validação.
+5. **Feature flags off por padrão:** ativação em desenvolvimento não implica produção.
+6. **Preview sem escrita:** o Piloto não cria fontes, pautas, configurações, filas nem publicações.
+7. **Deploy controlado:** confirmar SHA, migrations, funções, artefato, health check e rollback.
+8. **Documentação obrigatória:** finalizar trabalho inclui atualizar os cinco documentos da raiz.
+9. **Preservar trabalho local:** não apagar, resetar ou misturar alterações do usuário.
+10. **Idioma e fuso:** UI principal em português do Brasil e operação em `America/Sao_Paulo` quando aplicável.
+
+## Próximo passo
+
+A auditoria somente leitura confirmou que o candidato Pix/manual atual recebe `has_access=true` em `live` e `sandbox`. A branch corrige o frontend para não transformar falha técnica ou outro motivo de bloqueio em exigência de cartão e remove o bypass que poderia liberar conteúdo com `has_access=false`. O próximo passo é revisar/versionar a branch e planejar deployment controlado; nenhuma produção foi alterada.
