@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. A correção do Piloto Editorial foi integrada pelo PR #53; compatibilidade e Edge foram implantadas, e o preview aguarda o smoke autenticado.
+Última atualização: **2026-08-01**. O segundo smoke do Piloto Editorial revelou SQLSTATE `42702` na RPC; o rollback ficou zerado e a correção append-only está em validação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -65,7 +65,12 @@
 - [x] Aplicar a compatibilidade sob a versão registrada `20260801185731` e verificar 59 fingerprints preenchidos.
 - [x] Republicar somente `discover-rss`, manter HTTP 401 anônimo e sincronizar o preview.
 - [x] Auditar o merge automático Lovable `3512454` e reconciliar a migration duplicada com o histórico real.
-- [ ] Repetir o smoke autenticado de aplicação/replay e somente então decidir a flag de produção.
+- [x] Integrar a reconciliação pelo PR #54 no merge `47a6652`.
+- [x] Reproduzir o segundo smoke e identificar `source_id` ambíguo no `ON CONFLICT` com SQLSTATE `42702`.
+- [x] Confirmar novamente zero aplicações, fontes e pautas após o rollback.
+- [x] Criar `20260801193000` com `v_source_id`, PK explícita e contagem por `ROW_COUNT`.
+- [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
+- [ ] Integrar/aplicar `20260801193000` e repetir o smoke de aplicação/replay antes de decidir a flag de produção.
 
 ### Reconciliação desta continuidade
 
@@ -108,7 +113,7 @@
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** executar o smoke autenticado no preview corrigido e decidir rollout/publicação do frontend de produção.
+- [ ] **Piloto Editorial:** integrar/aplicar a correção SQLSTATE `42702`, executar o smoke autenticado no preview e decidir rollout/publicação do frontend de produção.
 
 ## Próximas tarefas
 
@@ -242,6 +247,7 @@
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
 - [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; smoke autenticado ainda pendente.
+- [ ] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` reproduzido sem escrita; migration `20260801193000` preparada e ainda não aplicada.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
