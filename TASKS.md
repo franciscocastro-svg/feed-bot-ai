@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro integrada em `e163226`, aplicada no Supabase, publicada no Lovable e validada de forma autenticada.
+Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A enviado ao PR rascunho #51, ainda sem integração ou deploy.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -26,6 +26,20 @@
 - [x] Agência por `contato@fluxifeed.com`.
 - [x] Piloto Editorial Fase 1 em preview local sem escrita.
 - [x] Classificação de fofoca, Direito, Saúde e Finanças com teste para “brasileiras”.
+
+### Concluído no PR rascunho #51 — ainda não integrado/implantado
+
+- [x] Auditar integralmente Perfil do Criador, Piloto Editorial e descoberta de fontes.
+- [x] Conectar o Piloto à descoberta real de RSS e monitoramento temático em modo sem escrita.
+- [x] Exibir diagnóstico, qualidade e amostras recentes por fonte.
+- [x] Permitir seleção/rejeição individual de fontes e pautas.
+- [x] Mostrar resumo exato e exigir confirmação explícita.
+- [x] Revalidar as fontes no servidor antes da gravação.
+- [x] Aplicar fontes, vínculos e pautas por RPC transacional, isolada e idempotente.
+- [x] Preservar cadência e publicações sem mutação nesta fase.
+- [x] Adicionar testes de seleção, contrato, isolamento e idempotência.
+- [x] Executar `npm run ci`: 551 testes principais, 33 de deploy e 15 de reconciliação aprovados; build verde.
+- [x] Enviar a branch, abrir o PR rascunho #51 e obter `Validate application` verde no head `ad3411a`.
 
 ### Reconciliação desta continuidade
 
@@ -66,9 +80,9 @@
 
 - [x] **Pix administrativo live:** implementação, implantação e teste autenticado do cliente concluídos.
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
-- [ ] **Perfil do Criador:** auditar a área atual e definir o próximo recorte funcional antes de programar.
+- [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
+- [ ] **Piloto Editorial:** integrar o PR, aplicar migration/Edge Function, executar smoke autenticado e decidir rollout da flag.
 
 ## Próximas tarefas
 
@@ -150,11 +164,13 @@
 ### P1 — Piloto Editorial Fase 2
 
 - [ ] Adicionar edição da proposta.
-- [ ] Selecionar/rejeitar fontes e pautas individualmente.
-- [ ] Mostrar diff exato do que será criado.
-- [ ] Exigir confirmação explícita e idempotência.
-- [ ] Persistir somente após contrato e isolamento validados.
-- [ ] Preparar rollback transacional.
+- [x] Selecionar/rejeitar fontes e pautas individualmente.
+- [x] Mostrar resumo exato do que será criado.
+- [x] Exigir confirmação explícita e idempotência.
+- [x] Persistir somente após revalidação e isolamento validados.
+- [x] Garantir rollback automático da transação em caso de falha.
+- [ ] Adicionar ação explícita para desfazer uma aplicação já concluída.
+- [ ] Aplicar cadência somente por confirmação separada.
 - [ ] Testar contas de mesmo nicho com vozes/públicos diferentes.
 - [ ] Exigir revisão humana em Direito, Saúde e Finanças.
 
@@ -198,6 +214,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
+- [ ] **Fase 2A ainda não implantada:** PR rascunho #51 aberto; migration, `discover-rss` e frontend não foram publicados; a flag continua desligada por padrão.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios

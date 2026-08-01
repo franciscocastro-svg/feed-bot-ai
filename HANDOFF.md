@@ -24,6 +24,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Branch funcional: `codex/fix-agency-billing-plan-labels`; commit `ec685d8`; integrada pelo PR #49.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
+- Branch atual: `codex/editorial-pilot-phase-2a`, criada a partir de `origin/main` em `b79c07c`, com commit funcional `ec58f75` e head documental `ad3411a` enviados ao remoto.
+- PR rascunho [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51), direcionado para `main`.
+- Check remoto `Validate application` aprovado para `ad3411a` em 2026-08-01; revalidar qualquer commit posterior antes do merge.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
 - Registro pós-release: commit `e7fe5eb`, integrado pelo PR #46 no merge documental `a36efda`.
 - Commits posteriores que alterem somente estes documentos podem avançar o SHA da `main` sem mudar o release funcional `6b362bf`.
@@ -68,6 +71,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
+| Piloto Editorial 2A | implementado somente na branch local | não aplicar migration nem publicar sem concluir os gates |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -207,6 +211,40 @@ Catálogo Stripe live e estado real das assinaturas não foram consultados.
 - nenhuma escrita em fonte, pauta, configuração, fila ou publicação;
 - flag `false` no exemplo e `true` no ambiente de desenvolvimento rastreado.
 
+#### Fase 2A implementada localmente
+
+Arquivos principais:
+
+- `src/components/editorial-pilot/EditorialPilotPreview.tsx` — análise, descoberta real, seleção, resumo e confirmação;
+- `src/lib/editorial-pilot/applyPlan.ts` — payload mínimo de fontes/pautas selecionadas;
+- `supabase/functions/discover-rss/index.ts` — revalidação dos candidatos e chamada transacional;
+- `supabase/migrations/20260801170000_editorial_pilot_phase_2a.sql` — ledger e RPC idempotente;
+- `src/test/editorial-pilot-preview.test.ts` — contratos da seleção e da aplicação.
+
+Comportamento local:
+
+1. montar a proposta continua sem escrita;
+2. o nicho identificado alimenta a descoberta real já existente;
+3. feeds são abertos e medidos por notícias recentes antes de aparecerem como válidos;
+4. usuário escolhe fontes e pautas e vê o resumo exato por Instagram;
+5. a confirmação revalida as fontes no servidor;
+6. a RPC confere `auth.uid()`, propriedade da conta, lock e `proposal_id`;
+7. fontes, vínculos, pautas e ledger são gravados ou revertidos juntos;
+8. repetir a mesma proposta devolve o resultado anterior sem duplicar dados;
+9. cadência, filas e publicações não são modificadas.
+
+Validações executadas até aqui:
+
+- 25 testes direcionados aprovados;
+- TypeScript aprovado;
+- ESLint dos arquivos alterados aprovado;
+- `npm run ci` completo aprovado: secret scan em 663 arquivos, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build;
+- o servidor Vite iniciou sem erros; o teste visual integrado ficou limitado pelo redirecionamento legítimo para `/auth` sem uma sessão local.
+
+Estado externo: migration, Edge Function, frontend e flag ainda não foram implantados.
+
+Publicação GitHub: autenticação confirmada, commit funcional `ec58f75` enviado e PR rascunho #51 aberto. A integração GitHub do aplicativo retornou 403 para criação do PR; o fallback autenticado pelo `gh` concluiu a operação.
+
 Commits relevantes:
 
 - `3f3ca74` — preview Fase 1;
@@ -224,7 +262,7 @@ Commits relevantes:
 5. FFmpeg continua responsável pelo corte/render físico.
 6. Stripe usa lookup keys e ambientes separados.
 7. Pix/manual é válido sem cartão ou Stripe Customer e toda confirmação administrativa deve ser `live`.
-8. Preview editorial não escreve.
+8. Montar/refazer a análise editorial não escreve; somente a confirmação explícita pode aplicar fontes e pautas.
 9. Feature flags começam desligadas.
 10. Prompts Lovable são entregues ao usuário, não executados automaticamente.
 
@@ -350,16 +388,18 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - webhooks e retenção de logs;
 - token e publicação Meta em conta de teste;
 - flag real do Piloto em produção.
+- migration `20260801170000`, nova versão de `discover-rss` e frontend da Fase 2A ainda não publicados.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. auditar a implementação atual de Perfil do Criador contra produto, arquitetura e tarefas;
-3. listar o que já funciona, lacunas e inconsistências sem alterar código;
-4. definir o primeiro recorte funcional pendente e apresentar um plano para aprovação;
-5. somente depois da aprovação iniciar a programação dessa área.
+2. revisar o PR rascunho #51 e confirmar o check do head atual;
+3. obter aprovação antes de integrar em `main`;
+4. após aprovação, aplicar `20260801170000` e publicar `discover-rss` antes do frontend;
+5. executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
+6. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
 
 ## Checklist de manutenção
 

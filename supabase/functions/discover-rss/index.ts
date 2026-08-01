@@ -22,6 +22,8 @@ type FeedSuggestion = {
   query?: string | null;
   include_terms: string[];
   discovery_method: DiscoveryMethod;
+  quality_score?: number;
+  relevance?: { total: number; matching: number; ratio: number; relevant: boolean };
 };
 
 function isDuplicateSourceError(error: unknown): boolean {
@@ -49,7 +51,15 @@ Deno.serve(async (req) => {
       if (approved === false) return new Response(JSON.stringify({ error: "account_not_approved" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { niche, ig_ids, insert, selected_feeds } = await req.json();
+    const {
+      niche,
+      ig_ids,
+      insert,
+      selected_feeds,
+      proposal_id,
+      profile_fingerprint,
+      selected_topics,
+    } = await req.json();
     if (!niche || typeof niche !== "string") {
       return new Response(JSON.stringify({ error: "niche required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -162,6 +172,12 @@ Deno.serve(async (req) => {
           query: sourceKind === "topic" ? profile.query : null,
           include_terms: profile.terms,
           discovery_method: discoveryMethod,
+          quality_score: typeof record.quality_score === "number"
+            ? Math.max(0, Math.min(100, Math.round(record.quality_score)))
+            : undefined,
+          relevance: record.relevance && typeof record.relevance === "object"
+            ? record.relevance as FeedSuggestion["relevance"]
+            : undefined,
         }];
       });
     }
@@ -279,6 +295,73 @@ Deno.serve(async (req) => {
           preview_only: true,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (typeof proposal_id === "string" && proposal_id.trim()) {
+      if (!/^preview-[a-f0-9]{16}$/.test(proposal_id)) {
+        return new Response(
+          JSON.stringify({ error: "invalid_proposal_id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (typeof profile_fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(profile_fingerprint)) {
+        return new Response(
+          JSON.stringify({ error: "invalid_profile_fingerprint" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (targetIgIds.length !== 1) {
+        return new Response(
+          JSON.stringify({ error: "editorial_pilot_requires_one_instagram" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (valid.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "no_valid_sources" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (!Array.isArray(selected_topics) || selected_topics.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "no_topics_selected" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const validatedSources = valid.map((source) => ({
+        name: source.name,
+        url: source.url,
+        niche: source.niche,
+        source_kind: source.source_kind,
+        query: source.query || null,
+        include_terms: source.include_terms,
+        discovery_method: source.discovery_method,
+        quality_score: source.quality_score || 0,
+        relevance: source.relevance,
+      }));
+      const { data: application, error: applicationError } = await supabase.rpc(
+        "apply_editorial_pilot_proposal",
+        {
+          _account_id: targetIgIds[0],
+          _proposal_id: proposal_id,
+          _profile_fingerprint: profile_fingerprint,
+          _sources: validatedSources,
+          _topics: selected_topics.slice(0, 12),
+        },
+      );
+      if (applicationError) throw applicationError;
+
+      return new Response(
+        JSON.stringify({
+          suggested: suggestions.length,
+          valid: valid.length,
+          feeds: validated,
+          preview_only: false,
+          application,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
