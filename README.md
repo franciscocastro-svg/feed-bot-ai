@@ -28,10 +28,12 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - Apesar de a resposta operacional afirmar que não criaria commit, a sincronização da Lovable criou diretamente na `main` o commit `e290ac0` (“Publicou discover-rss”), atualizando somente `src/integrations/supabase/types.ts` com a tabela/RPC recém-implantadas e nullability regenerada. A divergência foi identificada e documentada antes do frontend.
 - O CI completo foi reexecutado sobre `e290ac0`: 551 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, gates editoriais/MCP e build aprovados.
 - O primeiro teste autenticado do preview encontrou fontes reais, mas a confirmação falhou sem gravar fontes, pautas ou ledger. A causa exata foi a ausência, no banco publicado, de `news_sources.source_fingerprint` e de `compute_source_fingerprint(...)`, dependências que a RPC da Fase 2A presumiu disponíveis.
-- A correção está preparada na branch/PR rascunho #53: migration aditiva de compatibilidade `20260801183000`, erro de aplicação tratado separadamente na interface e na Edge, catálogo de entretenimento atualizado com os feeds oficiais de Quem e Metrópoles e relevância ampliada. Essa correção ainda não foi aplicada ou publicada.
+- A correção foi integrada pelo PR [#53](https://github.com/franciscocastro-svg/feed-bot-ai/pull/53), merge `1cb14c5`: migration aditiva de compatibilidade, erro de aplicação tratado separadamente na interface e na Edge, catálogo de entretenimento atualizado com os feeds oficiais de Quem e Metrópoles e relevância ampliada.
 - A auditoria das rejeições confirmou como corretas Fofocalizando (amostra antiga), Contigo! (endereço indisponível) e Observatório da TV (RSS 404). Quem e Metrópoles eram falsos negativos; o fallback antigo do UOL Splash também retornava 404 e foi removido.
 - O CI completo da correção passou: secret scan em 664 arquivos, typecheck, lints, 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build Vite.
 - O check remoto `Validate application` do PR #53 também foi aprovado para o commit funcional `80debad`.
+- A Lovable aplicou a compatibilidade no Supabase sob a versão real `20260801185731`, verificou coluna, função e trigger, completou o backfill de 59 fontes sem fingerprints vazios e republicou somente `discover-rss` em 2026-08-01 18:58 UTC. O teste anônimo permaneceu em HTTP 401 e o preview está pronto para o smoke autenticado; o frontend de produção não foi publicado.
+- A operação criou automaticamente o merge `3512454` na `main`, adicionando o arquivo de migration com o timestamp da plataforma e a assinatura gerada da RPC nos tipos. A branch de reconciliação mantém somente a migration registrada `20260801185731`, eliminando a cópia idêntica não registrada `20260801183000`.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -192,4 +194,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Revisar e integrar a correção do PR #53. Depois, com autorização explícita, aplicar `20260801183000_editorial_pilot_source_fingerprint_compat.sql`, republicar somente `discover-rss` e o frontend corrigido e repetir o teste autenticado de confirmação. Não testar novamente antes desses três artefatos estarem implantados; a flag de produção só deve ser decidida após o smoke passar.
+Integrar a reconciliação da migration duplicada e executar o smoke autenticado no preview: descoberta, seleção, confirmação, replay idempotente e isolamento da conta. Somente após esse teste passar publicar o frontend de produção ou decidir a ativação da flag.

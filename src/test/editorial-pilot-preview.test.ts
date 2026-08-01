@@ -277,7 +277,7 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     const compatibilityMigration = readFileSync(
       resolve(
         process.cwd(),
-        "supabase/migrations/20260801183000_editorial_pilot_source_fingerprint_compat.sql",
+        "supabase/migrations/20260801185731_1bf2df3e-ee4b-42a8-80ca-548153f2c6b6.sql",
       ),
       "utf8",
     );
