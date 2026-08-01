@@ -61,6 +61,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - Feed, Stories, Reels e carrosséis editoriais;
 - legendas com integridade, perfil, assinatura e CTA variáveis;
 - seleção temática de imagens para carrosséis e fallback controlado;
+- seleção de imagem principal da própria matéria, com preferência por resolução, preservação da miniatura como último recurso e enquadramento protegido para imagens pequenas;
 - previews completos e editor visual.
 
 ### Automação e mídia
@@ -117,14 +118,14 @@ O deploy da função gerou automaticamente o commit `e290ac0` na `main`, restrit
 
 O primeiro teste autenticado da confirmação não persistiu dados porque o banco publicado não possuía a infraestrutura histórica de fingerprint esperada pela RPC. A correção do PR #53 adicionou essa compatibilidade, apresenta uma mensagem específica de falha de aplicação e melhora a descoberta de entretenimento: Quem e Metrópoles usam endpoints oficiais verificados, o fallback UOL Splash 404 foi removido e títulos de artistas, TV, música e relacionamentos deixam de ser falsamente rejeitados. CI local/remoto, migration e nova versão da Edge estão concluídos; o preview aguarda o smoke autenticado e o frontend de produção permanece sem publicação.
 
-O segundo smoke chegou mais longe e revelou SQLSTATE `42702` no vínculo fonte–Instagram: a variável PL/pgSQL `source_id` colidia com a coluna homônima no alvo do `ON CONFLICT`. Nenhum item foi gravado. A migration corretiva renomeia a variável, usa a PK explícita e mede o vínculo inserido por `ROW_COUNT`; o CI completo está verde. Como o defeito está somente na RPC, Edge e frontend já publicados no preview permanecem válidos.
+O segundo smoke chegou mais longe e revelou SQLSTATE `42702` no vínculo fonte–Instagram: a variável PL/pgSQL `source_id` colidia com a coluna homônima no alvo do `ON CONFLICT`. Nenhum item foi gravado. A migration corretiva foi integrada e registrada como `20260801194149`, renomeou a variável, passou a usar a PK explícita e mede o vínculo inserido por `ROW_COUNT`. O smoke seguinte aplicou 7 fontes e 4 pautas com segurança e sem publicação; resta confirmar o replay idempotente.
 
 ## Funcionalidades planejadas
 
 ### Piloto Editorial — Fase 2
 
 1. concluir a edição manual da proposta antes da aplicação;
-2. aplicar a correção da RPC e repetir o smoke autenticado de seleção, resumo, aplicação e replay no preview;
+2. confirmar o replay idempotente da proposta já aplicada e decidir o rollout do frontend;
 3. adicionar uma ação explícita de desfazer uma aplicação;
 4. permitir aplicar preferências de cadência separadamente;
 5. registrar métricas de qualidade por conta.
@@ -167,6 +168,8 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - diferenciar fato confirmado de rumor;
 - carrossel usa capa de impacto, desenvolvimento legível e CTA final;
 - priorizar imagem original ou temática relevante quando segura;
+- escolher candidatos somente nos metadados e no corpo da própria matéria antes de usar uma miniatura de busca;
+- nunca descartar a única imagem disponível apenas por ser pequena; nesse caso, usar enquadramento protegido sem ampliação agressiva;
 - usar capa tipográfica quando nenhuma imagem adequada existir;
 - respostas de IA inválidas não avançam;
 - áreas reguladas exigem fonte e revisão humana.
@@ -257,6 +260,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
 - [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
+- [concluído localmente] substituir miniaturas fracas pela imagem principal relacionada da matéria e proteger o fallback pequeno; integração e deploy ainda pendentes;
 - validar o preview e concluir de forma controlada a publicação do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;

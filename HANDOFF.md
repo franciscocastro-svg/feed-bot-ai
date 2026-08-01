@@ -28,7 +28,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - PR [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) integrado na `main` pelo merge `ad39d3e04f416a913c8d559ebedc9c3707834d0d`.
 - PR [#53 — Fix editorial pilot application and source discovery](https://github.com/franciscocastro-svg/feed-bot-ai/pull/53) integrado no merge `1cb14c572d10d331267afb15f35a6f440334ecca`.
 - A implantação Lovable criou o merge automático `3512454aba1daa7fc507238f136089959b3a3774`; a branch `codex/reconcile-editorial-pilot-migration` reconciliou a migration duplicada com o timestamp efetivamente registrado.
-- O PR #54 integrou a reconciliação no merge `47a6652c851ff3f3a0629f4677264d0d947b2894`. A branch atual `codex/fix-editorial-pilot-source-link` corrige o SQLSTATE `42702` encontrado no segundo smoke.
+- O PR #54 integrou a reconciliação no merge `47a6652c851ff3f3a0629f4677264d0d947b2894`; o PR #55 integrou a correção SQLSTATE `42702` no merge `d0dc3da2908a4623c334472ce35a67795ea4c05d`. A Lovable registrou a migration como `20260801194149` e avançou a `main` para `2b65b4941cc012896c4c6cc43fc5f25efaeade63`.
+- A melhoria atual está isolada em `/private/tmp/fluxfeed-image-quality`, branch `codex/improve-news-image-quality`, criada de `2b65b49`. A pasta original e a branch documental do Piloto não foram alteradas.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
 - Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
 - PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.
@@ -76,7 +77,8 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Piloto Editorial 2A | compatibilidade/Edge implantadas; segundo smoke falhou sem escrita por variável ambígua | integrar/aplicar `20260801193000` e repetir smoke |
+| Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
+| Qualidade de imagens | implementação e CI concluídos localmente | integrar, implantar Edge/worker/frontend e fazer smoke visual |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -292,7 +294,26 @@ Implantação parcial autorizada em 2026-08-01:
 - a PK composta existe e está correta; enum, colunas de pauta, triggers e limite de fontes também foram verificados;
 - a causa é a colisão entre a variável PL/pgSQL `source_id` e a coluna `source_id` usada como alvo de inferência;
 - a transação reverteu integralmente: zero aplicações, zero fontes `editorial-pilot` e zero pautas `editorial_pilot`;
-- `20260801193000_fix_editorial_pilot_source_link_conflict.sql` recria a RPC com `v_source_id`, `ON CONFLICT ON CONSTRAINT news_source_instagram_accounts_pkey` e `GET DIAGNOSTICS link_row_count = ROW_COUNT`;
+- `20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql`, versão registrada pela plataforma, recria a RPC com `v_source_id`, `ON CONFLICT ON CONSTRAINT news_source_instagram_accounts_pkey` e `GET DIAGNOSTICS link_row_count = ROW_COUNT`;
+- o smoke posterior confirmou 1 ledger, 7 fontes resolvidas/vinculadas e 4 pautas, sem publicação automática; o replay ainda está pendente.
+
+## Melhoria local — qualidade e relevância das imagens
+
+Diagnóstico confirmado em 2026-08-01, sem alterar dados de produção:
+
+- a notícia de teste armazenava uma miniatura pública do Bing com 100×100 pixels e 2.287 bytes;
+- a capa final tinha 1080×1920, portanto a perda visível vinha da ampliação da origem e não do codec H.264/CRF 20;
+- a própria matéria expõe uma imagem principal de 1200×747 e 62.861 bytes, visualmente correspondente à mesma pessoa e ao mesmo assunto.
+
+Implementação na branch `codex/improve-news-image-quality`:
+
+- `supabase/functions/_shared/source-capture.ts` classifica candidatos da própria página por `primaryImageOfPage`, JSON-LD, `og:image`, figura, `srcset`, resolução declarada e sinais de miniatura;
+- `fetch-rss` tenta enriquecer miniaturas fracas, conserva a imagem anterior se a matéria não oferecer alternativa e pode melhorar a imagem de uma duplicata existente;
+- nenhuma busca externa por título/pessoa é usada, reduzindo o risco de trocar o assunto;
+- `image-framing.js`, os renderizadores do navegador e `worker/index.js` limitam em 4× a ampliação do primeiro plano pequeno, mantendo o fundo editorial preenchido;
+- o teste real selecionou `https://cdn.revistafama.com/.../mide-memo-schutz-casa-famosos.jpg`, medido em 1200×747;
+- 38 testes direcionados passaram; o CI completo aprovou secret scan em 665 arquivos, lint ratchet, typecheck, 562 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates e build;
+- nenhuma Edge Function, frontend, worker VPS, dado, migration ou produção foi alterada nesta etapa local.
 - o CI completo aprovou secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, gates de migrations/MCP e build;
 - a correção não exige republicar `discover-rss` ou o frontend; somente a migration precisa ser aplicada após merge autorizado.
 
@@ -448,17 +469,19 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - flag real do Piloto em produção.
 - migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` publicada; frontend da Fase 2A ainda não publicado.
 - migration corretiva registrada como `20260801185731` e nova versão de `discover-rss` implantadas; preview pronto, frontend de produção ainda não publicado.
-- correção SQLSTATE `42702` em `20260801193000` ainda não aplicada.
+- correção SQLSTATE `42702` registrada como `20260801194149`; aplicação autenticada aprovada, replay ainda pendente.
+- melhoria de imagens ainda não integrada nem implantada; os arquivos já gerados não mudam automaticamente até nova captura/regeneração.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. integrar a migration `20260801193000` que corrige a variável ambígua;
-3. com autorização explícita, aplicar somente essa migration, sem republicar Edge ou frontend;
-4. repetir o smoke autenticado no preview, confirmando aplicação, replay, isolamento e ausência de duplicatas;
-5. somente depois decidir se o frontend será publicado e se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
+2. revisar e integrar `codex/improve-news-image-quality`;
+3. publicar de forma controlada `fetch-rss`, `preview-source` e `discover-rss`, porque as três empacotam `source-capture.ts`;
+4. implantar o worker VPS e publicar o frontend no mesmo SHA;
+5. recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747, preservando o fallback quando necessário;
+6. em atividade separada, repetir a proposta do Piloto para confirmar `replayed=true` antes do rollout.
 
 ## Checklist de manutenção
 

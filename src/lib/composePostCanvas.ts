@@ -3,7 +3,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { drawTemplateGradient } from "../../supabase/functions/_shared/template-gradients.js";
 import { normalizeTemplateConfig, textXForBox } from "../../supabase/functions/_shared/template-layouts.js";
-import { containDestinationRect, coverSourceRect } from "../../supabase/functions/_shared/image-framing.js";
+import { containDestinationRect, coverSourceRect, qualityAwareContainDestinationRect } from "../../supabase/functions/_shared/image-framing.js";
 import { loadPublishedTemplate } from "../../supabase/functions/_shared/template-versioning.js";
 import { brandFontStack } from "../../supabase/functions/_shared/brand-kit.js";
 
@@ -21,7 +21,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 
 function proxify(url: string, w = 1080, output: "jpg" | "png" = "jpg") {
   const clean = url.replace(/&amp;/gi, "&").replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&output=${output}`;
+  return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}&w=${w}&we&output=${output}`;
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxChars = Number.POSITIVE_INFINITY): string[] {
@@ -63,7 +63,14 @@ function drawProtectedPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(0,0,0,0.16)";
   ctx.fillRect(x, y, w, h);
-  drawContain(ctx, img, x, y, w, h);
+  const destination = qualityAwareContainDestinationRect(img.width, img.height, x, y, w, h, 4);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (destination.capped) {
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 28;
+  }
+  ctx.drawImage(img, destination.x, destination.y, destination.width, destination.height);
   ctx.restore();
 }
 

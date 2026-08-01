@@ -2,12 +2,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   buildSourceFetchUrl,
   canonicalizeArticleUrl,
+  choosePreferredArticleImage,
   fetchTextSmart,
   filterItemsForSource,
   findArticleImage,
   inferSourceKind,
   isGoogleNewsUrl,
   isLikelyLogo,
+  isLikelyLowResolutionImageUrl,
   normalizeTerms,
   parseSourceItems,
   pickLeastLoadedInstagram,
@@ -381,9 +383,11 @@ Deno.serve(async (req) => {
           let img = isListingItem ? null : item.image || null;
           const articleUrl = await resolveArticleUrl(item.link);
           const canonicalUrl = canonicalizeArticleUrl(articleUrl);
-          if (isListingItem || isGoogleNewsUrl(item.link) || !img || isLikelyLogo(img)) {
+          const usesNewsSearchThumbnail = isGoogleNewsUrl(item.link)
+            || isLikelyLowResolutionImageUrl(img);
+          if (isListingItem || usesNewsSearchThumbnail || !img || isLikelyLogo(img) || isLikelyLowResolutionImageUrl(img)) {
             const articleImg = await findArticleImage(articleUrl);
-            if (articleImg && !isLikelyLogo(articleImg)) img = articleImg;
+            img = choosePreferredArticleImage(img, articleImg);
           }
           if (img && isLikelyLogo(img)) img = null;
           if (!img) diagnostics.items_without_image++;
@@ -394,7 +398,9 @@ Deno.serve(async (req) => {
           if (duplicate) {
             diagnostics.items_duplicates++;
             const updates: Record<string, string> = {};
-            if (img && !duplicate.original_image_url) updates.original_image_url = img;
+            if (img && (!duplicate.original_image_url || isLikelyLowResolutionImageUrl(duplicate.original_image_url))) {
+              updates.original_image_url = choosePreferredArticleImage(duplicate.original_image_url, img) || img;
+            }
             if (!duplicate.original_canonical_url) updates.original_canonical_url = canonicalUrl;
             if (Object.keys(updates).length > 0) await supabase.from("news_items").update(updates).eq("id", duplicate.id);
             continue;
