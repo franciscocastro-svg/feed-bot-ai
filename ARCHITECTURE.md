@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** para o release funcional `78379d9` e sua documentação pós-publicação.
+Atualizado em **2026-08-01** para o release publicado `78379d9` e o candidato Pix live baseado em `a6c0883`.
 
 ## Arquitetura geral
 
@@ -174,6 +174,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant U as Usuário
+    participant A as Admin financeiro
     participant FE as Pricing/ProtectedRoute
     participant CO as create-checkout
     participant S as Stripe
@@ -187,11 +188,17 @@ sequenceDiagram
     S-->>U: checkout/trial
     S->>WH: evento assinado
     WH->>DB: aplica evento e assinatura
+    A->>DB: admin_upsert_pix_subscription(plano, valor, 1 mês)
+    DB-->>A: assinatura Pix live criada/renovada
     FE->>DB: compute_subscription_access
     DB-->>FE: acesso, motivo e plano
 ```
 
-Uma assinatura manual/Pix não exige cartão nem customer Stripe. Ela deve satisfazer ambiente, plano pago, status, aprovação, e-mail, vigência e ausência de congelamento/reembolso. Desde o PR #42 e o frontend publicado no SHA `78379d9`, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente.
+Uma assinatura manual/Pix não exige cartão nem customer Stripe. O candidato atual adiciona `admin_upsert_pix_subscription`: somente admin financeiro ou `service_role` pode informar usuário, plano pago e valor; a RPC grava sempre em `live`, concede um mês, registra origem/valor/data/admin e recusa sobrescrever Stripe. Se já existir Pix vigente, soma um mês ao vencimento; caso contrário, conta um mês da confirmação.
+
+`admin_subscription_overview` substitui o fallback ambíguo da listagem antiga. A visão usa somente a linha não terminal `live` como assinatura de produção e expõe separadamente se existe registro `sandbox`. A UI mostra badges `LIVE`, `PIX` ou `Stripe` e avisa “somente sandbox” sem conceder acesso real.
+
+Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. A auditoria de 2026-08-01 mostrou que o cliente afetado tinha `has_access=true` apenas em sandbox e `no_subscription` em live, comprovando que a liberação anterior ocorreu no ambiente errado.
 
 ### Cortes de vídeo
 
@@ -232,7 +239,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 177 migrations versionadas. Domínios representativos:
+O candidato contém 178 migrations versionadas; a nova migration Pix ainda precisa ser aplicada externamente. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|
@@ -240,7 +247,7 @@ A `main` contém 177 migrations versionadas. Domínios representativos:
 | Configuração | `user_settings`, `account_settings`, `channel_settings`, assignments |
 | Conteúdo | `news_sources`, vínculos de fontes, `news_items`, `content_topics`, `scheduled_posts` |
 | Observabilidade | logs, fetch runs, worker health, uso Meta/IA |
-| Pagamentos | `plan_limits`, `user_subscriptions`, eventos/efeitos/reconciliação |
+| Pagamentos | `plan_limits`, `user_subscriptions`, origem/valor Pix, eventos/efeitos/reconciliação |
 | Cortes | jobs, clips, perfis, rerender e uso diário |
 | Operação | releases, permissões, suporte, e-mail e despesas |
 
@@ -293,6 +300,7 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 | Fallback de IA | reduzir indisponibilidade de provedor único |
 | Feature flag | ativação e rollback graduais |
 | Stripe lookup keys | desacoplar UI de IDs de preço |
+| Pix administrativo sempre `live` | impedir que uma liberação sandbox seja confundida com acesso real |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 

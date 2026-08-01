@@ -23,7 +23,6 @@ import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
 import { RoadmapCard } from "@/components/admin/RoadmapCard";
 import { statusLabelPt } from "@/lib/statusLabels";
-import { getStripeEnvironment } from "@/lib/stripe";
 
 const TokenHealth = lazy(() => import("./TokenHealth"));
 const MetaApiHealth = lazy(() => import("./MetaApiHealth"));
@@ -40,6 +39,12 @@ type Row = {
   sub_status: string;
   approval_status: string;
   expires_at: string | null;
+  subscription_id: string | null;
+  subscription_environment: "live";
+  payment_method: "pix" | "stripe" | null;
+  amount_paid_brl: number | null;
+  has_live_subscription: boolean;
+  has_sandbox_subscription: boolean;
   auto_approve: boolean;
   ig_accounts: number;
   ig_token_expires: string | null;
@@ -52,6 +57,7 @@ type Row = {
 };
 
 const PLANS = ["free", "starter", "pro", "business", "agency"];
+const PIX_PLANS = ["starter", "pro", "business", "agency"];
 const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 const EXPENSE_CATEGORIES = ["IA", "Servidor", "Tráfego pago", "Ferramentas", "Equipe", "Outros"];
 const ADMIN_TABS = [
@@ -130,6 +136,11 @@ export default function Admin() {
   const [editStatus, setEditStatus] = useState("active");
   const [editExpires, setEditExpires] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [pixTarget, setPixTarget] = useState<Row | null>(null);
+  const [pixPlan, setPixPlan] = useState("starter");
+  const [pixAmount, setPixAmount] = useState("");
+  const [pixNotes, setPixNotes] = useState("");
+  const [pixSaving, setPixSaving] = useState(false);
 
   const [detail, setDetail] = useState<Row | null>(null);
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
@@ -179,7 +190,7 @@ export default function Admin() {
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
     const [{ data, error }, { data: plans }, expenseRes, aiUsageRes, aiFailuresRes] = await Promise.all([
-      supabase.rpc("admin_overview"),
+      supabase.rpc("admin_subscription_overview"),
       shouldLoadPlans
         ? supabase.from("plan_limits").select("plan, price_brl")
         : Promise.resolve({ data: null }),
@@ -500,11 +511,11 @@ export default function Admin() {
     return <Badge className="bg-green-600">Saudável</Badge>;
   };
 
-  const setApproval = async (uid: string, status: "approved" | "rejected" | "pending") => {
+  const setApproval = async (row: Row, status: "approved" | "rejected" | "pending") => {
     const { data, error } = await supabase.from("user_subscriptions")
       .update({ approval_status: status })
-      .eq("user_id", uid)
-      .eq("environment", getStripeEnvironment())
+      .eq("user_id", row.user_id)
+      .eq("environment", row.subscription_environment)
       .eq("terminal_state", false)
       .select("id");
     if (error) toast.error(error.message);
@@ -521,7 +532,7 @@ export default function Admin() {
     const { data, error } = await supabase.from("user_subscriptions")
       .update({ approval_status: status })
       .in("user_id", ids)
-      .eq("environment", getStripeEnvironment())
+      .eq("environment", "live")
       .eq("terminal_state", false)
       .select("id");
     if (error) toast.error(error.message);
@@ -534,7 +545,7 @@ export default function Admin() {
     const { data, error } = await supabase.from("user_subscriptions")
       .update({ plan: bulkPlan })
       .in("user_id", ids)
-      .eq("environment", getStripeEnvironment())
+      .eq("environment", "live")
       .eq("terminal_state", false)
       .select("id");
     if (error) toast.error(error.message);
@@ -573,6 +584,58 @@ export default function Admin() {
     setEditNotes("");
   };
 
+  const openPix = (r: Row) => {
+    const initialPlan = PIX_PLANS.includes(r.plan) ? r.plan : "starter";
+    const catalogAmount = planPrices[initialPlan];
+    const initialAmount = r.payment_method === "pix" && r.amount_paid_brl
+      ? Number(r.amount_paid_brl).toFixed(2)
+      : catalogAmount
+        ? Number(catalogAmount).toFixed(2)
+        : "";
+    setPixTarget(r);
+    setPixPlan(initialPlan);
+    setPixAmount(initialAmount);
+    setPixNotes("");
+  };
+
+  const changePixPlan = (plan: string) => {
+    setPixPlan(plan);
+    const catalogAmount = planPrices[plan];
+    setPixAmount(catalogAmount ? Number(catalogAmount).toFixed(2) : "");
+  };
+
+  const grantPix = async () => {
+    if (!pixTarget || pixSaving) return;
+    const amount = Number(pixAmount.replace(",", "."));
+    if (!PIX_PLANS.includes(pixPlan)) return toast.error("Escolha um plano pago válido.");
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Informe o valor recebido via Pix.");
+
+    setPixSaving(true);
+    const { data, error } = await supabase.rpc("admin_upsert_pix_subscription", {
+      _user_id: pixTarget.user_id,
+      _plan: pixPlan,
+      _amount_paid_brl: amount,
+      _duration_months: 1,
+      _notes: pixNotes.trim() || undefined,
+    });
+    setPixSaving(false);
+
+    if (error) {
+      if (error.message.includes("live_stripe_subscription_exists")) {
+        return toast.error("Este cliente já possui uma assinatura Stripe live. O Pix não pode sobrescrevê-la.");
+      }
+      return toast.error(`Não foi possível liberar o Pix: ${error.message}`);
+    }
+
+    const result = data as { expires_at?: string; action?: string } | null;
+    const expiresLabel = result?.expires_at
+      ? new Date(result.expires_at).toLocaleDateString("pt-BR")
+      : "daqui a um mês";
+    toast.success(`Pix confirmado em LIVE. Acesso liberado até ${expiresLabel}.`);
+    setPixTarget(null);
+    await load();
+  };
+
   const saveEdit = async () => {
     if (!editing) return;
     const { data, error } = await supabase.from("user_subscriptions").update({
@@ -582,7 +645,7 @@ export default function Admin() {
       notes: editNotes || null,
     })
       .eq("user_id", editing.user_id)
-      .eq("environment", getStripeEnvironment())
+      .eq("environment", editing.subscription_environment)
       .eq("terminal_state", false)
       .select("id");
     if (error) toast.error(error.message);
@@ -904,6 +967,7 @@ export default function Admin() {
                     <th className="text-left p-2">Saúde</th>
                     <th className="text-left p-2">Aprovação</th>
                     <SortHeader k="plan">Plano / Status</SortHeader>
+                    <th className="text-left p-2">Ambiente / origem</th>
                     <th className="text-left p-2">Expira</th>
                     <th className="text-center p-2">Token IG</th>
                     <SortHeader k="posts_published" align="center">Pub</SortHeader>
@@ -933,6 +997,22 @@ export default function Admin() {
                         <div className="flex flex-col gap-1">
                           <Badge variant="outline" className="w-fit capitalize">{r.plan}</Badge>
                           {statusBadge(r.sub_status)}
+                          {!r.has_live_subscription && r.has_sandbox_subscription && (
+                            <span className="text-[10px] font-medium text-amber-500">Somente sandbox — sem acesso real</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge className="bg-emerald-600">LIVE</Badge>
+                          {r.payment_method === "pix" && <Badge className="bg-cyan-600">PIX</Badge>}
+                          {r.payment_method === "stripe" && <Badge variant="outline">Stripe</Badge>}
+                          {!r.payment_method && <span className="text-[10px] text-muted-foreground">Sem pagamento live</span>}
+                          {r.payment_method === "pix" && r.amount_paid_brl != null && (
+                            <span className="text-[10px] text-muted-foreground">
+                              R$ {Number(r.amount_paid_brl).toFixed(2).replace(".", ",")}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="p-2 text-xs">{r.expires_at ? new Date(r.expires_at).toLocaleDateString("pt-BR") : "—"}</td>
@@ -944,17 +1024,24 @@ export default function Admin() {
                       </td>
                       <td className="p-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex flex-wrap gap-1 justify-center">
-                          {r.approval_status !== "approved" && (
-                            <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 px-2" onClick={() => setApproval(r.user_id, "approved")}>
+                          {r.has_live_subscription && r.approval_status !== "approved" && (
+                            <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 px-2" onClick={() => setApproval(r, "approved")}>
                               <Check className="h-3 w-3 mr-1"/> Aprovar
                             </Button>
                           )}
-                          {r.approval_status !== "rejected" && (
-                            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => setApproval(r.user_id, "rejected")}>
+                          {r.has_live_subscription && r.approval_status !== "rejected" && (
+                            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => setApproval(r, "rejected")}>
                               <X className="h-3 w-3 mr-1"/> Rejeitar
                             </Button>
                           )}
-                          <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(r)}>Plano</Button>
+                          {hasAdminPermission("finance") && (
+                            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 h-7 px-2" onClick={() => openPix(r)}>
+                              <DollarSign className="h-3 w-3 mr-1"/> PIX
+                            </Button>
+                          )}
+                          {r.has_live_subscription && (
+                            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(r)}>Plano</Button>
+                          )}
                           <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => impersonate(r.user_id)} title="Logar como (gera link mágico)">
                             <LogIn className="h-3 w-3"/>
                           </Button>
@@ -963,7 +1050,7 @@ export default function Admin() {
                     </tr>
                   ))}
                   {!filtered.length && !loading && (
-                    <tr><td colSpan={11} className="text-center text-muted-foreground p-6">Nenhum usuário</td></tr>
+                    <tr><td colSpan={12} className="text-center text-muted-foreground p-6">Nenhum usuário</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1532,6 +1619,75 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
+      {/* Liberação manual via Pix — sempre LIVE e por um mês */}
+      <Dialog open={!!pixTarget} onOpenChange={open => !open && !pixSaving && setPixTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar pagamento via Pix</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 text-sm space-y-1">
+              <div className="flex items-center gap-2 font-medium">
+                <Badge className="bg-emerald-600">LIVE</Badge>
+                <Badge className="bg-cyan-600">PIX</Badge>
+                <span>Validade de 1 mês</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Libera o painel sem cartão. Se o cliente já tiver um Pix vigente, acrescenta um mês ao vencimento atual.
+              </p>
+              {pixTarget?.has_sandbox_subscription && !pixTarget?.has_live_subscription && (
+                <p className="text-xs font-medium text-amber-500">
+                  Existe apenas um registro sandbox. Esta confirmação criará a assinatura correta em live.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Cliente</label>
+              <Input value={pixTarget?.email || ""} disabled />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Plano comprado</label>
+              <Select value={pixPlan} onValueChange={changePixPlan}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PIX_PLANS.map(plan => (
+                    <SelectItem key={plan} value={plan} className="capitalize">{plan}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Valor recebido via Pix (R$)</label>
+              <Input
+                inputMode="decimal"
+                value={pixAmount}
+                onChange={event => setPixAmount(event.target.value)}
+                placeholder="97,97"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                O valor sugerido acompanha o plano, mas pode ser ajustado para promoções ou Agência.
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notas internas (opcional)</label>
+              <Textarea
+                value={pixNotes}
+                onChange={event => setPixNotes(event.target.value)}
+                maxLength={500}
+                placeholder="Referência do comprovante ou observação comercial, sem dados bancários sensíveis."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPixTarget(null)} disabled={pixSaving}>Cancelar</Button>
+            <Button className="bg-cyan-600 hover:bg-cyan-700" onClick={grantPix} disabled={pixSaving}>
+              {pixSaving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <DollarSign className="h-4 w-4 mr-2" />}
+              {pixSaving ? "Confirmando…" : "Confirmar Pix e liberar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal de plano (mantido) */}
       <Dialog open={!!editing} onOpenChange={o => !o && setEditing(null)}>
         <DialogContent>
@@ -1539,6 +1695,10 @@ export default function Admin() {
             <DialogTitle>Gerenciar {editing?.email}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Badge className="bg-emerald-600">LIVE</Badge>
+              <span className="text-muted-foreground">Editando a assinatura de produção.</span>
+            </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Plano</label>
               <Select value={editPlan} onValueChange={setEditPlan}>
@@ -1605,16 +1765,26 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
         {row && (
           <div className="space-y-5 mt-4">
             <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="bg-emerald-600">LIVE</Badge>
               <Badge variant="outline" className="capitalize">{row.plan}</Badge>
               <Badge variant="outline">{statusLabelPt(row.sub_status)}</Badge>
               <Badge variant="outline">{statusLabelPt(row.approval_status)}</Badge>
+              {row.payment_method === "pix" && <Badge className="bg-cyan-600">PIX</Badge>}
+              {row.payment_method === "stripe" && <Badge variant="outline">Stripe</Badge>}
               <div className="ml-auto flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => onImpersonate(row.user_id)} title="Gera link mágico de acesso">
                   <LogIn className="h-3.5 w-3.5 mr-1"/> Logar como
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => onEdit(row)}>Editar plano</Button>
+                {row.has_live_subscription && (
+                  <Button size="sm" variant="outline" onClick={() => onEdit(row)}>Editar plano</Button>
+                )}
               </div>
             </div>
+            {!row.has_live_subscription && row.has_sandbox_subscription && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs font-medium text-amber-500">
+                Este cliente possui somente assinatura sandbox e ainda não tem acesso ao ambiente real.
+              </div>
+            )}
             <div className="text-xs text-muted-foreground">
               {row.email} · cadastro {new Date(row.created_at).toLocaleDateString("pt-BR")}
             </div>

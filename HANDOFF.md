@@ -18,10 +18,10 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### `main` auditada
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
-- Release funcional em `main`: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
-- O PR documental #43 foi integrado depois em `f65e6d3`; as atualizações seguintes desta continuidade também são somente Markdown e não alteram o app publicado.
+- Release funcional publicada: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
+- `origin/main` auditada: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
-- Branch de continuidade: `codex/reconcile-main-docs`, criada diretamente sobre `c0106d3`.
+- Branch de implementação atual: `codex/pix-live-manual-subscriptions`, criada diretamente sobre `a6c0883`.
 - Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
 - Branch enviada a `origin/codex/reconcile-main-docs`.
 - PR [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42): checks verdes e merge concluído em `78379d9`.
@@ -58,9 +58,10 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Estado | Situação | Tratamento |
 |---|---|---|
 | Pasta original | antiga e com trabalho local | preservar |
-| Código funcional em `main` | consolidado em `78379d9`; commits posteriores são documentais | base do app publicado |
+| Código funcional em `main` | consolidado em `78379d9`; `main` atual em `a6c0883` após docs | base do app publicado |
 | Branch do PR #42 | integrada em `main` | preservar histórico |
-| Frontend Lovable | código funcional publicado de `78379d9`; docs posteriores sincronizadas | validar cliente autenticado |
+| Branch Pix live | implementação e CI local concluídos | integrar, migrar e publicar |
+| Frontend Lovable | código funcional publicado de `78379d9`; docs posteriores sincronizadas | publicar o merge Pix live |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -105,6 +106,16 @@ Após a correção Pix/manual, o CI completo passou novamente:
 - 15 testes de reconciliação aprovados;
 - secret scan em 656 arquivos;
 - typecheck, worker, migrations, MCP e build Vite aprovados.
+
+Após implementar o fluxo administrativo Pix live nesta continuidade, `npm run ci` passou integralmente:
+
+- secret scan: 658 arquivos aprovados;
+- lint ratchet: 422 erros preexistentes, abaixo do limite 447;
+- typecheck e lints por fases: aprovados, mantendo dois warnings preexistentes em `AuthContext.tsx`;
+- suíte principal: 544 testes aprovados e 33 ignorados;
+- deploy hermético: 33 testes aprovados;
+- reconciliação: 15 testes aprovados;
+- worker, gates editoriais/MCP e build Vite: aprovados.
 
 O `npm ci` criou somente `node_modules`, ignorado pelo Git. O build criou `dist`, também ignorado. Antes das alterações documentais, a árvore rastreada estava limpa.
 
@@ -156,6 +167,15 @@ O `npm ci` criou somente `node_modules`, ignorado pelo Git. O build criou `dist`
 - autorização administrativa em contexto JWT;
 - separação sandbox/live por chave publicável.
 
+No candidato `codex/pix-live-manual-subscriptions`:
+
+- o admin financeiro escolhe plano e informa o valor recebido via Pix;
+- a assinatura manual é criada ou renovada somente em `live`, por um mês;
+- origem, valor, data e administrador ficam registrados;
+- um Pix vigente recebe mais um mês; vencido recebe um mês a partir da confirmação;
+- assinatura Stripe `live` nunca é sobrescrita;
+- a listagem administrativa não apresenta mais sandbox como se fosse live.
+
 Catálogo Stripe live e estado real das assinaturas não foram consultados.
 
 ### Piloto Editorial Inteligente
@@ -185,7 +205,7 @@ Commits relevantes:
 4. IA só avança após validação estruturada.
 5. FFmpeg continua responsável pelo corte/render físico.
 6. Stripe usa lookup keys e ambientes separados.
-7. Pix/manual é válido sem cartão ou Stripe Customer.
+7. Pix/manual é válido sem cartão ou Stripe Customer e toda confirmação administrativa deve ser `live`.
 8. Preview editorial não escreve.
 9. Feature flags começam desligadas.
 10. Prompts Lovable são entregues ao usuário, não executados automaticamente.
@@ -202,58 +222,53 @@ As correções acima são documentais. Nenhum código de produto foi alterado ne
 
 ## Bug P0 — Pix/manual pede cartão
 
-### Auditoria somente leitura concluída
+### Diagnóstico mais recente e causa exata
 
-Foi usado o conector de banco do projeto apenas com `SELECT`, sem prompts ao agente Lovable, sem consumo do fluxo de edição e sem mutações.
+A auditoria de 2026-08-01 consultou o cliente indicado de forma sanitizada e somente leitura. O resultado atual substitui a hipótese registrada anteriormente:
 
-Resultados sanitizados:
+- há uma única assinatura para o cliente e ela está em `sandbox`;
+- o registro está ativo, aprovado, vigente e sem IDs Stripe;
+- `compute_subscription_access` retorna acesso válido em `sandbox`;
+- a mesma RPC retorna `has_access=false`, motivo `no_subscription`, em `live`;
+- o frontend publicado usa configuração Stripe classificada como `live`;
+- portanto o gate pede checkout porque não existe assinatura de produção, não por exigir cartão em uma assinatura Pix válida.
 
-- existe um único candidato manual `live`, Pro, ativo, aprovado e sem customer/subscription Stripe;
-- e-mail está verificado;
-- acesso não está congelado;
-- não há reembolso nem estado terminal;
-- a vigência estava válida no momento da auditoria;
-- a RPC implantada tem o comentário/contrato esperado e pode ser executada por `authenticated` e `service_role`, não por `anon`;
-- `compute_subscription_access` retornou `has_access=true`, plano Pro e motivo `active` em `live` e `sandbox` para o candidato;
-- o token publicável versionado para build de produção é classificado como `live`.
+A tela administrativa antiga agravava o erro: `admin_overview()` preferia live, mas fazia fallback para sandbox quando live não existia e não mostrava o ambiente. Assim, o admin via plano ativo/aprovado e acreditava ter liberado produção.
 
-Nenhum UUID, e-mail, token ou identificador Stripe foi incluído na documentação.
+Nenhum UUID, e-mail, token ou identificador Stripe foi incluído nesta documentação.
 
-### Causa comprovada no código
+### Correção definitiva implementada localmente
 
-Na base `c0106d3`, `src/components/ProtectedRoute.tsx` chamava `compute_subscription_access` e, quando o retorno não satisfazia `hasCardBackedAccess`, exibia “Ative seus 7 dias com cartão” independentemente do valor de `reason`.
+Arquivos do candidato:
 
-A RPC não exige cartão nem `stripe_customer_id`. Ela avalia:
+- `supabase/migrations/20260801134000_manual_pix_live_subscriptions.sql` adiciona metadados manuais e as RPCs;
+- `src/pages/dashboard/Admin.tsx` adiciona a ação Pix explícita;
+- `src/integrations/supabase/types.ts` sincroniza os contratos;
+- `src/test/manual-pix-live-subscriptions.test.ts` cobre seis contratos;
+- `src/test/checkout-dual-environment.test.ts` fixa as escritas administrativas em live.
 
-- ambiente `sandbox|live`;
-- linha não terminal mais recente;
-- plano pago;
-- status `active`, `trialing` ou `past_due` dentro da tolerância;
-- aprovação;
-- verificação de e-mail;
-- congelamento e reembolso;
-- `expires_at`/`current_period_end`.
+Comportamento:
 
-O banco e a RPC atuais liberam o candidato. A falha comprovada está no gate de frontend:
+1. somente admin com permissão financeira ou `service_role` executa;
+2. plano deve existir e ser pago; valor deve ser positivo;
+3. duração aceita é exatamente um mês;
+4. ambiente gravado é sempre `live`;
+5. Pix vigente é prorrogado um mês; vencido reinicia a partir de agora;
+6. Stripe live gera conflito seguro e não é alterado;
+7. a operação registra origem, valor, data, responsável e log sanitizado;
+8. a listagem mostra `LIVE`, `PIX`/`Stripe`, valor e alerta para “somente sandbox”.
 
-- exceções da RPC eram engolidas e convertidas em `subscription=null`;
-- `subscription=null` sempre mostrava a tela de cartão;
-- o nome `hasCardBackedAccess` introduzia uma suposição incorreta;
-- o fallback podia liberar conteúdo quando `has_access=false` em certos estados de e-mail/aprovação.
+### Estado da implantação
 
-### Correção implementada na branch
+- implementação: concluída;
+- CI local completo: aprovado;
+- PR/merge GitHub: pendente;
+- migration Supabase: pendente;
+- liberação live do cliente: pendente;
+- publicação Lovable: pendente;
+- teste autenticado do cliente: pendente.
 
-- `src/lib/subscriptionAccess.ts` classifica o resultado de acesso de forma pura e fail-closed;
-- somente `has_access=true` ou admin libera o conteúdo;
-- erro técnico mostra indisponibilidade e permite retry, sem mencionar cartão;
-- checkout aparece apenas para `no_subscription` e `no_paid_plan`;
-- e-mail, aprovação, negação, expiração e problema de pagamento têm telas distintas;
-- `src/test/subscription-access.test.ts` cobre 14 casos de classificação;
-- `src/test/protected-route-access.test.tsx` cobre 5 fluxos do componente, inclusive Pix/manual e retry.
-
-Essa correção foi commitada inicialmente em `021065a`, integrada pelo PR #42 no merge `78379d9`, sincronizada pelo Lovable e publicada no frontend.
-
-### Publicação e smoke tests
+### Publicação histórica do gate — PR #42
 
 - GitHub Actions: “Validate application” aprovado em 1m52s;
 - imediatamente após o deploy, o Lovable confirmou `latest_commit_sha=78379d98de79f73a75a86e2b692fbaceceac4597`;
@@ -264,7 +279,7 @@ Essa correção foi commitada inicialmente em `021065a`, integrada pelo PR #42 n
 - `/auth` carregou formulário de e-mail/senha e provedores Google/Apple, sem erro de console;
 - `/dashboard` sem sessão redirecionou para `/auth`, sem erro de console.
 
-O fluxo autenticado do cliente Pix/manual ainda precisa ser validado pelo próprio cliente; nenhuma credencial ou PII foi usada no smoke test.
+Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix live nem corrigem o registro sandbox do incidente atual. Nenhuma credencial ou PII foi usada.
 
 ## Estado externo ainda pendente
 
@@ -280,9 +295,13 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. pedir ao cliente Pix/manual que entre novamente e valide o acesso ao dashboard;
-2. registrar o resultado sem incluir PII;
-3. continuar a auditoria comercial externa de migrations, Edge Functions, Stripe, Meta e VPS.
+1. integrar `codex/pix-live-manual-subscriptions` após checks verdes;
+2. aplicar a migration no Supabase do projeto;
+3. registrar o pagamento confirmado do cliente como `starter` em `live`, com o valor recebido e validade de um mês;
+4. confirmar pela RPC `has_access=true`, motivo `active` e plano efetivo em live;
+5. publicar o frontend sincronizado pelo Lovable;
+6. pedir ao cliente que saia, entre novamente e valide o dashboard;
+7. registrar o resultado sem PII e continuar a auditoria comercial externa.
 
 ## Checklist de manutenção
 

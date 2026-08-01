@@ -73,7 +73,8 @@ describe("Phase 1E-A.2/ii-c checkout activation hotfix", () => {
 
   it("stops admin writes from relying on the removed user-only conflict target", () => {
     expect(admin).not.toContain('onConflict: "user_id"');
-    expect(admin).toContain('.eq("environment", getStripeEnvironment())');
+    expect(admin).toContain('.eq("environment", "live")');
+    expect(admin).toContain('row.subscription_environment');
     expect(admin).toContain('.eq("terminal_state", false)');
     expect(migration).toContain("left join lateral");
   });
