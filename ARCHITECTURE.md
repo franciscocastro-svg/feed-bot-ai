@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** a partir da `main` em `c0106d3`.
+Atualizado em **2026-08-01** a partir da `main` em `78379d9`.
 
 ## Arquitetura geral
 
@@ -191,7 +191,7 @@ sequenceDiagram
     DB-->>FE: acesso, motivo e plano
 ```
 
-Uma assinatura manual/Pix não exige cartão nem customer Stripe. Ela deve satisfazer ambiente, plano pago, status, aprovação, e-mail, vigência e ausência de congelamento/reembolso. Na branch de correção do PR rascunho #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. Essa arquitetura ainda não está na `main` nem no frontend publicado.
+Uma assinatura manual/Pix não exige cartão nem customer Stripe. Ela deve satisfazer ambiente, plano pago, status, aprovação, e-mail, vigência e ausência de congelamento/reembolso. Desde o PR #42 e o frontend publicado no SHA `78379d9`, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente.
 
 ### Cortes de vídeo
 

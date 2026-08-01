@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** a partir da `main` em `c0106d3`.
+Atualizado em **2026-08-01** a partir da `main` em `78379d9`.
 
 ## Visão de produto
 
@@ -216,7 +216,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 
 ### Agora — prontidão e confiabilidade
 
-- concluir os checks e a revisão do PR rascunho #42 e implantar de forma controlada a correção do gate Pix/manual;
+- validar com o cliente a correção do gate Pix/manual publicada no frontend no SHA `78379d9`;
 - validar o acesso do cliente após o frontend atualizado;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
