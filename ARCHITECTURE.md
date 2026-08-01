@@ -230,7 +230,9 @@ O frontend nunca grava diretamente os itens do plano. A Edge Function é a front
 
 Estado implantado em 2026-08-01: migration/RPC e `discover-rss` publicadas; uma chamada sem credenciais recebeu 401. O primeiro teste autenticado chegou à confirmação, mas a RPC falhou porque o banco não tinha `news_sources.source_fingerprint` nem `compute_source_fingerprint(...)`. A transação foi revertida e as contagens de aplicações, fontes e pautas do piloto permaneceram em zero.
 
-A correção ainda não implantada está em `20260801183000_editorial_pilot_source_fingerprint_compat.sql`: adiciona a coluna, função, trigger e backfill sem criar índice único potencialmente destrutivo. A Edge passa a devolver `editorial_apply_failed` sem expor detalhes internos e o frontend distingue falha de descoberta de falha de aplicação. Na descoberta, feeds de editorias verificadas são priorizados e aceitos pela validade/frescor do próprio endpoint; sugestões externas continuam sujeitas ao medidor de relevância.
+A correção implantada está em `20260801185731_1bf2df3e-ee4b-42a8-80ca-548153f2c6b6.sql`, timestamp registrado pela plataforma: adiciona a coluna, função, trigger e backfill sem criar índice único potencialmente destrutivo. A Edge devolve `editorial_apply_failed` sem expor detalhes internos e o frontend distingue falha de descoberta de falha de aplicação. Na descoberta, feeds de editorias verificadas são priorizados e aceitos pela validade/frescor do próprio endpoint; sugestões externas continuam sujeitas ao medidor de relevância.
+
+A validação externa confirmou 59 fontes com fingerprint preenchido, nova publicação de `discover-rss` e rejeição anônima HTTP 401. A Lovable criou o merge automático `3512454`, com a migration no timestamp efetivamente registrado e os tipos da RPC regenerados. A cópia anterior `20260801183000` não representa uma segunda mudança de schema e foi removida na reconciliação para impedir dupla aplicação em ambientes futuros.
 
 Validação da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP, build de produção e check remoto `Validate application` aprovados.
 
@@ -256,7 +258,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A branch corretiva contém 181 migrations versionadas; a `main` publicada ainda contém 180. As migrations Pix `20260801134000`, Agência `20260801144500` e Piloto Editorial `20260801170000` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. Para a última, a verificação remota confirmou tabela e RPC, execução por `authenticated`, bloqueio de `anon` e ledger inicialmente vazio. A migration corretiva `20260801183000` permanece somente no Git até autorização de implantação. Domínios representativos:
+A branch reconciliada contém 181 migrations versionadas. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000` e compatibilidade `20260801185731` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A última confirmou coluna, função, trigger e backfill completo; a Edge corrigida também foi publicada. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

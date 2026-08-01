@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. O primeiro teste autenticado do Piloto Editorial revelou uma dependência de fingerprint ausente no banco; a correção está preparada no PR rascunho #53 e ainda não foi implantada.
+Última atualização: **2026-08-01**. A correção do Piloto Editorial foi integrada pelo PR #53; compatibilidade e Edge foram implantadas, e o preview aguarda o smoke autenticado.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -61,7 +61,10 @@
 - [x] Aprovar 48 testes direcionados, TypeScript e ESLint dos arquivos alterados.
 - [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
 - [x] Atualizar o PR #53 e obter o check remoto `Validate application` verde no commit funcional `80debad`.
-- [ ] Após autorização: integrar o PR, aplicar `20260801183000`, republicar `discover-rss` e publicar o frontend corrigido.
+- [x] Integrar o PR #53 no merge `1cb14c5`.
+- [x] Aplicar a compatibilidade sob a versão registrada `20260801185731` e verificar 59 fingerprints preenchidos.
+- [x] Republicar somente `discover-rss`, manter HTTP 401 anônimo e sincronizar o preview.
+- [x] Auditar o merge automático Lovable `3512454` e reconciliar a migration duplicada com o histórico real.
 - [ ] Repetir o smoke autenticado de aplicação/replay e somente então decidir a flag de produção.
 
 ### Reconciliação desta continuidade
@@ -105,7 +108,7 @@
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** integrar a correção do PR #53, aplicar a migration de compatibilidade, republicar Edge/frontend, executar smoke autenticado e decidir rollout da flag.
+- [ ] **Piloto Editorial:** executar o smoke autenticado no preview corrigido e decidir rollout/publicação do frontend de produção.
 
 ## Próximas tarefas
 
@@ -238,7 +241,7 @@
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
-- [ ] **Confirmação bloqueada por drift de schema:** causa identificada e correção versionada, mas `20260801183000`, Edge e frontend corrigidos ainda não foram implantados.
+- [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; smoke autenticado ainda pendente.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios
