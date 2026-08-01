@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro implementada e validada na branch `codex/fix-agency-billing-plan-labels`; integração e publicação ainda pendentes.
+Última atualização: **2026-08-01**. Correção Agência/financeiro integrada em `e163226`, aplicada no Supabase, publicada no Lovable e validada de forma autenticada.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -65,8 +65,8 @@
 ## Em desenvolvimento
 
 - [x] **Pix administrativo live:** implementação, implantação e teste autenticado do cliente concluídos.
-- [x] **Agência live — implementação local:** resolvedor, financeiro, nomes e fallback Pix corrigidos; CI completo verde.
-- [ ] **Agência live — publicação:** integrar, aplicar migration, sincronizar Lovable e executar smoke autenticado.
+- [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
+- [ ] **Perfil do Criador:** auditar a área atual e definir o próximo recorte funcional antes de programar.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
@@ -105,8 +105,9 @@
 - [x] Definir fallback seguro Stripe→Pix: substituir somente estados já terminados e bloquear estados que ainda possam cobrar.
 - [x] Normalizar os nomes públicos no admin e cartão de uso sem renomear as chaves internas.
 - [x] Rodar CI completo: 548 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
-- [ ] Integrar a branch e aplicar `20260801144500` no Supabase.
-- [ ] Sincronizar/publicar no Lovable e executar smoke autenticado de Agência, limites e financeiro.
+- [x] Integrar pelo PR #49 no merge `e163226` e aplicar `20260801144500` no Supabase.
+- [x] Sincronizar/publicar no Lovable e executar smoke autenticado de Agência, limites e financeiro.
+- [x] Confirmar visualmente Creator/Agência sem `starter`, limites Agência 50/60/100 e valor Pix de R$ 1.500,00 no MRR.
 
 ### Histórico do gate de acesso — PR #42
 
@@ -194,8 +195,8 @@
 ### Críticos/altos
 
 - [x] **Liberação Pix no ambiente errado:** causa confirmada e corrigida; migration, assinatura live e frontend foram publicados.
-- [x] **Agência degradada para Business nos limites — código:** corrigido e coberto por regressão; falta aplicar a migration em produção.
-- [x] **Receita Agência zerada — código:** o valor Pix registrado agora tem prioridade; falta publicar o frontend.
+- [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
+- [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 

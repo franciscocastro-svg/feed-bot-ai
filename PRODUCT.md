@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** para a correção candidata de Agência e financeiro Pix sobre o release `6b362bf`.
+Atualizado em **2026-08-01** para a correção Agência/financeiro publicada em `e163226`.
 
 ## Visão de produto
 
@@ -88,7 +88,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - gate de acesso fail-closed com mensagens distintas para checkout, e-mail, aprovação, expiração, bloqueio e indisponibilidade técnica;
 - limites e preços-base armazenados no banco.
 
-Correção preparada em 2026-08-01: o resolvedor legado de limites passa a escolher somente a assinatura `live` não terminal mais recente, o financeiro prioriza o valor Pix registrado e a UI deixa de expor a chave técnica `starter`. A implantação em Supabase/Lovable e o smoke autenticado ainda estão pendentes.
+Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somente a assinatura `live` não terminal mais recente, o financeiro prioriza o valor Pix registrado e a UI não expõe a chave técnica `starter`. O smoke autenticado confirmou plano Agência, limites e receita manual corretos.
 
 ### Piloto Editorial Inteligente — Fase 1
 
@@ -235,9 +235,9 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 ### Agora — prontidão e confiabilidade
 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
-- [concluído localmente] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
-- [concluído localmente] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
-- integrar, aplicar a migration, publicar no Lovable e validar Agência/Pix autenticado;
+- [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
+- [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
+- iniciar a próxima revisão funcional pela área Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter o Piloto restrito a preview até aprovação de rollout.
