@@ -18,7 +18,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### `main` auditada
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
-- `origin/main`: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
+- Release funcional em `main`: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
+- O PR documental #43 foi integrado depois em `f65e6d3`; as atualizações seguintes desta continuidade também são somente Markdown e não alteram o app publicado.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch de continuidade: `codex/reconcile-main-docs`, criada diretamente sobre `c0106d3`.
 - Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
@@ -57,9 +58,9 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Estado | Situação | Tratamento |
 |---|---|---|
 | Pasta original | antiga e com trabalho local | preservar |
-| `origin/main` | consolidada em `78379d9` | base da continuidade |
+| Código funcional em `main` | consolidado em `78379d9`; commits posteriores são documentais | base do app publicado |
 | Branch do PR #42 | integrada em `main` | preservar histórico |
-| Frontend Lovable | publicado em `78379d9` | validar cliente autenticado |
+| Frontend Lovable | código funcional publicado de `78379d9`; docs posteriores sincronizadas | validar cliente autenticado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -255,7 +256,8 @@ Essa correção foi commitada inicialmente em `021065a`, integrada pelo PR #42 n
 ### Publicação e smoke tests
 
 - GitHub Actions: “Validate application” aprovado em 1m52s;
-- Lovable confirmou `latest_commit_sha=78379d98de79f73a75a86e2b692fbaceceac4597`;
+- imediatamente após o deploy, o Lovable confirmou `latest_commit_sha=78379d98de79f73a75a86e2b692fbaceceac4597`;
+- após o PR documental #43, o repositório do projeto sincronizou `f65e6d3` sem alterar código funcional;
 - deployment Lovable: `dda0fdfd-9c57-4eb2-864c-21a8f0a8b223`;
 - `https://feed-bot-ai.lovable.app` redireciona para `https://fluxifeed.com`;
 - home carregou com o título e H1 esperados, sem erro de console;
@@ -278,10 +280,9 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. integrar esta atualização documental pós-deploy em `main`;
-2. pedir ao cliente Pix/manual que entre novamente e valide o acesso ao dashboard;
-3. registrar o resultado sem incluir PII;
-4. continuar a auditoria comercial externa de migrations, Edge Functions, Stripe, Meta e VPS.
+1. pedir ao cliente Pix/manual que entre novamente e valide o acesso ao dashboard;
+2. registrar o resultado sem incluir PII;
+3. continuar a auditoria comercial externa de migrations, Edge Functions, Stripe, Meta e VPS.
 
 ## Checklist de manutenção
 

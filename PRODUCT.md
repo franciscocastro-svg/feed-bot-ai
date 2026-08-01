@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** a partir da `main` em `78379d9`.
+Atualizado em **2026-08-01** para o release funcional `78379d9` e sua documentação pós-publicação.
 
 ## Visão de produto
 

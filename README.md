@@ -8,16 +8,16 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 Documentação reconciliada em **2026-08-01** com a `origin/main` e o frontend publicado atualizados.
 
-- `origin/main` confirmada: `78379d9`, merge do PR [#42](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42).
+- Release funcional confirmada: `78379d9`, merge do PR [#42](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42); os commits posteriores desta continuidade alteram somente os cinco documentos da raiz.
 - O PR #42 integrou a correção Pix/manual, 19 testes de regressão e os cinco documentos reconciliados.
 - Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
 - Validação atual: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 538 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
-- Frontend publicado confirmado no Lovable com `latest_commit_sha=78379d9`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). Migrations, Edge Functions, Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
+- Frontend publicado confirmado para o código funcional de `78379d9`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). O Lovable sincronizou também os commits documentais posteriores, sem mudança no app. Migrations, Edge Functions, Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
 Use estas etiquetas na documentação:
 
-- **Confirmado na `main`:** inspecionado até `78379d9`.
+- **Confirmado na `main`:** código funcional inspecionado até `78379d9`; documentação pós-release integrada em seguida.
 - **Confirmado por teste local:** reproduzido na worktree limpa.
 - **Revalidar externamente:** depende de GitHub Actions, Supabase, Stripe, Meta, Lovable ou VPS.
 
