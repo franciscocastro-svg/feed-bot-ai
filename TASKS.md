@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, com migration e Edge aplicadas e frontend pendente.
+Última atualização: **2026-08-01**. O primeiro teste autenticado do Piloto Editorial revelou uma dependência de fingerprint ausente no banco; a correção está preparada no PR rascunho #53 e ainda não foi implantada.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -50,6 +50,20 @@
 - [x] Validar `e290ac0` com CI completo: 551 testes principais, 33 de deploy, 15 de reconciliação, typecheck e build aprovados.
 - [ ] Publicar o frontend e executar o smoke autenticado antes de decidir a ativação da flag em produção.
 
+### Correção do primeiro teste autenticado — PR #53
+
+- [x] Reproduzir a falha da confirmação sem persistência e identificar o erro PostgreSQL `42883`.
+- [x] Confirmar contagens zero no ledger, nas fontes e nas pautas criadas pelo piloto após a falha.
+- [x] Criar migration aditiva de compatibilidade para coluna, função, trigger e backfill de fingerprint.
+- [x] Separar mensagens de descoberta e aplicação e sanitizar o erro retornado pela Edge.
+- [x] Auditar as fontes rejeitadas e distinguir rejeições corretas de falsos negativos.
+- [x] Substituir URLs inválidas por Quem e Metrópoles oficiais, remover UOL Splash 404 e ampliar a relevância de entretenimento.
+- [x] Aprovar 48 testes direcionados, TypeScript e ESLint dos arquivos alterados.
+- [x] Executar `npm run ci`: 555 testes principais, 33 de deploy, 15 de reconciliação e build aprovados.
+- [ ] Atualizar o PR #53 e obter o check remoto verde.
+- [ ] Após autorização: integrar o PR, aplicar `20260801183000`, republicar `discover-rss` e publicar o frontend corrigido.
+- [ ] Repetir o smoke autenticado de aplicação/replay e somente então decidir a flag de produção.
+
 ### Reconciliação desta continuidade
 
 - [x] Catalogar e preservar as mudanças da pasta original.
@@ -91,7 +105,7 @@
 - [x] **Agência live:** resolvedor, financeiro, nomes e fallback Pix corrigidos, integrados e validados em produção.
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
-- [ ] **Piloto Editorial:** integrar o PR, aplicar migration/Edge Function, executar smoke autenticado e decidir rollout da flag.
+- [ ] **Piloto Editorial:** integrar a correção do PR #53, aplicar a migration de compatibilidade, republicar Edge/frontend, executar smoke autenticado e decidir rollout da flag.
 
 ## Próximas tarefas
 
@@ -224,6 +238,7 @@
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
+- [ ] **Confirmação bloqueada por drift de schema:** causa identificada e correção versionada, mas `20260801183000`, Edge e frontend corrigidos ainda não foram implantados.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios

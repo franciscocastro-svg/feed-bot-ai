@@ -26,6 +26,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch funcional `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e head final `401d849`.
 - PR [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) integrado na `main` pelo merge `ad39d3e04f416a913c8d559ebedc9c3707834d0d`.
+- Branch corretiva atual: `codex/record-editorial-pilot-deployment`, baseada em `e290ac0` e documentada no PR rascunho #53. A correção do primeiro teste autenticado ainda não foi implantada.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
 - Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
 - PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.
@@ -73,7 +74,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Piloto Editorial 2A | integrado em `ad39d3e`; migration `20260801170000` e `discover-rss` implantadas | validar preview autenticado; frontend permanece pendente |
+| Piloto Editorial 2A | integrado em `ad39d3e`; primeiro teste autenticado falhou sem escrita por fingerprint ausente | integrar PR #53, aplicar compatibilidade e repetir smoke |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -259,6 +260,22 @@ Implantação parcial autorizada em 2026-08-01:
 - a função valida `Authorization`, `auth.getUser()` e `is_approved` no próprio código; `verify_jwt` não está declarado no `config.toml`.
 - após incorporar `e290ac0` na branch documental, `npm run ci` passou integralmente: 551 testes principais, 33 de deploy, 15 de reconciliação, typecheck, gates editoriais/MCP e build.
 
+#### Diagnóstico do primeiro teste autenticado e correção pendente
+
+- o preview encontrou quatro fontes válidas e chegou ao diálogo de confirmação para a conta selecionada;
+- ao confirmar, a aplicação mostrou uma mensagem genérica de descoberta, embora a falha estivesse na RPC de aplicação;
+- uma reprodução segura em subtransação identificou `42883: function public.compute_source_fingerprint(...) does not exist`;
+- a inspeção confirmou também a ausência de `news_sources.source_fingerprint` e do trigger de fingerprint no banco publicado;
+- a tentativa real foi atômica: `editorial_pilot_applications`, fontes e pautas do piloto permaneceram com contagem zero;
+- `20260801183000_editorial_pilot_source_fingerprint_compat.sql` reconcilia coluna, função, trigger e backfill sem índice único;
+- `discover-rss` sanitiza a falha como `editorial_apply_failed`; o frontend apresenta mensagem de aplicação e informa que nada foi gravado;
+- a auditoria pública confirmou Fofocalizando com amostra antiga, Contigo! indisponível e RSS do Observatório da TV em 404, portanto essas rejeições eram corretas;
+- o feed oficial de Quem (`https://revistaquem.globo.com/rss/quem`) e a editoria de Metrópoles (`https://www.metropoles.com/entretenimento/feed`) respondem com XML válido e substituem os falsos negativos;
+- o fallback UOL Splash retornava 404 e foi removido; o vocabulário de entretenimento foi ampliado para artistas, TV, música, shows e relacionamentos;
+- 48 testes direcionados passaram; o CI completo aprovou secret scan em 664 arquivos, typecheck, lints, 555 testes principais, 33 de deploy, 15 de reconciliação, worker, gates de migrations/MCP e build;
+- `check:edge-functions`, que não integra `npm run ci`, não executou isoladamente porque Deno não está instalado nesta máquina;
+- nenhuma migration, Edge Function, frontend, dado ou feature flag foi alterado em produção durante essa correção.
+
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
 Commits relevantes:
@@ -407,15 +424,17 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - token e publicação Meta em conta de teste;
 - flag real do Piloto em produção.
 - migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` publicada; frontend da Fase 2A ainda não publicado.
+- migration corretiva `20260801183000`, nova versão de `discover-rss` e frontend com mensagem de aplicação ainda não implantados.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. validar o preview do frontend com uma conta autenticada, confirmando que a interface da Fase 2A está visível;
-3. publicar o frontend e executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
-4. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
+2. concluir o CI e a revisão do PR #53;
+3. integrar o PR e, somente com autorização explícita, aplicar `20260801183000`, republicar `discover-rss` e publicar o frontend corrigido;
+4. repetir o smoke autenticado, confirmando descoberta, aplicação, replay, isolamento e ausência de duplicatas;
+5. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
 
 ## Checklist de manutenção
 

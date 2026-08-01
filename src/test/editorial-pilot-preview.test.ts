@@ -273,6 +273,38 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     expect(migration).toContain("ON CONFLICT (source_id, instagram_account_id) DO NOTHING");
   });
 
+  it("reconcilia a dependência de fingerprint ausente no banco publicado", () => {
+    const compatibilityMigration = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260801183000_editorial_pilot_source_fingerprint_compat.sql",
+      ),
+      "utf8",
+    );
+
+    expect(compatibilityMigration).toContain("ADD COLUMN IF NOT EXISTS source_fingerprint text");
+    expect(compatibilityMigration).toContain("CREATE OR REPLACE FUNCTION public.compute_source_fingerprint");
+    expect(compatibilityMigration).toContain("CREATE TRIGGER news_source_fingerprint");
+    expect(compatibilityMigration).toContain("UPDATE public.news_sources");
+    expect(compatibilityMigration).not.toContain("CREATE UNIQUE INDEX");
+  });
+
+  it("preserva o erro técnico da Edge e mostra mensagem específica de aplicação", () => {
+    const component = readFileSync(
+      resolve(process.cwd(), "src/components/editorial-pilot/EditorialPilotPreview.tsx"),
+      "utf8",
+    );
+    const edge = readFileSync(
+      resolve(process.cwd(), "supabase/functions/discover-rss/index.ts"),
+      "utf8",
+    );
+
+    expect(component).toContain("throwFunctionError");
+    expect(component).toContain("Não foi possível aplicar o plano editorial. Nenhum item foi gravado.");
+    expect(edge).toContain("editorial_pilot_apply_failed");
+    expect(edge).toContain("editorial_apply_failed");
+  });
+
   it("exibe a prévia apenas com a flag ativa e uma conta específica selecionada", () => {
     const profilePath = resolve(process.cwd(), "src/pages/dashboard/CreatorProfile.tsx");
     const source = readFileSync(profilePath, "utf8");

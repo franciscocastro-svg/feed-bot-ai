@@ -107,7 +107,8 @@ Deno.serve(async (req) => {
       ],
       entretenimento: [
         { name: "G1 Pop Arte", url: "https://g1.globo.com/rss/g1/pop-arte/" },
-        { name: "UOL Splash", url: "https://rss.uol.com.br/feed/splash.xml" },
+        { name: "Quem", url: "https://revistaquem.globo.com/rss/quem" },
+        { name: "Metrópoles - Entretenimento", url: "https://www.metropoles.com/entretenimento/feed" },
       ],
     };
 
@@ -117,7 +118,9 @@ Deno.serve(async (req) => {
         niche: profile.label,
         source_kind: "rss" as const,
         query: null,
-        include_terms: profile.terms,
+        // O próprio endpoint já é uma editoria verificada do nicho.
+        // Não exigir que todo título repita palavras genéricas como "celebridade".
+        include_terms: [],
         discovery_method: "curated_rss" as const,
       }));
     }
@@ -144,6 +147,8 @@ Deno.serve(async (req) => {
           } catch {
             return [];
           }
+          const curated = curatedFeeds().find((feed) => feed.url === candidate.trim());
+          if (curated) return [curated];
           return [{
             name: hostname,
             url: candidate.trim(),
@@ -164,6 +169,10 @@ Deno.serve(async (req) => {
           ? googleNewsTopicUrl(profile.query)
           : typeof record.url === "string" ? record.url.trim() : "";
         if (!url || !/^https:\/\//i.test(url)) return [];
+        const curated = sourceKind === "rss"
+          ? curatedFeeds().find((feed) => feed.url === url)
+          : undefined;
+        if (curated) return [curated];
         return [{
           name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : `Fonte: ${profile.label}`,
           url,
@@ -240,8 +249,15 @@ Deno.serve(async (req) => {
       suggestions = curatedFeeds();
     }
 
-    if (!insert || suggestions.length === 0) suggestions.push(topicSuggestion());
+    if (!insert) {
+      // O catálogo verificado e a busca temática sempre têm prioridade.
+      // Sugestões da IA completam a lista, sem substituir fontes conhecidas.
+      suggestions = [...curatedFeeds(), topicSuggestion(), ...suggestions];
+    } else if (suggestions.length === 0) {
+      suggestions.push(topicSuggestion());
+    }
     suggestions = [...new Map(suggestions.map((suggestion) => [suggestion.url, suggestion])).values()].slice(0, 9);
+    const curatedUrls = new Set(curatedFeeds().map((feed) => feed.url));
 
     const validated = await Promise.all(
       suggestions.map(async (s) => {
@@ -258,7 +274,8 @@ Deno.serve(async (req) => {
             maxAgeHours: 48,
           });
           const relevance = measureNicheRelevance(preview.sample_items || [], profile);
-          const valid = preview.valid && relevance.relevant;
+          const categoryTrusted = s.discovery_method === "curated_rss" && curatedUrls.has(s.url);
+          const valid = preview.valid && (categoryTrusted || relevance.relevant);
           return {
             ...s,
             valid,
@@ -267,7 +284,9 @@ Deno.serve(async (req) => {
             error: valid ? null : preview.valid
               ? "A fonte respondeu, mas as notícias recentes não correspondem ao nicho informado."
               : preview.diagnostics?.warnings?.[0] || "Fonte sem conteúdo recente aproveitável.",
-            quality_score: valid ? Math.min(100, 55 + relevance.matching * 10) : 0,
+            quality_score: valid
+              ? Math.min(100, Math.max(categoryTrusted ? 75 : 55, 55 + relevance.matching * 10))
+              : 0,
           };
         } catch (e) {
           return {
@@ -351,7 +370,13 @@ Deno.serve(async (req) => {
           _topics: selected_topics.slice(0, 12),
         },
       );
-      if (applicationError) throw applicationError;
+      if (applicationError) {
+        console.error("editorial_pilot_apply_failed", { code: applicationError.code || "unknown" });
+        return new Response(
+          JSON.stringify({ error: "editorial_apply_failed" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       return new Response(
         JSON.stringify({

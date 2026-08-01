@@ -68,6 +68,35 @@ const discoveryErrorMessage = (error: unknown) => {
   return "Não foi possível pesquisar fontes reais agora. A proposta editorial continua disponível para revisão.";
 };
 
+const applicationErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (message.includes("no_valid_sources")) return "Nenhuma das fontes selecionadas passou pela validação final.";
+  if (message.includes("editorial_apply_failed")) return "Não foi possível aplicar o plano editorial. Nenhum item foi gravado; tente novamente após a correção.";
+  if (message.includes("account_not_approved")) return "Esta conta ainda não está aprovada para aplicar o plano editorial.";
+  return "Não foi possível aplicar o plano editorial. Nenhum item foi gravado.";
+};
+
+async function throwFunctionError(invokeError: unknown, data: unknown) {
+  const payload = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  if (typeof payload.error === "string" && payload.error) throw new Error(payload.error);
+  if (!invokeError) return;
+
+  const context = invokeError && typeof invokeError === "object"
+    ? (invokeError as { context?: { clone?: () => Response } }).context
+    : undefined;
+  let responsePayload: Record<string, unknown> | null = null;
+  try {
+    const response = context?.clone?.();
+    responsePayload = response ? await response.json() as Record<string, unknown> : null;
+  } catch {
+    // Algumas versões do cliente não expõem um corpo JSON clonável.
+  }
+  if (typeof responsePayload?.error === "string" && responsePayload.error) {
+    throw new Error(responsePayload.error);
+  }
+  throw invokeError;
+}
+
 export function EditorialPilotPreview({ account, profile }: EditorialPilotPreviewProps) {
   const [proposal, setProposal] = useState<EditorialPilotProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,8 +135,7 @@ export function EditorialPilotPreview({ account, profile }: EditorialPilotPrevie
           ig_ids: [account.id],
         },
       });
-      if (invokeError) throw invokeError;
-      if (data?.error) throw new Error(data.error);
+      await throwFunctionError(invokeError, data);
       const discovered = Array.isArray(data?.feeds)
         ? data.feeds as EditorialPilotDiscoverCandidate[]
         : [];
@@ -186,8 +214,7 @@ export function EditorialPilotPreview({ account, profile }: EditorialPilotPrevie
           selected_topics: summary.topics,
         },
       });
-      if (invokeError) throw invokeError;
-      if (data?.error) throw new Error(data.error);
+      await throwFunctionError(invokeError, data);
       const result = data?.application as ApplicationResult | undefined;
       if (!result) throw new Error("application_result_missing");
       setApplicationResult(result);
@@ -196,7 +223,7 @@ export function EditorialPilotPreview({ account, profile }: EditorialPilotPrevie
         ? "Este plano já estava aplicado nesta conta."
         : "Plano editorial aplicado com segurança.");
     } catch (nextError) {
-      toast.error(discoveryErrorMessage(nextError));
+      toast.error(applicationErrorMessage(nextError));
     } finally {
       setApplying(false);
     }

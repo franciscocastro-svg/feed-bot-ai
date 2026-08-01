@@ -28,7 +28,17 @@ const KNOWN_PROFILES: KnownProfile[] = [
   { key: "mundo", label: "Mundo", aliases: ["mundo", "internacional", "geopolitica"], terms: ["internacional", "mundo", "geopolitica", "guerra", "diplomacia"], query: "internacional OR mundo OR geopolitica" },
   { key: "saude", label: "Saúde", aliases: ["saude", "medicina", "bem estar", "nutricao"], terms: ["saude", "medicina", "doenca", "tratamento", "nutricao", "bem estar"], query: "saude OR medicina OR nutricao OR bem-estar" },
   { key: "fitness", label: "Fitness e academia", aliases: ["fitness", "academia", "musculacao", "treino", "personal trainer"], terms: ["fitness", "academia", "musculacao", "treino", "exercicio", "atividade fisica"], query: "fitness OR academia OR musculacao OR treino OR exercicio" },
-  { key: "entretenimento", label: "Entretenimento", aliases: ["entretenimento", "fofoca", "famosos", "celebridades", "novela"], terms: ["entretenimento", "famoso", "celebridade", "novela", "reality", "televisao"], query: "entretenimento OR famosos OR celebridades OR novela" },
+  {
+    key: "entretenimento",
+    label: "Entretenimento",
+    aliases: ["entretenimento", "fofoca", "famosos", "celebridades", "novela"],
+    terms: [
+      "entretenimento", "famoso", "celebridade", "novela", "reality", "televisao", "tv",
+      "artista", "ator", "atriz", "cantor", "cantora", "influenciador", "humorista", "show",
+      "musica", "relacionamento", "casal",
+    ],
+    query: "entretenimento OR famosos OR celebridades OR novela",
+  },
   { key: "direito", label: "Direito", aliases: ["direito", "advocacia", "juridico", "juridica"], terms: ["direito", "advocacia", "juridico", "justica", "tribunal", "lei"], query: "direito OR advocacia OR juridico OR justica" },
   { key: "beleza", label: "Beleza", aliases: ["beleza", "estetica", "maquiagem", "skincare"], terms: ["beleza", "estetica", "maquiagem", "skincare", "cosmetico"], query: "beleza OR estetica OR maquiagem OR skincare" },
 ];
