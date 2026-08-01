@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveBooleanFeatureFlag } from "@/config/featureFlags";
 import {
+  editorialApplicationSummary,
+  selectedEditorialSources,
+  selectedEditorialTopics,
+} from "@/lib/editorial-pilot/applyPlan";
+import {
   buildEditorialPilotProposal,
   type EditorialPilotProfileInput,
 } from "@/lib/editorial-pilot/buildProposal";
@@ -191,19 +196,81 @@ describe("Piloto Editorial Inteligente — prévia local", () => {
     expect(resolveBooleanFeatureFlag(true)).toBe(true);
   });
 
-  it("mantém o componente de prévia sem operações externas ou persistência", () => {
+  it("mantém a análise sem escrita e exige confirmação explícita para aplicar", () => {
     const componentPath = resolve(
       process.cwd(),
       "src/components/editorial-pilot/EditorialPilotPreview.tsx",
     );
     const source = readFileSync(componentPath, "utf8");
 
-    expect(source).toContain(
-      "Esta prévia não cria nem altera fontes, pautas, configurações, filas ou publicações.",
+    expect(source).toContain("A análise não altera sua conta.");
+    expect(source).toContain("Revisar e aplicar plano");
+    expect(source).toContain("Confirmar aplicação");
+    expect(source).toContain('supabase.functions.invoke("discover-rss"');
+    expect(source).not.toContain(".from(");
+    expect(source).not.toContain(".rpc(");
+  });
+
+  it("envia somente fontes válidas e selecionadas para a aplicação", async () => {
+    const proposal = await buildFor(accountA);
+    const candidates = [
+      {
+        name: "Fonte válida",
+        url: "https://example.com/feed.xml",
+        source_kind: "rss" as const,
+        valid: true,
+        quality_score: 87.6,
+      },
+      {
+        name: "Fonte rejeitada",
+        url: "https://invalid.example/feed.xml",
+        source_kind: "rss" as const,
+        valid: false,
+      },
+    ];
+
+    expect(selectedEditorialSources(candidates, candidates.map(({ url }) => url))).toEqual([
+      expect.objectContaining({
+        name: "Fonte válida",
+        url: "https://example.com/feed.xml",
+        quality_score: 88,
+      }),
+    ]);
+    expect(editorialApplicationSummary(
+      proposal,
+      candidates,
+      [candidates[0].url],
+      [proposal.topic_suggestions[0].client_ref],
+    ).canApply).toBe(true);
+  });
+
+  it("preserva audiência e voz nas pautas selecionadas", async () => {
+    const proposal = await buildFor(accountA);
+    const selected = selectedEditorialTopics(proposal, [proposal.topic_suggestions[0].client_ref]);
+
+    expect(selected).toEqual([
+      expect.objectContaining({
+        client_ref: proposal.topic_suggestions[0].client_ref,
+        target_audience: proposal.strategy.audience,
+        tone: proposal.strategy.voice,
+      }),
+    ]);
+  });
+
+  it("protege a aplicação no servidor com validação e RPC transacional idempotente", () => {
+    const edge = readFileSync(resolve(process.cwd(), "supabase/functions/discover-rss/index.ts"), "utf8");
+    const migration = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260801170000_editorial_pilot_phase_2a.sql"),
+      "utf8",
     );
-    for (const forbidden of ["supabase", ".from(", ".rpc(", ".invoke(", "fetch("]) {
-      expect(source).not.toContain(forbidden);
-    }
+
+    expect(edge).toContain("no_valid_sources");
+    expect(edge).toContain('"apply_editorial_pilot_proposal"');
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("editorial_pilot_application_unique");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("WHERE account.id = _account_id");
+    expect(migration).toContain("ON CONFLICT (source_id, instagram_account_id) DO NOTHING");
   });
 
   it("exibe a prévia apenas com a flag ativa e uma conta específica selecionada", () => {

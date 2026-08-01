@@ -19,6 +19,8 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - A área administrativa publicada exibe `Creator`, `Pro`, `Business` e `Agência`; a chave interna `starter` permanece apenas como contrato técnico compatível com banco e Stripe.
 - O financeiro publicado prioriza o valor efetivamente registrado no Pix por cliente, inclusive em planos negociáveis como Agência.
 - O smoke autenticado confirmou Agência, limites 50/60/100, valor Pix de R$ 1.500,00 e MRR recalculado, sem erro do aplicativo no console.
+- A branch local `codex/editorial-pilot-phase-2a` conecta o Perfil do Criador à descoberta real de RSS/monitoramento temático, permite selecionar fontes e pautas, mostra o resumo exato e aplica a seleção por RPC transacional e idempotente. Esta entrega ainda não está na `main` nem implantada.
+- O pipeline completo da Fase 2A passou localmente: secret scan em 663 arquivos, typecheck, lint ratchet/fases, 551 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -39,7 +41,7 @@ O Flux & Feed reduz o trabalho manual necessário para manter perfis de Instagra
 4. agenda e publica pela API oficial da Meta;
 5. acompanha filas, limites, assinaturas e saúde operacional;
 6. transforma vídeos longos em cortes curtos com o worker e FFmpeg;
-7. propõe, em preview local, uma estratégia editorial por Instagram.
+7. propõe uma estratégia editorial por Instagram e, mediante confirmação, prepara fontes e pautas isoladas para a conta.
 
 ## Tecnologias
 
@@ -171,7 +173,7 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 3. **Secrets no backend:** nunca colocar service role, token Meta ou chave secreta em `VITE_*`, logs, commits ou prompts.
 4. **Contratos validados:** respostas de IA e payloads críticos usam JSON estruturado e validação.
 5. **Feature flags off por padrão:** ativação em desenvolvimento não implica produção.
-6. **Preview sem escrita:** o Piloto não cria fontes, pautas, configurações, filas nem publicações.
+6. **Análise sem escrita:** montar ou refazer a proposta não altera dados; somente a confirmação explícita pode vincular fontes e criar pautas, sem publicar conteúdo.
 7. **Deploy controlado:** confirmar SHA, migrations, funções, artefato, health check e rollback.
 8. **Documentação obrigatória:** finalizar trabalho inclui atualizar os cinco documentos da raiz.
 9. **Preservar trabalho local:** não apagar, resetar ou misturar alterações do usuário.
@@ -179,4 +181,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A correção Agência está integrada, aplicada e validada em produção. O próximo passo exato do desenvolvimento é auditar a área **Perfil do Criador** contra produto, arquitetura e tarefas, definir o primeiro recorte funcional pendente e apresentar o plano antes de alterar código.
+A Fase 2A do Piloto Editorial está implementada localmente e precisa passar pelo pipeline completo, revisão do diff e publicação controlada. A implantação exige, nesta ordem: integrar a branch, aplicar a migration `20260801170000`, publicar `discover-rss`, publicar o frontend e executar um smoke autenticado antes de decidir a ativação da flag em produção.

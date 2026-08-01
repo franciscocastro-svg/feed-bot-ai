@@ -127,6 +127,7 @@ Autorização, Stripe, contratos de IA, feature flags, limites e deploy não usa
 - checkout usa chaves de idempotência e detecta assinatura existente;
 - worker e filas registram estado/tentativa;
 - deduplicação editorial usa chaves e janelas duráveis;
+- aplicações do Piloto usam `proposal_id` único por usuário/Instagram, lock transacional e dedupe de fontes/pautas;
 - deploys usam SHA aprovado, estado durável, backup, gates e rollback.
 
 ### Feature flags
@@ -218,8 +219,14 @@ Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera cont
 2. builder local normaliza dados e classifica o domínio;
 3. proposta `editorial-pilot/v1` recebe fingerprint da conta/perfil;
 4. Zod valida contrato estrito, referências e percentuais;
-5. UI exibe estratégia, fontes, pautas, cadência e guardrails;
-6. nenhuma mutação de banco ou publicação é feita.
+5. a primeira chamada a `discover-rss` pesquisa, abre e mede a relevância de fontes reais sem gravar;
+6. UI permite selecionar fontes e pautas e mostra o resumo exato por Instagram;
+7. a confirmação envia somente a seleção para `discover-rss`, que revalida as fontes no servidor;
+8. `apply_editorial_pilot_proposal()` confere propriedade da conta e grava fontes, vínculos, pautas e o ledger da aplicação na mesma transação;
+9. o ledger `editorial_pilot_applications` torna o replay da mesma proposta inofensivo;
+10. cadência, filas e publicações permanecem sem mutação na Fase 2A.
+
+O frontend nunca grava diretamente os itens do plano. A Edge Function é a fronteira de validação externa; a RPC `SECURITY DEFINER`, com `search_path` fixo e `auth.uid()`, é a fronteira transacional. Falha de feed, limite de plano ou pauta inválida aborta toda a aplicação.
 
 ## APIs e contratos
 
@@ -241,7 +248,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 179 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. Domínios representativos:
+A árvore da branch contém 180 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A migration local `20260801170000_editorial_pilot_phase_2a.sql` ainda precisa ser integrada e aplicada. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

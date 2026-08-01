@@ -100,16 +100,28 @@ Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somen
 - feature flag desligada no contrato padrão e habilitada no ambiente de desenvolvimento;
 - nenhuma escrita em fontes, pautas, configurações, filas ou publicações.
 
+### Piloto Editorial Inteligente — Fase 2A
+
+Implementado na branch `codex/editorial-pilot-phase-2a`, ainda não publicado:
+
+- a ação de análise usa o nicho do Perfil do Criador para pesquisar fontes reais;
+- feeds RSS e monitoramentos temáticos são validados por conteúdo recente e relevância;
+- fontes inválidas permanecem visíveis com diagnóstico, mas não podem ser selecionadas;
+- o usuário seleciona ou rejeita fontes e pautas individualmente;
+- a interface apresenta o resumo exato por Instagram e exige confirmação final;
+- a aplicação cria/vincula fontes e cria pautas em uma única transação idempotente;
+- repetir a mesma proposta não duplica fontes, vínculos nem pautas;
+- nenhuma publicação é criada e a cadência continua apenas como sugestão.
+
 ## Funcionalidades planejadas
 
 ### Piloto Editorial — Fase 2
 
-1. editar a proposta antes da aplicação;
-2. selecionar ou rejeitar fontes e pautas individualmente;
-3. mostrar o diff exato do que será criado;
-4. exigir confirmação explícita;
-5. aplicar de forma idempotente, transacional e reversível;
-6. registrar métricas de qualidade por conta.
+1. concluir a edição manual da proposta antes da aplicação;
+2. implantar e validar a seleção, o resumo e a confirmação da Fase 2A;
+3. adicionar uma ação explícita de desfazer uma aplicação;
+4. permitir aplicar preferências de cadência separadamente;
+5. registrar métricas de qualidade por conta.
 
 ### Provedores e custos
 
@@ -225,10 +237,12 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 ### Piloto Editorial
 
 1. usuário escolhe Instagram e preenche o Perfil de Criador;
-2. preview local monta `editorial-pilot/v1`;
-3. usuário revisa estratégia, fontes, pautas e guardrails;
-4. na Fase 1 nada é persistido;
-5. uma fase futura aplicará apenas itens explicitamente aprovados.
+2. análise local monta e valida `editorial-pilot/v1`;
+3. `discover-rss` pesquisa e valida fontes reais sem persistência;
+4. usuário seleciona fontes e pautas e revisa o resumo exato;
+5. somente a confirmação chama a aplicação transacional e idempotente;
+6. fontes são vinculadas e pautas são criadas apenas para o Instagram escolhido;
+7. cadência, filas e publicações não são alteradas nesta fase.
 
 ## Roadmap
 
@@ -237,14 +251,14 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
 - [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
-- iniciar a próxima revisão funcional pela área Perfil do Criador;
+- revisar e publicar de forma controlada a Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
-- manter o Piloto restrito a preview até aprovação de rollout.
+- manter a flag do Piloto desligada por padrão até aprovação de rollout.
 
 ### Depois — Piloto assistido
 
-- edição, seleção, diff, confirmação, idempotência e rollback;
+- edição da proposta, desfazer aplicação e aplicação opcional da cadência;
 - testes com contas do mesmo nicho e vozes diferentes;
 - revisão humana obrigatória em áreas reguladas.
 
