@@ -687,6 +687,47 @@ export type Database = {
         }
         Relationships: []
       }
+      editorial_pilot_applications: {
+        Row: {
+          created_at: string
+          id: string
+          instagram_account_id: string
+          profile_fingerprint: string
+          proposal_id: string
+          result: Json
+          selection: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instagram_account_id: string
+          profile_fingerprint: string
+          proposal_id: string
+          result?: Json
+          selection?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instagram_account_id?: string
+          profile_fingerprint?: string
+          proposal_id?: string
+          result?: Json
+          selection?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "editorial_pilot_applications_instagram_account_id_fkey"
+            columns: ["instagram_account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_campaigns: {
         Row: {
           audience: string
@@ -2914,20 +2955,20 @@ export type Database = {
       admin_subscription_overview: {
         Args: never
         Returns: {
-          amount_paid_brl: number | null
+          amount_paid_brl: number
           approval_status: string
           auto_approve: boolean
           created_at: string
-          display_name: string | null
+          display_name: string
           email: string
-          expires_at: string | null
+          expires_at: string
           has_live_subscription: boolean
           has_sandbox_subscription: boolean
           ig_accounts: number
-          ig_token_expires: string | null
-          last_activity: string | null
+          ig_token_expires: string
+          last_activity: string
           news_pending: number
-          payment_method: string | null
+          payment_method: string
           plan: string
           posts_failed: number
           posts_published: number
@@ -2935,7 +2976,7 @@ export type Database = {
           sources_active: number
           sub_status: string
           subscription_environment: string
-          subscription_id: string | null
+          subscription_id: string
           user_id: string
         }[]
       }
@@ -2946,6 +2987,16 @@ export type Database = {
           _notes?: string
           _plan: string
           _user_id: string
+        }
+        Returns: Json
+      }
+      apply_editorial_pilot_proposal: {
+        Args: {
+          _account_id: string
+          _profile_fingerprint: string
+          _proposal_id: string
+          _sources: Json
+          _topics: Json
         }
         Returns: Json
       }
