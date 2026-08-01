@@ -191,7 +191,7 @@ sequenceDiagram
     DB-->>FE: acesso, motivo e plano
 ```
 
-Uma assinatura manual/Pix não exige cartão nem customer Stripe. Ela deve satisfazer ambiente, plano pago, status, aprovação, e-mail, vigência e ausência de congelamento/reembolso. Na branch de correção, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente.
+Uma assinatura manual/Pix não exige cartão nem customer Stripe. Ela deve satisfazer ambiente, plano pago, status, aprovação, e-mail, vigência e ausência de congelamento/reembolso. Na branch de correção do PR rascunho #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. Essa arquitetura ainda não está na `main` nem no frontend publicado.
 
 ### Cortes de vídeo
 

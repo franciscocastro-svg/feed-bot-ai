@@ -21,6 +21,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - `origin/main`: `c0106d3f5a40776896263378941e8834341d669d` — `Sincronizou Preview e verificou`.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
 - Branch de continuidade: `codex/reconcile-main-docs`, criada diretamente sobre `c0106d3`.
+- Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
+- Branch enviada a `origin/codex/reconcile-main-docs`.
+- PR rascunho: [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42), base `main`.
 - Os commits relatados do Piloto Editorial e da classificação foram confirmados na ancestralidade da `main`.
 
 ### Pasta original preservada
@@ -55,7 +58,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 |---|---|---|
 | Pasta original | antiga e com trabalho local | preservar |
 | `origin/main` | consolidada em `c0106d3` | base da continuidade |
-| Branch de docs | alterações apenas na worktree limpa | revisar/versionar |
+| Branch de continuidade | versionada, enviada e no PR rascunho #42 | aguardar checks/revisão |
 | Produção | não auditada nesta tarefa | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -245,7 +248,7 @@ O banco e a RPC atuais liberam o candidato. A falha comprovada está no gate de 
 - `src/test/subscription-access.test.ts` cobre 14 casos de classificação;
 - `src/test/protected-route-access.test.tsx` cobre 5 fluxos do componente, inclusive Pix/manual e retry.
 
-Essa correção ainda não foi commitada, enviada ou implantada.
+Essa correção foi commitada inicialmente em `021065a`, enviada para `origin/codex/reconcile-main-docs` e aberta no PR rascunho #42. Ainda não foi integrada em `main`, sincronizada/publicada pelo Lovable nem implantada em produção.
 
 ## Estado externo ainda pendente
 
@@ -262,11 +265,13 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. revisar o diff completo da branch `codex/reconcile-main-docs`;
-2. versionar código, testes e documentação quando autorizado;
-3. publicar por deployment controlado com SHA exato e rollback;
-4. validar o acesso do cliente e a mensagem de erro após o deploy;
-5. continuar a auditoria comercial externa.
+1. acompanhar os checks do PR rascunho #42 e corrigir qualquer falha;
+2. revisar o diff e confirmar o SHA final da branch;
+3. integrar em `main` somente após checks verdes;
+4. confirmar a sincronização do commit no Lovable antes de publicar;
+5. publicar por deployment controlado com SHA exato e rollback;
+6. validar o acesso do cliente e a mensagem de erro após o deploy;
+7. continuar a auditoria comercial externa.
 
 ## Checklist de manutenção
 

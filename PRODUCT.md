@@ -216,7 +216,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 
 ### Agora — prontidão e confiabilidade
 
-- revisar, versionar e implantar de forma controlada a correção do gate Pix/manual;
+- concluir os checks e a revisão do PR rascunho #42 e implantar de forma controlada a correção do gate Pix/manual;
 - validar o acesso do cliente após o frontend atualizado;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;

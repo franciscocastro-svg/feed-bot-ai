@@ -54,11 +54,13 @@
 - [x] Separar falha técnica, checkout, verificação, aprovação, expiração e bloqueio na UI.
 - [x] Adicionar 19 testes de regressão de acesso; suíte principal passou com 538 testes.
 - [x] Executar novamente o CI completo, incluindo deploy, reconciliação, MCP e build.
+- [x] Versionar a correção e os cinco documentos no commit inicial `021065a`.
+- [x] Enviar `codex/reconcile-main-docs` ao GitHub e abrir o PR rascunho #42.
 
 ## Em desenvolvimento
 
-- [ ] **Integração documental:** revisar o diff com o usuário e versionar os cinco documentos reconciliados sobre `c0106d3`.
-- [ ] **Acesso Pix/manual:** correção concluída localmente; falta versionar, implantar e validar com o cliente.
+- [ ] **Integração documental:** acompanhar os checks e revisar o PR rascunho #42 antes do merge em `main`.
+- [ ] **Acesso Pix/manual:** correção versionada e enviada; falta integrar, implantar e validar com o cliente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
@@ -84,7 +86,8 @@
 - [x] Adicionar testes de regressão para acesso manual válido e motivos de bloqueio.
 - [x] Rodar CI completo, secret scan e build.
 - [x] Atualizar os cinco documentos.
-- [ ] Revisar e versionar a correção.
+- [ ] Confirmar checks verdes e revisar o PR rascunho #42.
+- [ ] Integrar o PR em `main` com o SHA aprovado.
 - [ ] Implantar o frontend com SHA aprovado e rollback.
 - [ ] Validar o acesso do cliente após o deploy.
 
@@ -150,7 +153,7 @@
 
 - [ ] **Correção Pix/manual ainda não implantada:** a branch corrige a mensagem genérica e o bypass indevido, mas produção permanece no SHA anterior até deployment autorizado.
 - [ ] **Estado externo não confirmado:** merge em `c0106d3` não comprova deploy, migrations, preços ou estado de produção.
-- [ ] **Documentação ainda não integrada:** estes documentos estão na branch de reconciliação e precisam ser revisados/versionados.
+- [ ] **Documentação ainda não integrada:** estes documentos foram versionados e enviados no PR rascunho #42, mas ainda não estão na `main`.
 
 ### Médios
 
