@@ -102,7 +102,7 @@ Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somen
 
 ### Piloto Editorial Inteligente — Fase 2A
 
-Implementado na branch `codex/editorial-pilot-phase-2a` e enviado ao PR rascunho #51; ainda não integrado nem implantado:
+Integrado na `main` pelo PR #51/merge `ad39d3e`; ainda não implantado:
 
 - a ação de análise usa o nicho do Perfil do Criador para pesquisar fontes reais;
 - feeds RSS e monitoramentos temáticos são validados por conteúdo recente e relevância;

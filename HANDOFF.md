@@ -24,9 +24,10 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Branch funcional: `codex/fix-agency-billing-plan-labels`; commit `ec685d8`; integrada pelo PR #49.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
-- Branch atual: `codex/editorial-pilot-phase-2a`, criada a partir de `origin/main` em `b79c07c`, com commit funcional `ec58f75` e head documental `ad3411a` enviados ao remoto.
-- PR rascunho [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51), direcionado para `main`.
-- Check remoto `Validate application` aprovado para `ad3411a` em 2026-08-01; revalidar qualquer commit posterior antes do merge.
+- Branch funcional `codex/editorial-pilot-phase-2a`, commit funcional `ec58f75` e head final `401d849`.
+- PR [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51) integrado na `main` pelo merge `ad39d3e04f416a913c8d559ebedc9c3707834d0d`.
+- Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
+- Branch documental atual: `codex/record-editorial-pilot-merge`, criada a partir do merge `ad39d3e`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
 - Registro pós-release: commit `e7fe5eb`, integrado pelo PR #46 no merge documental `a36efda`.
 - Commits posteriores que alterem somente estes documentos podem avançar o SHA da `main` sem mudar o release funcional `6b362bf`.
@@ -71,7 +72,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
-| Piloto Editorial 2A | implementado somente na branch local | não aplicar migration nem publicar sem concluir os gates |
+| Piloto Editorial 2A | integrado na `main` em `ad39d3e` | não aplicar migration nem publicar sem autorização de implantação |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -211,7 +212,7 @@ Catálogo Stripe live e estado real das assinaturas não foram consultados.
 - nenhuma escrita em fonte, pauta, configuração, fila ou publicação;
 - flag `false` no exemplo e `true` no ambiente de desenvolvimento rastreado.
 
-#### Fase 2A implementada localmente
+#### Fase 2A integrada, ainda não implantada
 
 Arquivos principais:
 
@@ -243,7 +244,7 @@ Validações executadas até aqui:
 
 Estado externo: migration, Edge Function, frontend e flag ainda não foram implantados.
 
-Publicação GitHub: autenticação confirmada, commit funcional `ec58f75` enviado e PR rascunho #51 aberto. A integração GitHub do aplicativo retornou 403 para criação do PR; o fallback autenticado pelo `gh` concluiu a operação.
+Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
 Commits relevantes:
 
@@ -395,10 +396,10 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. revisar o PR rascunho #51 e confirmar o check do head atual;
-3. obter aprovação antes de integrar em `main`;
-4. após aprovação, aplicar `20260801170000` e publicar `discover-rss` antes do frontend;
-5. executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
+2. integrar o registro documental pós-merge;
+3. obter autorização explícita de implantação;
+4. aplicar `20260801170000` e publicar `discover-rss` antes do frontend;
+5. publicar o frontend e executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
 6. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.
 
 ## Checklist de manutenção
