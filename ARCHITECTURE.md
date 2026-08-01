@@ -234,9 +234,11 @@ A correção implantada está em `20260801185731_1bf2df3e-ee4b-42a8-80ca-548153f
 
 A validação externa confirmou 59 fontes com fingerprint preenchido, nova publicação de `discover-rss` e rejeição anônima HTTP 401. A Lovable criou o merge automático `3512454`, com a migration no timestamp efetivamente registrado e os tipos da RPC regenerados. A cópia anterior `20260801183000` não representa uma segunda mudança de schema e foi removida na reconciliação para impedir dupla aplicação em ambientes futuros.
 
-O smoke seguinte encontrou uma segunda incompatibilidade na própria RPC: `source_id` era simultaneamente uma variável PL/pgSQL e uma coluna do alvo `ON CONFLICT`, produzindo SQLSTATE `42702`. `20260801193000_fix_editorial_pilot_source_link_conflict.sql` recria somente a função, usa `v_source_id`, referencia `news_source_instagram_accounts_pkey` por nome e usa `GET DIAGNOSTICS ... ROW_COUNT` para contar apenas vínculos realmente inseridos. A transação continua atômica e o replay continua protegido pelo ledger.
+O smoke seguinte encontrou uma segunda incompatibilidade na própria RPC: `source_id` era simultaneamente uma variável PL/pgSQL e uma coluna do alvo `ON CONFLICT`, produzindo SQLSTATE `42702`. `20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql`, versão registrada pela plataforma, recria somente a função, usa `v_source_id`, referencia `news_source_instagram_accounts_pkey` por nome e usa `GET DIAGNOSTICS ... ROW_COUNT` para contar apenas vínculos realmente inseridos. A transação continua atômica e o replay continua protegido pelo ledger.
 
 Validação local da correção `42702`: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP e build de produção aprovados.
+
+Validação externa posterior: a aplicação criou 1 ledger, resolveu e vinculou as 7 fontes selecionadas e criou as 4 pautas previstas. O resultado transacional registrou 4 fontes novas, 4 vínculos novos, 4 pautas novas e zero pautas ignoradas; nenhuma publicação foi criada. O replay efetivo pela interface permanece como último smoke antes do rollout.
 
 Validação da branch corretiva: 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, typecheck, lints, gates de migrations/MCP, build de produção e check remoto `Validate application` aprovados.
 
@@ -262,7 +264,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A branch corretiva contém 182 migrations versionadas; a `main` possui 181. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000` e compatibilidade `20260801185731` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A correção `20260801193000` permanece somente no Git até autorização; ela não altera tabelas nem dados, apenas recria a RPC. Domínios representativos:
+A `main` contém 182 migrations versionadas. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A última não alterou tabelas nem dados; apenas recriou a RPC. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

@@ -35,8 +35,10 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - A Lovable aplicou a compatibilidade no Supabase sob a versão real `20260801185731`, verificou coluna, função e trigger, completou o backfill de 59 fontes sem fingerprints vazios e republicou somente `discover-rss` em 2026-08-01 18:58 UTC. O teste anônimo permaneceu em HTTP 401 e o preview está pronto para o smoke autenticado; o frontend de produção não foi publicado.
 - A operação criou automaticamente o merge `3512454` na `main`, adicionando o arquivo de migration com o timestamp da plataforma e a assinatura gerada da RPC nos tipos. A branch de reconciliação mantém somente a migration registrada `20260801185731`, eliminando a cópia idêntica não registrada `20260801183000`.
 - O PR #54 reconciliou essa duplicação no merge `47a6652`. No segundo smoke autenticado, a descoberta e a mensagem segura funcionaram, mas a RPC abortou novamente com SQLSTATE `42702`: a variável PL/pgSQL `source_id` ficou ambígua na cláusula `ON CONFLICT (source_id, instagram_account_id)`. O rollback foi integral e as contagens de aplicações, fontes e pautas do Piloto permaneceram em zero.
-- A correção mínima está na migration append-only `20260801193000_fix_editorial_pilot_source_link_conflict.sql`: renomeia a variável para `v_source_id`, referencia explicitamente a PK `news_source_instagram_accounts_pkey` e contabiliza vínculos pelo `ROW_COUNT`. Não exige nova publicação de Edge ou frontend.
+- A correção mínima foi integrada pelo PR #55 no merge `d0dc3da` e registrada pela Lovable como `20260801194149_7a4ced9b-6085-4bb9-abdf-dd20361654dc.sql`: renomeia a variável para `v_source_id`, referencia explicitamente a PK `news_source_instagram_accounts_pkey` e contabiliza vínculos pelo `ROW_COUNT`. Não exigiu nova publicação de Edge ou frontend.
 - O CI completo dessa correção passou: secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, gates de migrations/MCP e build Vite.
+- O terceiro smoke autenticado passou em 2026-08-01: a proposta selecionou 7 fontes e 4 pautas; o resultado criou 4 fontes novas, 4 vínculos novos e 4 pautas, sem publicação. A verificação somente leitura confirmou 1 ledger, todas as 7 fontes resolvidas/vinculadas e as 4 pautas presentes, sem duplicação.
+- A operação Lovable substituiu o nome da migration e ajustou somente o caminho do teste, criando o merge automático final `2b65b49` na `main`; o SQL permaneceu equivalente e 18/18 testes direcionados passaram.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -197,4 +199,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Integrar a correção SQLSTATE `42702`, aplicar somente `20260801193000_fix_editorial_pilot_source_link_conflict.sql` e repetir o smoke autenticado no mesmo preview: confirmação, replay idempotente e isolamento da conta. Edge e frontend não precisam ser republicados; produção/flag continuam pendentes do smoke.
+Executar uma vez o replay da mesma proposta para confirmar a mensagem idempotente e as contagens inalteradas. Depois decidir a publicação do frontend de produção e a ativação da flag; a aplicação principal, o isolamento e a ausência de publicação automática já foram validados.

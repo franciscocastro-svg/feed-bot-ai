@@ -117,14 +117,14 @@ O deploy da função gerou automaticamente o commit `e290ac0` na `main`, restrit
 
 O primeiro teste autenticado da confirmação não persistiu dados porque o banco publicado não possuía a infraestrutura histórica de fingerprint esperada pela RPC. A correção do PR #53 adicionou essa compatibilidade, apresenta uma mensagem específica de falha de aplicação e melhora a descoberta de entretenimento: Quem e Metrópoles usam endpoints oficiais verificados, o fallback UOL Splash 404 foi removido e títulos de artistas, TV, música e relacionamentos deixam de ser falsamente rejeitados. CI local/remoto, migration e nova versão da Edge estão concluídos; o preview aguarda o smoke autenticado e o frontend de produção permanece sem publicação.
 
-O segundo smoke chegou mais longe e revelou SQLSTATE `42702` no vínculo fonte–Instagram: a variável PL/pgSQL `source_id` colidia com a coluna homônima no alvo do `ON CONFLICT`. Nenhum item foi gravado. A migration corretiva renomeia a variável, usa a PK explícita e mede o vínculo inserido por `ROW_COUNT`; o CI completo está verde. Como o defeito está somente na RPC, Edge e frontend já publicados no preview permanecem válidos.
+O segundo smoke chegou mais longe e revelou SQLSTATE `42702` no vínculo fonte–Instagram: a variável PL/pgSQL `source_id` colidia com a coluna homônima no alvo do `ON CONFLICT`. Nenhum item foi gravado. A migration corretiva renomeou a variável, usa a PK explícita e mede o vínculo inserido por `ROW_COUNT`; o CI completo ficou verde. O smoke seguinte aplicou o plano com segurança: 7 fontes resolvidas e vinculadas, 4 pautas criadas e 1 ledger, sem publicação automática. Edge e frontend não precisaram ser republicados.
 
 ## Funcionalidades planejadas
 
 ### Piloto Editorial — Fase 2
 
 1. concluir a edição manual da proposta antes da aplicação;
-2. aplicar a correção da RPC e repetir o smoke autenticado de seleção, resumo, aplicação e replay no preview;
+2. confirmar o replay idempotente da proposta já aplicada e decidir o rollout do frontend;
 3. adicionar uma ação explícita de desfazer uma aplicação;
 4. permitir aplicar preferências de cadência separadamente;
 5. registrar métricas de qualidade por conta.
