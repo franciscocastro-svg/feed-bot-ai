@@ -2282,6 +2282,10 @@ export type Database = {
           last_stripe_event_at: string | null
           last_stripe_event_id: string | null
           last_stripe_event_type: string | null
+          manual_amount_paid_brl: number | null
+          manual_payment_method: string | null
+          manual_payment_recorded_at: string | null
+          manual_payment_recorded_by: string | null
           notes: string | null
           past_due_since: string | null
           payment_email_verified_at: string | null
@@ -2314,6 +2318,10 @@ export type Database = {
           last_stripe_event_at?: string | null
           last_stripe_event_id?: string | null
           last_stripe_event_type?: string | null
+          manual_amount_paid_brl?: number | null
+          manual_payment_method?: string | null
+          manual_payment_recorded_at?: string | null
+          manual_payment_recorded_by?: string | null
           notes?: string | null
           past_due_since?: string | null
           payment_email_verified_at?: string | null
@@ -2346,6 +2354,10 @@ export type Database = {
           last_stripe_event_at?: string | null
           last_stripe_event_id?: string | null
           last_stripe_event_type?: string | null
+          manual_amount_paid_brl?: number | null
+          manual_payment_method?: string | null
+          manual_payment_recorded_at?: string | null
+          manual_payment_recorded_by?: string | null
           notes?: string | null
           past_due_since?: string | null
           payment_email_verified_at?: string | null
@@ -2898,6 +2910,44 @@ export type Database = {
           sub_status: string
           user_id: string
         }[]
+      }
+      admin_subscription_overview: {
+        Args: never
+        Returns: {
+          amount_paid_brl: number | null
+          approval_status: string
+          auto_approve: boolean
+          created_at: string
+          display_name: string | null
+          email: string
+          expires_at: string | null
+          has_live_subscription: boolean
+          has_sandbox_subscription: boolean
+          ig_accounts: number
+          ig_token_expires: string | null
+          last_activity: string | null
+          news_pending: number
+          payment_method: string | null
+          plan: string
+          posts_failed: number
+          posts_published: number
+          posts_scheduled: number
+          sources_active: number
+          sub_status: string
+          subscription_environment: string
+          subscription_id: string | null
+          user_id: string
+        }[]
+      }
+      admin_upsert_pix_subscription: {
+        Args: {
+          _amount_paid_brl: number
+          _duration_months?: number
+          _notes?: string
+          _plan: string
+          _user_id: string
+        }
+        Returns: Json
       }
       apply_stripe_subscription_event: {
         Args: {

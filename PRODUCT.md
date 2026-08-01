@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** para o release funcional `78379d9` e sua documentação pós-publicação.
+Atualizado em **2026-08-01** para o release publicado `78379d9` e o candidato administrativo Pix live baseado em `a6c0883`.
 
 ## Visão de produto
 
@@ -81,6 +81,8 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - Billing Portal e proteção contra assinatura duplicada;
 - webhooks, reconciliação e separação sandbox/live;
 - assinatura manual/Pix compatível com acesso sem cartão;
+- no candidato atual, ação financeira explícita para escolher plano, registrar valor e liberar/renovar exatamente um mês em `live`;
+- visão administrativa que distingue `live`, Stripe, Pix e cadastro existente somente em `sandbox`;
 - gate de acesso fail-closed com mensagens distintas para checkout, e-mail, aprovação, expiração, bloqueio e indisponibilidade técnica;
 - limites e preços-base armazenados no banco.
 
@@ -162,7 +164,10 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - Agência usa contato comercial, sem checkout automático;
 - checkout reutiliza customer e bloqueia duplicidade em estados cobrados;
 - Pix/manual pode liberar acesso sem customer Stripe;
-- acesso manual exige ambiente, plano, status, aprovação, verificação, vigência e ausência de bloqueio/reembolso;
+- toda confirmação manual/Pix feita pela área administrativa é de produção (`live`), registra plano, valor, data e administrador e vale um mês;
+- renovar um Pix ainda vigente acrescenta um mês ao vencimento atual; uma assinatura vencida recebe um mês a partir da confirmação;
+- Pix nunca sobrescreve uma assinatura Stripe `live`; conflitos devem parar de forma segura;
+- acesso manual exige plano pago, status ativo, aprovação, verificação, vigência e ausência de bloqueio/reembolso;
 - sandbox e live nunca se misturam;
 - UI usa somente chave publicável; secrets ficam no backend;
 - mudanças de preço não alteram assinaturas existentes sem autorização.
@@ -178,6 +183,15 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 5. RPC calcula o acesso;
 6. conexão de contas Instagram;
 7. configuração do Perfil de Criador.
+
+### Cliente pago via Pix
+
+1. o financeiro localiza o cliente na área administrativa;
+2. seleciona o plano comprado e registra o valor recebido;
+3. confirma a operação, sempre marcada como `LIVE` e `PIX`;
+4. a RPC cria ou renova a assinatura por um mês, sem cartão e sem IDs Stripe;
+5. o gate recalcula o acesso usando o ambiente `live`;
+6. no mês seguinte, uma nova confirmação Pix acrescenta a próxima competência.
 
 ### Conteúdo por notícia
 
@@ -216,8 +230,9 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 
 ### Agora — prontidão e confiabilidade
 
-- validar com o cliente a correção do gate Pix/manual publicada no frontend no SHA `78379d9`;
-- validar o acesso do cliente após o frontend atualizado;
+- integrar e publicar o fluxo administrativo Pix live;
+- aplicar a migration de origem/valor do pagamento manual;
+- migrar a liberação do cliente afetado de sandbox para live e validar o acesso;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter o Piloto restrito a preview até aprovação de rollout.

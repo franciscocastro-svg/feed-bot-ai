@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Código funcional e frontend confirmados em `78379d9`; commits posteriores desta continuidade são somente documentais.
+Última atualização: **2026-08-01**. Frontend publicado confirmado em `78379d9`; `origin/main` auditada em `a6c0883`; correção Pix live validada localmente e ainda pendente de implantação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -49,7 +49,7 @@
 - [x] Revisar whitespace e executar secret scan final em 653 arquivos de texto.
 - [x] Auditar o candidato Pix/manual por consultas agregadas, somente leitura e sem PII.
 - [x] Confirmar a RPC implantada e suas permissões.
-- [x] Confirmar `has_access=true` para o candidato nos ambientes `live` e `sandbox`.
+- [x] Registrar a auditoria inicial do PR #42; a auditoria mais recente abaixo substitui sua conclusão sobre o cliente atual.
 - [x] Corrigir o gate do frontend para depender somente de `has_access=true` ou admin.
 - [x] Separar falha técnica, checkout, verificação, aprovação, expiração e bloqueio na UI.
 - [x] Adicionar 19 testes de regressão de acesso; suíte principal passou com 538 testes.
@@ -64,13 +64,33 @@
 
 ## Em desenvolvimento
 
-- [ ] **Acesso Pix/manual:** correção integrada e publicada; falta validar a sessão autenticada do cliente.
+- [ ] **Pix administrativo live:** código e CI concluídos; faltam PR/merge, migration, liberação live do cliente e teste autenticado.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
 ## Próximas tarefas
 
 ### P0 — acesso Pix/manual
+
+- [x] Reproduzir o incidente atual sem registrar PII: cliente com assinatura somente `sandbox`.
+- [x] Confirmar `compute_subscription_access(..., 'live') = no_subscription` e acesso válido apenas em sandbox.
+- [x] Identificar o fallback de `admin_overview()` que apresentava sandbox como se fosse a assinatura principal.
+- [x] Criar migration com origem Pix, valor recebido, data e administrador responsável.
+- [x] Criar `admin_subscription_overview()` sem fallback sandbox→live.
+- [x] Criar `admin_upsert_pix_subscription()` com plano, valor e duração fixa de um mês.
+- [x] Garantir que o fluxo Pix grave somente `live` e nunca sobrescreva Stripe.
+- [x] Adicionar diálogo administrativo com badges `LIVE`/`PIX`, plano, valor e notas.
+- [x] Adicionar 6 testes de contrato do fluxo e atualizar regressão dual-environment.
+- [x] Executar `npm run ci`: 544 testes principais, 33 de deploy e 15 de reconciliação aprovados; build verde.
+- [x] Atualizar os cinco documentos antes da publicação.
+- [ ] Abrir PR, obter checks verdes e integrar em `main`.
+- [ ] Aplicar `20260801134000_manual_pix_live_subscriptions.sql` no Supabase correto.
+- [ ] Registrar o cliente afetado como Creator/`starter`, com o valor confirmado, em `live` por um mês.
+- [ ] Confirmar `has_access=true`, motivo `active` e plano efetivo em `live`.
+- [ ] Publicar o frontend Lovable sincronizado com o merge.
+- [ ] Pedir novo teste autenticado ao cliente.
+
+### Histórico do gate de acesso — PR #42
 
 - [x] Identificar o candidato somente por critérios internos, sem registrar PII.
 - [x] Auditar `compute_subscription_access` em `live` e `sandbox`.
@@ -93,7 +113,7 @@
 - [x] Confirmar checks verdes e revisar o PR #42.
 - [x] Integrar o PR em `main` com o SHA aprovado `78379d9`.
 - [x] Implantar o frontend pelo Lovable com o SHA aprovado.
-- [ ] Validar o acesso do cliente após o deploy.
+- [x] Validar que o frontend não exige cartão quando a RPC retorna acesso manual válido.
 
 ### P0 — auditoria comercial externa
 
@@ -155,7 +175,7 @@
 
 ### Críticos/altos
 
-- [x] **Correção Pix/manual implantada:** frontend publicado no SHA `78379d9`; falta a validação autenticada do cliente.
+- [ ] **Liberação Pix no ambiente errado:** causa confirmada; o cliente atual estava apenas em sandbox. Correção definitiva implementada localmente e pendente de implantação.
 - [ ] **Estado externo parcialmente confirmado:** o código funcional e o frontend estão em `78379d9`, mas isso não comprova migrations, preços, Edge Functions, Meta ou VPS.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
