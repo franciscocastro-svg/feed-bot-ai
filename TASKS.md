@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Frontend publicado confirmado em `78379d9`; `origin/main` auditada em `a6c0883`; correção Pix live validada localmente e ainda pendente de implantação.
+Última atualização: **2026-08-01**. Fluxo Pix live integrado e publicado em `6b362bf`; migration e liberação live do cliente confirmadas.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -64,7 +64,7 @@
 
 ## Em desenvolvimento
 
-- [ ] **Pix administrativo live:** código e CI concluídos; faltam PR/merge, migration, liberação live do cliente e teste autenticado.
+- [ ] **Pix administrativo live:** implementação e implantação concluídas; falta somente o novo teste autenticado do cliente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
@@ -83,11 +83,11 @@
 - [x] Adicionar 6 testes de contrato do fluxo e atualizar regressão dual-environment.
 - [x] Executar `npm run ci`: 544 testes principais, 33 de deploy e 15 de reconciliação aprovados; build verde.
 - [x] Atualizar os cinco documentos antes da publicação.
-- [ ] Abrir PR, obter checks verdes e integrar em `main`.
-- [ ] Aplicar `20260801134000_manual_pix_live_subscriptions.sql` no Supabase correto.
-- [ ] Registrar o cliente afetado como Creator/`starter`, com o valor confirmado, em `live` por um mês.
-- [ ] Confirmar `has_access=true`, motivo `active` e plano efetivo em `live`.
-- [ ] Publicar o frontend Lovable sincronizado com o merge.
+- [x] Abrir PR #45, obter checks verdes e integrar em `main` no merge `6b362bf`.
+- [x] Aplicar e registrar `20260801134000_manual_pix_live_subscriptions.sql` no Supabase correto.
+- [x] Registrar o cliente afetado como Creator/`starter`, R$ 97,97, em `live` por um mês.
+- [x] Confirmar `has_access=true`, motivo `active` e plano efetivo em `live`.
+- [x] Publicar o frontend Lovable sincronizado com `6b362bf`.
 - [ ] Pedir novo teste autenticado ao cliente.
 
 ### Histórico do gate de acesso — PR #42
@@ -175,7 +175,7 @@
 
 ### Críticos/altos
 
-- [ ] **Liberação Pix no ambiente errado:** causa confirmada; o cliente atual estava apenas em sandbox. Correção definitiva implementada localmente e pendente de implantação.
+- [x] **Liberação Pix no ambiente errado:** causa confirmada e corrigida; migration, assinatura live e frontend foram publicados.
 - [ ] **Estado externo parcialmente confirmado:** o código funcional e o frontend estão em `78379d9`, mas isso não comprova migrations, preços, Edge Functions, Meta ou VPS.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 

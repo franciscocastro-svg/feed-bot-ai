@@ -6,20 +6,21 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 ## Estado confirmado desta árvore
 
-Documentação reconciliada em **2026-08-01** com a `origin/main`, o frontend publicado e o candidato de correção Pix live.
+Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o frontend Pix live publicados.
 
-- Release funcional publicada confirmada: `78379d9`, merge do PR [#42](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42); a `origin/main` auditada avançou até `a6c0883` com documentação pós-release.
-- Candidato atual: branch `codex/pix-live-manual-subscriptions`, criada sobre `a6c0883`, com o fluxo administrativo Pix sempre em `live`. Ainda precisa de merge, migration e publicação para virar estado externo.
+- Release funcional publicada confirmada: `6b362bf`, merge do PR [#45](https://github.com/franciscocastro-svg/feed-bot-ai/pull/45), com fluxo administrativo Pix sempre em `live`.
 - O PR #42 integrou a correção Pix/manual, 19 testes de regressão e os cinco documentos reconciliados.
 - Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
-- Validação atual do candidato: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 544 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
-- Frontend publicado confirmado para o código funcional de `78379d9`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). O Lovable sincronizou também os commits documentais posteriores, sem mudança no app. Migrations, Edge Functions, Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
+- Validação do release: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 544 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
+- O Lovable sincronizou e publicou `6b362bf`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). O bundle público contém a nova ação Pix.
+- A migration `20260801134000` foi aplicada e registrada no histórico do Supabase. O cliente afetado recebeu assinatura Creator/`starter` Pix em `live`, válida por um mês, e a RPC confirmou `has_access=true`, motivo `active`.
+- Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
 Use estas etiquetas na documentação:
 
-- **Confirmado na `main`:** código funcional publicado até `78379d9`; documentação pós-release integrada até `a6c0883`.
-- **Candidato validado localmente:** branch Pix live com CI completo verde, ainda não implantada.
+- **Confirmado na `main`:** código funcional Pix live integrado em `6b362bf`.
+- **Confirmado externamente:** migration, liberação do cliente e publicação Lovable executadas em 2026-08-01.
 - **Confirmado por teste local:** reproduzido na worktree limpa.
 - **Revalidar externamente:** depende de GitHub Actions, Supabase, Stripe, Meta, Lovable ou VPS.
 
@@ -173,4 +174,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A auditoria mais recente reproduziu o problema real: o cliente afetado possuía somente uma assinatura `sandbox`; em `live`, `compute_subscription_access` retornava `no_subscription`. O admin antigo ocultava essa diferença ao usar sandbox como fallback visual. O próximo passo exato é integrar o candidato Pix live, aplicar a migration, registrar o pagamento do cliente como `starter` em `live` por um mês e confirmar `has_access=true` antes do novo teste autenticado.
+A causa foi corrigida: a liberação antiga existia somente em `sandbox`; agora há uma assinatura Pix Creator/`starter` em `live`, válida até **01/09/2026**, e a RPC de produção retorna acesso ativo. O próximo passo exato é o cliente sair da conta, entrar novamente e confirmar o dashboard. Novas vendas Pix devem ser registradas pelo botão **PIX** da área administrativa, sempre informando plano e valor.
