@@ -24,7 +24,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Branch funcional: `codex/fix-agency-billing-plan-labels`; commit `ec685d8`; integrada pelo PR #49.
 - Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
-- Branch local atual: `codex/editorial-pilot-phase-2a`, criada a partir de `origin/main` em `b79c07c`; contém implementação validada, ainda não integrada/publicada.
+- Branch atual: `codex/editorial-pilot-phase-2a`, criada a partir de `origin/main` em `b79c07c`, enviada ao remoto com o commit funcional `ec58f75`.
+- PR rascunho [#51 — Add real source discovery to the editorial pilot](https://github.com/franciscocastro-svg/feed-bot-ai/pull/51), direcionado para `main`.
 - Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
 - Registro pós-release: commit `e7fe5eb`, integrado pelo PR #46 no merge documental `a36efda`.
 - Commits posteriores que alterem somente estes documentos podem avançar o SHA da `main` sem mudar o release funcional `6b362bf`.
@@ -241,7 +242,7 @@ Validações executadas até aqui:
 
 Estado externo: migration, Edge Function, frontend e flag ainda não foram implantados.
 
-Publicação GitHub: autenticação da conta `franciscocastro-svg` confirmada pelo chaveiro do sistema; branch pronta para staging, commit, push e PR.
+Publicação GitHub: autenticação confirmada, commit funcional `ec58f75` enviado e PR rascunho #51 aberto. A integração GitHub do aplicativo retornou 403 para criação do PR; o fallback autenticado pelo `gh` concluiu a operação.
 
 Commits relevantes:
 
@@ -393,8 +394,8 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. revisar o diff, versionar e enviar `codex/editorial-pilot-phase-2a` para revisão no GitHub;
-3. aguardar os checks remotos e a aprovação do PR;
+2. aguardar os checks remotos e revisar o PR rascunho #51;
+3. obter aprovação antes de integrar em `main`;
 4. após aprovação, aplicar `20260801170000` e publicar `discover-rss` antes do frontend;
 5. executar smoke autenticado com uma conta de teste, confirmando descoberta, seleção, replay e isolamento;
 6. somente depois decidir se `VITE_FEATURE_EDITORIAL_PILOT_PREVIEW` será habilitada em produção.

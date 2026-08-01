@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A implementado localmente na branch `codex/editorial-pilot-phase-2a`, ainda sem integração ou deploy.
+Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A enviado ao PR rascunho #51, ainda sem integração ou deploy.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -27,7 +27,7 @@
 - [x] Piloto Editorial Fase 1 em preview local sem escrita.
 - [x] Classificação de fofoca, Direito, Saúde e Finanças com teste para “brasileiras”.
 
-### Concluído nesta branch — ainda não publicado
+### Concluído no PR rascunho #51 — ainda não integrado/implantado
 
 - [x] Auditar integralmente Perfil do Criador, Piloto Editorial e descoberta de fontes.
 - [x] Conectar o Piloto à descoberta real de RSS e monitoramento temático em modo sem escrita.
@@ -213,7 +213,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Fase 2A ainda local:** a nova migration, `discover-rss` e o frontend não foram implantados; a flag continua desligada por padrão.
+- [ ] **Fase 2A ainda não implantada:** PR rascunho #51 aberto; migration, `discover-rss` e frontend não foram publicados; a flag continua desligada por padrão.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios

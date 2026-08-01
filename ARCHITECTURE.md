@@ -248,7 +248,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A árvore da branch contém 180 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A migration local `20260801170000_editorial_pilot_phase_2a.sql` ainda precisa ser integrada e aplicada. Domínios representativos:
+A árvore do PR rascunho #51 contém 180 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A migration `20260801170000_editorial_pilot_phase_2a.sql` ainda precisa ser integrada e aplicada. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|
