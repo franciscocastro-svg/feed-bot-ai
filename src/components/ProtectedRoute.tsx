@@ -1,35 +1,38 @@
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, MailCheck, XCircle, CreditCard, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock3, CreditCard, Loader2, MailCheck, ShieldCheck, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { resolveSubscriptionAccessView } from "@/lib/subscriptionAccess";
 
 type SubscriptionAccess = {
   has_access: boolean;
   effective_plan: string;
-  status: string;
-  approval_status: string;
-  reason: string;
+  status: string | null;
+  approval_status: string | null;
+  reason: string | null;
   subscription_id: string | null;
 } | null;
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  const [approval, setApproval] = useState<"loading" | "approved" | "pending" | "rejected">("loading");
+  const [accessState, setAccessState] = useState<"loading" | "loaded" | "error">("loading");
   const [subscription, setSubscription] = useState<SubscriptionAccess>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const { signOut } = useAuth();
 
   useEffect(() => {
     if (!user) {
-      setApproval("loading");
+      setAccessState("loading");
       setSubscription(null);
       setIsAdmin(false);
       return;
     }
     let cancelled = false;
+    setAccessState("loading");
 
     (async () => {
       try {
@@ -38,9 +41,11 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         if (cancelled) return;
         if (roleData) {
           setIsAdmin(true);
-          setApproval("approved");
+          setSubscription(null);
+          setAccessState("loaded");
           return;
         }
+        setIsAdmin(false);
 
         const environment = getStripeEnvironment();
         const { data: subscriptionData, error: subscriptionError } = await supabase.rpc(
@@ -51,28 +56,44 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         if (subscriptionError) throw subscriptionError;
 
         const access = subscriptionData?.[0] || null;
-        const status = access?.approval_status || "pending_payment";
-        setApproval(
-          status === "approved" ? "approved" :
-          status === "rejected" || status === "blocked" ? "rejected" : "pending"
-        );
         setSubscription(access);
+        setAccessState("loaded");
       } catch {
         if (cancelled) return;
-        // Never leave a signed-in customer trapped behind an endless loader.
-        setApproval("pending");
+        // Fail closed without misrepresenting an availability error as a card requirement.
         setSubscription(null);
+        setAccessState("error");
       }
     })();
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [retryKey, user]);
 
-  if (loading || (user && approval === "loading"))
+  if (loading || (user && accessState === "loading"))
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
 
-  if (approval === "rejected") {
+  if (accessState === "error") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md text-center space-y-4">
+          <AlertTriangle className="h-16 w-16 text-amber-500 mx-auto" />
+          <h1 className="text-2xl font-bold">Não foi possível verificar seu acesso</h1>
+          <p className="text-muted-foreground">
+            A consulta da assinatura está temporariamente indisponível. Nenhuma cobrança ou alteração foi realizada.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button onClick={() => setRetryKey((current) => current + 1)}>Tentar novamente</Button>
+            <Button variant="outline" onClick={() => signOut()}>Sair</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const accessView = resolveSubscriptionAccessView(subscription, isAdmin);
+
+  if (accessView === "denied") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="max-w-md text-center space-y-4">
@@ -88,15 +109,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  const hasCardBackedAccess =
-    isAdmin ||
-    (!!subscription &&
-      (subscription.has_access ||
-        (!!subscription.subscription_id &&
-          ["trialing", "active", "past_due"].includes(subscription.status) &&
-          ["email_not_verified", "pending_approval"].includes(subscription.reason))));
-
-  if (!hasCardBackedAccess) {
+  if (accessView === "checkout_required") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="max-w-lg text-center space-y-5">
@@ -127,7 +140,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  if (approval !== "approved") {
+  if (accessView === "verify_email") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="max-w-md text-center space-y-4">
@@ -148,5 +161,63 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  return <>{children}</>;
+  if (accessView === "pending_approval") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md text-center space-y-4">
+          <Clock3 className="h-16 w-16 text-primary mx-auto" />
+          <h1 className="text-2xl font-bold">Aguardando aprovação</h1>
+          <p className="text-muted-foreground">
+            Seu pagamento foi identificado e o acesso está aguardando a validação administrativa.
+          </p>
+          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <Button variant="outline" onClick={() => signOut()}>Sair</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessView === "expired" || accessView === "payment_issue") {
+    const expired = accessView === "expired";
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md text-center space-y-4">
+          <AlertTriangle className="h-16 w-16 text-amber-500 mx-auto" />
+          <h1 className="text-2xl font-bold">{expired ? "Sua assinatura expirou" : "Acesso à assinatura indisponível"}</h1>
+          <p className="text-muted-foreground">
+            {expired
+              ? "Revise seu plano para voltar a acessar o painel."
+              : "Sua assinatura precisa de atenção. Consulte o suporte antes de iniciar outro checkout."}
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button asChild><Link to="/pricing">Ver planos</Link></Button>
+            <Button variant="outline" asChild>
+              <a href="mailto:contato@fluxifeed.com?subject=Ajuda%20com%20acesso%20ao%20Flux%20%26%20Feed">Falar com suporte</a>
+            </Button>
+            <Button variant="ghost" onClick={() => signOut()}>Sair</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessView === "unavailable") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md text-center space-y-4">
+          <AlertTriangle className="h-16 w-16 text-amber-500 mx-auto" />
+          <h1 className="text-2xl font-bold">Não foi possível liberar seu acesso</h1>
+          <p className="text-muted-foreground">
+            O estado da assinatura precisa ser revisado. Nenhum cartão é exigido automaticamente por esta mensagem.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button onClick={() => setRetryKey((current) => current + 1)}>Verificar novamente</Button>
+            <Button variant="outline" onClick={() => signOut()}>Sair</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return accessView === "allowed" ? <>{children}</> : null;
 };
