@@ -64,7 +64,8 @@
 
 ## Em desenvolvimento
 
-- [ ] **Pix administrativo live:** implementação e implantação concluídas; falta somente o novo teste autenticado do cliente.
+- [x] **Pix administrativo live:** implementação, implantação e teste autenticado do cliente concluídos.
+- [ ] **Agência live:** corrigir resolvedor legado que escolhe Business sandbox e contabilizar o valor Pix no financeiro.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** manter restrito a preview até decisão explícita de rollout.
 
@@ -88,7 +89,20 @@
 - [x] Registrar o cliente afetado como Creator/`starter`, R$ 97,97, em `live` por um mês.
 - [x] Confirmar `has_access=true`, motivo `active` e plano efetivo em `live`.
 - [x] Publicar o frontend Lovable sincronizado com `6b362bf`.
-- [ ] Pedir novo teste autenticado ao cliente.
+- [x] Cliente confirmou novo teste autenticado com acesso ao dashboard.
+
+### P0 — plano Agência e financeiro Pix
+
+- [x] Confirmar assinatura Agência Pix ativa em `live`, sem Stripe, com valor manual registrado.
+- [x] Confirmar que `compute_subscription_access(..., 'live')` retorna plano efetivo `agency` e acesso ativo.
+- [x] Reproduzir `get_user_plan()` e `get_current_usage()` retornando Business por selecionar uma linha sandbox sem filtro determinístico.
+- [x] Reproduzir MRR Agência em R$ 0 apesar de existir valor Pix manual de R$ 1.500,00.
+- [x] Confirmar que Creator, Pro e Business continuam no checkout Stripe com cartão e Agência permanece comercial/Pix.
+- [ ] Criar migration que resolva plano/limites pelo entitlement `live` válido.
+- [ ] Fazer MRR, receita por plano e assinantes pagantes priorizarem `manual_amount_paid_brl` em pagamentos Pix.
+- [ ] Cobrir Agência live + Business sandbox e receita Pix negociável com testes de regressão.
+- [ ] Definir conversão segura Stripe→Pix para tentativas Stripe que já tenham IDs live; a RPC atual recusa sobrescrita.
+- [ ] Rodar CI, atualizar os cinco documentos, integrar e publicar após aprovação.
 
 ### Histórico do gate de acesso — PR #42
 
@@ -176,7 +190,9 @@
 ### Críticos/altos
 
 - [x] **Liberação Pix no ambiente errado:** causa confirmada e corrigida; migration, assinatura live e frontend foram publicados.
-- [ ] **Estado externo parcialmente confirmado:** o código funcional e o frontend estão em `78379d9`, mas isso não comprova migrations, preços, Edge Functions, Meta ou VPS.
+- [ ] **Agência degradada para Business nos limites:** bug real confirmado no resolvedor legado; gate de acesso continua Agência.
+- [ ] **Receita Agência zerada:** bug real confirmado no frontend financeiro; valor Pix existe no banco, mas não entra no MRR.
+- [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios

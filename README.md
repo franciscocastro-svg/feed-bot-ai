@@ -13,7 +13,7 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - Os PRs #30 a #41 e respectivos commits de quatro planos, Stripe, identidade, fontes, legendas, imagens e Piloto Editorial estão presentes na ancestralidade da `main`.
 - Validação do release: `npm run ci` aprovado com scanner de secrets, typecheck, lint por fases, 544 testes principais, 33 testes herméticos de deploy, 15 testes de reconciliação, worker, gates de migrations/MCP e build Vite.
 - O Lovable sincronizou e publicou `6b362bf`; [feed-bot-ai.lovable.app](https://feed-bot-ai.lovable.app) redireciona para [fluxifeed.com](https://fluxifeed.com). O bundle público contém a nova ação Pix.
-- A migration `20260801134000` foi aplicada e registrada no histórico do Supabase. O cliente afetado recebeu assinatura Creator/`starter` Pix em `live`, válida por um mês, e a RPC confirmou `has_access=true`, motivo `active`.
+- A migration `20260801134000` foi aplicada e registrada no histórico do Supabase. O cliente afetado recebeu assinatura Creator/`starter` Pix em `live`, válida por um mês, a RPC confirmou `has_access=true` e o cliente confirmou o acesso autenticado.
 - Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
@@ -174,4 +174,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-A causa foi corrigida: a liberação antiga existia somente em `sandbox`; agora há uma assinatura Pix Creator/`starter` em `live`, válida até **01/09/2026**, e a RPC de produção retorna acesso ativo. O próximo passo exato é o cliente sair da conta, entrar novamente e confirmar o dashboard. Novas vendas Pix devem ser registradas pelo botão **PIX** da área administrativa, sempre informando plano e valor.
+O cliente Pix confirmou que já consegue entrar. A auditoria seguinte identificou o próximo P0: uma assinatura Agência Pix `live` está ativa e registra o valor negociado, mas `get_user_plan()` ainda pode selecionar uma linha Business `sandbox`, fazendo limites e cartão de uso aparecerem como Business. O financeiro também calcula Agência pelo preço-base nulo e ignora o valor manual. O próximo passo exato é tornar a resolução de plano `live` determinística e fazer MRR/listagens usarem `manual_amount_paid_brl` para Pix.

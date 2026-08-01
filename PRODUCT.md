@@ -86,6 +86,8 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - gate de acesso fail-closed com mensagens distintas para checkout, e-mail, aprovação, expiração, bloqueio e indisponibilidade técnica;
 - limites e preços-base armazenados no banco.
 
+Lacuna confirmada em 2026-08-01: o gate de acesso reconhece Agência em `live`, mas o resolvedor legado de limites pode escolher Business `sandbox`; o MRR também ignora o valor negociado do Pix Agência. A correção está planejada e ainda não foi implementada.
+
 ### Piloto Editorial Inteligente — Fase 1
 
 - contrato estrito `editorial-pilot/v1`;
@@ -230,7 +232,9 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 
 ### Agora — prontidão e confiabilidade
 
-- validar com o cliente a sessão autenticada após a liberação Pix live;
+- [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
+- corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
+- contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter o Piloto restrito a preview até aprovação de rollout.

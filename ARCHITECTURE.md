@@ -198,6 +198,8 @@ Uma assinatura manual/Pix não exige cartão nem customer Stripe. `admin_upsert_
 
 `admin_subscription_overview` substitui o fallback ambíguo da listagem antiga. A visão usa somente a linha não terminal `live` como assinatura de produção e expõe separadamente se existe registro `sandbox`. A UI mostra badges `LIVE`, `PIX` ou `Stripe` e avisa “somente sandbox” sem conceder acesso real.
 
+Limitação confirmada ainda aberta: `get_user_plan()` e, por consequência, `get_user_plan_limits()`/`get_current_usage()`, usam uma busca legada sem filtro de ambiente e com `LIMIT 1` não determinístico. Um usuário com Agência Pix `live` e Business `sandbox` recebe acesso Agência no gate, mas limites e cartão de uso Business. O financeiro possui uma segunda divergência: MRR e “Valor/mês” usam apenas `plan_limits.price_brl`; como Agência é negociável e tem preço nulo, o valor de `manual_amount_paid_brl` não entra na receita.
+
 Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. A auditoria de 2026-08-01 mostrou que o cliente afetado tinha `has_access=true` apenas em sandbox e `no_subscription` em live, comprovando que a liberação anterior ocorreu no ambiente errado.
 
 ### Cortes de vídeo
@@ -301,6 +303,7 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 | Feature flag | ativação e rollback graduais |
 | Stripe lookup keys | desacoplar UI de IDs de preço |
 | Pix administrativo sempre `live` | impedir que uma liberação sandbox seja confundida com acesso real |
+| Valor Pix como fonte financeira | planos negociáveis devem usar o valor efetivamente registrado, não preço-base nulo |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 
