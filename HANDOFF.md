@@ -63,8 +63,8 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Código funcional em `main` | Pix live integrado em `6b362bf` | base do app publicado |
 | Branch do PR #42 | integrada em `main` | preservar histórico |
 | Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
-| Supabase | migration `20260801134000` aplicada; cliente liberado em live | aguardar teste autenticado |
-| Frontend Lovable | `6b362bf` sincronizado e publicado | aguardar teste autenticado |
+| Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
+| Frontend Lovable | `6b362bf` sincronizado e publicado | teste autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -271,7 +271,30 @@ Comportamento:
 - verificação de acesso: `has_access=true`, motivo `active`, ambiente `live`;
 - publicação Lovable: concluída no deployment `24ce3f57-4740-4012-b109-f2c575a60929`;
 - smoke do bundle: nova RPC e diálogo Pix presentes no artefato público;
-- teste autenticado do cliente: pendente.
+- teste autenticado do cliente: aprovado em 2026-08-01.
+
+## Bug P0 — Agência aparece/limita como Business e receita fica zerada
+
+Auditoria somente leitura concluída em 2026-08-01, sem registrar PII:
+
+- existe uma assinatura Agência Pix não terminal em `live`, ativa, aprovada e válida por um mês;
+- o pagamento manual registrado é R$ 1.500,00;
+- `compute_subscription_access(..., 'live')` retorna `has_access=true`, plano efetivo `agency` e motivo `active`;
+- o mesmo usuário também possui uma linha Business Stripe em `sandbox`;
+- `get_user_plan()` retorna `business` porque consulta por usuário sem ambiente, ordenação ou validação do entitlement;
+- `get_current_usage()` herda Business: 10 contas Instagram, 40 publicações/dia e 50 fontes, em vez dos limites Agência;
+- o MRR da área financeira usa `plan_limits.price_brl`; Agência tem preço negociável nulo e aparece como R$ 0;
+- o banco conserva corretamente `manual_amount_paid_brl=1500.00`, mas o frontend não usa esse campo no MRR, receita por plano ou “Valor/mês”.
+
+Conclusão: são dois bugs reais. O gate e a liberação Agência funcionam, mas limites/exibição do plano são degradados para Business e a receita manual é omitida.
+
+O fluxo comercial confirmado permanece:
+
+- Creator, Pro e Business usam Stripe com cartão e teste de sete dias;
+- sem assinatura válida, o gate continua bloqueado e direciona ao checkout;
+- Pix confirmado pelo admin cria/renova acesso `live` sem cartão;
+- Agência não abre checkout automático e é negociada por contato/Pix;
+- se uma tentativa Stripe já criou IDs em uma linha `live` não terminal, a RPC Pix atual recusa sobrescrevê-la; falta um fluxo explícito de conversão/cancelamento seguro.
 
 ### Publicação histórica do gate — PR #42
 
@@ -300,10 +323,13 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. pedir ao cliente que saia da conta, entre novamente e valide o dashboard;
-2. registrar o resultado sem PII;
-3. usar exclusivamente o botão **PIX** da área administrativa para as próximas confirmações manuais;
-4. continuar a auditoria comercial externa de Edge Functions, Stripe, Meta e VPS.
+1. obter aprovação para corrigir o P0 Agência;
+2. criar migration que torne `get_user_plan()`/limites determinísticos em `live` e alinhados ao gate;
+3. alterar o financeiro para usar o valor manual Pix por cliente, inclusive Agência;
+4. adicionar regressões para Agência live + Business sandbox e MRR negociável;
+5. definir o fluxo seguro para converter uma tentativa Stripe live em Pix sem sobrescrever dados de cobrança;
+6. atualizar os cinco documentos, integrar e publicar;
+7. continuar a auditoria comercial externa de Edge Functions, Stripe, Meta e VPS.
 
 ## Checklist de manutenção
 
