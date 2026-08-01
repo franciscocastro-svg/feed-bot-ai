@@ -248,7 +248,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 180 migrations versionadas. As migrations Pix `20260801134000` e Agência `20260801144500` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A migration integrada `20260801170000_editorial_pilot_phase_2a.sql` ainda precisa ser aplicada. Domínios representativos:
+A `main` contém 180 migrations versionadas. As migrations Pix `20260801134000`, Agência `20260801144500` e Piloto Editorial `20260801170000` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. Para a última, a verificação remota confirmou tabela e RPC, execução por `authenticated`, bloqueio de `anon` e ledger inicialmente vazio. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, ainda sem deploy.
+Última atualização: **2026-08-01**. Correção Agência/financeiro publicada; Piloto Editorial Fase 2A integrado na `main` pelo PR #51/merge `ad39d3e`, com migration aplicada e Edge/frontend pendentes.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -27,7 +27,7 @@
 - [x] Piloto Editorial Fase 1 em preview local sem escrita.
 - [x] Classificação de fofoca, Direito, Saúde e Finanças com teste para “brasileiras”.
 
-### Concluído na `main` pelo PR #51 — ainda não implantado
+### Concluído na `main` pelo PR #51 — implantação parcial
 
 - [x] Auditar integralmente Perfil do Criador, Piloto Editorial e descoberta de fontes.
 - [x] Conectar o Piloto à descoberta real de RSS e monitoramento temático em modo sem escrita.
@@ -42,6 +42,11 @@
 - [x] Enviar a branch, abrir o PR rascunho #51 e obter `Validate application` verde no head `ad3411a`.
 - [x] Revalidar o head final `401d849` e integrar o PR #51 no merge `ad39d3e`.
 - [x] Abrir o PR documental rascunho #52 e obter `Validate application` verde no commit `0098c25`.
+- [x] Integrar o PR documental #52 no merge `1278649`.
+- [x] Aplicar e registrar `20260801170000_editorial_pilot_phase_2a.sql` no Supabase conectado.
+- [x] Confirmar tabela/RPC, permissão para `authenticated`, bloqueio de `anon` e ledger inicialmente vazio.
+- [ ] Publicar somente `discover-rss`; tentativa segura não alterou o ambiente porque o CLI exige uma sessão administrativa ausente nesta máquina.
+- [ ] Publicar o frontend e executar o smoke autenticado antes de decidir a ativação da flag em produção.
 
 ### Reconciliação desta continuidade
 
@@ -216,7 +221,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Fase 2A ainda não implantada:** PR #51 integrado; migration, `discover-rss` e frontend não foram publicados; a flag continua desligada por padrão.
+- [ ] **Fase 2A parcialmente implantada:** migration aplicada e verificada; `discover-rss` e frontend ainda não foram publicados, e a flag continua desligada por padrão.
 - [x] **Registro pós-deploy integrado:** os cinco documentos registram merge, publicação, testes e próximos passos.
 
 ### Médios

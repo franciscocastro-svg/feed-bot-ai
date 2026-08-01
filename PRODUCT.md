@@ -102,7 +102,7 @@ Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somen
 
 ### Piloto Editorial Inteligente — Fase 2A
 
-Integrado na `main` pelo PR #51/merge `ad39d3e`; ainda não implantado:
+Integrado na `main` pelo PR #51/merge `ad39d3e`; schema/RPC implantados em 2026-08-01, mas ainda indisponível ao usuário até a publicação de `discover-rss` e do frontend:
 
 - a ação de análise usa o nicho do Perfil do Criador para pesquisar fontes reais;
 - feeds RSS e monitoramentos temáticos são validados por conteúdo recente e relevância;
@@ -118,7 +118,7 @@ Integrado na `main` pelo PR #51/merge `ad39d3e`; ainda não implantado:
 ### Piloto Editorial — Fase 2
 
 1. concluir a edição manual da proposta antes da aplicação;
-2. implantar e validar a seleção, o resumo e a confirmação da Fase 2A;
+2. publicar `discover-rss` e o frontend e validar a seleção, o resumo e a confirmação da Fase 2A;
 3. adicionar uma ação explícita de desfazer uma aplicação;
 4. permitir aplicar preferências de cadência separadamente;
 5. registrar métricas de qualidade por conta.
@@ -251,7 +251,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
 - [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
-- revisar e publicar de forma controlada a Fase 2A do Perfil do Criador;
+- concluir de forma controlada a publicação de `discover-rss` e do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
