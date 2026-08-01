@@ -18,10 +18,11 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### `main` auditada
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
-- Release funcional publicada: `78379d98de79f73a75a86e2b692fbaceceac4597` — merge do PR #42.
-- `origin/main` auditada: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
+- Release funcional publicada: `6b362bfda7aea7418a818c8ec4e40fa3451f94c1` — merge do PR #45.
+- Base anterior: `a6c08830bf3187305d70921cb1f8a7ab338407ec` — merge documental do PR #44.
 - Worktree limpa: `/private/tmp/fluxfeed-main-audit`.
-- Branch de implementação atual: `codex/pix-live-manual-subscriptions`, criada diretamente sobre `a6c0883`.
+- Branch funcional: `codex/pix-live-manual-subscriptions`; commit `bc69f10`; integrada pelo PR #45.
+- Branch documental pós-release: `codex/document-pix-live-release`, criada sobre `6b362bf`.
 - Commit inicial da correção: `021065a` — `Fix manual subscription access gate`.
 - Branch enviada a `origin/codex/reconcile-main-docs`.
 - PR [#42 — Fix manual subscription access gate](https://github.com/franciscocastro-svg/feed-bot-ai/pull/42): checks verdes e merge concluído em `78379d9`.
@@ -58,10 +59,11 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Estado | Situação | Tratamento |
 |---|---|---|
 | Pasta original | antiga e com trabalho local | preservar |
-| Código funcional em `main` | consolidado em `78379d9`; `main` atual em `a6c0883` após docs | base do app publicado |
+| Código funcional em `main` | Pix live integrado em `6b362bf` | base do app publicado |
 | Branch do PR #42 | integrada em `main` | preservar histórico |
-| Branch Pix live | implementação e CI local concluídos | integrar, migrar e publicar |
-| Frontend Lovable | código funcional publicado de `78379d9`; docs posteriores sincronizadas | publicar o merge Pix live |
+| Branch Pix live | integrada pelo PR #45 em `6b362bf` | preservar histórico |
+| Supabase | migration `20260801134000` aplicada; cliente liberado em live | aguardar teste autenticado |
+| Frontend Lovable | `6b362bf` sincronizado e publicado | aguardar teste autenticado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
 ## Reconciliação executada
@@ -167,7 +169,7 @@ O `npm ci` criou somente `node_modules`, ignorado pelo Git. O build criou `dist`
 - autorização administrativa em contexto JWT;
 - separação sandbox/live por chave publicável.
 
-No candidato `codex/pix-live-manual-subscriptions`:
+No release `6b362bf`:
 
 - o admin financeiro escolhe plano e informa o valor recebido via Pix;
 - a assinatura manual é criada ou renovada somente em `live`, por um mês;
@@ -239,7 +241,7 @@ Nenhum UUID, e-mail, token ou identificador Stripe foi incluído nesta documenta
 
 ### Correção definitiva implementada localmente
 
-Arquivos do candidato:
+Arquivos do release:
 
 - `supabase/migrations/20260801134000_manual_pix_live_subscriptions.sql` adiciona metadados manuais e as RPCs;
 - `src/pages/dashboard/Admin.tsx` adiciona a ação Pix explícita;
@@ -262,10 +264,12 @@ Comportamento:
 
 - implementação: concluída;
 - CI local completo: aprovado;
-- PR/merge GitHub: pendente;
-- migration Supabase: pendente;
-- liberação live do cliente: pendente;
-- publicação Lovable: pendente;
+- PR/merge GitHub: concluído no PR #45, merge `6b362bf`;
+- migration Supabase: aplicada e registrada como `20260801134000`;
+- liberação live do cliente: Creator/`starter`, Pix R$ 97,97, válida até 01/09/2026;
+- verificação de acesso: `has_access=true`, motivo `active`, ambiente `live`;
+- publicação Lovable: concluída no deployment `24ce3f57-4740-4012-b109-f2c575a60929`;
+- smoke do bundle: nova RPC e diálogo Pix presentes no artefato público;
 - teste autenticado do cliente: pendente.
 
 ### Publicação histórica do gate — PR #42
@@ -283,7 +287,7 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 
 ## Estado externo ainda pendente
 
-- migrations aplicadas no Supabase;
+- demais migrations aplicadas no Supabase, além da Pix já confirmada;
 - versões das Edge Functions;
 - processos/versão do worker VPS;
 - catálogo e assinaturas Stripe live;
@@ -295,13 +299,10 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. integrar `codex/pix-live-manual-subscriptions` após checks verdes;
-2. aplicar a migration no Supabase do projeto;
-3. registrar o pagamento confirmado do cliente como `starter` em `live`, com o valor recebido e validade de um mês;
-4. confirmar pela RPC `has_access=true`, motivo `active` e plano efetivo em live;
-5. publicar o frontend sincronizado pelo Lovable;
-6. pedir ao cliente que saia, entre novamente e valide o dashboard;
-7. registrar o resultado sem PII e continuar a auditoria comercial externa.
+1. pedir ao cliente que saia da conta, entre novamente e valide o dashboard;
+2. registrar o resultado sem PII;
+3. usar exclusivamente o botão **PIX** da área administrativa para as próximas confirmações manuais;
+4. continuar a auditoria comercial externa de Edge Functions, Stripe, Meta e VPS.
 
 ## Checklist de manutenção
 

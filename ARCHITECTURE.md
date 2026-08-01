@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** para o release publicado `78379d9` e o candidato Pix live baseado em `a6c0883`.
+Atualizado em **2026-08-01** para o release Pix live `6b362bf`.
 
 ## Arquitetura geral
 
@@ -194,7 +194,7 @@ sequenceDiagram
     DB-->>FE: acesso, motivo e plano
 ```
 
-Uma assinatura manual/Pix não exige cartão nem customer Stripe. O candidato atual adiciona `admin_upsert_pix_subscription`: somente admin financeiro ou `service_role` pode informar usuário, plano pago e valor; a RPC grava sempre em `live`, concede um mês, registra origem/valor/data/admin e recusa sobrescrever Stripe. Se já existir Pix vigente, soma um mês ao vencimento; caso contrário, conta um mês da confirmação.
+Uma assinatura manual/Pix não exige cartão nem customer Stripe. `admin_upsert_pix_subscription` permite somente ao admin financeiro ou `service_role` informar usuário, plano pago e valor; a RPC grava sempre em `live`, concede um mês, registra origem/valor/data/admin e recusa sobrescrever Stripe. Se já existir Pix vigente, soma um mês ao vencimento; caso contrário, conta um mês da confirmação.
 
 `admin_subscription_overview` substitui o fallback ambíguo da listagem antiga. A visão usa somente a linha não terminal `live` como assinatura de produção e expõe separadamente se existe registro `sandbox`. A UI mostra badges `LIVE`, `PIX` ou `Stripe` e avisa “somente sandbox” sem conceder acesso real.
 
@@ -239,7 +239,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-O candidato contém 178 migrations versionadas; a nova migration Pix ainda precisa ser aplicada externamente. Domínios representativos:
+A `main` contém 178 migrations versionadas. A migration Pix `20260801134000` foi aplicada e registrada no histórico do Supabase em 2026-08-01. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

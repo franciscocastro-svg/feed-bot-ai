@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** para o release publicado `78379d9` e o candidato administrativo Pix live baseado em `a6c0883`.
+Atualizado em **2026-08-01** para o release Pix live `6b362bf`.
 
 ## Visão de produto
 
@@ -81,7 +81,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - Billing Portal e proteção contra assinatura duplicada;
 - webhooks, reconciliação e separação sandbox/live;
 - assinatura manual/Pix compatível com acesso sem cartão;
-- no candidato atual, ação financeira explícita para escolher plano, registrar valor e liberar/renovar exatamente um mês em `live`;
+- ação financeira explícita para escolher plano, registrar valor e liberar/renovar exatamente um mês em `live`;
 - visão administrativa que distingue `live`, Stripe, Pix e cadastro existente somente em `sandbox`;
 - gate de acesso fail-closed com mensagens distintas para checkout, e-mail, aprovação, expiração, bloqueio e indisponibilidade técnica;
 - limites e preços-base armazenados no banco.
@@ -230,9 +230,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 
 ### Agora — prontidão e confiabilidade
 
-- integrar e publicar o fluxo administrativo Pix live;
-- aplicar a migration de origem/valor do pagamento manual;
-- migrar a liberação do cliente afetado de sandbox para live e validar o acesso;
+- validar com o cliente a sessão autenticada após a liberação Pix live;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter o Piloto restrito a preview até aprovação de rollout.
