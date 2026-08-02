@@ -171,6 +171,7 @@
 - [x] Revisar e preparar um commit separado da funcionalidade.
 - [x] Enviar `codex/editorial-ai-cut`, abrir o PR #60 e integrar a base do Corte Editorial em `acc8363`.
 - [x] Obter `Validate application` verde em 2m01s para `5dee08a`.
+- [x] Abrir o PR rascunho #61 para a Beta administrativa e obter `Validate application` verde em 1m47s.
 - [ ] Obter aprovação antes de merge, migration, Edge, worker, frontend ou produção.
 
 ## Próximas tarefas

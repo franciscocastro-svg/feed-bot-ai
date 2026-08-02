@@ -87,7 +87,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
 - compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
-O Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`. A restrição temporária `Beta admin` está no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61), branch `codex/editorial-admin-beta` criada sobre a `main` atual. A demonstração visual foi aprovada pelo usuário; o teste com fala real permanece pendente. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
+O Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`. A restrição temporária `Beta admin` está no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61), branch `codex/editorial-admin-beta` criada sobre a `main` atual, com `Validate application` aprovado. A demonstração visual foi aprovada pelo usuário; o teste com fala real permanece pendente. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
 
 ### Comercial
 
