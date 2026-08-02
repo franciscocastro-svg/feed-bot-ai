@@ -20,9 +20,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
 - Branch atual: `codex/editorial-admin-beta`.
 - Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
-- Estado: o Corte Editorial base e a Beta administrativa foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A Lovable aplicou a migration sob `20260802144135`, recarregou o schema e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` adicionou a migration registrada e os tipos gerados. O Preview está sincronizado, mas worker VPS e frontend de produção ainda não foram confirmados.
+- Estado: o Corte Editorial base e a Beta administrativa foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A Lovable aplicou a migration sob `20260802144135`, recarregou o schema e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` adicionou a migration registrada e os tipos gerados. O PR #62 integrou o escopo `cuts-only` no merge `67ced14`, implantado e validado no worker VPS. O Preview está sincronizado; resta confirmar o frontend de produção após o smoke autenticado.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
-- Deploy do worker: a branch `codex/deploy-editorial-cuts-worker` adiciona `DEPLOY_PM2_SCOPE=cuts-only` para reiniciar somente `feedbot-cuts`, mantendo instalação, testes, nginx, health e rollback. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
+- Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
@@ -91,12 +91,12 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
 | Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
-| Worker VPS | `93ae2a3`, PM2/health saudáveis, fila vazia e bloqueio removido | preservar evidências; operação normal retomada |
+| Worker VPS | HEAD `67ced14`; `feedbot-cuts` reiniciado e saudável, outros processos preservados | executar smoke editorial; tratar bloqueio antigo separadamente |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
 
-Atualização posterior da VPS: o código avançou para `fbe6a2a` e os processos/health continuam online, mas a automação ficou novamente bloqueada em `deploy_process_exit_unobserved` após `SIGINT` durante reload do próprio webhook. Esse incidente é separado do Corte Editorial; não remover o bloqueio neste trabalho.
+Atualização posterior da VPS: a automação ficou bloqueada em `deploy_process_exit_unobserved` após `SIGINT` no release `fbe6a2a`. Em 2026-08-02, o deploy manual isolado do Corte Editorial avançou o HEAD para `67ced14`, reiniciou somente `feedbot-cuts` e terminou saudável, sem remover o bloqueio nem alterar a fila antiga. O incidente operacional continua separado; não remover `BLOCKED.json` manualmente.
 
 ## Corte Editorial — implementação local
 
@@ -429,6 +429,7 @@ Commits relevantes:
 - `2b65b49` — merge automático Lovable que registra `20260801194149` e ajusta o teste.
 - `c4e703d` — merge do PR #57 com a melhoria de qualidade e fallback seguro das imagens.
 - `93ae2a3` — merge do PR #58 com a recuperação segura, implantado no worker VPS.
+- `67ced14` — merge do PR #62 com `cuts-only`, implantado exclusivamente em `feedbot-cuts` e validado com health HTTP 200.
 
 ## Decisões que devem ser preservadas
 
@@ -576,12 +577,11 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. validar no GitHub a branch `codex/deploy-editorial-cuts-worker` e o escopo `cuts-only`;
-3. auditar a VPS e, com o SHA final aprovado, implantar somente `feedbot-cuts`, sem remover manualmente o bloqueio conhecido nem reiniciar o webhook;
-4. testar autenticado como administrador com vídeo real que contenha fala, sem agendar ou publicar;
-5. após o aceite do smoke, confirmar/publicar o frontend de produção e remover a restrição temporária de administrador em mudança separada;
-6. tratar o `SIGINT` do webhook em uma correção operacional independente;
-7. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
+2. testar autenticado como administrador com vídeo real que contenha fala, gerando somente a prévia, sem agendar ou publicar;
+3. conferir título/comentário factuais, enquadramento, áudio, legendas e possibilidade de edição;
+4. após o aceite do smoke, confirmar/publicar o frontend de produção e remover a restrição temporária de administrador em mudança separada;
+5. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
+6. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção
 

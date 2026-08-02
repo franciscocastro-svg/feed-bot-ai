@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial implementado localmente e ainda não publicado.
+Atualizado em **2026-08-02** para o Corte Editorial com backend e worker implantados, aguardando smoke autenticado e confirmação do frontend de produção.
 
 ## Visão de produto
 
@@ -74,7 +74,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - Reels editoriais com duração configurável;
 - insights, logs e saúde de tokens/API.
 
-### Corte Editorial — backend implantado, worker pendente
+### Corte Editorial — backend e worker implantados
 
 - `Cortes IA` foi organizado em `Criar corte` e `Meus cortes`; na criação, a nova opção fica ao lado de Corte tradicional e Corte com legendas, sem remover os formatos atuais;
 - durante o teste inicial, Corte Editorial aparece como `Beta admin` apenas para administradores; a mesma regra é aplicada no banco, nas RPCs e na Edge Function, não somente na interface;
@@ -87,7 +87,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
 - compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
-O Corte Editorial base e a restrição temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A migration foi aplicada no Supabase sob o registro `20260802144135`, o cache do schema foi recarregado e `regenerate-cut-editorial-text` foi implantada com teste anônimo HTTP 401. A Lovable registrou o estado no merge automático `ad273b4`. O Preview usa o frontend novo, mas o worker VPS e o frontend de produção ainda não foram confirmados. Os primeiros testes falharam antes da implantação completa e não criaram clipes, agendamentos ou publicações; o smoke com fala real permanece pendente.
+O Corte Editorial base e a restrição temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A migration foi aplicada no Supabase sob o registro `20260802144135`, o cache do schema foi recarregado e `regenerate-cut-editorial-text` foi implantada com teste anônimo HTTP 401. A Lovable registrou o estado no merge automático `ad273b4`. O PR #62 integrou o escopo operacional `cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02 com reinício exclusivo de `feedbot-cuts`, testes, nginx e health aprovados. `feedbot-media` e `feedbot-webhook` mantiveram os mesmos PIDs. Os primeiros testes, anteriores à implantação completa, não criaram clipes, agendamentos ou publicações; agora resta o smoke com fala real e a confirmação do frontend de produção.
 
 ### Comercial
 
@@ -291,7 +291,8 @@ No Corte Editorial, o passo 4 gera primeiro `editorial_preview_url`, mantendo `v
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
 - repetir a sincronia com um vídeo que contenha fala real, sem publicar; os três renders físicos já receberam aceite visual;
-- [concluído] implantar migration e Edge de texto; validar agora somente o worker de Cortes e, após o smoke, confirmar o frontend de produção;
+- [concluído] implantar migration, Edge de texto e somente o worker `feedbot-cuts` no merge `67ced14`, sem reiniciar os outros processos;
+- executar o smoke autenticado com fala real, sem agendar ou publicar, e depois confirmar o frontend de produção;
 - corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 
 ### Depois — Piloto assistido

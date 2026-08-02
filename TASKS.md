@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** PRs #60/#61 integrados; migration e Edge implantadas e verificadas; Preview sincronizado. Faltam validar/implantar somente `feedbot-cuts`, executar o smoke com fala real e confirmar o frontend de produção.
+- [ ] **Corte Editorial:** PRs #60/#61/#62 integrados; migration, Edge e `feedbot-cuts` implantados e verificados no merge `67ced14`. Faltam executar o smoke com fala real e confirmar o frontend de produção.
 
 ### P1 — Corte Editorial
 
@@ -176,7 +176,7 @@
 - [x] Aplicar a migration sob o registro `20260802144135`, recarregar o schema e verificar colunas, RPCs, triggers e ACLs.
 - [x] Implantar somente `regenerate-cut-editorial-text` e confirmar HTTP 401 sem autenticação.
 - [x] Auditar os testes falhos: quatro jobs `failed`, zero clipes, zero agendamentos e zero publicações.
-- [ ] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` sem reiniciar o webhook.
+- [x] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` no merge `67ced14`, sem reiniciar o webhook ou o worker de mídia.
 - [ ] Executar smoke autenticado com fala real, sem agendar ou publicar.
 
 ## Próximas tarefas
