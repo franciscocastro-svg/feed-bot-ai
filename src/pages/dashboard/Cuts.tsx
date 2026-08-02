@@ -255,7 +255,13 @@ export default function Cuts() {
   const [processingMode, setProcessingMode] = useState<ProcessingMode>("cloud");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(() => {
+    try {
+      return localStorage.getItem("cuts:accountId") || "";
+    } catch {
+      return "";
+    }
+  });
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
