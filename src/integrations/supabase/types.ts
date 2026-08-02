@@ -3065,6 +3065,7 @@ export type Database = {
         Returns: Json
       }
       can_manage_admin_permissions: { Args: never; Returns: boolean }
+      cancel_video_cut_job: { Args: { _job_id: string }; Returns: Json }
       check_and_increment_usage: {
         Args: { _resource: string; _user_id: string }
         Returns: Json
