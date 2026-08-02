@@ -22,6 +22,7 @@ import {
 import {
   normalizeTimedWords,
   providerCapabilities,
+  requestMultimodalAnalysis,
   requestStructuredAnalysis,
   transcriptionProviderOrder,
 } from "./aiProviders.js";
@@ -44,6 +45,14 @@ import {
   normalizeEditorialCarouselSlide,
 } from "./editorialCarousel.js";
 import { resolveAccountRenderSettings } from "./accountIdentity.js";
+import {
+  EDITORIAL_HEIGHT,
+  EDITORIAL_WIDTH,
+  buildEditorialAnalysisPrompt,
+  buildEditorialVideoFilter,
+  normalizeEditorialDraft,
+  writeEditorialOverlay,
+} from "./editorialCut.js";
 
 const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
@@ -2131,6 +2140,65 @@ async function detectPrimarySubjectFocus(videoPath, durationSeconds, tempDir) {
   }
 }
 
+async function generateEditorialDraftForClip({ job, suggestion, sourcePath, transcriptWords, creatorProfile, tempDir }) {
+  const selectedWords = sliceSourceTranscript(
+    transcriptWords,
+    Number(suggestion.start_seconds) || 0,
+    Number(suggestion.end_seconds) || 0,
+  );
+  const transcript = selectedWords.map((word) => word.word).join(" ").replace(/\s+/g, " ").trim();
+  const fallbackTitle = "O ponto principal deste trecho";
+  if (!transcript) {
+    return { ...normalizeEditorialDraft({}, "", fallbackTitle), provider: "neutral_fallback" };
+  }
+
+  const contactSheetPath = path.join(tempDir, `editorial-${suggestion.start_seconds}-${suggestion.end_seconds}.jpg`);
+  const duration = Math.max(3, Number(suggestion.end_seconds) - Number(suggestion.start_seconds));
+  const interval = Math.max(0.7, duration / 4);
+  const images = [];
+  try {
+    await execAsync([
+      "ffmpeg -y",
+      "-ss", shellQuote(Number(suggestion.start_seconds).toFixed(3)),
+      "-i", shellQuote(sourcePath),
+      "-t", shellQuote(duration.toFixed(3)),
+      "-vf", shellQuote(`fps=1/${interval.toFixed(3)},scale=360:-2,tile=2x2:padding=4:margin=4`),
+      "-frames:v 1 -q:v 4",
+      shellQuote(contactSheetPath),
+    ].join(" "), { maxBuffer: 12 * 1024 * 1024 });
+    if (fs.existsSync(contactSheetPath)) {
+      images.push({ mimeType: "image/jpeg", data: (await fs.promises.readFile(contactSheetPath)).toString("base64") });
+    }
+  } catch (error) {
+    console.warn(`[cuts:${job.id}] Frames editoriais indisponíveis; usando somente a transcrição: ${error?.message || error}`);
+  }
+
+  const prompt = buildEditorialAnalysisPrompt({
+    transcript,
+    visualContext: images.length
+      ? "Quadros do próprio trecho foram anexados. Descreva apenas cenário/ação genérica confirmável; não identifique rostos."
+      : "não disponível",
+    language: "português do Brasil",
+    tone: creatorProfile?.voice_tone || "claro, natural e informativo",
+  });
+
+  try {
+    const response = await requestMultimodalAnalysis({
+      prompt,
+      images,
+      gemini: { apiKey: GEMINI_API_KEY, model: process.env.GEMINI_EDITORIAL_CUT_MODEL || GEMINI_TEXT_MODEL },
+    });
+    const parsed = parseJsonFromText(response.text) || {};
+    return {
+      ...normalizeEditorialDraft(parsed, transcript, fallbackTitle),
+      provider: response.provider,
+    };
+  } catch (error) {
+    console.warn(`[cuts:${job.id}] Texto editorial caiu no fallback seguro: ${error?.message || error}`);
+    return { ...normalizeEditorialDraft({}, transcript, fallbackTitle), provider: "neutral_fallback" };
+  }
+}
+
 function focusAxisExpression(focus, axis) {
   const points = Array.isArray(focus?.points) ? focus.points : [];
   if (points.length < 2) return Number(focus?.[axis] ?? (axis === "x" ? 0.5 : 0.44)).toFixed(4);
@@ -2452,8 +2520,152 @@ async function generateVideoCutClip(job, clip, sourcePath, settings, tempDir, re
   return { videoUrl, thumbnailUrl, transcript, qualityReport };
 }
 
+async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, tempDir, options = {}) {
+  const previewOnly = options.previewOnly === true;
+  const overlayPath = path.join(tempDir, `${clip.id}-editorial-overlay.png`);
+  const subtitlePath = path.join(tempDir, `${clip.id}-editorial.ass`);
+  const outputPath = path.join(tempDir, `${clip.id}-${previewOnly ? "preview" : "final"}.mp4`);
+  const thumbPath = path.join(tempDir, `${clip.id}-editorial.jpg`);
+  const startSeconds = Math.max(0, Number(clip.start_seconds) || 0);
+  const duration = Math.max(3, Number(clip.duration_seconds) || (Number(clip.end_seconds) - startSeconds));
+  const config = {
+    framing: ["blur_fit", "smart_crop", "contain"].includes(clip.editorial_config?.framing)
+      ? clip.editorial_config.framing
+      : "blur_fit",
+    font_family: clip.editorial_config?.font_family || settings?.cut_brand_profile?.font_family || "Inter",
+    primary_color: clip.editorial_config?.primary_color || "#111111",
+    accent_color: clip.editorial_config?.accent_color || settings?.cut_brand_profile?.highlight_color || "#D92FA5",
+    subtitles_enabled: clip.editorial_config?.subtitles_enabled !== false,
+  };
+  const { createCanvas, loadImage } = await getCanvasRuntime();
+  await writeEditorialOverlay({
+    createCanvas,
+    loadImage,
+    encodeCanvas,
+    outputPath: overlayPath,
+    title: clip.title || "O ponto principal deste trecho",
+    comment: clip.editorial_comment || clip.hook || clip.caption || "Revisão necessária.",
+    accountName: settings?.brand_name || settings?.brand_handle || "Flux & Feed",
+    accountHandle: settings?.brand_handle || settings?.brand_name || "",
+    logoUrl: settings?.brand_logo_url || null,
+    sourceLabel: job.source_kind === "youtube" ? (job.source_title || "YouTube") : (job.source_title || job.source_file_name || "Vídeo enviado"),
+    config,
+  });
+
+  let words = Array.isArray(options.sourceTranscriptWords)
+    ? sliceSourceTranscript(options.sourceTranscriptWords, startSeconds, startSeconds + duration)
+    : [];
+  if (!words.length) {
+    words = Array.isArray(clip.transcript?.words) ? clip.transcript.words : [];
+  }
+  if (clip.edit_config?.manual_transcript && clip.transcript_text) {
+    words = applyManualTranscript(words, clip.transcript_text);
+  }
+  if (config.subtitles_enabled && clip.subtitle_style !== "none" && words.length) {
+    const ass = buildAssSubtitleFile(words, clip.subtitle_style || "clean", "feed_portrait", {
+      width: EDITORIAL_WIDTH,
+      height: EDITORIAL_HEIGHT,
+    }, duration, {
+      maxWordsPerGroup: 5,
+      maxCharsPerGroup: 34,
+      fontFamily: config.font_family,
+      primaryColor: "#FFFFFF",
+      highlightColor: config.accent_color,
+      outlineColor: "#000000",
+      subtitlePosition: "safe_bottom",
+    });
+    await fs.promises.writeFile(subtitlePath, ass, "utf8");
+  }
+
+  const baseFilter = buildEditorialVideoFilter({ duration, framing: config.framing, overlayInput: 1 });
+  const videoFilter = fs.existsSync(subtitlePath)
+    ? `${baseFilter};[vbase]ass=${shellQuote(subtitlePath).replace(/^'|'$/g, "").replace(/:/g, "\\:")}[v]`
+    : `${baseFilter};[vbase]copy[v]`;
+  const sourceHasAudio = await hasAudioStream(sourcePath);
+  const audioFilter = sourceHasAudio
+    ? ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]"
+    : `;anullsrc=r=48000:cl=stereo,atrim=duration=${duration.toFixed(3)},asetpts=N/SR/TB[a]`;
+  const filterComplex = videoFilter + audioFilter;
+
+  const command = [
+    "ffmpeg -y",
+    "-ss", shellQuote(startSeconds.toFixed(3)),
+    "-i", shellQuote(sourcePath),
+    "-loop 1 -i", shellQuote(overlayPath),
+    "-t", shellQuote(duration.toFixed(3)),
+    "-filter_complex", shellQuote(filterComplex),
+    "-map", shellQuote("[v]"),
+    "-map", shellQuote("[a]"),
+    "-c:v libx264 -preset slow -crf 19 -pix_fmt yuv420p",
+    "-c:a aac -b:a 160k -movflags +faststart -shortest",
+    shellQuote(outputPath),
+  ].join(" ");
+  await execAsync(command, { maxBuffer: 30 * 1024 * 1024 });
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    throw new Error("Corte Editorial não foi gerado.");
+  }
+
+  const qualityReport = await validateAiCutOutput(outputPath, {
+    width: EDITORIAL_WIDTH,
+    height: EDITORIAL_HEIGHT,
+    duration,
+  });
+  await execAsync(
+    `ffmpeg -y -ss 1 -i ${shellQuote(outputPath)} -frames:v 1 -q:v 3 ${shellQuote(thumbPath)}`,
+    { maxBuffer: 10 * 1024 * 1024 },
+  );
+
+  const suffix = previewOnly ? "-editorial-preview" : "";
+  const videoStoragePath = `${job.user_id}/cuts/${clip.id}${suffix}.mp4`;
+  const thumbStoragePath = `${job.user_id}/cuts/${clip.id}-editorial.jpg`;
+  await uploadPostAsset(videoStoragePath, await fs.promises.readFile(outputPath), {
+    contentType: "video/mp4",
+    upsert: true,
+  });
+  let thumbnailUrl = clip.thumbnail_url || null;
+  if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 500) {
+    await uploadPostAsset(thumbStoragePath, await fs.promises.readFile(thumbPath), {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+    thumbnailUrl = supabase.storage.from("post-images").getPublicUrl(thumbStoragePath).data.publicUrl;
+  }
+  const url = supabase.storage.from("post-images").getPublicUrl(videoStoragePath).data.publicUrl;
+  const update = {
+    status: "draft",
+    thumbnail_url: thumbnailUrl,
+    transcript: words.length ? { words } : clip.transcript || null,
+    transcript_text: words.length ? words.map((word) => word.word).join(" ") : clip.transcript_text || null,
+    quality_report: { ...qualityReport, editorial: true, stage: previewOnly ? "preview" : "final" },
+    provider_trace: {
+      ...(clip.provider_trace || {}),
+      render: previewOnly ? "editorial_preview" : "editorial_final",
+      framing: config.framing,
+      source_encode_count: 1,
+    },
+    subtitle_error: config.subtitles_enabled && !words.length,
+    error_message: null,
+    updated_at: new Date().toISOString(),
+    ...(previewOnly
+      ? { editorial_preview_url: url, video_url: null }
+      : { video_url: url }),
+  };
+  await supabase.from("video_cut_clips").update(update).eq("id", clip.id);
+  return {
+    videoUrl: previewOnly ? null : url,
+    previewUrl: previewOnly ? url : clip.editorial_preview_url,
+    thumbnailUrl,
+    transcript: words,
+    qualityReport,
+  };
+}
+
 // ---- Auto-publish: transforma corte pronto em scheduled_post ----
 async function autoPublishClip(job, clip, videoUrl, thumbnailUrl) {
+  if (job?.cut_mode === "editorial") {
+    console.warn(`[cuts:${clip?.id || "unknown"}] Auto-publicação bloqueada: Corte Editorial exige revisão explícita.`);
+    return;
+  }
   try {
     const title = clip.title || "Corte IA";
     const caption = clip.caption || clip.hook || title;
@@ -2799,11 +3011,19 @@ async function processVideoCutJob(job) {
       user_id: job.user_id,
       instagram_account_id: job.instagram_account_id,
     });
-    const { data: cutBrandProfile } = await supabase
-      .from("video_cut_brand_profiles")
-      .select("*")
-      .eq("instagram_account_id", job.instagram_account_id)
-      .maybeSingle();
+    const [{ data: cutBrandProfile }, { data: creatorProfile }] = await Promise.all([
+      supabase
+        .from("video_cut_brand_profiles")
+        .select("*")
+        .eq("instagram_account_id", job.instagram_account_id)
+        .maybeSingle(),
+      supabase
+        .from("creator_profiles")
+        .select("voice_tone, target_audience, niche_detail")
+        .eq("instagram_account_id", job.instagram_account_id)
+        .eq("user_id", job.user_id)
+        .maybeSingle(),
+    ]);
     const cutSettings = {
       ...settings,
       brand_handle: cutBrandProfile?.watermark_enabled === false
@@ -2823,7 +3043,10 @@ async function processVideoCutJob(job) {
     }
 
     // Multi-formato: cada sugestão × cada formato = 1 clip
-    const jobFormats = Array.isArray(job.formats) && job.formats.length
+    const isEditorialCut = job.cut_mode === "editorial";
+    const jobFormats = isEditorialCut
+      ? ["feed_portrait"]
+      : Array.isArray(job.formats) && job.formats.length
       ? job.formats.filter((f) => ["reels", "feed_square", "feed_portrait"].includes(f))
       : [job.format || "reels"];
     const uniqueFormats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
@@ -2833,6 +3056,16 @@ async function processVideoCutJob(job) {
     let processed = 0;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
       const suggestion = suggestions[idx];
+      const editorialDraft = isEditorialCut
+        ? await generateEditorialDraftForClip({
+          job,
+          suggestion,
+          sourcePath,
+          transcriptWords,
+          creatorProfile,
+          tempDir,
+        })
+        : null;
       for (let fIdx = 0; fIdx < uniqueFormats.length; fIdx += 1) {
         const clipFormat = uniqueFormats[fIdx];
         const clipIndex = idx * uniqueFormats.length + fIdx + 1;
@@ -2842,14 +3075,14 @@ async function processVideoCutJob(job) {
             user_id: job.user_id,
             instagram_account_id: job.instagram_account_id,
             clip_index: clipIndex,
-            title: suggestion.title,
+            title: editorialDraft?.title || suggestion.title,
             hook: suggestion.hook,
             hook_text: suggestion.hook_text || null,
             hook_score: suggestion.hook_score,
             emotion_score: suggestion.emotion_score,
             clarity_score: suggestion.clarity_score,
             viral_score: suggestion.viral_score,
-            caption: suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
+            caption: editorialDraft?.comment || suggestion.caption || `${suggestion.title}\n\n${suggestion.hashtags.join(" ")}`.trim(),
             hashtags: suggestion.hashtags,
             reason: suggestion.reason,
             score: suggestion.score,
@@ -2866,7 +3099,22 @@ async function processVideoCutJob(job) {
             provider_trace: {
               analysis: analysis.provider || null,
               selection: suggestion.selection_quality || null,
+              editorial_text: editorialDraft?.provider || null,
+              editorial_safety: editorialDraft?.safetyReason || null,
             },
+            editorial_comment: editorialDraft?.comment || null,
+            editorial_confidence: editorialDraft?.confidence ?? null,
+            editorial_review_required: editorialDraft?.reviewRequired || false,
+            editorial_review_confirmed_at: null,
+            editorial_preview_url: null,
+            editorial_config: isEditorialCut ? {
+              framing: "blur_fit",
+              font_family: cutBrandProfile?.font_family || "Inter",
+              primary_color: "#111111",
+              accent_color: cutBrandProfile?.highlight_color || "#D92FA5",
+              subtitles_enabled: job.subtitle_style !== "none",
+              evidence: editorialDraft?.evidence || [],
+            } : {},
           }, { onConflict: "job_id,clip_index" })
           .select("*")
           .single();
@@ -2876,18 +3124,23 @@ async function processVideoCutJob(job) {
         clip.hook_enabled = job.hook_enabled !== false;
         clip.analysis_provider = analysis.provider || null;
         clip.selection_quality = suggestion.selection_quality || null;
-        const { videoUrl, thumbnailUrl } = await generateVideoCutClip(
-          job,
-          clip,
-          sourcePath,
-          cutSettings,
-          tempDir,
-          cutReuseContext,
-        );
+        const { videoUrl, thumbnailUrl } = isEditorialCut
+          ? await generateEditorialVideoCutClip(job, clip, sourcePath, cutSettings, tempDir, {
+            previewOnly: true,
+            sourceTranscriptWords: transcriptWords,
+          })
+          : await generateVideoCutClip(
+            job,
+            clip,
+            sourcePath,
+            cutSettings,
+            tempDir,
+            cutReuseContext,
+          );
         generatedCount += 1;
         processed += 1;
 
-        if (job.auto_publish && videoUrl && fIdx === 0) {
+        if (!isEditorialCut && job.auto_publish && videoUrl && fIdx === 0) {
           // Auto-publica só o primeiro formato pra não spammar a conta
           const { data: fullClip } = await supabase
             .from("video_cut_clips").select("*").eq("id", clip.id).maybeSingle();
@@ -3022,7 +3275,24 @@ async function processVideoCutRerenderRequests() {
         cut_brand_profile: brand || null,
       };
       clip.hook_enabled = job.hook_enabled !== false;
-      await generateVideoCutClip(job, clip, sourcePath, cutSettings, tempDir);
+      if (job.cut_mode === "editorial") {
+        if (!clip.editorial_review_confirmed_at) {
+          throw new Error("Corte Editorial ainda não foi confirmado para renderização final.");
+        }
+        let sourceTranscriptWords = [];
+        try {
+          const sourceTranscription = await transcribeSourceForAnalysis(sourcePath, tempDir);
+          sourceTranscriptWords = sourceTranscription.words || [];
+        } catch (error) {
+          console.warn(`[cuts-rerender:${request.id}] Não foi possível reler a transcrição; preservando timestamps da prévia: ${error?.message || error}`);
+        }
+        await generateEditorialVideoCutClip(job, clip, sourcePath, cutSettings, tempDir, {
+          previewOnly: false,
+          sourceTranscriptWords,
+        });
+      } else {
+        await generateVideoCutClip(job, clip, sourcePath, cutSettings, tempDir);
+      }
       await supabase.from("video_cut_rerender_requests").update({
         status: "completed",
         completed_at: new Date().toISOString(),

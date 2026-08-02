@@ -37,3 +37,5 @@ project_id = "gewnaxrhiyylfizgbqdi"
     verify_jwt = false
   [functions.retry-failed-news]
     verify_jwt = false
+  [functions.regenerate-cut-editorial-text]
+    verify_jwt = false

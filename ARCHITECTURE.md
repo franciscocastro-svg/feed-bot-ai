@@ -1,6 +1,8 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para a recuperação concluída e o worker de mídia implantado em `93ae2a3`.
+Atualizado em **2026-08-02** para o Corte Editorial local, ainda sem implantação externa.
+
+O código está isolado na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60); o check remoto passou para `5dee08a`. A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
 
 ## Arquitetura geral
 
@@ -41,6 +43,8 @@ O frontend coordena a experiência e ações autenticadas. Edge Functions concen
 - `lib/`: Stripe, políticas, contratos, roteamento, formatação e utilitários;
 - `lib/subscriptionAccess.ts`: classificação pura e fail-closed do resultado de acesso;
 - `lib/editorial-pilot/`: schema e construção determinística da proposta;
+- `lib/editorialCuts.ts`: modos de corte, configuração visual, validação da revisão e payload do render editorial;
+- `components/cuts/EditorialCutPreview.tsx`: prévia 4:5 editável e comandos separados de texto, render final e agendamento;
 - `test/`: regressões, contratos, segurança e operação.
 
 Rotas públicas cobrem autenticação, verificação/recuperação, preços, checkout, termos, privacidade, exclusão de dados e OAuth. Rotas protegidas cobrem notícias, fontes, pautas, Perfil de Criador, agendados, contas, templates, canais, insights, cortes, suporte e administração.
@@ -53,6 +57,7 @@ Rotas públicas cobrem autenticação, verificação/recuperação, preços, che
 - `generate-from-prompt` e `generate-from-topic`: conteúdo avulso/perene;
 - `extract-from-youtube` e `extract-topics-from-pdf`: extração de material;
 - `discover-rss`, `preview-source`, `fetch-rss` e `retry-failed-news`.
+- `regenerate-cut-editorial-text`: regenera somente título/comentário a partir da transcrição, valida propriedade/JWT e devolve um rascunho sem escrita ou renderização.
 
 #### Automação e publicação
 
@@ -95,6 +100,7 @@ Responsabilidades:
 - executar FFmpeg/ffprobe e yt-dlp;
 - usar `@napi-rs/canvas` para layouts;
 - gerar Reels, cortes, legendas e overlays;
+- compor Corte Editorial 4:5 em `worker/editorialCut.js`, preservando proporção, áreas seguras e limite de ampliação;
 - selecionar/carregar imagens temáticas;
 - reutilizar artefatos quando seguro;
 - limitar a ampliação do primeiro plano quando somente uma miniatura pequena estiver disponível, mantendo-a sobre fundo editorial protegido;
@@ -215,6 +221,38 @@ Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera cont
 6. Storage recebe os arquivos finais;
 7. UI permite revisão, rerender e publicação.
 
+### Corte Editorial
+
+```mermaid
+sequenceDiagram
+    participant U as Usuário
+    participant FE as Cortes IA
+    participant DB as PostgreSQL/RPC
+    participant W as Worker FFmpeg/Canvas
+    participant AI as Gemini/xAI fallback
+    participant ST as Storage
+
+    U->>FE: escolhe Corte Editorial e envia vídeo
+    FE->>DB: RPC editorial cria job 4:5 com auto_publish=false
+    DB-->>W: worker reclama job
+    W->>W: transcreve e escolhe trecho
+    W->>AI: transcrição + frames genéricos
+    AI-->>W: JSON com texto, confiança e evidências
+    W->>W: valida evidências; fallback neutro se necessário
+    W->>ST: grava editorial_preview_url
+    W->>DB: mantém video_url nulo
+    U->>FE: edita texto, trecho, enquadramento e legendas
+    FE->>DB: request_editorial_cut_render
+    DB-->>W: fila de rerender
+    W->>W: relê transcrição se o trecho mudou e renderiza do original
+    W->>ST: grava vídeo final 1080x1350
+    U->>FE: aprova e agenda
+```
+
+O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Um trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
+
+O compositor usa Canvas apenas para textos/identidade e FFmpeg para a mídia. `blur_fit` e `contain` não ampliam o primeiro plano; `smart_crop` limita-o a 2×. A prévia e o final são codificados separadamente a partir do original, nunca um a partir do outro. Legendas ASS usam timestamps por palavra e são recalculadas do original quando o trecho muda. O áudio é normalizado e reamostrado explicitamente para AAC 48 kHz; essa fixação foi adicionada após o teste físico detectar que `loudnorm` sozinho produzia 96 kHz.
+
 ### Piloto Editorial
 
 1. UI seleciona conta e lê o Perfil de Criador;
@@ -323,7 +361,7 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 
 Qualquer drift ou falha restaura byte a byte o estado anterior. A implantação de mídia usa `DEPLOY_PM2_SCOPE=media-only`, que executa `pm2 startOrReload ... --only feedbot-media`; checkout, dependências, testes, fingerprint, health e rollback continuam obrigatórios. O escopo padrão permanece `all`, e um valor desconhecido falha antes de qualquer mutação.
 
-Estado implantado em 2026-08-02: o plano validou 43 itens enfileirados mais o estado ativo interrompido; a reconciliação preservou evidência/backup, manteve apenas `93ae2a3`, executou o deploy `media-only` sob uma unidade transitória do systemd e concluiu somente após HEAD, `origin/main`, CI e health coincidirem. O resultado terminal é `succeeded`, a fila está vazia e o bloqueio foi removido por último.
+Estado implantado em 2026-08-02: a recuperação anterior concluiu `93ae2a3`. Uma implantação posterior levou a VPS a `fbe6a2a`, manteve PM2/health saudáveis, mas voltou a bloquear a automação como `deploy_process_exit_unobserved`: o runner recebeu `SIGINT` durante o reload que incluía o próprio `feedbot-webhook`. Essa nova ocorrência não é corrigida pelo Corte Editorial e deve permanecer bloqueada até uma mudança operacional separada e versionada.
 
 ## Decisões técnicas
 
@@ -345,6 +383,9 @@ Estado implantado em 2026-08-02: o plano validou 43 itens enfileirados mais o es
 | Miniatura preservada como último recurso | evitar perder completamente a mídia quando o veículo não expõe alternativa melhor |
 | Reconciliação em fases e bloqueio conservado | impedir perda de evidência ou execução acidental dos 42 releases acumulados |
 | Deploy `media-only` após a reconciliação | atualizar o renderizador sem reiniciar webhook e cortes que já estão saudáveis |
+| Prévia editorial separada do final | permitir edição sem publicar e sem recomprimir a prévia como origem |
+| Transcrição como evidência primária | impedir identificação visual ou contexto inventado |
+| RPCs editoriais próprias | gravar o modo antes que o worker possa reclamar o job |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 

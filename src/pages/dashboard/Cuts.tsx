@@ -32,6 +32,16 @@ import {
   readVideoDuration,
   type LocalCutProgress,
 } from "@/lib/localVideoCuts";
+import { EditorialCutPreview } from "@/components/cuts/EditorialCutPreview";
+import {
+  CUT_MODE_OPTIONS,
+  canScheduleEditorialCut,
+  editorialDraftPayload,
+  validateEditorialDraft,
+  type CutMode,
+  type EditorialCutConfig,
+  type EditorialCutDraft,
+} from "@/lib/editorialCuts";
 
 type CutFormat = "reels" | "feed_square" | "feed_portrait";
 
@@ -64,6 +74,12 @@ type VideoCutClip = {
   quality_report?: { ok?: boolean; failures?: string[] } | null;
   provider_trace?: { transcription?: string | null; framing?: string | null; framing_confidence?: number | null } | null;
   transcript?: { words?: Array<{ word: string; start: number; end: number }> } | null;
+  editorial_comment?: string | null;
+  editorial_config?: Partial<EditorialCutConfig> | null;
+  editorial_confidence?: number | null;
+  editorial_review_required?: boolean | null;
+  editorial_review_confirmed_at?: string | null;
+  editorial_preview_url?: string | null;
 };
 
 type VideoCutJob = {
@@ -90,6 +106,7 @@ type VideoCutJob = {
   preset_key?: CutPresetKey | null;
   custom_prompt?: string | null;
   processing_mode?: "cloud" | "local_device" | null;
+  cut_mode?: CutMode | null;
   local_file_name?: string | null;
   local_file_size_bytes?: number | null;
   instagram_accounts?: { username?: string | null } | null;
@@ -239,6 +256,7 @@ export default function Cuts() {
   const [requestedClips, setRequestedClips] = useState(1);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
+  const [cutMode, setCutMode] = useState<CutMode>("subtitled");
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke" | "clean" | "bold">("bold");
   const [presetKey, setPresetKey] = useState<CutPresetKey>("viral");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -251,6 +269,7 @@ export default function Cuts() {
   const [savingBrand, setSavingBrand] = useState(false);
   const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
+  const [editorialBusy, setEditorialBusy] = useState<{ clipId: string; action: "text" | "render" } | null>(null);
   const [brandProfile, setBrandProfile] = useState<CutBrandProfile | null>(null);
   const [localJobId, setLocalJobId] = useState<string | null>(null);
   const [localAudioPath, setLocalAudioPath] = useState<string | null>(null);
@@ -261,20 +280,41 @@ export default function Cuts() {
   const deviceCapability = useMemo(() => localDeviceCapability(videoFile), [videoFile]);
 
   const toggleFormat = (value: CutFormat, checked: boolean) => {
+    if (cutMode === "editorial") return;
     setFormats((prev) => {
       if (checked) return prev.includes(value) ? prev : [...prev, value];
       return prev.length > 1 ? prev.filter((f) => f !== value) : prev;
     });
   };
 
+  const selectCutMode = (mode: CutMode) => {
+    setCutMode(mode);
+    if (mode === "traditional") {
+      setSubtitleStyle("none");
+      setAutoPublish(false);
+      return;
+    }
+    if (mode === "subtitled") {
+      if (subtitleStyle === "none") setSubtitleStyle("bold");
+      return;
+    }
+    setFormats(["feed_portrait"]);
+    setProcessingMode("cloud");
+    setSubtitleStyle(subtitleStyle === "none" ? "clean" : subtitleStyle);
+    setHookEnabled(false);
+    setZoomEffect(false);
+    setSmartCrop(true);
+    setAutoPublish(false);
+  };
+
   const applyPreset = (value: CutPresetKey) => {
     setPresetKey(value);
     const preset = CUT_PRESET_OPTIONS.find((item) => item.value === value);
     if (!preset) return;
-    setSubtitleStyle(preset.subtitleStyle);
-    setHookEnabled(preset.hookEnabled);
+    setSubtitleStyle(cutMode === "traditional" ? "none" : preset.subtitleStyle);
+    setHookEnabled(cutMode === "editorial" ? false : preset.hookEnabled);
     setRemoveSilences(preset.removeSilences);
-    setZoomEffect(preset.zoomEffect);
+    setZoomEffect(cutMode === "editorial" ? false : preset.zoomEffect);
     setSmartCrop(true);
   };
 
@@ -519,6 +559,9 @@ export default function Cuts() {
     if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
     if (!accountId) return toast.error("Escolha uma conta do Instagram.");
     if (!rightsConfirmed) return toast.error("Confirme que você tem direito/autorização sobre o vídeo.");
+    if (cutMode === "editorial" && inputMode === "upload" && processingMode !== "cloud") {
+      return toast.error("O Corte Editorial usa o processamento na nuvem para montar a prévia segura.");
+    }
     if (presetKey === "custom" && customPrompt.trim().length < 10) return toast.error("Descreva em pelo menos 10 caracteres o que a IA deve procurar.");
     if (bounds.maxRequest <= 0) return toast.error("Seu limite de Cortes IA para hoje acabou.");
 
@@ -528,7 +571,7 @@ export default function Cuts() {
       const requestClips = Math.min(requestedClips, bounds.maxRequest);
       let createdJobId: string | null = null;
       if (inputMode === "upload") {
-        if (processingMode === "local_device") {
+        if (processingMode === "local_device" && cutMode !== "editorial") {
           await createLocalJob(requestClips);
           toast.success("Áudio extraído no dispositivo. A IA está analisando os melhores momentos.");
           setRightsConfirmed(false);
@@ -536,38 +579,55 @@ export default function Cuts() {
           return;
         }
         uploadedPath = await uploadVideoFile();
-        const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_upload_job_v2", {
-          _instagram_account_id: accountId,
-          _storage_path: uploadedPath,
-          _requested_clips: requestClips,
-          _rights_confirmed: rightsConfirmed,
-          _source_title: videoFile?.name || "Vídeo enviado",
-          _format: formats[0],
-          _formats: formats,
-          _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
-          _hook_enabled: hookEnabled,
-          _auto_publish: autoPublish,
-          _remove_silences: removeSilences,
-          _zoom_effect: zoomEffect,
-          _smart_crop: smartCrop,
-        });
+        const { data, error } = cutMode === "editorial"
+          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_upload_job", {
+            _instagram_account_id: accountId,
+            _storage_path: uploadedPath,
+            _requested_clips: requestClips,
+            _rights_confirmed: rightsConfirmed,
+            _source_title: videoFile?.name || "Vídeo enviado",
+            _subtitle_style: subtitleStyle,
+          })
+          : await db.rpc<{ id?: string }>("create_video_cut_upload_job_v2", {
+            _instagram_account_id: accountId,
+            _storage_path: uploadedPath,
+            _requested_clips: requestClips,
+            _rights_confirmed: rightsConfirmed,
+            _source_title: videoFile?.name || "Vídeo enviado",
+            _format: formats[0],
+            _formats: formats,
+            _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
+            _hook_enabled: hookEnabled,
+            _auto_publish: autoPublish,
+            _remove_silences: removeSilences,
+            _zoom_effect: zoomEffect,
+            _smart_crop: smartCrop,
+          });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
         createdJobId = data?.id || null;
       } else {
-        const { data, error } = await db.rpc<{ id?: string }>("create_video_cut_job", {
-          _instagram_account_id: accountId,
-          _youtube_url: canonicalYoutubeUrl,
-          _requested_clips: requestClips,
-          _rights_confirmed: rightsConfirmed,
-          _format: formats[0],
-          _formats: formats,
-          _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
-          _hook_enabled: hookEnabled,
-          _auto_publish: autoPublish,
-          _remove_silences: removeSilences,
-          _zoom_effect: zoomEffect,
-          _smart_crop: smartCrop,
-        });
+        const { data, error } = cutMode === "editorial"
+          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_job", {
+            _instagram_account_id: accountId,
+            _youtube_url: canonicalYoutubeUrl,
+            _requested_clips: requestClips,
+            _rights_confirmed: rightsConfirmed,
+            _subtitle_style: subtitleStyle,
+          })
+          : await db.rpc<{ id?: string }>("create_video_cut_job", {
+            _instagram_account_id: accountId,
+            _youtube_url: canonicalYoutubeUrl,
+            _requested_clips: requestClips,
+            _rights_confirmed: rightsConfirmed,
+            _format: formats[0],
+            _formats: formats,
+            _subtitle_style: ["bold", "clean"].includes(subtitleStyle) ? "classic" : subtitleStyle,
+            _hook_enabled: hookEnabled,
+            _auto_publish: autoPublish,
+            _remove_silences: removeSilences,
+            _zoom_effect: zoomEffect,
+            _smart_crop: smartCrop,
+          });
         if (error) throw new Error(error.message || "Não foi possível criar o job.");
         createdJobId = data?.id || null;
       }
@@ -577,11 +637,15 @@ export default function Cuts() {
             preset_key: presetKey,
             custom_prompt: presetKey === "custom" ? customPrompt.trim().slice(0, 2000) || null : null,
             subtitle_style: subtitleStyle,
+            cut_mode: cutMode,
+            auto_publish: cutMode === "editorial" ? false : autoPublish,
           })
           .eq("id", createdJobId);
         if (optionsError) throw new Error(optionsError.message || "Não foi possível salvar o preset do corte.");
       }
-      toast.success("Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
+      toast.success(cutMode === "editorial"
+        ? "Corte Editorial enviado. A prévia aparecerá para revisão antes do vídeo final."
+        : "Corte enviado para análise. Ele aparecerá como rascunho para revisão.");
       setYoutubeUrl("");
       if (processingMode === "cloud") setVideoFile(null);
       setRightsConfirmed(false);
@@ -634,6 +698,7 @@ export default function Cuts() {
   const prepareUploadFallback = (job: VideoCutJob) => {
     setInputMode("upload");
     setProcessingMode("cloud");
+    selectCutMode(job.cut_mode || "subtitled");
     setAccountId(job.instagram_account_id);
     setRequestedClips(Math.max(1, Math.min(5, Number(job.requested_clips || 1))));
     if (job.formats?.length) setFormats(job.formats);
@@ -668,7 +733,7 @@ export default function Cuts() {
     if (!user) throw new Error("Sessão expirada.");
     if (!clip.video_url) throw new Error("Este corte ainda não tem vídeo pronto.");
     const title = clip.title || "Corte IA";
-    const caption = clip.caption || clip.hook || title;
+    const caption = clip.editorial_comment || clip.caption || clip.hook || title;
     const hashtags = Array.isArray(clip.hashtags) ? clip.hashtags : splitHashtags(clip.hashtags);
     const originalUrl = job.source_kind === "upload"
       ? `upload://${job.id}/cut-${clip.clip_index}-${clip.id}`
@@ -687,14 +752,14 @@ export default function Cuts() {
       instagram_account_id: clip.instagram_account_id || job.instagram_account_id,
       source_name: "Cortes IA",
       original_title: title,
-      original_content: clip.reason || clip.hook || caption,
+      original_content: clip.editorial_comment || clip.reason || clip.hook || caption,
       original_url: originalUrl,
       original_image_url: clip.thumbnail_url,
       published_at: new Date().toISOString(),
       niche: "video",
       status: "processed",
       rewritten_title: title,
-      rewritten_summary: clip.hook || clip.reason || title,
+      rewritten_summary: clip.editorial_comment || clip.hook || clip.reason || title,
       caption,
       reel_caption: caption,
       hashtags,
@@ -852,6 +917,13 @@ export default function Cuts() {
   };
 
   const approveClip = async (clip: VideoCutClip, job: VideoCutJob) => {
+    if (job.cut_mode === "editorial" && !canScheduleEditorialCut({
+      videoUrl: clip.video_url,
+      reviewConfirmedAt: clip.editorial_review_confirmed_at,
+    })) {
+      toast.error("Revise e gere o vídeo final do Corte Editorial antes de agendar.");
+      return;
+    }
     try {
       const instagramAccountId = clip.instagram_account_id || job.instagram_account_id;
       const scheduledDate = await getAutomaticScheduleDate(instagramAccountId);
@@ -927,6 +999,56 @@ export default function Cuts() {
     setEditingClip(null);
     toast.success("Legenda atualizada.");
     await load();
+  };
+
+  const regenerateEditorialText = async (clipId: string) => {
+    setEditorialBusy({ clipId, action: "text" });
+    try {
+      const { data, error } = await supabase.functions.invoke("regenerate-cut-editorial-text", {
+        body: { clip_id: clipId },
+      });
+      if (error || !data?.title || !data?.comment) {
+        throw new Error(error?.message || "Não foi possível regenerar o texto editorial.");
+      }
+      toast.success(data.review_required
+        ? "Texto neutro gerado. Revise antes de criar o vídeo final."
+        : "Título e comentário regenerados sem processar o vídeo.");
+      return {
+        title: String(data.title),
+        comment: String(data.comment),
+        confidence: Number(data.confidence || 0),
+        reviewRequired: Boolean(data.review_required),
+      };
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível regenerar o texto editorial.");
+      return null;
+    } finally {
+      setEditorialBusy(null);
+    }
+  };
+
+  const renderEditorialCut = async (clipId: string, draft: EditorialCutDraft) => {
+    const validationError = validateEditorialDraft(draft);
+    if (validationError) {
+      toast.error(validationError);
+      return false;
+    }
+    setEditorialBusy({ clipId, action: "render" });
+    try {
+      const { error } = await db.rpc("request_editorial_cut_render", {
+        _clip_id: clipId,
+        ...editorialDraftPayload(draft),
+      });
+      if (error) throw new Error(error.message || "Não foi possível solicitar o vídeo final.");
+      toast.success("Revisão confirmada. O vídeo final entrou na fila; nada será publicado automaticamente.");
+      await load();
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível solicitar o vídeo final.");
+      return false;
+    } finally {
+      setEditorialBusy(null);
+    }
   };
 
   const limitText = isUnlimited(bounds.limit)
@@ -1010,11 +1132,12 @@ export default function Cuts() {
                   <div className="grid sm:grid-cols-2 gap-2 pt-2">
                     <button
                       type="button"
+                      disabled={cutMode === "editorial"}
                       onClick={() => setProcessingMode("local_device")}
-                      className={`rounded-xl border p-3 text-left transition ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
+                      className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
                     >
                       <span className="block text-sm font-medium">Neste dispositivo</span>
-                      <span className="block text-xs text-muted-foreground mt-1">Privado e econômico. Recomendado para computadores recentes.</span>
+                      <span className="block text-xs text-muted-foreground mt-1">{cutMode === "editorial" ? "O layout editorial é composto no worker da nuvem." : "Privado e econômico. Recomendado para computadores recentes."}</span>
                     </button>
                     <button
                       type="button"
@@ -1043,6 +1166,27 @@ export default function Cuts() {
               </Select>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label>Tipo de corte</Label>
+            <div className="grid md:grid-cols-3 gap-2">
+              {CUT_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => selectCutMode(option.value)}
+                  className={`rounded-xl border p-3 text-left transition ${cutMode === option.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                >
+                  <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">{option.description}</span>
+                </button>
+              ))}
+            </div>
+            {cutMode === "editorial" && (
+              <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                Saída fixa em 1080 × 1350. Primeiro será criada uma prévia editável; o vídeo final só será renderizado após sua confirmação e nunca será autopublicado.
+              </p>
+            )}
+          </div>
           <div className="grid md:grid-cols-[180px_1fr] gap-3 items-start">
             <div className="space-y-2">
               <Label>Quantidade</Label>
@@ -1056,7 +1200,7 @@ export default function Cuts() {
               <p className="text-xs text-muted-foreground">Cada formato conta 1 crédito por corte.</p>
             </div>
             <div className="space-y-2">
-              <Label>Formatos de saída (1 ou mais)</Label>
+              <Label>{cutMode === "editorial" ? "Formato de saída" : "Formatos de saída (1 ou mais)"}</Label>
               <div className="grid sm:grid-cols-3 gap-2">
                 {CUT_FORMAT_OPTIONS.map((opt) => {
                   const checked = formats.includes(opt.value);
@@ -1065,7 +1209,7 @@ export default function Cuts() {
                       key={opt.value}
                       className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer transition ${checked ? "border-primary bg-primary/5" : "border-border"}`}
                     >
-                      <Checkbox checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
+                      <Checkbox disabled={cutMode === "editorial"} checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
                       <span>
                         <span className="font-medium text-foreground block">{opt.label}</span>
                         <span className="text-xs text-muted-foreground">{opt.description}</span>
@@ -1122,28 +1266,28 @@ export default function Cuts() {
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox checked={hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
+              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
               <span>
                 <span className="font-medium text-foreground">Hook chamativo</span>
                 <span className="block text-xs text-muted-foreground">Texto grande gerado pela IA nos primeiros 3s.</span>
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
+              <Checkbox disabled={cutMode === "editorial"} checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
               <span>
                 <span className="font-medium text-foreground">Aperto de ritmo</span>
                 <span className="block text-xs text-muted-foreground">Remove pausas mortas maiores que 0,7s.</span>
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox checked={zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
+              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
               <span>
                 <span className="font-medium text-foreground">Zoom sutil</span>
                 <span className="block text-xs text-muted-foreground">Efeito Ken Burns (+5% ao longo do corte).</span>
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
+              <Checkbox disabled={cutMode === "editorial"} checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
               <span>
                 <span className="font-medium text-foreground">Enquadrar pessoa</span>
                 <span className="block text-xs text-muted-foreground">Detecta o assunto principal e reposiciona o recorte.</span>
@@ -1152,13 +1296,13 @@ export default function Cuts() {
             <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
               <Checkbox
                 checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
-                disabled={inputMode === "upload" && processingMode === "local_device"}
+                disabled={cutMode === "editorial" || (inputMode === "upload" && processingMode === "local_device")}
                 onCheckedChange={(c) => setAutoPublish(c === true)}
               />
               <span>
                 <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
                 <span className="block text-xs text-muted-foreground">
-                  {inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
+                  {cutMode === "editorial" ? "Sempre bloqueado: exige revisão e confirmação." : inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
                 </span>
               </span>
             </label>
@@ -1261,6 +1405,7 @@ export default function Cuts() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
+                  {job.cut_mode === "editorial" && <Badge variant="outline">Corte editorial · 4:5</Badge>}
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
                   {job.processing_mode === "local_device" ? (
                     <span className="text-sm text-primary inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Processamento local</span>
@@ -1293,7 +1438,7 @@ export default function Cuts() {
                     {videoFile ? "Concluir neste dispositivo" : "Selecione o original acima"}
                   </Button>
                 )}
-                {job.status === "ready" && job.processing_mode !== "local_device" && (
+                {job.status === "ready" && job.processing_mode !== "local_device" && job.cut_mode !== "editorial" && (
                   <Button size="sm" variant="outline" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
                     {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     Nova versão
@@ -1329,6 +1474,32 @@ export default function Cuts() {
             {(job.video_cut_clips?.length ?? 0) > 0 && (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {job.video_cut_clips!.map((clip) => (
+                  job.cut_mode === "editorial" ? (
+                    <div key={clip.id} className="md:col-span-2 xl:col-span-3">
+                      <EditorialCutPreview
+                        clipId={clip.id}
+                        accountHandle={job.instagram_accounts?.username || "conta"}
+                        previewUrl={clip.editorial_preview_url}
+                        videoUrl={clip.video_url}
+                        thumbnailUrl={clip.thumbnail_url}
+                        title={clip.title}
+                        comment={clip.editorial_comment}
+                        startSeconds={clip.start_seconds}
+                        endSeconds={clip.end_seconds}
+                        transcriptText={clip.transcript_text}
+                        subtitleStyle={clip.subtitle_style}
+                        config={clip.editorial_config}
+                        confidence={clip.editorial_confidence}
+                        reviewRequired={clip.editorial_review_required}
+                        reviewConfirmedAt={clip.editorial_review_confirmed_at}
+                        busy={editorialBusy?.clipId === clip.id ? editorialBusy.action : null}
+                        onRegenerateText={regenerateEditorialText}
+                        onRender={renderEditorialCut}
+                        onSchedule={() => approveClip(clip, job)}
+                        onDiscard={() => discardClip(clip)}
+                      />
+                    </div>
+                  ) : (
                   <Card key={clip.id} className="overflow-hidden border-border/80">
                     <div className="aspect-[9/16] bg-black">
                       {clip.video_url ? (
@@ -1414,6 +1585,7 @@ export default function Cuts() {
                       </div>
                     </div>
                   </Card>
+                  )
                 ))}
               </div>
             )}

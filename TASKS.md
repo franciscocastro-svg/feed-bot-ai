@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. A recuperação da fila foi concluída e o worker de mídia foi implantado com sucesso em `93ae2a3`; falta o smoke visual da matéria regenerada.
+Última atualização: **2026-08-02**. Corte Editorial implementado e renderizado localmente em três cenários, ainda sem deploy e aguardando aceite visual.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,6 +147,29 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
+- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes, commits e três renders físicos enviados no PR rascunho #60; check remoto aprovado para `5dee08a`; faltam aceite visual, teste com fala real, merge e implantação autorizada.
+
+### P1 — Corte Editorial
+
+- [x] Adicionar Corte tradicional, Corte com legendas e Corte editorial sem remover os formatos atuais.
+- [x] Fixar o Corte Editorial em 1080 × 1350 com cabeçalho, título, comentário, mídia e rodapé.
+- [x] Usar transcrição como fonte principal e frames somente como complemento sem identificação facial.
+- [x] Validar evidência literal, números e confiança; usar fallback neutro com revisão necessária.
+- [x] Criar prévia separada do vídeo final e impedir autopublicação.
+- [x] Permitir editar título, comentário, trecho, enquadramento, fonte, cores e legendas.
+- [x] Regenerar somente texto sem escrita, rerender ou agendamento.
+- [x] Recalcular a transcrição/legendas quando o trecho mudar.
+- [x] Preservar proporção e limitar ampliação de vídeo pequeno.
+- [x] Cobrir os três enquadramentos e sincronia por contratos automatizados.
+- [x] Executar CI: 585 testes principais, 35 de deploy, 24 de reconciliação, worker, gates, MCP e build aprovados.
+- [x] Renderizar os cenários vertical, horizontal e de baixa resolução em ambiente FFmpeg isolado, sem banco ou publicação.
+- [x] Confirmar tecnicamente 1080×1350, H.264/yuv420p, AAC 48 kHz, legendas queimadas e áreas seguras.
+- [ ] Obter aceite visual do usuário para nitidez e enquadramento.
+- [ ] Repetir áudio e sincronia com um vídeo real que contenha fala; o arquivo fornecido não possui áudio.
+- [x] Revisar e preparar um commit separado da funcionalidade.
+- [x] Enviar `codex/editorial-ai-cut` e abrir o PR rascunho #60 contra `main`.
+- [x] Obter `Validate application` verde em 2m01s para `5dee08a`.
+- [ ] Obter aprovação antes de merge, migration, Edge, worker, frontend ou produção.
 
 ## Próximas tarefas
 
@@ -278,7 +301,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
-- [ ] **Fila VPS bloqueada após interrupção:** serviços estão saudáveis, mas o worker permanece em `a2be3f5`; não apagar `BLOCKED.json` nem executar a fila manualmente antes da reconciliação versionada.
+- [ ] **Fila VPS bloqueada novamente após implantação posterior:** VPS e `origin/main` estão em `fbe6a2a`, PM2/health continuam saudáveis, mas o reload do próprio webhook recebeu `SIGINT` e deixou `deploy_process_exit_unobserved`. Não remover `BLOCKED.json`; corrigir em branch operacional separada.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
 - [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; a etapa posterior avançou até revelar e corrigir o SQLSTATE `42702`.
 - [x] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` corrigido e registrado em `20260801194149`; smoke autenticado aprovado.
