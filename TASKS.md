@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O smoke com fala revelou lentidão na transcrição integral e depois SQLSTATE `22P02` ao gravar `45.24` em coluna inteira. As duas correções estão implementadas somente em branch local, sem deploy: Gemini Files API para vídeos longos e normalização temporal inteira. Um novo job chegou à revisão com prévia de 35 segundos, porém sem transcrição e com fallback neutro; agora é preciso validar que a correção local recupera texto real sem eliminar esse modo seguro.
+Última atualização: **2026-08-02**. O PR #66/merge `bdd5c6d` integrou e implantou somente em `feedbot-cuts` as correções de transcrição Gemini, vídeos longos, timestamps inteiros e proporção 4:5/9:16. A VPS aprovou 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; agora é preciso validar em smoke autenticado que o worker recupera texto real sem eliminar o fallback neutro seguro.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442`, frontend publicado e `feedbot-cuts` em `efc8d15`. A branch local corrige Gemini, vídeos longos e timestamps inteiros; ainda precisa de CI final, PR e implantação isolada antes de repetir o smoke.
+- [ ] **Corte Editorial:** base integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442` e frontend publicado. O PR #66/merge `bdd5c6d` corrigiu Gemini, vídeos longos, timestamps inteiros e formato, e foi implantado somente em `feedbot-cuts`; falta o smoke autenticado 9:16/4:5 sem publicação.
 
 ### P1 — Corte Editorial
 
@@ -195,8 +195,9 @@
 - [x] Aprovar o CI local: secret scan em 678 arquivos, 596 testes principais, 36 de deploy, 24 de reconciliação, worker, gates, MCP e build; após preservar o fallback seguro e o limite físico de vídeos curtos, 40 testes direcionados e a sintaxe do worker passaram novamente.
 - [x] Confirmar que o novo job chegou a `Pronto para revisão` com prévia de 35 segundos; nenhuma exclusão operacional é necessária para esse job.
 - [x] Revisar e preparar um commit separado na branch local `codex/fix-gemini-cut-transcription`.
-- [ ] Executar o CI completo e criar o segundo commit local da otimização de vídeo longo/timestamps.
-- [ ] Após aprovação, enviar a branch, abrir PR e, depois do merge e nova aprovação, implantar somente `feedbot-cuts`.
+- [x] Executar o CI completo e criar o segundo commit da otimização de vídeo longo/timestamps (`3a9d38c`).
+- [x] Enviar a branch, integrar o PR #66 no merge `bdd5c6d` e implantar somente `feedbot-cuts`.
+- [x] Validar na VPS 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; confirmar `DEPLOY_RESULT=SUCCEEDED`, alvo saudável e PIDs preservados de mídia/webhook.
 - [ ] Repetir o smoke com um vídeo curto e apenas um corte; depois repetir com o vídeo longo e validar 4:5/9:16 sem publicação.
 - [ ] Executar smoke autenticado 4:5 e 9:16 com fala real, sem agendar ou publicar.
 

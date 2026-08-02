@@ -15,16 +15,15 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 ## Estado Git confirmado
 
-### Trabalho atual — correção Bold/Clean e Reel do Corte Editorial
+### Trabalho atual — smoke pós-deploy do Corte Editorial
 
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-resume`.
-- Branch atual: `codex/fix-gemini-cut-transcription`.
-- Base: `efc8d15a9b1a5ff00f6fc0fa3c9bc7d906d30f9c` (`origin/main` após a implantação Lovable).
-- Commit local anterior: `3f548a8` (`Fix Gemini cut transcription resilience`), ainda não enviado.
-- Mudança local atual: rota Gemini Files API para vídeos longos, transcrição somente dos candidatos, tolerância por candidato, timestamps inteiros e telemetria de estratégia/limiares. Nenhuma parte foi publicada.
-- Estado: o PR #64 integrou Bold/Clean e Reel 9:16 no merge `5105bca`. A Lovable registrou a migration como `20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql`, recarregou o schema, publicou o frontend e reconciliou tipos/teste no merge automático `efc8d15`. A VPS recebeu exatamente `efc8d15` com `DEPLOY_PM2_SCOPE=cuts-only`; 588 testes principais, 36 de deploy, 24 de reconciliação, nginx e health passaram. Resta o smoke autenticado 4:5/9:16 com fala real e sem publicação.
+- Branch documental atual: `codex/record-gemini-cuts-deploy`, criada de `origin/main` no merge `bdd5c6d`.
+- Implementação: commits `3f548a8` (`Fix Gemini cut transcription resilience`) e `3a9d38c` (`Optimize Gemini long video cuts`), integrados pelo PR #66.
+- Estado: o PR #64 integrou Bold/Clean e Reel 9:16 no merge `5105bca`. A Lovable registrou a migration como `20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql`, recarregou o schema, publicou o frontend e reconciliou tipos/teste no merge automático `efc8d15`. O PR #66 integrou a correção de Gemini, vídeos longos, timestamps e formato no merge `bdd5c6d`; a VPS recebeu exatamente esse SHA com `DEPLOY_PM2_SCOPE=cuts-only`. Resta o smoke autenticado 4:5/9:16 com fala real e sem publicação.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
 - Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
+- Deploy corretivo atual: `DEPLOY_PM2_SCOPE=cuts-only` instalou `bdd5c6dd396709bae0e6001413f64aba424585b2`; 597 testes principais, 36 de deploy e 24 de reconciliação passaram, assim como nginx e health. As falhas intermediárias de health ocorreram antes do uptime mínimo de 10 segundos e a verificação final passou. Somente `feedbot-cuts` reiniciou; mídia e webhook preservaram os PIDs. Nenhum frontend, banco, migration ou Edge Function foi alterado.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 - Implantação confirmada: o SQL aprovado foi renomeado pela plataforma sem mudança funcional; nenhum job, clipe, upload, agendamento ou publicação foi criado durante a implantação.
 
@@ -94,7 +93,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
 | Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
-| Worker VPS | HEAD `efc8d15`; somente `feedbot-cuts` havia sido reiniciado. O teste das 15:12 chegou à revisão com prévia de 35s, sem transcrição, confiança 0% e texto neutro; pedido 9:16 apareceu como Feed 1080×1350 | implantar somente após aprovação e repetir o mesmo vídeo para confirmar transcrição real e proporção 9:16; preservar fallback seguro |
+| Worker VPS | HEAD `bdd5c6d`; somente `feedbot-cuts` reiniciou. Deploy `SUCCEEDED`/`target_healthy`, 597 testes principais, 36 de deploy e 24 de reconciliação aprovados | repetir primeiro um vídeo com fala em 9:16 e 1 corte; depois 4:5 e vídeo longo, sempre sem publicação; preservar fallback seguro |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
