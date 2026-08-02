@@ -2,7 +2,7 @@
 
 Atualizado em **2026-08-02** para o Corte Editorial local, ainda sem implantação externa.
 
-O código está isolado na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60). A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
+O código está isolado na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60); o check remoto passou para `5dee08a`. A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
 
 ## Arquitetura geral
 

@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes, commits e três renders físicos enviados no PR rascunho #60; faltam checks remotos, aceite visual, teste com fala real, merge e implantação autorizada.
+- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes, commits e três renders físicos enviados no PR rascunho #60; check remoto aprovado para `5dee08a`; faltam aceite visual, teste com fala real, merge e implantação autorizada.
 
 ### P1 — Corte Editorial
 
@@ -168,6 +168,7 @@
 - [ ] Repetir áudio e sincronia com um vídeo real que contenha fala; o arquivo fornecido não possui áudio.
 - [x] Revisar e preparar um commit separado da funcionalidade.
 - [x] Enviar `codex/editorial-ai-cut` e abrir o PR rascunho #60 contra `main`.
+- [x] Obter `Validate application` verde em 2m01s para `5dee08a`.
 - [ ] Obter aprovação antes de merge, migration, Edge, worker, frontend ou produção.
 
 ## Próximas tarefas

@@ -86,7 +86,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
 - compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
-Esta entrega está na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60). Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
+Esta entrega está na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), com `Validate application` aprovado para `5dee08a`. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
 
 ### Comercial
 

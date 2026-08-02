@@ -20,7 +20,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
 - Branch: `codex/editorial-ai-cut`.
 - Base: `fbe6a2ac77653a8378ebe8a06bf43a26574798bc` (`origin/main` no início do trabalho).
-- Estado: implementação, validação automatizada e três renders físicos concluídos; commits `9d0575f` e `bc3f7b4` enviados para `origin/codex/editorial-ai-cut`; PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60) aberto contra `main`. Sem merge, migration, publicação ou deploy.
+- Estado: implementação, validação automatizada e três renders físicos concluídos; commits enviados para `origin/codex/editorial-ai-cut`; PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60) aberto contra `main`; `Validate application` aprovado em 2m01s para `5dee08a`. Sem merge, migration, publicação ou deploy.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
