@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para a melhoria de imagens publicada também no worker VPS pelo merge `93ae2a3`.
+Atualizado em **2026-08-02** para o Corte Editorial implementado localmente e ainda não publicado.
 
 ## Visão de produto
 
@@ -73,6 +73,20 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - captura, transcrição, cortes, legendas, rerender e reaproveitamento;
 - Reels editoriais com duração configurável;
 - insights, logs e saúde de tokens/API.
+
+### Corte Editorial — implementado localmente, não publicado
+
+- nova opção ao lado de Corte tradicional e Corte com legendas; os formatos atuais permanecem disponíveis;
+- saída 1080 × 1350 com cabeçalho da conta, título, comentário, vídeo central, rodapé e fonte quando disponível;
+- transcrição como fonte factual principal e até quatro frames do próprio trecho apenas como contexto visual genérico;
+- nomes, datas e números sem evidência literal, evidência ausente ou confiança abaixo de 72% produzem texto neutro e `Revisão necessária`;
+- prévia em vídeo separada do arquivo final, com edição de título, comentário, trecho, enquadramento, fonte, cores e texto/ativação das legendas;
+- regeneração somente de texto não persiste dados, não renderiza vídeo e não agenda publicação;
+- o arquivo final só entra na fila após confirmação explícita; banco, UI e worker bloqueiam autopublicação/agendamento prematuro;
+- vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
+- compositor lê o original para cada saída e produz H.264/AAC/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
+
+Esta entrega está apenas na branch `codex/editorial-ai-cut`. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
 
 ### Comercial
 
@@ -243,6 +257,8 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 4. worker executa FFmpeg e aplica legenda/branding;
 5. arquivos finais seguem para revisão e publicação.
 
+No Corte Editorial, o passo 4 gera primeiro `editorial_preview_url`, mantendo `video_url` vazio. O usuário revisa os campos e solicita o render final; só depois de `editorial_review_confirmed_at` e `video_url` existirem o agendamento é permitido.
+
 ### Piloto Editorial
 
 1. usuário escolhe Instagram e preenche o Perfil de Criador;
@@ -273,6 +289,9 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
+- validar fisicamente o Corte Editorial com vídeos vertical, horizontal e de baixa resolução, sem publicar;
+- após aceite, implantar seus quatro componentes em ordem controlada: migration, Edge de texto, worker e frontend;
+- corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 
 ### Depois — Piloto assistido
 

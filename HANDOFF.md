@@ -15,6 +15,14 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 ## Estado Git confirmado
 
+### Trabalho atual — Corte Editorial
+
+- Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
+- Branch: `codex/editorial-ai-cut`.
+- Base: `fbe6a2ac77653a8378ebe8a06bf43a26574798bc` (`origin/main` no início do trabalho).
+- Estado: implementação e validação local concluídas em um commit funcional separado; ainda sem push, PR, migration, publicação ou deploy.
+- A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
+
 ### `main` auditada
 
 - Remoto: `https://github.com/franciscocastro-svg/feed-bot-ai`.
@@ -85,6 +93,48 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
+
+Atualização posterior da VPS: o código avançou para `fbe6a2a` e os processos/health continuam online, mas a automação ficou novamente bloqueada em `deploy_process_exit_unobserved` após `SIGINT` durante reload do próprio webhook. Esse incidente é separado do Corte Editorial; não remover o bloqueio neste trabalho.
+
+## Corte Editorial — implementação local
+
+Arquivos principais:
+
+- `src/pages/dashboard/Cuts.tsx` — seleção do modo, criação por RPC própria e gates de render/agendamento;
+- `src/components/cuts/EditorialCutPreview.tsx` — prévia 4:5 editável;
+- `src/lib/editorialCuts.ts` — contratos e validação do rascunho;
+- `worker/editorialCut.js` — segurança factual, layout Canvas e filtros FFmpeg;
+- `worker/index.js` — transcrição/frames, prévia, render final e bloqueio de autopublish;
+- `worker/aiProviders.js` — análise multimodal Gemini com fallback textual;
+- `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs e trigger aditivos;
+- `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado e sem escrita;
+- `src/test/editorial-video-cuts.test.ts` — 14 testes direcionados.
+
+Decisões obrigatórias:
+
+1. `cut_mode=editorial` é gravado na mesma transação que cria o job; não usar update posterior como única marcação.
+2. Corte Editorial é cloud-only nesta primeira versão e sempre 4:5.
+3. A prévia ocupa `editorial_preview_url`; `video_url` continua nulo até a revisão.
+4. Regenerar texto devolve rascunho sem persistir nem processar vídeo.
+5. Texto só é aceito com confiança mínima de 72%, evidência literal e números presentes na transcrição; caso contrário, fallback neutro.
+6. Frames complementam cenário/ação e nunca identificam pessoas.
+7. O render final relê a transcrição do original para preservar sincronia quando o trecho muda.
+8. Agendamento exige `editorial_review_confirmed_at` e `video_url`; UI, trigger e worker aplicam defesa em profundidade.
+9. Prévia e final leem o original; nunca recomprimir a prévia como fonte.
+10. Nenhum teste ou implantação pode publicar automaticamente.
+
+Validação local concluída:
+
+- 14 testes direcionados do Corte Editorial;
+- primeiro run completo com 585 testes principais aprovados e 35 ignorados;
+- 35 testes herméticos de deploy e 24 de reconciliação aprovados;
+- após os ajustes finais, typecheck, worker, os 14 testes direcionados e o build foram aprovados novamente;
+- o segundo run completo encontrou somente a restrição do sandbox ao abrir `127.0.0.1`; a suíte operacional correspondente foi repetida fora dessa restrição e passou 20/20;
+- secret scan em 674 arquivos;
+- typecheck, lint ratchet/fases, worker, migrations editoriais, MCP e build Vite aprovados;
+- `check:edge-functions` não executou porque Deno não está instalado localmente; o manifest/config foi validado pelo CI.
+
+Pendente: o ambiente local não possui FFmpeg. Portanto os comandos/filtros para vídeo vertical, horizontal e pequeno foram testados como contrato, mas a renderização física dos três arquivos ainda deve ser feita em ambiente isolado, sem tocar a fila/PM2 de produção.
 
 ## Reconciliação executada
 
@@ -522,9 +572,10 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747, preservando o fallback quando necessário;
-3. confirmar que a fonte visual continua relacionada à matéria e que os arquivos antigos permanecem inalterados até a regeneração;
-4. em atividade separada, repetir a proposta do Piloto para confirmar `replayed=true` antes do rollout.
+2. testar o Corte Editorial com três vídeos reais — vertical, horizontal e baixa resolução — em ambiente FFmpeg isolado, sem banco de produção e sem publicação;
+3. conferir 1080×1350, enquadramento, limite de ampliação, áudio AAC, H.264/yuv420p e sincronia das legendas;
+4. somente após aprovação, decidir merge e uma implantação controlada em quatro passos: migration, Edge de texto, worker e frontend;
+5. tratar separadamente o bloqueio `SIGINT` da VPS, a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção
 

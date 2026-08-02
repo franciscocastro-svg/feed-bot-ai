@@ -100,3 +100,44 @@ export async function requestStructuredAnalysis({ prompt, gemini, timeoutMs = 18
   }
   throw new Error(errors.length ? errors.join(" | ") : "Nenhum provedor de análise configurado.");
 }
+
+export async function requestMultimodalAnalysis({ prompt, images = [], gemini, timeoutMs = 180000 }) {
+  const safeImages = (Array.isArray(images) ? images : [])
+    .filter((image) => image?.data && /^image\/(?:jpeg|png|webp)$/.test(String(image?.mimeType || "")))
+    .slice(0, 6);
+  const errors = [];
+
+  if (gemini?.apiKey) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gemini.model}:generateContent?key=${gemini.apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              ...safeImages.map((image) => ({ inline_data: { mime_type: image.mimeType, data: image.data } })),
+            ],
+          }],
+          generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw new Error(`Gemini ${response.status}: ${(await response.text()).slice(0, 400)}`);
+      const payload = await response.json();
+      const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+      return { provider: "gemini_vision", text };
+    } catch (error) {
+      errors.push(`gemini_vision: ${error?.message || error}`);
+    }
+  }
+
+  try {
+    const fallback = await requestStructuredAnalysis({ prompt, gemini, timeoutMs });
+    return { ...fallback, provider: `${fallback.provider}_text_fallback` };
+  } catch (error) {
+    errors.push(error?.message || String(error));
+  }
+
+  throw new Error(errors.join(" | ") || "Nenhum provedor multimodal configurado.");
+}

@@ -8,6 +8,11 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 Documentação reconciliada em **2026-08-01** com a `origin/main`, as publicações Lovable e o diagnóstico somente leitura da VPS.
 
+- **Em implementação local, não publicado:** a branch `codex/editorial-ai-cut`, baseada em `fbe6a2a`, adiciona o novo modo Corte Editorial aos Cortes IA. O fluxo cria uma prévia 4:5 editável, usa transcrição e frames com guardrails factuais, exige confirmação para renderizar o vídeo final e bloqueia autopublicação. A migration, a nova Edge Function, o frontend e o worker não foram implantados.
+- O CI local desta branch aprovou secret scan em 674 arquivos, typecheck, lint sem regressão, 585 testes principais, 35 testes herméticos de deploy, 24 de reconciliação, worker, gates, MCP e build Vite.
+- A validação física com vídeos vertical, horizontal e de baixa resolução ainda não foi executada porque a worktree local não possui FFmpeg. Os filtros e contratos desses três casos estão cobertos por teste; a renderização real deve ocorrer em ambiente isolado antes de qualquer deploy.
+- **Inconsistência externa identificada após o registro do PR #59:** a VPS avançou para `fbe6a2a` e os três processos permanecem online com health HTTP 200, porém a automação voltou a registrar `deploy_process_exit_unobserved` após receber `SIGINT` durante o próprio reload do webhook. O bloqueio não deve ser removido nem misturado ao Corte Editorial; exige correção operacional separada.
+
 - Release funcional publicada confirmada: `6b362bf`, merge do PR [#45](https://github.com/franciscocastro-svg/feed-bot-ai/pull/45), com fluxo administrativo Pix sempre em `live`.
 - Correção Agência/financeiro publicada: `e163226`, merge do PR [#49](https://github.com/franciscocastro-svg/feed-bot-ai/pull/49), com check remoto verde.
 - O PR #42 integrou a correção Pix/manual, 19 testes de regressão e os cinco documentos reconciliados.
@@ -66,6 +71,7 @@ O Flux & Feed reduz o trabalho manual necessário para manter perfis de Instagra
 5. acompanha filas, limites, assinaturas e saúde operacional;
 6. transforma vídeos longos em cortes curtos com o worker e FFmpeg;
 7. propõe uma estratégia editorial por Instagram e, mediante confirmação, prepara fontes e pautas isoladas para a conta.
+8. prepara Cortes Editoriais em 4:5 com texto factual, identidade, vídeo central e revisão humana obrigatória antes do render final.
 
 ## Tecnologias
 
@@ -205,4 +211,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Recapturar/regenerar a matéria de teste e confirmar visualmente que a imagem principal relacionada de 1200×747 é usada sem trocar o assunto, preservando o fallback quando não houver alternativa segura. O replay idempotente do Piloto Editorial permanece uma atividade separada.
+Executar, sem publicação, o teste físico do Corte Editorial com um vídeo vertical, um horizontal e um de baixa resolução em ambiente FFmpeg isolado; conferir enquadramento, nitidez, áudio e sincronia das legendas. Se aprovado, revisar o diff e somente depois solicitar autorização separada para merge, migration, nova Edge Function, frontend e worker. A recaptura da matéria, o replay do Piloto e a correção do novo bloqueio da VPS permanecem atividades separadas.
