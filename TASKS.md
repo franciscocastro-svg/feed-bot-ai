@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro da fila foi implementado localmente na branch `codex/cancel-video-cut-jobs`; migration e deploy ainda aguardam aprovação.
+Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro foi integrado pelo PR #68; o rollout externo ainda deve ser confirmado. A correção da atualização do vídeo final está no PR rascunho #69, sem deploy.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -226,9 +226,22 @@
 - [x] Validar typecheck, worker, build, lint, 30 testes direcionados e os 608 testes principais; os cinco casos bloqueados pelo sandbox passaram no rerun externo de 21/21.
 - [x] Revisar e registrar a mudança em commit separado na branch `codex/cancel-video-cut-jobs`.
 - [x] Enviar a branch e abrir o PR rascunho #68 contra `main`; `Validate application` aprovou o head funcional `67f2e59` em 2m02s.
-- [ ] Aguardar o check do registro documental final, marcar o PR como pronto e integrar após revisão.
+- [x] Integrar o PR #68 no merge `9c0775c`; registrar os commits automáticos posteriores até `a1d4d46`.
 - [ ] Após aprovação, aplicar `20260802220000_cancel_video_cut_jobs.sql`, publicar frontend e atualizar somente `feedbot-cuts`.
 - [ ] Smoke: cancelar um job na fila e outro em processamento; confirmar isolamento, créditos devolvidos, limpeza e exclusão posterior.
+
+### Cortes IA — atualização do render final
+
+- [x] Diagnosticar o botão desativado após o worker concluir: vídeo pausado com `currentTime > 0` bloqueava o polling indefinidamente.
+- [x] Limitar a proteção de reprodução ao vídeo tocando e a dez segundos após a última interação.
+- [x] Consultar rerenders ativos e distinguir `Vídeo final na fila` de `Renderizando vídeo final`.
+- [x] Bloquear solicitações duplicadas enquanto o render estiver `queued` ou `processing`.
+- [x] Liberar `Aprovar e agendar` quando confirmação e `video_url` chegarem na atualização automática.
+- [x] Aprovar typecheck, lint direcionado, 29 testes direcionados e build de produção.
+- [x] Executar CI completo: scanner em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, worker, gates e build aprovados.
+- [x] Revisar o diff final e confirmar que banco, worker, Edge Functions e publicação não foram alterados.
+- [x] Enviar a branch e abrir o PR rascunho #69 contra `main`.
+- [ ] Publicar somente o frontend após aprovação e confirmar a transição completa em smoke autenticado.
 
 ## Próximas tarefas
 
@@ -373,6 +386,7 @@
 - [ ] Provedores de IA podem retornar 503; fila deve preservar retry e causa sanitizada.
 - [ ] Imagens ainda podem ser repetidas; a nova seleção evita busca externa e limita os candidatos à própria matéria, mas o smoke publicado permanece pendente.
 - [ ] Retenção curta de logs pode impedir diagnóstico de webhook.
+- [x] Vídeo pausado bloqueava a atualização do render final e mantinha `Aprovar e agendar` desativado; corrigido localmente, publicação pendente.
 - [ ] `AuthContext.tsx` tem dois warnings ESLint preexistentes, sem erros.
 
 ### Ambiente de desenvolvimento

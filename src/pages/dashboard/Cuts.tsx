@@ -14,6 +14,7 @@ import {
   CUT_FORMAT_OPTIONS,
   CUT_PRESET_OPTIONS,
   canCancelVideoCutJob,
+  shouldDeferVideoCutRefresh,
   type CutPresetKey,
 } from "@/lib/videoCuts";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ type VideoCutClip = {
   editorial_review_required?: boolean | null;
   editorial_review_confirmed_at?: string | null;
   editorial_preview_url?: string | null;
+  final_render_status?: "queued" | "processing" | null;
 };
 
 type VideoCutJob = {
@@ -137,6 +139,11 @@ type CancelVideoCutJobResult = {
   reason?: string;
 };
 
+type VideoCutRerenderRequest = {
+  clip_id: string;
+  status: "queued" | "processing";
+};
+
 type CutBrandProfile = {
   instagram_account_id: string;
   user_id: string;
@@ -174,7 +181,6 @@ type SupabaseFlex = {
 const db = supabase as unknown as SupabaseFlex;
 const JOB_REFRESH_MS = 15000;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
-const VIDEO_WATCH_GRACE_MS = 5 * 60 * 1000;
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
@@ -246,9 +252,12 @@ function hasRecentVideoActivity() {
   const now = Date.now();
   return Array.from(document.querySelectorAll("video")).some((video) => {
     const lastActivity = Number(video.dataset.lastActivity || 0);
-    const userTouchedVideoRecently = now - lastActivity < VIDEO_WATCH_GRACE_MS;
-    const videoIsInUse = !video.ended && (userTouchedVideoRecently || !video.paused || video.currentTime > 0);
-    return videoIsInUse;
+    return shouldDeferVideoCutRefresh({
+      paused: video.paused,
+      ended: video.ended,
+      lastActivityAt: lastActivity,
+      now,
+    });
   });
 }
 
@@ -388,7 +397,7 @@ export default function Cuts() {
 
     if (selectedAccountId) jobsQuery.eq("instagram_account_id", selectedAccountId);
 
-    const [{ data: jobRows, error }, healthResult, brandResult] = await Promise.all([
+    const [{ data: jobRows, error }, healthResult, brandResult, rerenderResult] = await Promise.all([
       selectedAccountId
         ? jobsQuery
         .order("created_at", { ascending: false })
@@ -398,8 +407,17 @@ export default function Cuts() {
       selectedAccountId
         ? db.from<CutBrandProfile>("video_cut_brand_profiles").select("*").eq("instagram_account_id", selectedAccountId).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
+      selectedAccountId
+        ? db.from<VideoCutRerenderRequest>("video_cut_rerender_requests")
+          .select("clip_id, status")
+          .eq("user_id", user.id)
+          .in("status", ["queued", "processing"])
+        : Promise.resolve({ data: [], error: null }),
     ]);
     if (error) toast.error(error.message || "Não foi possível carregar os cortes.");
+    if (rerenderResult.error && !options.silent) {
+      toast.error(rerenderResult.error.message || "Não foi possível atualizar a fila dos vídeos finais.");
+    }
     setWorkerHealth((healthResult.data as WorkerHealth[] | undefined) || []);
     const storedBrand = brandResult.data as CutBrandProfile | null | undefined;
     const nextBrand = storedBrand || (selectedAccountId && user ? {
@@ -415,9 +433,18 @@ export default function Cuts() {
       default_preset_key: "viral" as CutPresetKey,
     } : null);
     setBrandProfile(nextBrand);
+    const finalRenderStatusByClip = new Map(
+      ((rerenderResult.data as VideoCutRerenderRequest[] | undefined) || [])
+        .map((request) => [request.clip_id, request.status] as const),
+    );
     const nextJobs = ((jobRows as VideoCutJob[] | undefined) || []).map((job) => ({
       ...job,
-      video_cut_clips: (job.video_cut_clips || []).slice().sort((a, b) => a.clip_index - b.clip_index),
+      video_cut_clips: (job.video_cut_clips || [])
+        .map((clip) => ({
+          ...clip,
+          final_render_status: finalRenderStatusByClip.get(clip.id) || null,
+        }))
+        .sort((a, b) => a.clip_index - b.clip_index),
     }));
     setJobs((prev) => {
       // Evita re-render (que recarrega o <video> e interrompe a reprodução) quando nada mudou
@@ -1622,6 +1649,8 @@ export default function Cuts() {
                         confidence={clip.editorial_confidence}
                         reviewRequired={clip.editorial_review_required}
                         reviewConfirmedAt={clip.editorial_review_confirmed_at}
+                        status={clip.status}
+                        finalRenderStatus={clip.final_render_status}
                         busy={editorialBusy?.clipId === clip.id ? editorialBusy.action : null}
                         onRegenerateText={regenerateEditorialText}
                         onRender={renderEditorialCut}

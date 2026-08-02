@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial aprovado em smoke autenticado e para o cancelamento seguro de jobs implementado localmente, ainda sem deploy.
+Atualizado em **2026-08-02** para o Corte Editorial aprovado em smoke autenticado, o cancelamento integrado e a correção local da atualização do vídeo final.
 
 ## Visão de produto
 
@@ -93,7 +93,8 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - o cabeçalho editorial usa a conta Instagram selecionada como fronteira de identidade: consulta nome, `@` e foto via Meta, rejeita resposta com outro `@` e cai para o username selecionado sem herdar logo de outra conta;
 - o selo azul é condicional a um booleano de verificação devolvido pela Meta; token válido, conexão ativa ou configuração manual não são interpretados como selo público.
 - em `Meus cortes`, jobs ainda em fila, análise ou processamento recebem a ação `Cancelar fila`; a confirmação interrompe somente aquele trabalho no próximo ponto seguro, libera seus créditos reservados e permite excluí-lo depois;
-- o cancelamento é cooperativo: não encerra o processo `feedbot-cuts`, não afeta outros clientes/jobs e bloqueia conclusão ou autopublicação em caso de corrida. Esta melhoria está implementada e testada na branch `codex/cancel-video-cut-jobs`, mas ainda não foi aplicada ao Supabase, frontend ou VPS.
+- o cancelamento é cooperativo: não encerra o processo `feedbot-cuts`, não afeta outros clientes/jobs e bloqueia conclusão ou autopublicação em caso de corrida. A melhoria foi integrada pelo PR #68; a implantação efetiva de migration, frontend e worker ainda deve ser confirmada por ambiente.
+- durante o render final, a tela apresenta `Vídeo final na fila` ou `Renderizando vídeo final`, bloqueia uma segunda solicitação para o mesmo corte e continua consultando o estado depois que uma prévia pausada deixa de estar em uso. Quando o arquivo final confirmado chega, `Aprovar e agendar` é liberado automaticamente.
 
 O Corte Editorial base e a restrição temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A migration foi aplicada no Supabase sob o registro `20260802144135`, o cache do schema foi recarregado e `regenerate-cut-editorial-text` foi implantada com teste anônimo HTTP 401. A Lovable registrou o estado no merge automático `ad273b4`. O PR #62 integrou o escopo operacional `cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02 com reinício exclusivo de `feedbot-cuts`, testes, nginx e health aprovados. `feedbot-media` e `feedbot-webhook` mantiveram os mesmos PIDs. Os primeiros testes, anteriores à implantação completa, não criaram clipes, agendamentos ou publicações; o smoke com fala real foi concluído e aprovado depois dos PRs #66/#67.
 
@@ -107,7 +108,9 @@ A correção passou por 31 testes direcionados e pelo CI completo com 603 testes
 
 O smoke autenticado final foi aprovado em 2026-08-02: a prévia Reel apresentou trecho de 52 segundos, texto factual com confiança 100%, nome/foto/@ da conta selecionada e nenhuma publicação automática. A etapa funcional seguinte é o cancelamento seguro da fila, sem alterar os formatos de corte existentes.
 
-O cancelamento seguro foi enviado no PR rascunho #68. O check remoto aprovou o head funcional `67f2e59` em 2m02s; o PR continua sem merge e a migration, o frontend e o worker de produção permanecem inalterados.
+O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos posteriores levaram a `main` a `a1d4d46`. A presença no Git não comprova que migration, frontend e worker estejam alinhados, portanto o rollout ainda exige verificação externa. A correção da atualização do vídeo final está em revisão no PR rascunho #69, branch `codex/fix-editorial-final-refresh`, e não altera banco ou worker.
+
+A correção do refresh foi validada pelo CI completo com 614 testes principais, 36 de deploy, 24 de reconciliação, scanner de segredos, typecheck, worker, gates e build. A publicação e o smoke autenticado continuam pendentes.
 
 ### Comercial
 
@@ -313,6 +316,7 @@ No Corte Editorial, o usuário escolhe Feed 4:5 ou Reel 9:16 antes da criação.
 - repetir a sincronia com um vídeo que contenha fala real, sem publicar; os três renders físicos já receberam aceite visual;
 - [concluído] implantar migration, Edge de texto e somente o worker `feedbot-cuts` no merge `67ced14`, sem reiniciar os outros processos;
 - executar os smokes autenticados Feed 4:5 e Reel 9:16 com fala real, sem agendar ou publicar, e registrar o aceite visual;
+- validar a transição automática do render final até a liberação de `Aprovar e agendar`, sem recarregar a página e sem aceitar cliques duplicados;
 - corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 
 ### Depois — Piloto assistido
