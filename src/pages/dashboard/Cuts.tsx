@@ -361,6 +361,11 @@ export default function Cuts() {
 
     setAccounts(availableAccounts);
     if (selectedAccountId !== accountId) setAccountId(selectedAccountId);
+    try {
+      if (selectedAccountId) localStorage.setItem("cuts:accountId", selectedAccountId);
+    } catch {
+      // localStorage indisponível — apenas não persiste a seleção
+    }
 
     if (accountsError) {
       toast.error(accountsError.message || "Não foi possível carregar as contas do Instagram.");
