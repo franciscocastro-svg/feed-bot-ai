@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { statusLabelPt } from "@/lib/statusLabels";
@@ -168,6 +169,7 @@ const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 type InputMode = "youtube" | "upload";
 type ProcessingMode = "cloud" | "local_device";
+type CutsWorkspaceTab = "create" | "history";
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
@@ -257,6 +259,8 @@ export default function Cuts() {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
   const [cutMode, setCutMode] = useState<CutMode>("subtitled");
+  const [workspaceTab, setWorkspaceTab] = useState<CutsWorkspaceTab>("create");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke" | "clean" | "bold">("bold");
   const [presetKey, setPresetKey] = useState<CutPresetKey>("viral");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -288,6 +292,10 @@ export default function Cuts() {
   };
 
   const selectCutMode = (mode: CutMode) => {
+    if (mode === "editorial" && !isAdmin) {
+      toast.error("O Corte Editorial está em Beta e, por enquanto, é exclusivo para administradores.");
+      return;
+    }
     setCutMode(mode);
     if (mode === "traditional") {
       setSubtitleStyle("none");
@@ -402,6 +410,27 @@ export default function Cuts() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accountId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setIsAdmin(false);
+      return () => { active = false; };
+    }
+    void supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        const allowed = !error && data?.role === "admin";
+        setIsAdmin(allowed);
+        if (!allowed) setCutMode((current) => current === "editorial" ? "subtitled" : current);
+      });
+    return () => { active = false; };
+  }, [user]);
 
   const hasActiveJobs = useMemo(() => jobs.some((job) =>
     isJobActive(job) || job.video_cut_clips?.some((clip) => clip.status === "rendering"),
@@ -559,6 +588,9 @@ export default function Cuts() {
     if (inputMode === "upload" && !videoFile) return toast.error("Escolha um arquivo MP4 autorizado.");
     if (!accountId) return toast.error("Escolha uma conta do Instagram.");
     if (!rightsConfirmed) return toast.error("Confirme que você tem direito/autorização sobre o vídeo.");
+    if (cutMode === "editorial" && !isAdmin) {
+      return toast.error("O Corte Editorial está em Beta e, por enquanto, é exclusivo para administradores.");
+    }
     if (cutMode === "editorial" && inputMode === "upload" && processingMode !== "cloud") {
       return toast.error("O Corte Editorial usa o processamento na nuvem para montar a prévia segura.");
     }
@@ -1002,6 +1034,10 @@ export default function Cuts() {
   };
 
   const regenerateEditorialText = async (clipId: string) => {
+    if (!isAdmin) {
+      toast.error("O Corte Editorial está em Beta e, por enquanto, é exclusivo para administradores.");
+      return null;
+    }
     setEditorialBusy({ clipId, action: "text" });
     try {
       const { data, error } = await supabase.functions.invoke("regenerate-cut-editorial-text", {
@@ -1028,6 +1064,10 @@ export default function Cuts() {
   };
 
   const renderEditorialCut = async (clipId: string, draft: EditorialCutDraft) => {
+    if (!isAdmin) {
+      toast.error("O Corte Editorial está em Beta e, por enquanto, é exclusivo para administradores.");
+      return false;
+    }
     const validationError = validateEditorialDraft(draft);
     if (validationError) {
       toast.error(validationError);
@@ -1062,7 +1102,7 @@ export default function Cuts() {
         <div>
           <div className="flex items-center gap-2 text-primary mb-2">
             <Scissors className="h-5 w-5" />
-            <span className="text-sm font-medium">Beta interno</span>
+            <span className="text-sm font-medium">Criação e revisão de vídeos</span>
           </div>
           <h1 className="text-4xl font-bold">Cortes IA</h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
@@ -1085,6 +1125,13 @@ export default function Cuts() {
         </div>
       )}
 
+      <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as CutsWorkspaceTab)} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="create">Criar corte</TabsTrigger>
+          <TabsTrigger value="history">Meus cortes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="create" className="mt-0">
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4">
         <Card className="p-5 space-y-4">
           <div>
@@ -1168,19 +1215,19 @@ export default function Cuts() {
           </div>
           <div className="space-y-2">
             <Label>Tipo de corte</Label>
-            <div className="grid md:grid-cols-3 gap-2">
-              {CUT_MODE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => selectCutMode(option.value)}
-                  className={`rounded-xl border p-3 text-left transition ${cutMode === option.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-                >
-                  <span className="block text-sm font-medium text-foreground">{option.label}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">{option.description}</span>
-                </button>
-              ))}
-            </div>
+            <Tabs value={cutMode} onValueChange={(value) => selectCutMode(value as CutMode)}>
+              <TabsList className={`grid h-auto w-full ${isAdmin ? "md:grid-cols-3" : "grid-cols-2"}`}>
+                {CUT_MODE_OPTIONS.filter((option) => option.value !== "editorial" || isAdmin).map((option) => (
+                  <TabsTrigger key={option.value} value={option.value} className="min-h-14 flex-col gap-1 whitespace-normal px-3 py-2">
+                    <span className="inline-flex items-center gap-2">
+                      {option.label}
+                      {option.value === "editorial" && <Badge variant="outline" className="text-[10px]">Beta admin</Badge>}
+                    </span>
+                    <span className="text-[11px] font-normal text-muted-foreground">{option.description}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
             {cutMode === "editorial" && (
               <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
                 Saída fixa em 1080 × 1350. Primeiro será criada uma prévia editável; o vídeo final só será renderizado após sua confirmação e nunca será autopublicado.
@@ -1386,7 +1433,9 @@ export default function Cuts() {
           )}
         </Card>
       </div>
+        </TabsContent>
 
+        <TabsContent value="history" className="mt-0">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Trabalhos recentes</h2>
@@ -1592,6 +1641,8 @@ export default function Cuts() {
           </Card>
         ))}
       </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!editingClip} onOpenChange={(open) => !open && setEditingClip(null)}>
         <DialogContent className="max-w-2xl">

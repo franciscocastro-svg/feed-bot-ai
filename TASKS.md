@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. Corte Editorial implementado e renderizado localmente em três cenários, ainda sem deploy e aguardando aceite visual.
+Última atualização: **2026-08-02**. Corte Editorial implementado, protegido como Beta administrativa e aprovado visualmente em três cenários; ainda sem deploy e aguardando teste com fala real.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,11 +147,13 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes, commits e três renders físicos enviados no PR rascunho #60; check remoto aprovado para `5dee08a`; faltam aceite visual, teste com fala real, merge e implantação autorizada.
+- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes e três renders físicos enviados no PR rascunho #60; demonstração visual aprovada; Beta administrativa protegida na UI e no backend; faltam teste com fala real, merge e implantação autorizada.
 
 ### P1 — Corte Editorial
 
 - [x] Adicionar Corte tradicional, Corte com legendas e Corte editorial sem remover os formatos atuais.
+- [x] Organizar Cortes IA nas subabas `Criar corte` e `Meus cortes`, com os três formatos como subabas de criação.
+- [x] Restringir temporariamente a Beta editorial a administradores na UI, RPCs, Edge Function e trigger anti-bypass.
 - [x] Fixar o Corte Editorial em 1080 × 1350 com cabeçalho, título, comentário, mídia e rodapé.
 - [x] Usar transcrição como fonte principal e frames somente como complemento sem identificação facial.
 - [x] Validar evidência literal, números e confiança; usar fallback neutro com revisão necessária.
@@ -161,10 +163,10 @@
 - [x] Recalcular a transcrição/legendas quando o trecho mudar.
 - [x] Preservar proporção e limitar ampliação de vídeo pequeno.
 - [x] Cobrir os três enquadramentos e sincronia por contratos automatizados.
-- [x] Executar CI: 585 testes principais, 35 de deploy, 24 de reconciliação, worker, gates, MCP e build aprovados.
+- [x] Validar 586 testes principais, 35 de deploy, 24 de reconciliação, worker, gates, MCP e build; três timeouts sob carga concorrente passaram isoladamente.
 - [x] Renderizar os cenários vertical, horizontal e de baixa resolução em ambiente FFmpeg isolado, sem banco ou publicação.
 - [x] Confirmar tecnicamente 1080×1350, H.264/yuv420p, AAC 48 kHz, legendas queimadas e áreas seguras.
-- [ ] Obter aceite visual do usuário para nitidez e enquadramento.
+- [x] Obter aceite visual do usuário para nitidez e enquadramento.
 - [ ] Repetir áudio e sincronia com um vídeo real que contenha fala; o arquivo fornecido não possui áudio.
 - [x] Revisar e preparar um commit separado da funcionalidade.
 - [x] Enviar `codex/editorial-ai-cut` e abrir o PR rascunho #60 contra `main`.
