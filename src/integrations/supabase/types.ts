@@ -3362,6 +3362,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_editorial_video_cut_job_v2: {
+        Args: {
+          _format?: string
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _subtitle_style?: string
+          _youtube_url: string
+        }
+        Returns: Database["public"]["Tables"]["video_cut_jobs"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_editorial_video_cut_upload_job: {
         Args: {
           _instagram_account_id: string
@@ -3424,6 +3441,24 @@ export type Database = {
           youtube_url: string
           zoom_effect: boolean
         }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_editorial_video_cut_upload_job_v2: {
+        Args: {
+          _format?: string
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _source_title?: string
+          _storage_path: string
+          _subtitle_style?: string
+        }
+        Returns: Database["public"]["Tables"]["video_cut_jobs"]["Row"]
         SetofOptions: {
           from: "*"
           to: "video_cut_jobs"

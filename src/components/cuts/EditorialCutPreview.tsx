@@ -18,6 +18,7 @@ import {
 type Props = {
   clipId: string;
   accountHandle: string;
+  format?: "reels" | "feed_portrait" | null;
   previewUrl?: string | null;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export function EditorialCutPreview(props: Props) {
+  const isReels = props.format === "reels";
   const [draft, setDraft] = useState<EditorialCutDraft>({
     title: props.title || "Revisão necessária",
     comment: props.comment || "Revise a transcrição e descreva com clareza o contexto apresentado neste trecho.",
@@ -73,7 +75,7 @@ export function EditorialCutPreview(props: Props) {
   return (
     <Card className="overflow-hidden border-primary/30">
       <div className="grid xl:grid-cols-[minmax(300px,0.8fr)_minmax(360px,1.2fr)]">
-        <div className="aspect-[4/5] bg-black">
+        <div className={`${isReels ? "aspect-[9/16]" : "aspect-[4/5]"} bg-black`}>
           {mediaUrl ? (
             <video className="h-full w-full object-contain" src={mediaUrl} poster={props.thumbnailUrl || undefined} controls playsInline />
           ) : props.thumbnailUrl ? (
@@ -87,7 +89,7 @@ export function EditorialCutPreview(props: Props) {
 
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>Corte editorial · 1080 × 1350</Badge>
+            <Badge>Corte editorial · {isReels ? "Reel 1080 × 1920" : "Feed 1080 × 1350"}</Badge>
             {finalReady ? (
               <Badge variant="outline" className="border-green-500/40 text-green-600"><CheckCircle2 className="mr-1 h-3 w-3" /> Final revisado</Badge>
             ) : (

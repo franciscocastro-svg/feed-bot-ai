@@ -11,8 +11,10 @@ import {
 } from "../lib/editorialCuts";
 import {
   EDITORIAL_HEIGHT,
+  EDITORIAL_REELS_HEIGHT,
   EDITORIAL_WIDTH,
   buildEditorialVideoFilter,
+  editorialDimensions,
   editorialLayout,
   normalizeEditorialDraft,
 } from "../../worker/editorialCut.js";
@@ -116,6 +118,25 @@ describe("Corte Editorial", () => {
     if (framing === "smart_crop") expect(filter).toContain("min(iw*2,960)");
   });
 
+  it("renderiza o mesmo layout editorial em Feed 4:5 e Reel 9:16", () => {
+    expect(editorialDimensions("feed_portrait")).toEqual({
+      width: EDITORIAL_WIDTH,
+      height: EDITORIAL_HEIGHT,
+      format: "feed_portrait",
+    });
+    expect(editorialDimensions("reels")).toEqual({
+      width: EDITORIAL_WIDTH,
+      height: EDITORIAL_REELS_HEIGHT,
+      format: "reels",
+    });
+
+    const reelsFilter = buildEditorialVideoFilter({ duration: 18, framing: "blur_fit", format: "reels" });
+    expect(reelsFilter).toContain("1080x1920");
+    const reelsLayout = editorialLayout(EDITORIAL_WIDTH, EDITORIAL_REELS_HEIGHT);
+    expect(reelsLayout.media.y + reelsLayout.media.height).toBeLessThan(reelsLayout.footerY);
+    expect(reelsLayout.footerY).toBeLessThan(EDITORIAL_REELS_HEIGHT - 100);
+  });
+
   it("mantém mídia, texto e rodapé dentro da área segura 4:5", () => {
     const layout = editorialLayout();
     expect([layout.width, layout.height]).toEqual([EDITORIAL_WIDTH, EDITORIAL_HEIGHT]);
@@ -153,6 +174,29 @@ describe("Corte Editorial", () => {
     expect(migration).toContain("request_editorial_cut_render");
     expect(migration).toContain("editorial_review_confirmed_at = now()");
     expect(migration).toContain("guard_unreviewed_editorial_cut_schedule");
+  });
+
+  it("aceita Bold/Clean na criação editorial e mantém Feed ou Reel sem corrida com o worker", () => {
+    const migration = read("supabase/migrations/20260802173000_fix_editorial_cut_styles_and_reels.sql");
+    const page = read("src/pages/dashboard/Cuts.tsx");
+    const preview = read("src/components/cuts/EditorialCutPreview.tsx");
+    const types = read("src/integrations/supabase/types.ts");
+
+    expect(migration).toContain("create_editorial_video_cut_job_v2");
+    expect(migration).toContain("create_editorial_video_cut_upload_job_v2");
+    expect(migration.match(/WHEN v_style IN \('bold', 'clean'\) THEN 'classic'/g)).toHaveLength(2);
+    expect(migration.match(/subtitle_style = v_style/g)).toHaveLength(2);
+    expect(migration.match(/v_format NOT IN \('feed_portrait', 'reels'\)/g)).toHaveLength(2);
+    expect(migration).toMatch(/subtitle_style = v_style,[\s\S]*auto_publish = false/);
+
+    expect(page).toContain('"create_editorial_video_cut_job_v2"');
+    expect(page).toContain('"create_editorial_video_cut_upload_job_v2"');
+    expect(page).toContain('_format: formats[0]');
+    expect(page).toContain('media_type: "reel"');
+    expect(preview).toContain('"aspect-[9/16]"');
+    expect(preview).toContain('Reel 1080 × 1920');
+    expect(types).toContain("create_editorial_video_cut_job_v2");
+    expect(types).toContain("create_editorial_video_cut_upload_job_v2");
   });
 
   it("mantém a Beta editorial exclusiva para administradores na tela e no banco", () => {
