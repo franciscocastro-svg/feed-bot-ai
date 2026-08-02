@@ -2481,13 +2481,6 @@ export type Database = {
           created_at: string
           duration_seconds: number
           edit_config: Json
-          editorial_comment: string | null
-          editorial_confidence: number | null
-          editorial_config: Json
-          editorial_preview_url: string | null
-          editorial_review_confirmed_at: string | null
-          editorial_review_required: boolean
-          editorial_text_version: number
           emotion_score: number | null
           end_seconds: number
           error_message: string | null
@@ -2526,13 +2519,6 @@ export type Database = {
           created_at?: string
           duration_seconds?: number
           edit_config?: Json
-          editorial_comment?: string | null
-          editorial_confidence?: number | null
-          editorial_config?: Json
-          editorial_preview_url?: string | null
-          editorial_review_confirmed_at?: string | null
-          editorial_review_required?: boolean
-          editorial_text_version?: number
           emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
@@ -2571,13 +2557,6 @@ export type Database = {
           created_at?: string
           duration_seconds?: number
           edit_config?: Json
-          editorial_comment?: string | null
-          editorial_confidence?: number | null
-          editorial_config?: Json
-          editorial_preview_url?: string | null
-          editorial_review_confirmed_at?: string | null
-          editorial_review_required?: boolean
-          editorial_text_version?: number
           emotion_score?: number | null
           end_seconds?: number
           error_message?: string | null
@@ -2655,7 +2634,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           custom_prompt: string | null
-          cut_mode: string
           duration_seconds: number | null
           error_message: string | null
           fallback_required: boolean
@@ -2708,7 +2686,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           custom_prompt?: string | null
-          cut_mode?: string
           duration_seconds?: number | null
           error_message?: string | null
           fallback_required?: boolean
@@ -2761,7 +2738,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           custom_prompt?: string | null
-          cut_mode?: string
           duration_seconds?: number | null
           error_message?: string | null
           fallback_required?: boolean
@@ -3292,27 +3268,6 @@ export type Database = {
           subscription_id: string
           terminal_state: boolean
         }[]
-      }
-      create_editorial_video_cut_job: {
-        Args: {
-          _instagram_account_id: string
-          _requested_clips: number
-          _rights_confirmed: boolean
-          _subtitle_style?: string
-          _youtube_url: string
-        }
-        Returns: Database["public"]["Tables"]["video_cut_jobs"]["Row"]
-      }
-      create_editorial_video_cut_upload_job: {
-        Args: {
-          _instagram_account_id: string
-          _requested_clips: number
-          _rights_confirmed: boolean
-          _source_title?: string
-          _storage_path: string
-          _subtitle_style?: string
-        }
-        Returns: Database["public"]["Tables"]["video_cut_jobs"]["Row"]
       }
       create_local_video_cut_job: {
         Args: {
@@ -4338,19 +4293,6 @@ export type Database = {
           _start_seconds: number
           _subtitle_style: string
           _transcript_text?: string
-        }
-        Returns: string
-      }
-      request_editorial_cut_render: {
-        Args: {
-          _clip_id: string
-          _editorial_comment: string
-          _editorial_config?: Json
-          _end_seconds: number
-          _start_seconds: number
-          _subtitle_style: string
-          _title: string
-          _transcript_text: string | null
         }
         Returns: string
       }
