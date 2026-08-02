@@ -68,6 +68,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 2, // 2 minutos — evita refetch excessivo
+      refetchOnWindowFocus: false, // evita recarregar tudo ao voltar para a aba
       retry: 1,
     },
   },
