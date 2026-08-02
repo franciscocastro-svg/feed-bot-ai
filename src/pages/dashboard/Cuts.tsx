@@ -1460,9 +1460,17 @@ export default function Cuts() {
 
         <TabsContent value="history" className="mt-0">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-2xl font-semibold">Trabalhos recentes</h2>
-          <span className="text-sm text-muted-foreground">{jobs.length} job(s)</span>
+          <div className="flex items-center gap-3">
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder="Escolha a conta" /></SelectTrigger>
+              <SelectContent>
+                {accounts.map((account) => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">{jobs.length} job(s)</span>
+          </div>
         </div>
         {loading ? (
           <Card className="p-8 text-center text-muted-foreground">Carregando cortes...</Card>
