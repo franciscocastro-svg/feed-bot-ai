@@ -161,6 +161,7 @@ describe("Corte Editorial", () => {
     expect(worker).toContain('if (!isEditorialCut && job.auto_publish');
     expect(worker).toContain('job?.cut_mode === "editorial"');
     expect(worker).toContain("source_encode_count: 1");
+    expect(worker).toContain("loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]");
   });
 
   it("regenera somente texto sem persistir nem processar vídeo", () => {

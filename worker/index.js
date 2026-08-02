@@ -2583,7 +2583,7 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     : `${baseFilter};[vbase]copy[v]`;
   const sourceHasAudio = await hasAudioStream(sourcePath);
   const audioFilter = sourceHasAudio
-    ? ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]"
+    ? ";[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]"
     : `;anullsrc=r=48000:cl=stereo,atrim=duration=${duration.toFixed(3)},asetpts=N/SR/TB[a]`;
   const filterComplex = videoFilter + audioFilter;
 

@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. Corte Editorial implementado e validado localmente, ainda sem deploy e sem teste físico FFmpeg.
+Última atualização: **2026-08-02**. Corte Editorial implementado e renderizado localmente em três cenários, ainda sem deploy e aguardando aceite visual.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes de contrato e commit separado concluídos na branch `codex/editorial-ai-cut`; faltam teste físico, merge e implantação autorizada.
+- [ ] **Corte Editorial:** código, migration, UI, worker, Edge, testes de contrato, commit separado e três renders físicos concluídos na branch `codex/editorial-ai-cut`; faltam aceite visual, teste com fala real, merge e implantação autorizada.
 
 ### P1 — Corte Editorial
 
@@ -162,8 +162,10 @@
 - [x] Preservar proporção e limitar ampliação de vídeo pequeno.
 - [x] Cobrir os três enquadramentos e sincronia por contratos automatizados.
 - [x] Executar CI: 585 testes principais, 35 de deploy, 24 de reconciliação, worker, gates, MCP e build aprovados.
-- [ ] Renderizar vídeos reais vertical, horizontal e de baixa resolução em ambiente FFmpeg isolado.
-- [ ] Confirmar visualmente nitidez, áudio, sincronia e áreas seguras.
+- [x] Renderizar os cenários vertical, horizontal e de baixa resolução em ambiente FFmpeg isolado, sem banco ou publicação.
+- [x] Confirmar tecnicamente 1080×1350, H.264/yuv420p, AAC 48 kHz, legendas queimadas e áreas seguras.
+- [ ] Obter aceite visual do usuário para nitidez e enquadramento.
+- [ ] Repetir áudio e sincronia com um vídeo real que contenha fala; o arquivo fornecido não possui áudio.
 - [x] Revisar e preparar um commit separado da funcionalidade.
 - [ ] Obter aprovação antes de merge, migration, Edge, worker, frontend ou produção.
 

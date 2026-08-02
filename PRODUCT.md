@@ -84,7 +84,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - regeneração somente de texto não persiste dados, não renderiza vídeo e não agenda publicação;
 - o arquivo final só entra na fila após confirmação explícita; banco, UI e worker bloqueiam autopublicação/agendamento prematuro;
 - vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
-- compositor lê o original para cada saída e produz H.264/AAC/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
+- compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
 Esta entrega está apenas na branch `codex/editorial-ai-cut`. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
 
@@ -289,7 +289,7 @@ No Corte Editorial, o passo 4 gera primeiro `editorial_preview_url`, mantendo `v
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
-- validar fisicamente o Corte Editorial com vídeos vertical, horizontal e de baixa resolução, sem publicar;
+- obter o aceite visual dos três renders físicos já gerados e repetir a sincronia com um vídeo que contenha fala real, sem publicar;
 - após aceite, implantar seus quatro componentes em ordem controlada: migration, Edge de texto, worker e frontend;
 - corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 

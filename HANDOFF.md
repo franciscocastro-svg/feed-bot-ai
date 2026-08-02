@@ -20,7 +20,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
 - Branch: `codex/editorial-ai-cut`.
 - Base: `fbe6a2ac77653a8378ebe8a06bf43a26574798bc` (`origin/main` no início do trabalho).
-- Estado: implementação e validação local concluídas em um commit funcional separado; ainda sem push, PR, migration, publicação ou deploy.
+- Estado: implementação, validação automatizada e três renders físicos locais concluídos; correção de áudio pós-render registrada em commit adicional local. Sem push, PR, migration, publicação ou deploy.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
@@ -134,7 +134,7 @@ Validação local concluída:
 - typecheck, lint ratchet/fases, worker, migrations editoriais, MCP e build Vite aprovados;
 - `check:edge-functions` não executou porque Deno não está instalado localmente; o manifest/config foi validado pelo CI.
 
-Pendente: o ambiente local não possui FFmpeg. Portanto os comandos/filtros para vídeo vertical, horizontal e pequeno foram testados como contrato, mas a renderização física dos três arquivos ainda deve ser feita em ambiente isolado, sem tocar a fila/PM2 de produção.
+Validação física executada em `/private/tmp/fluxfeed-editorial-tests` com FFmpeg Full 8.1.2 e as funções reais de `worker/editorialCut.js`: três saídas 1080×1350 para entrada vertical, horizontal derivada e baixa resolução, sem banco, storage ou publicação. O teste encontrou AAC em 96 kHz após `loudnorm`; `worker/index.js` passou a usar `aresample=48000`. O original de 6 segundos não possui áudio, então foi usada faixa sintética com legenda temporizada. Pendente: aceite visual do usuário e smoke posterior com fala real.
 
 ## Reconciliação executada
 
@@ -572,8 +572,8 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. testar o Corte Editorial com três vídeos reais — vertical, horizontal e baixa resolução — em ambiente FFmpeg isolado, sem banco de produção e sem publicação;
-3. conferir 1080×1350, enquadramento, limite de ampliação, áudio AAC, H.264/yuv420p e sincronia das legendas;
+2. apresentar ao usuário os três MP4 em `/private/tmp/fluxfeed-editorial-tests` e obter aceite de nitidez/enquadramento;
+3. repetir o teste de áudio e legendas com um vídeo que contenha fala real;
 4. somente após aprovação, decidir merge e uma implantação controlada em quatro passos: migration, Edge de texto, worker e frontend;
 5. tratar separadamente o bloqueio `SIGINT` da VPS, a recaptura da imagem e o replay do Piloto Editorial.
 
