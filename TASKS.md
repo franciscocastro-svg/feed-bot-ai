@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O PR #66/merge `bdd5c6d` integrou e implantou somente em `feedbot-cuts` as correções de transcrição Gemini, vídeos longos, timestamps inteiros e proporção 4:5/9:16. A VPS aprovou 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; agora é preciso validar em smoke autenticado que o worker recupera texto real sem eliminar o fallback neutro seguro.
+Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro da fila foi implementado localmente na branch `codex/cancel-video-cut-jobs`; migration e deploy ainda aguardam aprovação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442` e frontend publicado. O PR #66/merge `bdd5c6d` corrigiu Gemini, vídeos longos, timestamps inteiros e formato, e foi implantado somente em `feedbot-cuts`; falta o smoke autenticado 9:16/4:5 sem publicação.
+- [x] **Corte Editorial:** base, formato, Gemini, duração e identidade implantados; smoke autenticado 9:16 aprovado sem publicação. A validação 4:5 continua recomendada, mas não bloqueia o cancelamento de fila.
 
 ### P1 — Corte Editorial
 
@@ -212,8 +212,23 @@
 - [x] Adicionar testes de duração, correspondência de username, URL de foto confiável e selo condicional.
 - [x] Executar CI completo: scanner em 681 arquivos, 603 testes principais, 36 de deploy, 24 de reconciliação, worker, gates editoriais/MCP e build aprovados.
 - [x] Revisar o diff final e preparar commit separado.
-- [ ] Após aprovação, enviar ao GitHub, abrir PR e aplicar a migration pela Lovable.
-- [ ] Após merge e autorização, publicar frontend e atualizar somente `feedbot-cuts`; executar smoke 9:16/4:5 sem publicação.
+- [x] Enviar ao GitHub, integrar o PR #67 no merge `40a8c0e` e aplicar a migration pela Lovable sob o registro `20260802203258`.
+- [x] Publicar frontend e atualizar somente `feedbot-cuts` no SHA `40a8c0e`; 603 testes principais, 36 de deploy, 24 de reconciliação e health aprovados.
+- [x] Executar smoke 9:16, um corte por vez e sem publicação; resultado aprovado com 52 segundos, identidade correta e confiança 100%.
+- [ ] Repetir o smoke em Feed 4:5 como validação visual complementar.
+
+### Cortes IA — cancelamento seguro da fila
+
+- [x] Definir estados canceláveis: `queued`, `analyzing` e `processing`.
+- [x] Criar RPC `cancel_video_cut_job(uuid)` com lock de linha, propriedade/admin, idempotência e liberação atômica da reserva.
+- [x] Adicionar `Cancelar fila` com confirmação, loading e recarga; preservar `Excluir` para o estado terminal.
+- [x] Tornar `feedbot-cuts` cooperativo, com checkpoints, proteção contra ready/failed/autopublish e limpeza de artefatos parciais.
+- [x] Validar typecheck, worker, build, lint, 30 testes direcionados e os 608 testes principais; os cinco casos bloqueados pelo sandbox passaram no rerun externo de 21/21.
+- [x] Revisar e registrar a mudança em commit separado na branch `codex/cancel-video-cut-jobs`.
+- [x] Enviar a branch e abrir o PR rascunho #68 contra `main`; `Validate application` aprovou o head funcional `67f2e59` em 2m02s.
+- [ ] Aguardar o check do registro documental final, marcar o PR como pronto e integrar após revisão.
+- [ ] Após aprovação, aplicar `20260802220000_cancel_video_cut_jobs.sql`, publicar frontend e atualizar somente `feedbot-cuts`.
+- [ ] Smoke: cancelar um job na fila e outro em processamento; confirmar isolamento, créditos devolvidos, limpeza e exclusão posterior.
 
 ## Próximas tarefas
 

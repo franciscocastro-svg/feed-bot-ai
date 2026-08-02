@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
@@ -13,6 +13,7 @@ import {
   viralBadgeLabel,
   CUT_FORMAT_OPTIONS,
   CUT_PRESET_OPTIONS,
+  canCancelVideoCutJob,
   type CutPresetKey,
 } from "@/lib/videoCuts";
 import { Button } from "@/components/ui/button";
@@ -126,6 +127,14 @@ type WorkerHealth = {
   last_seen_at: string;
   healthy: boolean;
   version?: string | null;
+};
+
+type CancelVideoCutJobResult = {
+  cancelled?: boolean;
+  already_cancelled?: boolean;
+  previous_status?: string;
+  released_credits?: number;
+  reason?: string;
 };
 
 type CutBrandProfile = {
@@ -279,6 +288,7 @@ export default function Cuts() {
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [savingBrand, setSavingBrand] = useState(false);
   const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
   const [editorialBusy, setEditorialBusy] = useState<{ clipId: string; action: "text" | "render" } | null>(null);
   const [brandProfile, setBrandProfile] = useState<CutBrandProfile | null>(null);
@@ -1008,6 +1018,32 @@ export default function Cuts() {
     return Boolean(data?.id);
   };
 
+  const cancelJob = async (job: VideoCutJob) => {
+    if (!canCancelVideoCutJob(job.status)) {
+      toast.error("Este trabalho não está mais na fila ou em processamento.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Cancelar este trabalho? O processamento será interrompido no próximo ponto seguro e os créditos reservados serão liberados.",
+    );
+    if (!confirmed) return;
+
+    setCancellingJobId(job.id);
+    try {
+      const { data, error } = await db.rpc<CancelVideoCutJobResult>("cancel_video_cut_job", { _job_id: job.id });
+      if (error) throw new Error(error.message || "Não foi possível cancelar o trabalho.");
+      if (!data?.cancelled) {
+        throw new Error(data?.reason === "not_found" ? "Este trabalho não existe mais." : "O cancelamento não foi confirmado.");
+      }
+      toast.success(data.already_cancelled ? "Este trabalho já estava cancelado." : "Trabalho cancelado e créditos reservados liberados.");
+      await load();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível cancelar o trabalho.");
+    } finally {
+      setCancellingJobId(null);
+    }
+  };
+
   const deleteJob = async (job: VideoCutJob) => {
     if (!canDeleteJob(job)) return toast.error("Só é possível excluir trabalhos que falharam ou foram cancelados.");
     const confirmed = window.confirm("Excluir este trabalho com erro? Essa ação não apaga os outros trabalhos.");
@@ -1522,6 +1558,19 @@ export default function Cuts() {
                   <Button size="sm" variant="outline" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
                     {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     Nova versão
+                  </Button>
+                )}
+                {canCancelVideoCutJob(job.status) && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => cancelJob(job)}
+                    disabled={cancellingJobId === job.id}
+                  >
+                    {cancellingJobId === job.id
+                      ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      : <Ban className="h-4 w-4 mr-1" />}
+                    Cancelar fila
                   </Button>
                 )}
                 {canDeleteJob(job) && (
