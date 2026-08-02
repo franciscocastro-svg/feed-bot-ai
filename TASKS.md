@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base integrada pelo PR #60 no merge `acc8363`, ainda sem implantação externa; demonstração visual aprovada; Beta administrativa protegida na UI e no backend na branch `codex/editorial-admin-beta`; faltam teste com fala real, revisão do novo PR e implantação autorizada.
+- [ ] **Corte Editorial:** base integrada pelo PR #60 no merge `acc8363`, ainda sem implantação externa; demonstração visual aprovada; Beta administrativa protegida na UI e no backend no PR rascunho #61; faltam teste com fala real, revisão e implantação autorizada.
 
 ### P1 — Corte Editorial
 

@@ -20,7 +20,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
 - Branch atual: `codex/editorial-admin-beta`.
 - Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
-- Estado: o Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`; migration, Edge, worker e frontend não foram implantados. A demonstração visual foi aprovada. Subabas e acesso temporário `Beta admin` estão implementados com defesa na UI e no backend nesta nova branch, ainda sem merge ou deploy.
+- Estado: o Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`; migration, Edge, worker e frontend não foram implantados. A demonstração visual foi aprovada. Subabas e acesso temporário `Beta admin` estão implementados com defesa na UI e no backend no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61), ainda sem merge ou deploy.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
@@ -574,7 +574,7 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. concluir os checks do novo PR da branch `codex/editorial-admin-beta` e mantê-lo como rascunho até autorização;
+2. concluir os checks do PR rascunho #61 e mantê-lo como rascunho até autorização;
 3. somente após aprovação, implantar a Beta administrativa em quatro passos: migration, Edge de texto, worker e frontend;
 4. testar autenticado como administrador com vídeo real que contenha fala, sem agendar ou publicar;
 5. após o aceite do smoke, remover a restrição temporária de administrador em uma mudança separada e preparar o rollout aos clientes;
