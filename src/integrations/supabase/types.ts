@@ -3362,8 +3362,147 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_editorial_video_cut_job_v2: {
+        Args: {
+          _format?: string
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _subtitle_style?: string
+          _youtube_url: string
+        }
+        Returns: {
+          analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
+          attempts: number
+          auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          custom_prompt: string | null
+          cut_mode: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          format: string
+          formats: string[] | null
+          generated_clips: number
+          hook_enabled: boolean
+          id: string
+          instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
+          max_attempts: number
+          preset_key: string
+          processing_mode: string
+          progress: number
+          provider_trace: Json
+          remove_silences: boolean
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          smart_crop: boolean
+          source_expires_at: string
+          source_file_name: string | null
+          source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
+          source_title: string | null
+          source_video_id: string | null
+          source_video_url: string | null
+          started_at: string | null
+          status: string
+          subtitle_style: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+          zoom_effect: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_editorial_video_cut_upload_job: {
         Args: {
+          _instagram_account_id: string
+          _requested_clips: number
+          _rights_confirmed: boolean
+          _source_title?: string
+          _storage_path: string
+          _subtitle_style?: string
+        }
+        Returns: {
+          analysis: Json
+          analysis_mode: string | null
+          analysis_warning: string | null
+          attempts: number
+          auto_publish: boolean
+          capture_checked_at: string | null
+          capture_error_code: string | null
+          capture_status: string
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          created_at: string
+          custom_prompt: string | null
+          cut_mode: string
+          duration_seconds: number | null
+          error_message: string | null
+          fallback_required: boolean
+          format: string
+          formats: string[] | null
+          generated_clips: number
+          hook_enabled: boolean
+          id: string
+          instagram_account_id: string
+          local_file_name: string | null
+          local_file_size_bytes: number | null
+          local_render_expires_at: string | null
+          max_attempts: number
+          preset_key: string
+          processing_mode: string
+          progress: number
+          provider_trace: Json
+          remove_silences: boolean
+          requested_clips: number
+          reserved_clips: number
+          rights_confirmed: boolean
+          smart_crop: boolean
+          source_expires_at: string
+          source_file_name: string | null
+          source_kind: string
+          source_storage_bucket: string | null
+          source_storage_path: string | null
+          source_title: string | null
+          source_video_id: string | null
+          source_video_url: string | null
+          started_at: string | null
+          status: string
+          subtitle_style: string
+          updated_at: string
+          user_id: string
+          youtube_url: string
+          zoom_effect: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_cut_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_editorial_video_cut_upload_job_v2: {
+        Args: {
+          _format?: string
           _instagram_account_id: string
           _requested_clips: number
           _rights_confirmed: boolean
