@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base integrada pelo PR #60 no merge `acc8363`, ainda sem implantação externa; demonstração visual aprovada; Beta administrativa protegida na UI e no backend no PR rascunho #61; faltam teste com fala real, revisão e implantação autorizada.
+- [ ] **Corte Editorial:** PRs #60/#61 integrados; migration e Edge implantadas e verificadas; Preview sincronizado. Faltam validar/implantar somente `feedbot-cuts`, executar o smoke com fala real e confirmar o frontend de produção.
 
 ### P1 — Corte Editorial
 
@@ -172,7 +172,12 @@
 - [x] Enviar `codex/editorial-ai-cut`, abrir o PR #60 e integrar a base do Corte Editorial em `acc8363`.
 - [x] Obter `Validate application` verde em 2m01s para `5dee08a`.
 - [x] Abrir o PR rascunho #61 para a Beta administrativa e obter `Validate application` verde em 1m47s.
-- [ ] Obter aprovação antes de merge, migration, Edge, worker, frontend ou produção.
+- [x] Integrar o PR #61 no merge `e433493`.
+- [x] Aplicar a migration sob o registro `20260802144135`, recarregar o schema e verificar colunas, RPCs, triggers e ACLs.
+- [x] Implantar somente `regenerate-cut-editorial-text` e confirmar HTTP 401 sem autenticação.
+- [x] Auditar os testes falhos: quatro jobs `failed`, zero clipes, zero agendamentos e zero publicações.
+- [ ] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` sem reiniciar o webhook.
+- [ ] Executar smoke autenticado com fala real, sem agendar ou publicar.
 
 ## Próximas tarefas
 

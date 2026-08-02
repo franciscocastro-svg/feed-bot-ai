@@ -49,7 +49,7 @@ if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 case "$PM2_SCOPE" in
-  all|media-only)
+  all|media-only|cuts-only)
     ;;
   *)
     fail_preflight "invalid_pm2_scope"
@@ -278,13 +278,20 @@ prepare_release() {
 activate_release() {
   local sha="$1"
 
-  if [ "$PM2_SCOPE" = "media-only" ]; then
-    echo "==> Restarting only feedbot-media for $sha"
-    pm2 startOrReload ecosystem.config.cjs --only feedbot-media --update-env || return 1
-  else
-    echo "==> Restarting the three PM2 services for $sha"
-    pm2 startOrReload ecosystem.config.cjs --update-env || return 1
-  fi
+  case "$PM2_SCOPE" in
+    media-only)
+      echo "==> Restarting only feedbot-media for $sha"
+      pm2 startOrReload ecosystem.config.cjs --only feedbot-media --update-env || return 1
+      ;;
+    cuts-only)
+      echo "==> Restarting only feedbot-cuts for $sha"
+      pm2 startOrReload ecosystem.config.cjs --only feedbot-cuts --update-env || return 1
+      ;;
+    *)
+      echo "==> Restarting the three PM2 services for $sha"
+      pm2 startOrReload ecosystem.config.cjs --update-env || return 1
+      ;;
+  esac
   pm2 save || return 1
 
   test_nginx_configuration || return 1

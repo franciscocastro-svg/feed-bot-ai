@@ -1,8 +1,8 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial local, ainda sem implantação externa.
+Atualizado em **2026-08-02** para a implantação parcial controlada do Corte Editorial.
 
-O Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`. A proteção temporária `Beta admin` está isolada no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61), branch `codex/editorial-admin-beta` criada sobre `fd79e5d`, com check remoto aprovado. A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
+O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase já contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O worker VPS ainda não contém o compositor. Para evitar que o reload do próprio webhook repita o `SIGINT`, o deploy operacional passa a aceitar `DEPLOY_PM2_SCOPE=cuts-only`, que atualiza somente `feedbot-cuts` e conserva os gates e o health check completos.
 
 ## Arquitetura geral
 

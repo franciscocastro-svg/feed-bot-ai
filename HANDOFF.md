@@ -20,7 +20,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
 - Branch atual: `codex/editorial-admin-beta`.
 - Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
-- Estado: o Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`; migration, Edge, worker e frontend não foram implantados. A demonstração visual foi aprovada. Subabas e acesso temporário `Beta admin` estão implementados com defesa na UI e no backend no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61); `Validate application` passou em 1m47s. Ainda sem merge ou deploy.
+- Estado: o Corte Editorial base e a Beta administrativa foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A Lovable aplicou a migration sob `20260802144135`, recarregou o schema e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` adicionou a migration registrada e os tipos gerados. O Preview está sincronizado, mas worker VPS e frontend de produção ainda não foram confirmados.
+- Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
+- Deploy do worker: a branch `codex/deploy-editorial-cuts-worker` adiciona `DEPLOY_PM2_SCOPE=cuts-only` para reiniciar somente `feedbot-cuts`, mantendo instalação, testes, nginx, health e rollback. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
@@ -574,11 +576,11 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. revisar o PR #61, que permanece rascunho com check aprovado, e aguardar autorização;
-3. somente após aprovação, implantar a Beta administrativa em quatro passos: migration, Edge de texto, worker e frontend;
+2. validar no GitHub a branch `codex/deploy-editorial-cuts-worker` e o escopo `cuts-only`;
+3. auditar a VPS e, com o SHA final aprovado, implantar somente `feedbot-cuts`, sem remover manualmente o bloqueio conhecido nem reiniciar o webhook;
 4. testar autenticado como administrador com vídeo real que contenha fala, sem agendar ou publicar;
-5. após o aceite do smoke, remover a restrição temporária de administrador em uma mudança separada e preparar o rollout aos clientes;
-6. lembrar que a Lovable não implanta o worker VPS e que o bloqueio `SIGINT` atual deve ser tratado separadamente antes do rollout;
+5. após o aceite do smoke, confirmar/publicar o frontend de produção e remover a restrição temporária de administrador em mudança separada;
+6. tratar o `SIGINT` do webhook em uma correção operacional independente;
 7. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção

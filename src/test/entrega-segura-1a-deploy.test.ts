@@ -481,6 +481,21 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(result.commandLog).toContain(`health:${expectedSha}`);
   }, 30_000);
 
+  it("permite reiniciar somente feedbot-cuts sem sinalizar o webhook", async () => {
+    const result = await runDeploy({ pm2Scope: "cuts-only", targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("Restarting only feedbot-cuts");
+    expect(result.commandLog).toContain(
+      "pm2:startOrReload ecosystem.config.cjs --only feedbot-cuts --update-env",
+    );
+    expect(result.commandLog).not.toContain("pm2:startOrReload ecosystem.config.cjs --update-env");
+    expect(result.commandLog).not.toContain(
+      "pm2:startOrReload ecosystem.config.cjs --only feedbot-webhook --update-env",
+    );
+    expect(result.commandLog).toContain(`health:${expectedSha}`);
+  }, 30_000);
+
   it("rejeita escopo PM2 desconhecido antes da primeira mutacao", async () => {
     const result = await runDeploy({ pm2Scope: "webhook-only", targetSha: expectedSha });
 
