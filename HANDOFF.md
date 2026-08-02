@@ -92,7 +92,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
 | Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
-| Worker VPS | HEAD `efc8d15`; somente `feedbot-cuts` reiniciado e saudável, outros processos preservados | executar smoke editorial; tratar bloqueio antigo separadamente |
+| Worker VPS | HEAD `efc8d15`; somente `feedbot-cuts` havia sido reiniciado e estava saudável, mas o smoke Gemini travou um job em 25% e deixou outro na fila | interromper apenas cuts, cancelar os dois jobs e implantar a correção somente após aprovação |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -109,7 +109,7 @@ Arquivos principais:
 - `src/integrations/supabase/types.ts` — contratos locais das duas RPCs editoriais v2;
 - `worker/editorialCut.js` — segurança factual, layout Canvas e filtros FFmpeg;
 - `worker/index.js` — transcrição/frames, prévia, render final e bloqueio de autopublish;
-- `worker/aiProviders.js` — análise multimodal Gemini com fallback textual;
+- `worker/aiProviders.js` — ordem de provedores, limites de segmento/timeout e parser recuperável da transcrição Gemini, além da análise multimodal com fallback textual;
 - `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs, trigger de agendamento e trigger de acesso administrativo aditivos;
 - `supabase/migrations/20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql` — versão registrada das RPCs v2, compatibilidade Bold/Clean e formato editorial explícito;
 - `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado, exclusivo para admin durante a Beta e sem escrita;
@@ -129,10 +129,15 @@ Decisões obrigatórias:
 10. Nenhum teste ou implantação pode publicar automaticamente.
 11. Durante a Beta inicial, somente administradores veem e acionam o Corte Editorial; UI, RPCs, Edge e trigger de `video_cut_jobs` devem concordar.
 12. Bold/Clean são convertidos para `classic` somente dentro da chamada legada e restaurados na mesma transação antes do claim do worker.
+13. Gemini é o padrão de transcrição; a fonte é dividida por padrão em 120 segundos e cada resposta truncada só pode reutilizar objetos JSON completos com palavra/início/fim válidos.
+14. O progresso da transcrição deve avançar por bloco, e Corte Editorial sem qualquer fala utilizável deve falhar claramente em vez de gerar texto sem evidência.
 
 Validação local concluída:
 
 - 17 testes direcionados do Corte Editorial na correção atual;
+- 6 testes de provedores Gemini e 5 testes de eficiência/reuso, incluindo JSON truncado, limites de bloco/timeout e integração do progresso;
+- 34 testes direcionados no total e `npm run check:worker` aprovados para a correção local de transcrição;
+- `npm run ci` completo aprovado: secret scan em 676 arquivos, 591 testes principais, 36 de deploy, 24 de reconciliação, migration gate, MCP reprodutível e build de produção;
 - typecheck, sintaxe do worker e build Vite aprovados após a correção 4:5/9:16;
 - CI completo aprovado após a correção: secret scan em 676 arquivos, 588 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, worker, gates de migrations/MCP e build;
 - smoke FFmpeg sintético gerou Reel 1080×1920, H.264/yuv420p e AAC 48 kHz em `/private/tmp/fluxfeed-editorial-reels-smoke/reel.mp4`, sem banco, Storage ou publicação;
@@ -245,7 +250,7 @@ O `npm ci` criou somente `node_modules`, ignorado pelo Git. O build criou `dist`
 - Reels editoriais e duração configurável;
 - captura, transcrição, cortes e legendas;
 - Canvas, overlays, qualidade e reaproveitamento;
-- Groq/Gemini para transcrição;
+- Gemini como transcritor padrão; Groq permanece compatível apenas por configuração explícita;
 - Gemini e xAI opcional para análise de cortes.
 
 ### Pagamentos e planos
@@ -584,13 +589,15 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. confirmar a implantação já concluída da migration `20260802164442`, do frontend e do worker `feedbot-cuts` em `efc8d15`;
-3. testar autenticado como administrador com vídeo real que contenha fala em 4:5 e 9:16, gerando somente a prévia, sem confirmar render final, agendar ou publicar;
-4. registrar separadamente os resultados dos dois formatos;
-5. conferir título/comentário factuais, enquadramento, áudio, legendas, Bold/Clean e possibilidade de edição;
-6. após o aceite do smoke, remover a restrição temporária de administrador em mudança separada;
-7. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
-8. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
+2. revisar/aprovar o commit local da branch `codex/fix-gemini-cut-transcription` e não publicar antes da aprovação;
+3. interromper somente `feedbot-cuts`, cancelar os dois jobs travados e liberar apenas reservas que não geraram clipes;
+4. enviar a branch, abrir PR separado e, após aprovação, implantar somente `feedbot-cuts`, confirmando a versão `2026.08.02-gemini-transcription-1` no health;
+5. testar autenticado como administrador com um vídeo curto e apenas um corte, gerando somente a prévia;
+6. depois repetir separadamente Feed 4:5 e Reel 9:16, sem render final, agendamento ou publicação;
+7. conferir título/comentário factuais, progresso, enquadramento, áudio, legendas, Bold/Clean e edição;
+8. após o aceite do smoke, remover a restrição temporária de administrador em mudança separada;
+9. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
+10. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção
 

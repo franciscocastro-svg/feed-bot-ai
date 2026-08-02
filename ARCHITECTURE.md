@@ -109,7 +109,9 @@ Responsabilidades:
 - armazenar arquivos finais;
 - fazer retry e registrar saúde/capacidades.
 
-`worker/aiProviders.js` ordena provedores de transcrição e análise. Groq/Gemini cobrem transcrição; Gemini e xAI opcional cobrem análise estruturada. OpenRouter ainda não está implementado.
+`worker/aiProviders.js` ordena provedores de transcrição e análise. Gemini é o transcritor padrão; Groq só entra quando `CUT_TRANSCRIPTION_PROVIDERS` o declara explicitamente. Gemini e xAI opcional cobrem análise estruturada. OpenRouter ainda não está implementado.
+
+Na correção local pendente de implantação, `transcribeSourceForAnalysis` usa blocos padrão de 120 segundos (configuráveis entre 60 e 300), registra sucesso/vazio/falha por bloco e chama um callback de progresso. Cada chamada Gemini tem timeout padrão de 90 segundos (limitado entre 30 e 180 segundos), uma única repetição para falha transitória e `responseSchema`. `parseGeminiTimedWordsResponse` aceita o JSON íntegro e recupera somente objetos completos quando as extremidades vierem truncadas; dados incompletos nunca são inventados.
 
 ## Organização e padrões
 
@@ -238,7 +240,7 @@ sequenceDiagram
     FE->>DB: valida papel admin
     FE->>DB: RPC editorial v2 cria job 4:5 ou 9:16 com auto_publish=false
     DB-->>W: worker reclama job
-    W->>W: transcreve e escolhe trecho
+    W->>W: transcreve em blocos e atualiza o progresso
     W->>AI: transcrição + frames genéricos
     AI-->>W: JSON com texto, confiança e evidências
     W->>W: valida evidências; fallback neutro se necessário
@@ -348,8 +350,8 @@ Creator, Pro e Business usam lookup keys; Agência usa contato comercial. O ambi
 
 ### Provedores de IA
 
-- Gemini: texto, vídeo, análise e fallback de transcrição;
-- Groq: texto e Whisper/transcrição;
+- Gemini: texto, vídeo, análise e transcrição padrão dos cortes;
+- Groq: compatibilidade opcional de Whisper/transcrição quando selecionado explicitamente;
 - Lovable: gateway em fluxos existentes;
 - xAI/Grok: análise opcional de cortes no worker;
 - OpenRouter: backlog, ainda ausente.

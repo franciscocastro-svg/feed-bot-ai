@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. Correção Bold/Clean e saída Reel 9:16 do Corte Editorial integradas e implantadas; falta somente o smoke autenticado com fala real, sem publicação.
+Última atualização: **2026-08-02**. O smoke com fala revelou timeout/JSON truncado no Gemini; a correção está implementada e testada somente em branch local, sem deploy. Os dois jobs travados ainda precisam ser cancelados antes do novo teste.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** correção integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442`, frontend publicado e `feedbot-cuts` atualizado isoladamente para `efc8d15`. Falta executar smoke 4:5/9:16 com fala real sem publicação.
+- [ ] **Corte Editorial:** base integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442`, frontend publicado e `feedbot-cuts` em `efc8d15`. A correção local Gemini ainda precisa de revisão, PR e implantação isolada antes de repetir o smoke.
 
 ### P1 — Corte Editorial
 
@@ -183,6 +183,14 @@
 - [x] Auditar os testes falhos: quatro jobs `failed`, zero clipes, zero agendamentos e zero publicações.
 - [x] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` no merge `67ced14`, sem reiniciar o webhook ou o worker de mídia.
 - [x] Integrar pelo PR #64, aplicar a migration como `20260802164442`, publicar o frontend e atualizar somente `feedbot-cuts` no SHA `efc8d15`.
+- [x] Diagnosticar o smoke travado: somente Gemini configurado, blocos de 600 segundos, resposta JSON truncada, timeouts sucessivos, primeiro job em 25% e segundo aguardando a fila serial.
+- [x] Implementar localmente blocos Gemini de 120 segundos, timeout limitado, uma repetição transitória, schema JSON, recuperação de objetos completos e progresso incremental.
+- [x] Corrigir localmente o worker para respeitar `feed_portrait` ou `reels` no Corte Editorial, em vez de forçar 4:5.
+- [x] Aprovar 34 testes direcionados, 591 testes principais, 36 de deploy, 24 de reconciliação, worker, gates, MCP e build para a correção Gemini.
+- [ ] Cancelar os dois jobs travados e devolver somente os créditos reservados sem clipes, com `feedbot-cuts` interrompido para evitar corrida.
+- [x] Revisar e preparar um commit separado na branch local `codex/fix-gemini-cut-transcription`.
+- [ ] Enviar a branch, abrir PR e, após aprovação, implantar somente `feedbot-cuts`.
+- [ ] Repetir o smoke com um vídeo curto e apenas um corte; depois validar 4:5 e 9:16 sem publicação.
 - [ ] Executar smoke autenticado 4:5 e 9:16 com fala real, sem agendar ou publicar.
 
 ## Próximas tarefas

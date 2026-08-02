@@ -91,5 +91,8 @@ describe("Cortes IA 2.0-A efficiency reuse", () => {
     expect(worker).toContain("createCutReuseContext(transcriptWords, sourceTranscriptionTrace)");
     expect(worker).toContain("cutReuseTrace(cutReuseContext)");
     expect(worker).toContain('clip.transcription_provider = "source_reuse"');
+    expect(worker).toContain("transcriptionSegmentSeconds()");
+    expect(worker).toContain("onSegmentProgress");
+    expect(worker).not.toContain('isEditorialCut\n      ? ["feed_portrait"]');
   });
 });

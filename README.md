@@ -85,7 +85,7 @@ O Flux & Feed reduz o trabalho manual necessário para manter perfis de Instagra
 | Frontend | React 18, TypeScript, Vite 5, Tailwind CSS, Radix UI, TanStack Query, React Router 7, Zod |
 | Backend | Supabase/PostgreSQL, Supabase Auth, Storage e Edge Functions em Deno/TypeScript |
 | Processamento | Node.js, `@napi-rs/canvas`, FFmpeg/ffprobe e yt-dlp |
-| IA | Gemini, Groq e gateway Lovable; xAI/Grok opcional no worker para análise de cortes |
+| IA | Gemini como transcritor padrão dos cortes e gateway Lovable; Groq pode ser habilitado explicitamente e xAI/Grok é opcional para análise |
 | Publicação | Meta Instagram Graph API |
 | Pagamentos | Stripe Checkout, Billing Portal, webhooks e reconciliação; liberação manual/Pix no banco |
 | Qualidade | Vitest, TypeScript, ESLint por fases, secret scan, lint ratchet e gates operacionais |
@@ -187,7 +187,7 @@ O gate `entrega-segura-1a-deploy.test.ts` pode depender de `/usr/bin/grep` em al
 - **Meta:** OAuth/manual, tokens, publicação, métricas e consumo de API.
 - **Stripe:** Creator, Pro e Business usam checkout com cartão; Agência usa contato comercial.
 - **Pix/manual:** o administrador financeiro informa plano e valor recebido; o sistema cria ou renova por um mês uma assinatura `live`, sem cartão ou IDs Stripe. Tentativas Stripe já terminadas podem ser substituídas; assinaturas Stripe ainda ativas exigem cancelamento prévio.
-- **IA:** Gemini, Groq e Lovable em fluxos distintos; xAI é opcional para análise de cortes no worker.
+- **IA:** Gemini é o transcritor padrão do worker e também cobre análise; Groq permanece compatível apenas quando configurado explicitamente, Lovable atende fluxos próprios e xAI é opcional para análise de cortes.
 - **VPS:** renderização, captura, cortes, mídia e processos PM2.
 
 Ofertas confirmadas no código:
@@ -216,4 +216,6 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Executar dois smokes autenticados como administrador com fala real — primeiro Feed 4:5 e depois Reel 9:16 — gerando somente a prévia, sem confirmar render final, agendar ou publicar. Conferir título/comentário factuais, enquadramento, áudio, sincronia, Bold/Clean e edição. O bloqueio antigo da fila (`fbe6a2a`), a recaptura da matéria, o replay do Piloto e a correção definitiva do `SIGINT` permanecem atividades separadas.
+Revisar e aprovar a correção local do transcritor Gemini antes de qualquer implantação. Ela troca blocos de 10 minutos por blocos padrão de 120 segundos, limita cada chamada a 90 segundos com uma repetição transitória, recupera objetos completos de respostas JSON truncadas e atualiza o progresso por bloco. Também remove a imposição indevida de 4:5 no worker para respeitar a escolha editorial 4:5 ou 9:16 já aceita pela UI/RPC.
+
+Depois da aprovação: interromper somente `feedbot-cuts`, cancelar os dois jobs travados sem clipes e liberar apenas suas reservas, implantar o novo SHA e reiniciar exclusivamente esse processo. O smoke deve começar com um vídeo curto e um único corte, somente prévia, sem render final, agendamento ou publicação. O bloqueio antigo da fila (`fbe6a2a`), a recaptura da matéria, o replay do Piloto e a correção definitiva do `SIGINT` permanecem atividades separadas.

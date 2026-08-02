@@ -20,10 +20,13 @@ import {
   requireWorkerImage,
 } from "./image-loading.js";
 import {
+  geminiTranscriptionTimeoutMs,
   normalizeTimedWords,
+  parseGeminiTimedWordsResponse,
   providerCapabilities,
   requestMultimodalAnalysis,
   requestStructuredAnalysis,
+  transcriptionSegmentSeconds,
   transcriptionProviderOrder,
 } from "./aiProviders.js";
 import {
@@ -219,7 +222,7 @@ const WORKER_QUEUES = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),
 );
-const WORKER_VERSION = process.env.WORKER_VERSION || "2026.07.15-autopilot-render-worker-1b";
+const WORKER_VERSION = process.env.WORKER_VERSION || "2026.08.02-gemini-transcription-1";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
@@ -1809,7 +1812,7 @@ async function transcribeClipGroq(audioPath) {
 }
 
 // ---- Transcrição via Gemini (áudio nativo, palavra-por-palavra) ----
-// Fallback quando Groq está congestionado. Usa GEMINI_API_KEY já disponível no worker.
+// Provedor padrão do worker. Usa GEMINI_API_KEY já disponível no ambiente.
 async function transcribeClipGemini(audioPath) {
   if (!GEMINI_API_KEY) return null;
   try {
@@ -1839,9 +1842,21 @@ Regras:
           generationConfig: {
             temperature: 0,
             responseMimeType: "application/json",
+            responseSchema: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  word: { type: "STRING" },
+                  start: { type: "NUMBER" },
+                  end: { type: "NUMBER" },
+                },
+                required: ["word", "start", "end"],
+              },
+            },
           },
         }),
-        signal: AbortSignal.timeout(180000),
+        signal: AbortSignal.timeout(geminiTranscriptionTimeoutMs()),
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
@@ -1850,33 +1865,28 @@ Regras:
         throw err;
       }
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      let parsed;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        const match = text.match(/\[[\s\S]*\]/);
-        if (!match) throw new Error("Gemini não devolveu JSON válido");
-        parsed = JSON.parse(match[0]);
+      const text = data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part?.text || "")
+        .join("") || "";
+      const parsed = parseGeminiTimedWordsResponse(text);
+      if (!parsed.validJson && !parsed.recovered) {
+        const error = new Error("Gemini não devolveu uma transcrição JSON utilizável");
+        error.status = 502;
+        throw error;
       }
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map((w) => ({
-          word: String(w?.word || "").trim(),
-          start: Number(w?.start) || 0,
-          end: Number(w?.end) || 0,
-        }))
-        .filter((w) => w.word && w.end > w.start);
-    }, [2000, 5000]);
+      if (parsed.recovered && !parsed.validJson) {
+        console.warn(`[cuts] Resposta truncada do Gemini recuperada: ${parsed.words.length} palavras completas.`);
+      }
+      return parsed.words;
+    }, [2000]);
   } catch (err) {
     console.warn(`[cuts] Transcrição Gemini falhou: ${err?.message || err}`);
     return null;
   }
 }
 
-// Groq/Whisper vem primeiro porque fornece timestamps reais por palavra.
-// Gemini continua como fallback. O contrato de providers fica isolado para que
-// um provedor futuro não obrigue a reescrever renderização ou legendas.
+// O contrato de providers fica isolado para que uma instalação possa escolher
+// explicitamente outro provedor sem reescrever renderização ou legendas.
 async function transcribeClip(audioPath, maxDuration = Number.POSITIVE_INFINITY) {
   const attemptedProviders = [];
   for (const provider of transcriptionProviderOrder()) {
@@ -1886,25 +1896,25 @@ async function transcribeClip(audioPath, maxDuration = Number.POSITIVE_INFINITY)
       : provider === "gemini"
         ? await transcribeClipGemini(audioPath)
         : null;
+    if (rawWords === null) continue;
     const words = normalizeTimedWords(rawWords, {
       maxDuration,
       leadMs: CUT_SUBTITLE_LEAD_MS,
     });
-    if (words.length > 0) {
-      console.log(`[cuts] Transcrição via ${provider}: ${words.length} palavras; lead=${CUT_SUBTITLE_LEAD_MS}ms`);
-      return { words, provider, attemptedProviders };
-    }
+    console.log(`[cuts] Transcrição via ${provider}: ${words.length} palavras; lead=${CUT_SUBTITLE_LEAD_MS}ms`);
+    return { words, provider, attemptedProviders };
   }
   return { words: [], provider: null, attemptedProviders };
 }
 
-async function transcribeSourceForAnalysis(sourcePath, tempDir) {
+async function transcribeSourceForAnalysis(sourcePath, tempDir, options = {}) {
   const startedAt = Date.now();
+  const segmentSeconds = transcriptionSegmentSeconds();
   const segmentDir = path.join(tempDir, "analysis-audio");
   await fs.promises.mkdir(segmentDir, { recursive: true });
   const segmentPattern = path.join(segmentDir, "part-%03d.mp3");
   await execAsync(
-    `ffmpeg -y -i ${shellQuote(sourcePath)} -vn -ac 1 -ar 16000 -b:a 48k -f segment -segment_time 600 -reset_timestamps 1 ${shellQuote(segmentPattern)}`,
+    `ffmpeg -y -i ${shellQuote(sourcePath)} -vn -ac 1 -ar 16000 -b:a 48k -f segment -segment_time ${segmentSeconds} -reset_timestamps 1 ${shellQuote(segmentPattern)}`,
     { maxBuffer: 20 * 1024 * 1024 },
   );
 
@@ -1914,18 +1924,36 @@ async function transcribeSourceForAnalysis(sourcePath, tempDir) {
   const words = [];
   const providers = {};
   let calls = 0;
+  let successfulSegments = 0;
+  let emptySegments = 0;
+  let failedSegments = 0;
   for (let index = 0; index < parts.length; index += 1) {
-    const transcription = await transcribeClip(path.join(segmentDir, parts[index]), 600);
+    const transcription = await transcribeClip(path.join(segmentDir, parts[index]), segmentSeconds);
     calls += transcription.attemptedProviders.length;
-    if (transcription.provider) providers[transcription.provider] = (providers[transcription.provider] || 0) + 1;
+    if (transcription.provider) {
+      providers[transcription.provider] = (providers[transcription.provider] || 0) + 1;
+      if (transcription.words.length) successfulSegments += 1;
+      else emptySegments += 1;
+    } else {
+      failedSegments += 1;
+    }
     const segmentWords = transcription.words;
-    if (!segmentWords.length) continue;
-    const offset = index * 600;
-    words.push(...segmentWords.map((word) => ({
-      ...word,
-      start: Number(word.start || 0) + offset,
-      end: Number(word.end || 0) + offset,
-    })));
+    if (segmentWords.length) {
+      const offset = index * segmentSeconds;
+      words.push(...segmentWords.map((word) => ({
+        ...word,
+        start: Number(word.start || 0) + offset,
+        end: Number(word.end || 0) + offset,
+      })));
+    }
+    if (typeof options.onSegmentProgress === "function") {
+      await options.onSegmentProgress({
+        completed: index + 1,
+        total: parts.length,
+        provider: transcription.provider,
+        words: segmentWords.length,
+      });
+    }
   }
   return {
     words,
@@ -1933,6 +1961,10 @@ async function transcribeSourceForAnalysis(sourcePath, tempDir) {
       calls,
       providers,
       segments: parts.length,
+      segment_seconds: segmentSeconds,
+      successful_segments: successfulSegments,
+      empty_segments: emptySegments,
+      failed_segments: failedSegments,
       duration_ms: Date.now() - startedAt,
     },
   };
@@ -2792,7 +2824,12 @@ async function processLocalAudioCutJob(job, tempDir) {
     await downloadFile(signed.signedUrl, audioPath);
 
     const duration = Math.max(3, Number(job.duration_seconds || 0));
-    const sourceTranscription = await transcribeSourceForAnalysis(audioPath, tempDir);
+    const sourceTranscription = await transcribeSourceForAnalysis(audioPath, tempDir, {
+      onSegmentProgress: async ({ completed, total }) => {
+        const progress = Math.min(44, 12 + Math.round((completed / Math.max(1, total)) * 30));
+        await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
+      },
+    });
     const transcriptWords = sourceTranscription.words;
     if (!transcriptWords.length) throw new Error("Não foi possível identificar fala no áudio enviado.");
     await supabase.from("video_cut_jobs").update({ progress: 45, updated_at: new Date().toISOString() }).eq("id", job.id);
@@ -2971,11 +3008,19 @@ async function processVideoCutJob(job) {
     let transcriptWords = [];
     let sourceTranscriptionTrace = {};
     try {
-      const sourceTranscription = await transcribeSourceForAnalysis(sourcePath, tempDir);
+      const sourceTranscription = await transcribeSourceForAnalysis(sourcePath, tempDir, {
+        onSegmentProgress: async ({ completed, total }) => {
+          const progress = Math.min(34, 25 + Math.round((completed / Math.max(1, total)) * 8));
+          await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
+        },
+      });
       transcriptWords = sourceTranscription.words;
       sourceTranscriptionTrace = sourceTranscription.trace;
     } catch (error) {
       console.warn(`[cuts:${job.id}] Transcrição para análise indisponível:`, error?.message || error);
+    }
+    if (job.cut_mode === "editorial" && !transcriptWords.length) {
+      throw new Error("O Gemini não conseguiu identificar fala utilizável no vídeo. Tente novamente ou envie um arquivo com áudio mais claro.");
     }
     const analysisStartedAt = Date.now();
     const analysis = await analyzeTranscriptForCuts(job, metadata, transcriptWords);
@@ -3047,9 +3092,7 @@ async function processVideoCutJob(job) {
 
     // Multi-formato: cada sugestão × cada formato = 1 clip
     const isEditorialCut = job.cut_mode === "editorial";
-    const jobFormats = isEditorialCut
-      ? ["feed_portrait"]
-      : Array.isArray(job.formats) && job.formats.length
+    const jobFormats = Array.isArray(job.formats) && job.formats.length
       ? job.formats.filter((f) => ["reels", "feed_square", "feed_portrait"].includes(f))
       : [job.format || "reels"];
     const uniqueFormats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
