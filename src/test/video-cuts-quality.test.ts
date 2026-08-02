@@ -32,8 +32,9 @@ describe("Cortes IA 2.0-B professional quality", () => {
     });
 
     expect(result.clips).toHaveLength(1);
-    expect(result.clips[0].start_seconds).toBeCloseTo(4.2);
-    expect(result.clips[0].end_seconds).toBeCloseTo(9.45);
+    expect(result.clips[0].start_seconds).toBe(4);
+    expect(result.clips[0].end_seconds).toBe(10);
+    expect(result.clips[0].duration_seconds).toBe(6);
     expect(result.clips[0].selection_quality).toMatchObject({
       natural_start: true,
       natural_end: true,
@@ -89,6 +90,50 @@ describe("Cortes IA 2.0-B professional quality", () => {
     expect(result.trace.duration_policy).toBe("ai_flexible_8_180");
   });
 
+  it("persists integer timestamps without passing the physical end of the video", () => {
+    const result = refineTranscriptCutCandidates([{
+      start_seconds: 45.24,
+      end_seconds: 59.94,
+      viral_score: 90,
+    }], [
+      { word: "Uma", start: 45.24, end: 45.71 },
+      { word: "frase", start: 50.12, end: 50.62 },
+      { word: "completa.", start: 59.2, end: 59.94 },
+    ], {
+      requested: 1,
+      videoDuration: 59.96,
+      minDuration: 8,
+      maxDuration: 180,
+    });
+
+    expect(result.clips[0]).toMatchObject({
+      start_seconds: 45,
+      end_seconds: 59,
+      duration_seconds: 14,
+    });
+    expect(Number.isInteger(result.clips[0].start_seconds)).toBe(true);
+    expect(Number.isInteger(result.clips[0].end_seconds)).toBe(true);
+  });
+
+  it("does not invent duration when the entire source is shorter than the preferred minimum", () => {
+    const result = refineTranscriptCutCandidates([{
+      start_seconds: 0.2,
+      end_seconds: 5.9,
+      viral_score: 80,
+    }], [], {
+      requested: 1,
+      videoDuration: 6.4,
+      minDuration: 8,
+      maxDuration: 180,
+    });
+
+    expect(result.clips[0]).toMatchObject({
+      start_seconds: 0,
+      end_seconds: 6,
+      duration_seconds: 6,
+    });
+  });
+
   it("ranks complete speech above a similarly scored broken fragment", () => {
     const words = [
       ...sentence(0, ["Uma", "fala", "completa."]),
@@ -123,5 +168,6 @@ describe("Cortes IA 2.0-B professional quality", () => {
     expect(worker).toContain("const MIN_NATURAL_CUT_SECONDS = 8");
     expect(worker).toContain("const MAX_NATURAL_CUT_SECONDS = 180");
     expect(quality).toContain('additional_ai_calls: 0');
+    expect(quality).not.toContain("toFixed(3)");
   });
 });
