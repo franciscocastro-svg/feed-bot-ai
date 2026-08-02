@@ -225,7 +225,8 @@
 - [x] Tornar `feedbot-cuts` cooperativo, com checkpoints, proteção contra ready/failed/autopublish e limpeza de artefatos parciais.
 - [x] Validar typecheck, worker, build, lint, 30 testes direcionados e os 608 testes principais; os cinco casos bloqueados pelo sandbox passaram no rerun externo de 21/21.
 - [x] Revisar e registrar a mudança em commit separado na branch `codex/cancel-video-cut-jobs`.
-- [ ] Enviar a branch ao GitHub e abrir PR.
+- [x] Enviar a branch e abrir o PR rascunho #68 contra `main`; `Validate application` aprovou o head funcional `67f2e59` em 2m02s.
+- [ ] Aguardar o check do registro documental final, marcar o PR como pronto e integrar após revisão.
 - [ ] Após aprovação, aplicar `20260802220000_cancel_video_cut_jobs.sql`, publicar frontend e atualizar somente `feedbot-cuts`.
 - [ ] Smoke: cancelar um job na fila e outro em processamento; confirmar isolamento, créditos devolvidos, limpeza e exclusão posterior.
 

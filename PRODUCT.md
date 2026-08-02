@@ -107,6 +107,8 @@ A correção passou por 31 testes direcionados e pelo CI completo com 603 testes
 
 O smoke autenticado final foi aprovado em 2026-08-02: a prévia Reel apresentou trecho de 52 segundos, texto factual com confiança 100%, nome/foto/@ da conta selecionada e nenhuma publicação automática. A etapa funcional seguinte é o cancelamento seguro da fila, sem alterar os formatos de corte existentes.
 
+O cancelamento seguro foi enviado no PR rascunho #68. O check remoto aprovou o head funcional `67f2e59` em 2m02s; o PR continua sem merge e a migration, o frontend e o worker de produção permanecem inalterados.
+
 ### Comercial
 
 - quatro ofertas: Creator, Pro, Business e Agência;

@@ -25,7 +25,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - Deploy corretivo atual: `DEPLOY_PM2_SCOPE=cuts-only` instalou `bdd5c6dd396709bae0e6001413f64aba424585b2`; 597 testes principais, 36 de deploy e 24 de reconciliação passaram, assim como nginx e health. As falhas intermediárias de health ocorreram antes do uptime mínimo de 10 segundos e a verificação final passou. Somente `feedbot-cuts` reiniciou; mídia e webhook preservaram os PIDs. Nenhum frontend, banco, migration ou Edge Function foi alterado.
 - Smoke posterior: Reel 1080 × 1920 confirmado, porém um candidato foi criado entre 58s e 67s e o cabeçalho do job `@chico.trader1` recebeu “Fuxico Fala”. O PR #67/merge `40a8c0e` corrigiu ambos. A migration foi registrada como `20260802203258_da42777e-cf44-48e0-a74d-087248349ad8.sql`, o frontend foi publicado e a VPS instalou exatamente `40a8c0e` com reinício exclusivo de `feedbot-cuts`. Foram aprovados 603 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; o resultado final foi `SUCCEEDED`/`target_healthy`.
-- Mudança local atual registrada em commit separado na branch: `20260802220000_cancel_video_cut_jobs.sql`, `src/lib/videoCuts.ts`, `src/pages/dashboard/Cuts.tsx`, tipos Supabase, `worker/index.js` e `src/test/video-cut-cancellation.test.ts`. Nada foi aplicado ao banco, Lovable, GitHub ou VPS nesta etapa.
+- Mudança registrada em commit separado na branch: `20260802220000_cancel_video_cut_jobs.sql`, `src/lib/videoCuts.ts`, `src/pages/dashboard/Cuts.tsx`, tipos Supabase, `worker/index.js` e `src/test/video-cut-cancellation.test.ts`. A branch foi enviada e o PR rascunho #68 aberto sem conflitos; `Validate application` aprovou `67f2e59` em 2m02s. Nada foi aplicado ao banco, Lovable ou VPS nesta etapa.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 - Implantação confirmada: o SQL aprovado foi renomeado pela plataforma sem mudança funcional; nenhum job, clipe, upload, agendamento ou publicação foi criado durante a implantação.
 
@@ -606,7 +606,7 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. enviar a branch ao GitHub e abrir PR somente após a confirmação do usuário;
+2. aguardar o check do commit documental final, marcar o PR #68 como pronto e integrar somente após revisão;
 3. após merge, enviar prompt controlado à Lovable para aplicar apenas `20260802220000_cancel_video_cut_jobs.sql` e publicar o frontend;
 4. atualizar somente `feedbot-cuts` na VPS com `DEPLOY_PM2_SCOPE=cuts-only`;
 5. testar cancelamento de um job em fila e outro em processamento, confirmando isolamento, devolução de reserva, limpeza e botão `Excluir`;

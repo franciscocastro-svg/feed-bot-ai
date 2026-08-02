@@ -12,6 +12,8 @@ O PR #67/merge `40a8c0e` implantou o mínimo editorial de 20 segundos em quatro 
 
 O smoke posterior confirmou Reel 1080 × 1920, trecho de 52 segundos, identidade correta e confiança textual de 100%. A branch `codex/cancel-video-cut-jobs` adiciona um contrato de cancelamento isolado: `cancel_video_cut_job(uuid)` usa `FOR UPDATE`, valida `auth.uid()`/proprietário/admin, aceita apenas `queued`, `analyzing` ou `processing`, devolve a reserva em `video_cut_usage_daily` e grava `cancelled` na mesma transação. O worker consulta o estado entre download, análise, transcrição e render; updates terminais e heartbeat rejeitam `cancelled`, a autopublicação consulta o estado novamente e artefatos parciais são removidos por caminhos determinísticos. A RPC é idempotente e não para o processo PM2 nem interfere em outros jobs. A migration ainda não foi aplicada.
 
+Esse contrato está no PR rascunho #68; o `Validate application` aprovou `67f2e59` em 2m02s. A arquitetura descrita nesta seção ainda não está ativa no Supabase ou na VPS e deve entrar por rollout controlado após o merge.
+
 Validação local da branch: 31 testes direcionados, 603 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, typecheck, lints, sintaxe do worker, gates editoriais/MCP e build aprovados.
 
 ## Arquitetura geral
