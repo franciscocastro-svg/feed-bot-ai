@@ -1,8 +1,8 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para a implantação parcial controlada do Corte Editorial.
+Atualizado em **2026-08-02** para o Corte Editorial com backend e worker implantados de forma controlada.
 
-O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase já contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O worker VPS ainda não contém o compositor. Para evitar que o reload do próprio webhook repita o `SIGINT`, o deploy operacional passa a aceitar `DEPLOY_PM2_SCOPE=cuts-only`, que atualiza somente `feedbot-cuts` e conserva os gates e o health check completos.
+O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
 
 ## Arquitetura geral
 
