@@ -1,6 +1,6 @@
 # Handoff — Flux & Feed
 
-Data: **2026-08-01**
+Data: **2026-08-02**
 
 Objetivo: permitir continuidade sem depender do histórico de conversas.
 
@@ -18,9 +18,9 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### Trabalho atual — Corte Editorial
 
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
-- Branch: `codex/editorial-ai-cut`.
-- Base: `fbe6a2ac77653a8378ebe8a06bf43a26574798bc` (`origin/main` no início do trabalho).
-- Estado: implementação, validação automatizada e três renders físicos concluídos; commits enviados para `origin/codex/editorial-ai-cut`; PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60) aberto contra `main`; `Validate application` aprovado em 2m01s para `5dee08a`. Sem merge, migration, publicação ou deploy.
+- Branch atual: `codex/editorial-admin-beta`.
+- Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
+- Estado: o Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`; migration, Edge, worker e frontend não foram implantados. A demonstração visual foi aprovada. Subabas e acesso temporário `Beta admin` estão implementados com defesa na UI e no backend no PR rascunho [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61); `Validate application` passou em 1m47s. Ainda sem merge ou deploy.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 
 ### `main` auditada
@@ -100,15 +100,15 @@ Atualização posterior da VPS: o código avançou para `fbe6a2a` e os processos
 
 Arquivos principais:
 
-- `src/pages/dashboard/Cuts.tsx` — seleção do modo, criação por RPC própria e gates de render/agendamento;
+- `src/pages/dashboard/Cuts.tsx` — subabas `Criar corte`/`Meus cortes`, seleção dos três formatos, visibilidade `Beta admin`, criação por RPC própria e gates de render/agendamento;
 - `src/components/cuts/EditorialCutPreview.tsx` — prévia 4:5 editável;
 - `src/lib/editorialCuts.ts` — contratos e validação do rascunho;
 - `worker/editorialCut.js` — segurança factual, layout Canvas e filtros FFmpeg;
 - `worker/index.js` — transcrição/frames, prévia, render final e bloqueio de autopublish;
 - `worker/aiProviders.js` — análise multimodal Gemini com fallback textual;
-- `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs e trigger aditivos;
-- `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado e sem escrita;
-- `src/test/editorial-video-cuts.test.ts` — 14 testes direcionados.
+- `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs, trigger de agendamento e trigger de acesso administrativo aditivos;
+- `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado, exclusivo para admin durante a Beta e sem escrita;
+- `src/test/editorial-video-cuts.test.ts` — 15 testes direcionados.
 
 Decisões obrigatórias:
 
@@ -122,19 +122,21 @@ Decisões obrigatórias:
 8. Agendamento exige `editorial_review_confirmed_at` e `video_url`; UI, trigger e worker aplicam defesa em profundidade.
 9. Prévia e final leem o original; nunca recomprimir a prévia como fonte.
 10. Nenhum teste ou implantação pode publicar automaticamente.
+11. Durante a Beta inicial, somente administradores veem e acionam o Corte Editorial; UI, RPCs, Edge e trigger de `video_cut_jobs` devem concordar.
 
 Validação local concluída:
 
-- 14 testes direcionados do Corte Editorial;
-- primeiro run completo com 585 testes principais aprovados e 35 ignorados;
+- 15 testes direcionados do Corte Editorial;
+- 586 testes principais validados; um teste antigo de layout mobile excedeu o timeout sob carga e passou isoladamente;
 - 35 testes herméticos de deploy e 24 de reconciliação aprovados;
-- após os ajustes finais, typecheck, worker, os 14 testes direcionados e o build foram aprovados novamente;
+- após os ajustes finais, typecheck, worker, os 15 testes direcionados e o build foram aprovados novamente;
+- os 35 testes herméticos de deploy foram validados; dois casos antigos de health excederam o timeout durante execução concorrente e passaram isoladamente, seguidos por 24/24 testes de reconciliação;
 - o segundo run completo encontrou somente a restrição do sandbox ao abrir `127.0.0.1`; a suíte operacional correspondente foi repetida fora dessa restrição e passou 20/20;
 - secret scan em 674 arquivos;
 - typecheck, lint ratchet/fases, worker, migrations editoriais, MCP e build Vite aprovados;
 - `check:edge-functions` não executou porque Deno não está instalado localmente; o manifest/config foi validado pelo CI.
 
-Validação física executada em `/private/tmp/fluxfeed-editorial-tests` com FFmpeg Full 8.1.2 e as funções reais de `worker/editorialCut.js`: três saídas 1080×1350 para entrada vertical, horizontal derivada e baixa resolução, sem banco, storage ou publicação. O teste encontrou AAC em 96 kHz após `loudnorm`; `worker/index.js` passou a usar `aresample=48000`. O original de 6 segundos não possui áudio, então foi usada faixa sintética com legenda temporizada. Pendente: aceite visual do usuário e smoke posterior com fala real.
+Validação física executada em `/private/tmp/fluxfeed-editorial-tests` com FFmpeg Full 8.1.2 e as funções reais de `worker/editorialCut.js`: três saídas 1080×1350 para entrada vertical, horizontal derivada e baixa resolução, sem banco, storage ou publicação. O teste encontrou AAC em 96 kHz após `loudnorm`; `worker/index.js` passou a usar `aresample=48000`. O usuário aprovou visualmente a demonstração. O original de 6 segundos não possui áudio, então foi usada faixa sintética com legenda temporizada; permanece pendente o smoke com fala real.
 
 ## Reconciliação executada
 
@@ -572,11 +574,12 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. aguardar os checks do PR #60 e manter o PR como rascunho até o aceite;
-3. obter aceite de nitidez/enquadramento e repetir áudio/legendas com um vídeo que contenha fala real;
-4. somente após aprovação, decidir merge e uma implantação controlada em quatro passos: migration, Edge de texto, worker e frontend;
-5. lembrar que a Lovable não implanta o worker VPS e que o bloqueio `SIGINT` atual deve ser tratado separadamente antes do rollout;
-6. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
+2. revisar o PR #61, que permanece rascunho com check aprovado, e aguardar autorização;
+3. somente após aprovação, implantar a Beta administrativa em quatro passos: migration, Edge de texto, worker e frontend;
+4. testar autenticado como administrador com vídeo real que contenha fala, sem agendar ou publicar;
+5. após o aceite do smoke, remover a restrição temporária de administrador em uma mudança separada e preparar o rollout aos clientes;
+6. lembrar que a Lovable não implanta o worker VPS e que o bloqueio `SIGINT` atual deve ser tratado separadamente antes do rollout;
+7. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção
 
