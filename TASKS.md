@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. A melhoria de imagens foi integrada em `c4e703d` e publicada no frontend/Edge Functions; o worker aguarda a reconciliação segura da fila VPS interrompida.
+Última atualização: **2026-08-02**. A recuperação da fila foi concluída e o worker de mídia foi implantado com sucesso em `93ae2a3`; falta o smoke visual da matéria regenerada.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -86,7 +86,7 @@
 - [x] Aprovar 38 testes direcionados, typecheck e CI completo com 562 testes principais, 33 de deploy, 15 de reconciliação e build.
 - [x] Integrar a branch pelo PR #57 no merge `c4e703d`.
 - [x] Publicar o frontend e republicar `fetch-rss`, `preview-source` e `discover-rss` pelo Lovable no conteúdo de `c4e703d`.
-- [ ] Implantar o worker de mídia no SHA final aprovado após reconciliar a fila VPS.
+- [x] Implantar somente o worker de mídia no merge final `93ae2a3`, com testes, nginx, PM2 e health aprovados.
 - [ ] Recapturar/regenerar a matéria e executar o smoke visual da imagem 1200×747.
 
 ### Recuperação da fila VPS interrompida
@@ -98,9 +98,10 @@
 - [x] Adicionar `DEPLOY_PM2_SCOPE=media-only` sem reduzir checkout, testes, health ou rollback.
 - [x] Aprovar 9 testes de recuperação e 2 regressões do escopo de PM2; `check:queue-reconciliation` aprovou 24 testes.
 - [x] Executar o CI completo: 668 arquivos no secret scan, 571 testes principais, 35 de deploy, 24 de reconciliação, worker, gates e build aprovados.
-- [x] Enviar a branch, abrir o PR rascunho #58 e confirmar `Validate application` verde para `be8b44d`.
-- [ ] Obter aprovação e integrar o PR #58.
-- [ ] Na VPS, executar inspect/execute com o SHA integrado, implantar somente `feedbot-media`, concluir a reconciliação e validar smoke.
+- [x] Enviar a branch, abrir o PR #58 e confirmar `Validate application` verde no head final `df33a08`.
+- [x] Obter aprovação e integrar o PR #58 no merge `93ae2a3`.
+- [x] Na VPS, validar hashes/plano, preservar evidências, reduzir a fila de 43 para 1 e manter o bloqueio até o deploy.
+- [x] Implantar somente `feedbot-media`, confirmar HEAD/main/health e concluir com fila vazia, bloqueio removido e resultado `succeeded`.
 
 ### Reconciliação desta continuidade
 
@@ -144,8 +145,8 @@
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
-- [ ] **Qualidade de imagens:** frontend e Edge Functions publicados; reconciliar a VPS, implantar o worker de mídia no SHA final e regenerar o caso de teste.
-- [ ] **Fila VPS:** integrar a recuperação, preservar evidências do `SIGINT` e substituir os 42 itens pelo release final sem execução sequencial.
+- [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
+- [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
 
 ## Próximas tarefas
 

@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-01** para a melhoria de imagens integrada em `c4e703d`, publicada no frontend/Edge Functions e pendente no worker VPS.
+Atualizado em **2026-08-02** para a melhoria de imagens publicada também no worker VPS pelo merge `93ae2a3`.
 
 ## Visão de produto
 
@@ -258,8 +258,8 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 ### Estado da melhoria de imagens e do worker
 
 - O PR #57 integrou a melhoria de imagens em `c4e703d`; frontend e `fetch-rss`, `preview-source` e `discover-rss` foram publicados pela Lovable nesse conteúdo.
-- A VPS continua no SHA anterior `a2be3f5`. Os três processos PM2 estão online e o health local retorna HTTP 200, porém uma implantação recebeu `SIGINT`, deixou o estado bloqueado e acumulou 42 releases.
-- A recuperação deve preservar a evidência da interrupção, substituir os itens ancestrais pelo SHA final aprovado e reiniciar somente `feedbot-media`; ela não pode apagar arquivos de estado manualmente nem iniciar 42 deploys em sequência.
+- A recuperação do `SIGINT` foi concluída em `93ae2a3`: evidências e backups privados foram preservados, 43 estados anteriores foram marcados como substituídos e nenhum release intermediário foi executado.
+- Somente `feedbot-media` foi reiniciado. Fila, bloqueio, SHA, nginx, PM2 e health terminaram consistentes; os processos de webhook e cortes permaneceram online sem reinício.
 - O smoke de qualidade exige nova captura/regeneração, pois os arquivos de mídia existentes não são retroativamente alterados.
 
 ### Agora — prontidão e confiabilidade
@@ -267,8 +267,8 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - [concluído] cliente confirmou acesso autenticado após a liberação Pix live;
 - [concluído em produção] corrigir limites/exibição de Agência para resolver somente a assinatura `live` válida;
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
-- [integrado e parcialmente publicado] substituir miniaturas fracas pela imagem principal relacionada da matéria e proteger o fallback pequeno; frontend e Edge Functions publicados, worker/smoke visual pendentes;
-- integrar e executar a reconciliação segura da fila interrompida antes de implantar somente o worker de mídia;
+- [integrado e publicado] substituir miniaturas fracas pela imagem principal relacionada da matéria e proteger o fallback pequeno; frontend, Edge Functions e worker publicados, smoke visual pendente;
+- [concluído] reconciliar a fila interrompida e implantar somente o worker de mídia no SHA final aprovado;
 - validar o preview e concluir de forma controlada a publicação do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;

@@ -30,8 +30,8 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - A implantação Lovable criou o merge automático `3512454aba1daa7fc507238f136089959b3a3774`; a branch `codex/reconcile-editorial-pilot-migration` reconciliou a migration duplicada com o timestamp efetivamente registrado.
 - O PR #54 integrou a reconciliação no merge `47a6652c851ff3f3a0629f4677264d0d947b2894`; o PR #55 integrou a correção SQLSTATE `42702` no merge `d0dc3da2908a4623c334472ce35a67795ea4c05d`. A Lovable registrou a migration como `20260801194149` e avançou a `main` para `2b65b4941cc012896c4c6cc43fc5f25efaeade63`.
 - O PR #57 integrou a melhoria de imagens no merge `c4e703d777579bf057278eaa10bde8180c9e3c0b`; a Lovable publicou o frontend e as três Edge Functions dependentes de `source-capture.ts` nesse conteúdo.
-- A recuperação atual está isolada em `/private/tmp/fluxfeed-vps-recovery`, branch `codex/reconcile-vps-deploy-queue`, criada exatamente de `c4e703d`. A pasta original não foi alterada.
-- O PR rascunho [#58 — Recover interrupted VPS deploy queue safely](https://github.com/franciscocastro-svg/feed-bot-ai/pull/58) foi aberto com o commit funcional `be8b44d`; `Validate application` passou em 1m52s. O PR ainda não foi integrado.
+- O PR [#58 — Recover interrupted VPS deploy queue safely](https://github.com/franciscocastro-svg/feed-bot-ai/pull/58) foi integrado no merge `93ae2a39a08651ed15843c2370e793928c090454`; o check final passou para `df33a08`.
+- O registro pós-deploy está isolado em `/private/tmp/fluxfeed-vps-recovery`, branch `codex/record-vps-recovery-completion`, criada de `93ae2a3`. A pasta original não foi alterada.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
 - Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
 - PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.
@@ -80,8 +80,8 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Supabase | migration `20260801134000` aplicada; cliente liberado em live | teste autenticado aprovado |
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
-| Qualidade de imagens | PR #57 integrado; frontend e três Edge Functions publicados | reconciliar VPS, implantar worker e fazer smoke visual |
-| Worker VPS | serviços PM2 online e health HTTP 200, mas HEAD `a2be3f5` e fila bloqueada com 42 itens | usar somente a reconciliação versionada; não apagar estado manualmente |
+| Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
+| Worker VPS | `93ae2a3`, PM2/health saudáveis, fila vazia e bloqueio removido | preservar evidências; operação normal retomada |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -322,7 +322,7 @@ Implementação integrada pelo PR #57 no merge `c4e703d`:
 - o teste real selecionou `https://cdn.revistafama.com/.../mide-memo-schutz-casa-famosos.jpg`, medido em 1200×747;
 - 38 testes direcionados passaram; o CI completo aprovou secret scan em 665 arquivos, lint ratchet, typecheck, 562 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates e build;
 - a Lovable publicou o frontend e republicou `fetch-rss`, `preview-source` e `discover-rss` no conteúdo de `c4e703d`, sem migration, dados, secrets ou configuração;
-- o worker VPS ainda não recebeu a correção e nenhuma imagem existente foi regenerada.
+- o worker VPS recebeu a correção em `93ae2a3`; nenhuma imagem existente foi regenerada automaticamente.
 
 ## Diagnóstico e recuperação da fila VPS
 
@@ -346,7 +346,16 @@ Correção preparada em `codex/reconcile-vps-deploy-queue`:
 - 9 testes novos de recuperação e 2 regressões de escopo PM2 passaram; `npm run check:queue-reconciliation` aprovou 24 testes.
 - `npm run ci` completo aprovou secret scan em 668 arquivos, typecheck, lints, 571 testes principais, 35 testes herméticos de deploy, 24 de reconciliação, worker, gates MCP/editoriais e build Vite.
 
-Nenhuma dessas rotinas foi executada na VPS. A branch apenas prepara a recuperação auditável.
+Execução controlada concluída em 2026-08-02:
+
+- o plano imutável identificou 43 itens na fila, alvo final único `93ae2a3` e nenhum processo antigo vivo;
+- os três scripts extraídos do merge foram conferidos pelos hashes SHA-256 versionados;
+- a reconciliação preservou evidência em diretório privado, marcou 43 estados como substituídos e manteve somente o alvo, ainda bloqueado;
+- o deploy foi executado sob unidade transitória do systemd, sobrevivente à sessão SSH, e reiniciou apenas `feedbot-media`;
+- 571 testes principais, 35 de deploy, 24 de reconciliação, sintaxe do worker, nginx e health foram aprovados na VPS;
+- HEAD e `origin/main` coincidiram com `93ae2a3`; `feedbot-cuts` e `feedbot-webhook` não foram reiniciados;
+- a conclusão criou um segundo backup, registrou `succeeded`/`mediaOnly=true`, esvaziou a fila e removeu `BLOCKED.json` por último;
+- a conferência independente final confirmou os três processos PM2 online e health saudável.
 
 Publicação GitHub: autenticação confirmada; o PR #51 foi criado, marcado como pronto e integrado pelo fallback autenticado do `gh`, pois a integração do aplicativo retornou 403 para essas mutações. Merge confirmado em `ad39d3e`.
 
@@ -365,6 +374,7 @@ Commits relevantes:
 - `d0dc3da` — merge do PR #55 com a correção SQLSTATE `42702`.
 - `2b65b49` — merge automático Lovable que registra `20260801194149` e ajusta o teste.
 - `c4e703d` — merge do PR #57 com a melhoria de qualidade e fallback seguro das imagens.
+- `93ae2a3` — merge do PR #58 com a recuperação segura, implantado no worker VPS.
 
 ## Decisões que devem ser preservadas
 
@@ -496,7 +506,7 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 
 - demais migrations aplicadas no Supabase, além da Pix já confirmada;
 - versões das Edge Functions;
-- processos/versão do worker VPS;
+- demais processos/versões externas além do worker VPS confirmado em `93ae2a3`;
 - catálogo e assinaturas Stripe live;
 - webhooks e retenção de logs;
 - token e publicação Meta em conta de teste;
@@ -504,19 +514,17 @@ Esses smoke tests validam o gate do PR #42, mas não implantam o novo fluxo Pix 
 - migration `20260801170000` aplicada e registrada em 2026-08-01; nova versão de `discover-rss` publicada; frontend da Fase 2A ainda não publicado.
 - migration corretiva registrada como `20260801185731` e nova versão de `discover-rss` implantadas; preview pronto, frontend de produção ainda não publicado.
 - correção SQLSTATE `42702` registrada como `20260801194149`; aplicação autenticada aprovada, replay ainda pendente.
-- frontend e três Edge Functions da melhoria de imagens publicados em `c4e703d`; worker VPS ainda em `a2be3f5` e arquivos já gerados não mudam até nova captura/regeneração.
-- fila VPS bloqueada com 42 itens após `SIGINT`; a recuperação versionada ainda precisa ser integrada e executada com autorização.
+- frontend e três Edge Functions da melhoria de imagens publicados a partir de `c4e703d`; worker VPS atualizado em `93ae2a3`. Arquivos já gerados não mudam até nova captura/regeneração.
+- fila VPS reconciliada e concluída: resultado terminal `succeeded`, fila vazia, bloqueio ausente e evidências preservadas.
 
 Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. revisar, integrar e aguardar CI verde de `codex/reconcile-vps-deploy-queue`;
-3. com autorização específica e usando o SHA integrado, executar `--inspect` e `--execute` na VPS sem editar o estado manualmente;
-4. implantar somente `feedbot-media` com `DEPLOY_PM2_SCOPE=media-only`, validar SHA/health/PM2 e executar `--complete`;
-5. recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747, preservando o fallback quando necessário;
-6. em atividade separada, repetir a proposta do Piloto para confirmar `replayed=true` antes do rollout.
+2. recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747, preservando o fallback quando necessário;
+3. confirmar que a fonte visual continua relacionada à matéria e que os arquivos antigos permanecem inalterados até a regeneração;
+4. em atividade separada, repetir a proposta do Piloto para confirmar `replayed=true` antes do rollout.
 
 ## Checklist de manutenção
 
