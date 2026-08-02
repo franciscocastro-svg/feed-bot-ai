@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com Bold/Clean, Feed 4:5/Reel 9:16, mínimo de 20 segundos e identidade segura implantados, ainda sob Beta administrativa e aguardando smoke autenticado.
+Atualizado em **2026-08-02** para o Corte Editorial aprovado em smoke autenticado e para o cancelamento cooperativo de jobs implementado localmente, ainda sem migration ou deploy.
 
 O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
 
@@ -9,6 +9,8 @@ O PR #64/merge `5105bca` adicionou RPCs editoriais v2 com formato explícito, pr
 O PR #66/merge `bdd5c6d` integrou a estratégia Gemini para vídeos longos, a transcrição segmentada resiliente, a normalização de timestamps e o respeito ao formato editorial solicitado. A VPS recebeu exatamente `bdd5c6dd396709bae0e6001413f64aba424585b2` com `DEPLOY_PM2_SCOPE=cuts-only`: 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health passaram; apenas `feedbot-cuts` reiniciou. Nenhuma migration, Edge Function ou publicação de frontend fez parte desta implantação.
 
 O PR #67/merge `40a8c0e` implantou o mínimo editorial de 20 segundos em quatro camadas: prompt/seleção do worker, normalização temporal, validação do editor e trigger `trg_guard_editorial_cut_min_duration`. A Lovable registrou a migration como `20260802203258_da42777e-cf44-48e0-a74d-087248349ad8.sql`, publicou o frontend e a VPS reiniciou somente `feedbot-cuts` no SHA exato, com health final aprovado. O trigger é aditivo e não reescreve clipes históricos. `worker/instagramProfileIdentity.js` abre a credencial protegida somente pelo RPC de `service_role`, consulta a Meta com timeout, valida que o username devolvido corresponde à conta do job, aceita foto apenas de HTTPS/domínios Meta e mantém cache de dez minutos sem armazenar token. Falha externa cai para o username da conta selecionada e logo nulo. O compositor recebe `accountVerified=true` somente quando a Meta devolve um campo de verificação booleano explícito.
+
+O smoke posterior confirmou Reel 1080 × 1920, trecho de 52 segundos, identidade correta e confiança textual de 100%. A branch `codex/cancel-video-cut-jobs` adiciona um contrato de cancelamento isolado: `cancel_video_cut_job(uuid)` usa `FOR UPDATE`, valida `auth.uid()`/proprietário/admin, aceita apenas `queued`, `analyzing` ou `processing`, devolve a reserva em `video_cut_usage_daily` e grava `cancelled` na mesma transação. O worker consulta o estado entre download, análise, transcrição e render; updates terminais e heartbeat rejeitam `cancelled`, a autopublicação consulta o estado novamente e artefatos parciais são removidos por caminhos determinísticos. A RPC é idempotente e não para o processo PM2 nem interfere em outros jobs. A migration ainda não foi aplicada.
 
 Validação local da branch: 31 testes direcionados, 603 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, typecheck, lints, sintaxe do worker, gates editoriais/MCP e build aprovados.
 
@@ -270,6 +272,8 @@ sequenceDiagram
 ```
 
 O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Durante a Beta, a UI consulta `user_roles`, as três RPCs verificam `is_admin()`, a Edge de regeneração repete a verificação com o JWT do usuário e `trg_guard_editorial_cut_beta_access` impede que uma atualização direta transforme um job comum em editorial. Um segundo trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
+
+No cancelamento, a UI oferece a ação somente enquanto `canCancelVideoCutJob(status)` aceitar o estado. A RPC segura é a autoridade para propriedade, transição e quota; o frontend não altera a tabela diretamente. Jobs cancelados deixam de ser reclamáveis, o worker em execução encerra no próximo checkpoint e a ação `Excluir` reutiliza o fluxo terminal já existente.
 
 O schema atual mantém `start_seconds`, `end_seconds` e `duration_seconds` como `integer`. Essa é uma fronteira explícita: cálculos internos podem usar frações para localizar pausas, mas nenhum valor decimal cru pode chegar ao Supabase.
 

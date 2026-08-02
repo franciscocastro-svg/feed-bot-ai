@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O PR #67/merge `40a8c0e` integrou e implantou o mínimo editorial de 20 segundos e a identidade segura da conta selecionada. A Lovable aplicou a migration e publicou o frontend; a VPS atualizou somente `feedbot-cuts` e aprovou 603 testes principais, 36 de deploy, 24 de reconciliação, nginx e health. Agora é preciso executar o smoke autenticado sem publicação.
+Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro da fila foi implementado localmente na branch `codex/cancel-video-cut-jobs`; migration e deploy ainda aguardam aprovação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442` e frontend publicado. O PR #66/merge `bdd5c6d` corrigiu Gemini, vídeos longos, timestamps inteiros e formato, e foi implantado somente em `feedbot-cuts`; falta o smoke autenticado 9:16/4:5 sem publicação.
+- [x] **Corte Editorial:** base, formato, Gemini, duração e identidade implantados; smoke autenticado 9:16 aprovado sem publicação. A validação 4:5 continua recomendada, mas não bloqueia o cancelamento de fila.
 
 ### P1 — Corte Editorial
 
@@ -214,7 +214,20 @@
 - [x] Revisar o diff final e preparar commit separado.
 - [x] Enviar ao GitHub, integrar o PR #67 no merge `40a8c0e` e aplicar a migration pela Lovable sob o registro `20260802203258`.
 - [x] Publicar frontend e atualizar somente `feedbot-cuts` no SHA `40a8c0e`; 603 testes principais, 36 de deploy, 24 de reconciliação e health aprovados.
-- [ ] Executar smoke 9:16 e depois 4:5, um corte por vez e sem publicação.
+- [x] Executar smoke 9:16, um corte por vez e sem publicação; resultado aprovado com 52 segundos, identidade correta e confiança 100%.
+- [ ] Repetir o smoke em Feed 4:5 como validação visual complementar.
+
+### Cortes IA — cancelamento seguro da fila
+
+- [x] Definir estados canceláveis: `queued`, `analyzing` e `processing`.
+- [x] Criar RPC `cancel_video_cut_job(uuid)` com lock de linha, propriedade/admin, idempotência e liberação atômica da reserva.
+- [x] Adicionar `Cancelar fila` com confirmação, loading e recarga; preservar `Excluir` para o estado terminal.
+- [x] Tornar `feedbot-cuts` cooperativo, com checkpoints, proteção contra ready/failed/autopublish e limpeza de artefatos parciais.
+- [x] Validar typecheck, worker, build, lint, 30 testes direcionados e os 608 testes principais; os cinco casos bloqueados pelo sandbox passaram no rerun externo de 21/21.
+- [x] Revisar e registrar a mudança em commit separado na branch `codex/cancel-video-cut-jobs`.
+- [ ] Enviar a branch ao GitHub e abrir PR.
+- [ ] Após aprovação, aplicar `20260802220000_cancel_video_cut_jobs.sql`, publicar frontend e atualizar somente `feedbot-cuts`.
+- [ ] Smoke: cancelar um job na fila e outro em processamento; confirmar isolamento, créditos devolvidos, limpeza e exclusão posterior.
 
 ## Próximas tarefas
 

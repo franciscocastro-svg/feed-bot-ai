@@ -2807,6 +2807,10 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
 
 // ---- Auto-publish: transforma corte pronto em scheduled_post ----
 async function autoPublishClip(job, clip, videoUrl, thumbnailUrl) {
+  if (await videoCutJobWasCancelled(job.id)) {
+    console.warn(`[cuts:${clip?.id || "unknown"}] Auto-publicação ignorada: trabalho cancelado pelo usuário.`);
+    return;
+  }
   if (job?.cut_mode === "editorial") {
     console.warn(`[cuts:${clip?.id || "unknown"}] Auto-publicação bloqueada: Corte Editorial exige revisão explícita.`);
     return;
@@ -2875,6 +2879,74 @@ async function finishVideoCutUsage(jobId, generatedCount) {
   if (error) console.warn(`[cuts:${jobId}] Falha ao finalizar uso diário:`, error.message || error);
 }
 
+class VideoCutJobCancelledError extends Error {
+  constructor(jobId) {
+    super(`Trabalho ${jobId} cancelado pelo usuário.`);
+    this.name = "VideoCutJobCancelledError";
+    this.jobId = jobId;
+  }
+}
+
+function isVideoCutJobCancelledError(error) {
+  return error instanceof VideoCutJobCancelledError || error?.name === "VideoCutJobCancelledError";
+}
+
+async function videoCutJobWasCancelled(jobId) {
+  const { data, error } = await supabase.from("video_cut_jobs")
+    .select("status")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (error) throw error;
+  return !data || data.status === "cancelled";
+}
+
+async function assertVideoCutJobNotCancelled(jobId) {
+  if (await videoCutJobWasCancelled(jobId)) throw new VideoCutJobCancelledError(jobId);
+}
+
+async function shouldHandleVideoCutCancellation(jobId, error) {
+  if (isVideoCutJobCancelledError(error)) return true;
+  try {
+    return await videoCutJobWasCancelled(jobId);
+  } catch (statusError) {
+    console.warn(`[cuts:${jobId}] Não foi possível confirmar cancelamento após uma falha:`, statusError?.message || statusError);
+    return false;
+  }
+}
+
+async function cleanupCancelledVideoCutJob(job) {
+  const { data: clips, error: clipsError } = await supabase.from("video_cut_clips")
+    .select("id")
+    .eq("job_id", job.id);
+  if (clipsError) console.warn(`[cuts:${job.id}] Falha ao listar artefatos cancelados:`, clipsError.message || clipsError);
+
+  const paths = (clips || []).flatMap((clip) => [
+    `${job.user_id}/cuts/${clip.id}.mp4`,
+    `${job.user_id}/cuts/${clip.id}.jpg`,
+    `${job.user_id}/cuts/${clip.id}-editorial-preview.mp4`,
+    `${job.user_id}/cuts/${clip.id}-editorial.jpg`,
+  ]);
+  if (paths.length) {
+    const { error: storageError } = await supabase.storage.from("post-images").remove(paths);
+    if (storageError) console.warn(`[cuts:${job.id}] Falha ao remover artefatos cancelados:`, storageError.message || storageError);
+  }
+
+  const { error: deleteError } = await supabase.from("video_cut_clips")
+    .delete()
+    .eq("job_id", job.id);
+  if (deleteError) console.warn(`[cuts:${job.id}] Falha ao remover cortes parciais cancelados:`, deleteError.message || deleteError);
+
+  await finishVideoCutUsage(job.id, 0);
+  await supabase.from("video_cut_jobs")
+    .update({
+      generated_clips: 0,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", job.id)
+    .eq("status", "cancelled");
+}
+
 async function failVideoCutJob(job, message, fallbackRequired = false, generatedCount = 0, captureErrorCode = null) {
   const capture = job?.source_kind === "upload" ? null : classifyYoutubeCaptureError(message);
   await supabase.from("video_cut_jobs")
@@ -2889,7 +2961,8 @@ async function failVideoCutJob(job, message, fallbackRequired = false, generated
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", job.id);
+    .eq("id", job.id)
+    .neq("status", "cancelled");
   await finishVideoCutUsage(job.id, generatedCount);
 }
 
@@ -2900,6 +2973,7 @@ function startVideoCutClaimHeartbeat(jobId) {
       .update({ claimed_at: now, updated_at: now })
       .eq("id", jobId)
       .eq("claimed_by", WORKER_ID)
+      .neq("status", "cancelled")
       .then(({ error }) => {
         if (error) console.warn(`[cuts:${jobId}] heartbeat falhou:`, error.message || error);
       });
@@ -2917,9 +2991,11 @@ async function processLocalAudioCutJob(job, tempDir) {
   const audioPath = path.join(tempDir, "local-analysis.mp3");
   let createdCount = 0;
   try {
+    await assertVideoCutJobNotCancelled(job.id);
     await supabase.from("video_cut_jobs").update({
       status: "analyzing", progress: 12, error_message: null, updated_at: new Date().toISOString(),
-    }).eq("id", job.id);
+    }).eq("id", job.id).neq("status", "cancelled");
+    await assertVideoCutJobNotCancelled(job.id);
 
     if (job.source_storage_bucket !== "video-cut-audio" || !job.source_storage_path) {
       throw new Error("Áudio local do trabalho não foi encontrado.");
@@ -2932,15 +3008,18 @@ async function processLocalAudioCutJob(job, tempDir) {
       .from("video-cut-audio").createSignedUrl(job.source_storage_path, 900);
     if (signedError || !signed?.signedUrl) throw new Error(signedError?.message || "Não foi possível ler o áudio local.");
     await downloadFile(signed.signedUrl, audioPath);
+    await assertVideoCutJobNotCancelled(job.id);
 
     const duration = Math.max(3, Number(job.duration_seconds || 0));
     const sourceTranscription = await transcribeSourceForAnalysis(audioPath, tempDir, {
       onSegmentProgress: async ({ completed, total }) => {
+        await assertVideoCutJobNotCancelled(job.id);
         const progress = Math.min(44, 12 + Math.round((completed / Math.max(1, total)) * 30));
         await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
       },
     });
     const transcriptWords = sourceTranscription.words;
+    await assertVideoCutJobNotCancelled(job.id);
     if (!transcriptWords.length) throw new Error("Não foi possível identificar fala no áudio enviado.");
     await supabase.from("video_cut_jobs").update({ progress: 45, updated_at: new Date().toISOString() }).eq("id", job.id);
 
@@ -2958,6 +3037,7 @@ async function processLocalAudioCutJob(job, tempDir) {
     const formats = Array.from(new Set(jobFormats.length ? jobFormats : ["reels"]));
 
     for (let suggestionIndex = 0; suggestionIndex < suggestions.length; suggestionIndex += 1) {
+      await assertVideoCutJobNotCancelled(job.id);
       const suggestion = suggestions[suggestionIndex];
       const words = transcriptWords
         .filter((word) => word.end >= suggestion.start_seconds && word.start <= suggestion.end_seconds)
@@ -2967,6 +3047,7 @@ async function processLocalAudioCutJob(job, tempDir) {
           end: Math.max(0.04, word.end - suggestion.start_seconds),
         }));
       for (let formatIndex = 0; formatIndex < formats.length; formatIndex += 1) {
+        await assertVideoCutJobNotCancelled(job.id);
         const clipIndex = suggestionIndex * formats.length + formatIndex + 1;
         const { error: clipError } = await supabase.from("video_cut_clips").insert({
           job_id: job.id,
@@ -3019,9 +3100,15 @@ async function processLocalAudioCutJob(job, tempDir) {
       error_message: null,
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", job.id);
+    }).eq("id", job.id).neq("status", "cancelled");
+    await assertVideoCutJobNotCancelled(job.id);
     console.log(`[cuts:${job.id}] Áudio analisado; ${createdCount} corte(s) aguardando renderização no dispositivo.`);
   } catch (error) {
+    if (await shouldHandleVideoCutCancellation(job.id, error)) {
+      await cleanupCancelledVideoCutJob(job);
+      console.log(`[cuts:${job.id}] Processamento local cancelado pelo usuário.`);
+      return;
+    }
     await failVideoCutJob(job, error?.message || String(error), false, 0);
   }
 }
@@ -3036,6 +3123,8 @@ async function processVideoCutJob(job) {
 
   try {
     await fs.promises.mkdir(tempDir, { recursive: true });
+
+    await assertVideoCutJobNotCancelled(job.id);
 
     if (!(await commandExists("ffmpeg"))) {
       throw new Error("FFmpeg não está instalado no VPS.");
@@ -3056,7 +3145,9 @@ async function processVideoCutJob(job) {
         capture_error_code: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", job.id);
+      .eq("id", job.id)
+      .neq("status", "cancelled");
+    await assertVideoCutJobNotCancelled(job.id);
 
     let metadata;
     if (isUploadJob) {
@@ -3064,6 +3155,7 @@ async function processVideoCutJob(job) {
         .update({ progress: 15, updated_at: new Date().toISOString() })
         .eq("id", job.id);
       await downloadStoredVideo(job, sourcePath);
+      await assertVideoCutJobNotCancelled(job.id);
       metadata = await probeLocalVideoMetadata(sourcePath, job.source_title || job.source_file_name || "Vídeo enviado");
     } else {
       try {
@@ -3081,7 +3173,9 @@ async function processVideoCutJob(job) {
       }
       try {
         await downloadYoutubeVideo(job.youtube_url, sourcePath);
+        await assertVideoCutJobNotCancelled(job.id);
       } catch (err) {
+        if (isVideoCutJobCancelledError(err)) throw err;
         const capture = classifyYoutubeCaptureError(err);
         await failVideoCutJob(
           job,
@@ -3118,6 +3212,7 @@ async function processVideoCutJob(job) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
+    await assertVideoCutJobNotCancelled(job.id);
 
     let transcriptWords = [];
     let sourceTranscriptionTrace = {};
@@ -3133,6 +3228,7 @@ async function processVideoCutJob(job) {
     if (useGeminiFiles) {
       let geminiFile = null;
       try {
+        await assertVideoCutJobNotCancelled(job.id);
         await supabase.from("video_cut_jobs")
           .update({ progress: 27, updated_at: new Date().toISOString() })
           .eq("id", job.id);
@@ -3142,6 +3238,7 @@ async function processVideoCutJob(job) {
           mimeType: "video/mp4",
           displayName: `fluxfeed-cut-${job.id}`,
         });
+        await assertVideoCutJobNotCancelled(job.id);
         await supabase.from("video_cut_jobs")
           .update({ progress: 30, updated_at: new Date().toISOString() })
           .eq("id", job.id);
@@ -3149,11 +3246,13 @@ async function processVideoCutJob(job) {
           apiKey: GEMINI_API_KEY,
           file: geminiFile,
           onState: async (state) => {
+            await assertVideoCutJobNotCancelled(job.id);
             const progress = state === "ACTIVE" ? 32 : 31;
             await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
           },
         });
         const videoAnalysis = await analyzeGeminiVideoForCuts(job, metadata, geminiFile);
+        await assertVideoCutJobNotCancelled(job.id);
         await supabase.from("video_cut_jobs")
           .update({ progress: 35, updated_at: new Date().toISOString() })
           .eq("id", job.id);
@@ -3163,6 +3262,7 @@ async function processVideoCutJob(job) {
           suggestions: videoAnalysis.clips,
           videoDuration: metadata.duration_seconds,
           onProgress: async ({ completed, total }) => {
+            await assertVideoCutJobNotCancelled(job.id);
             const progress = Math.min(39, 35 + Math.round((completed / Math.max(1, total)) * 4));
             await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
           },
@@ -3194,6 +3294,7 @@ async function processVideoCutJob(job) {
           },
         };
       } catch (error) {
+        if (isVideoCutJobCancelledError(error)) throw error;
         longVideoWarning = `Análise otimizada do vídeo longo indisponível: ${error?.message || error}`.slice(0, 500);
         console.warn(`[cuts:${job.id}] ${longVideoWarning}; usando transcrição segmentada de segurança.`);
       } finally {
@@ -3213,6 +3314,7 @@ async function processVideoCutJob(job) {
         const progressSpan = useGeminiFiles ? 9 : 13;
         const sourceTranscription = await transcribeSourceForAnalysis(sourcePath, tempDir, {
           onSegmentProgress: async ({ completed, total }) => {
+            await assertVideoCutJobNotCancelled(job.id);
             const progress = Math.min(39, progressBase + Math.round((completed / Math.max(1, total)) * progressSpan));
             await supabase.from("video_cut_jobs").update({ progress, updated_at: new Date().toISOString() }).eq("id", job.id);
           },
@@ -3223,6 +3325,7 @@ async function processVideoCutJob(job) {
           strategy: useGeminiFiles ? "segmented_fallback" : "segmented_short_video",
         };
       } catch (error) {
+        if (isVideoCutJobCancelledError(error)) throw error;
         console.warn(`[cuts:${job.id}] Transcrição para análise indisponível:`, error?.message || error);
       }
       analysis = await analyzeTranscriptForCuts(job, metadata, transcriptWords);
@@ -3232,6 +3335,8 @@ async function processVideoCutJob(job) {
     }
     const analysisDurationMs = Date.now() - analysisStartedAt;
     const suggestions = analysis.clips;
+
+    await assertVideoCutJobNotCancelled(job.id);
 
     await supabase.from("video_cut_jobs")
       .update({
@@ -3251,7 +3356,9 @@ async function processVideoCutJob(job) {
 
     await supabase.from("video_cut_jobs")
       .update({ status: "processing", progress: 45, updated_at: new Date().toISOString() })
-      .eq("id", job.id);
+      .eq("id", job.id)
+      .neq("status", "cancelled");
+    await assertVideoCutJobNotCancelled(job.id);
 
     const { error: staleClipsError } = await supabase.from("video_cut_clips")
       .delete()
@@ -3315,6 +3422,7 @@ async function processVideoCutJob(job) {
     const renderStartedAt = Date.now();
     let processed = 0;
     for (let idx = 0; idx < suggestions.length; idx += 1) {
+      await assertVideoCutJobNotCancelled(job.id);
       const suggestion = suggestions[idx];
       const editorialDraft = isEditorialCut
         ? await generateEditorialDraftForClip({
@@ -3327,6 +3435,7 @@ async function processVideoCutJob(job) {
         })
         : null;
       for (let fIdx = 0; fIdx < uniqueFormats.length; fIdx += 1) {
+        await assertVideoCutJobNotCancelled(job.id);
         const clipFormat = uniqueFormats[fIdx];
         const clipIndex = idx * uniqueFormats.length + fIdx + 1;
         const { data: clip, error: clipError } = await supabase.from("video_cut_clips")
@@ -3397,6 +3506,7 @@ async function processVideoCutJob(job) {
             tempDir,
             cutReuseContext,
           );
+        await assertVideoCutJobNotCancelled(job.id);
         generatedCount += 1;
         processed += 1;
 
@@ -3438,13 +3548,20 @@ async function processVideoCutJob(job) {
           },
         },
       })
-      .eq("id", job.id);
+      .eq("id", job.id)
+      .neq("status", "cancelled");
+    await assertVideoCutJobNotCancelled(job.id);
     await finishVideoCutUsage(job.id, generatedCount);
     // O original privado fica disponível por uma janela curta para permitir
     // regeneração de estilo/transcrição sem exigir novo upload. A limpeza deve
     // respeitar source_expires_at e pode ser executada por rotina dedicada.
     console.log(`[cuts:${job.id}] ${generatedCount} corte(s) pronto(s) para revisão.`);
   } catch (err) {
+    if (await shouldHandleVideoCutCancellation(job.id, err)) {
+      await cleanupCancelledVideoCutJob(job);
+      console.log(`[cuts:${job.id}] Processamento cancelado pelo usuário.`);
+      return;
+    }
     const message = err?.message || String(err);
     console.error(`[cuts:${job.id}] Falha no processamento:`, message);
     const capture = isUploadJob ? null : classifyYoutubeCaptureError(err);

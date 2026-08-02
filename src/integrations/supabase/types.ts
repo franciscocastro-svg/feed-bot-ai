@@ -4297,6 +4297,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      cancel_video_cut_job: {
+        Args: { _job_id: string }
+        Returns: Json
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean

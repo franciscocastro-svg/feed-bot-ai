@@ -1,5 +1,13 @@
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
+export const CANCELLABLE_VIDEO_CUT_JOB_STATUSES = ["queued", "analyzing", "processing"] as const;
+
+export function canCancelVideoCutJob(status?: string | null) {
+  return CANCELLABLE_VIDEO_CUT_JOB_STATUSES.includes(
+    String(status || "") as (typeof CANCELLABLE_VIDEO_CUT_JOB_STATUSES)[number],
+  );
+}
+
 export function youtubeVideoId(value: string) {
   try {
     const url = new URL(value.trim());
