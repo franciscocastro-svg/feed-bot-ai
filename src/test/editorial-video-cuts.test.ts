@@ -177,7 +177,7 @@ describe("Corte Editorial", () => {
   });
 
   it("aceita Bold/Clean na criação editorial e mantém Feed ou Reel sem corrida com o worker", () => {
-    const migration = read("supabase/migrations/20260802173000_fix_editorial_cut_styles_and_reels.sql");
+    const migration = read("supabase/migrations/20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql");
     const page = read("src/pages/dashboard/Cuts.tsx");
     const preview = read("src/components/cuts/EditorialCutPreview.tsx");
     const types = read("src/integrations/supabase/types.ts");
