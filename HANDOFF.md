@@ -15,17 +15,20 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 ## Estado Git confirmado
 
-### Trabalho atual — cancelamento seguro da fila de Cortes IA
+### Trabalho atual — atualização do render final de Cortes IA
 
-- Worktree isolada: `/private/tmp/fluxfeed-editorial-resume`.
-- Branch atual: `codex/cancel-video-cut-jobs`, criada sobre o registro documental pós-deploy do merge `40a8c0e`.
+- Worktree isolada: `/private/tmp/fluxfeed-editorial-refresh`.
+- Branch atual: `codex/fix-editorial-final-refresh`, criada sobre `origin/main` em `a1d4d46`.
 - Implementação: commits `3f548a8` (`Fix Gemini cut transcription resilience`) e `3a9d38c` (`Optimize Gemini long video cuts`), integrados pelo PR #66.
 - Estado: o PR #64 integrou Bold/Clean e Reel 9:16 no merge `5105bca`; o PR #66 integrou Gemini/vídeos longos/timestamps/formato no merge `bdd5c6d`; o PR #67 integrou mínimo de 20 segundos e identidade segura no merge `40a8c0e`. O smoke autenticado 9:16 foi aprovado com trecho de 52 segundos, confiança 100%, identidade correta e nenhuma publicação automática.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
 - Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - Deploy corretivo atual: `DEPLOY_PM2_SCOPE=cuts-only` instalou `bdd5c6dd396709bae0e6001413f64aba424585b2`; 597 testes principais, 36 de deploy e 24 de reconciliação passaram, assim como nginx e health. As falhas intermediárias de health ocorreram antes do uptime mínimo de 10 segundos e a verificação final passou. Somente `feedbot-cuts` reiniciou; mídia e webhook preservaram os PIDs. Nenhum frontend, banco, migration ou Edge Function foi alterado.
 - Smoke posterior: Reel 1080 × 1920 confirmado, porém um candidato foi criado entre 58s e 67s e o cabeçalho do job `@chico.trader1` recebeu “Fuxico Fala”. O PR #67/merge `40a8c0e` corrigiu ambos. A migration foi registrada como `20260802203258_da42777e-cf44-48e0-a74d-087248349ad8.sql`, o frontend foi publicado e a VPS instalou exatamente `40a8c0e` com reinício exclusivo de `feedbot-cuts`. Foram aprovados 603 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; o resultado final foi `SUCCEEDED`/`target_healthy`.
-- Mudança registrada em commit separado na branch: `20260802220000_cancel_video_cut_jobs.sql`, `src/lib/videoCuts.ts`, `src/pages/dashboard/Cuts.tsx`, tipos Supabase, `worker/index.js` e `src/test/video-cut-cancellation.test.ts`. A branch foi enviada e o PR rascunho #68 aberto sem conflitos; `Validate application` aprovou `67f2e59` em 2m02s. Nada foi aplicado ao banco, Lovable ou VPS nesta etapa.
+- O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos da plataforma avançaram a `main` para `a1d4d46`. O histórico chegou a criar uma migration com timestamp de plataforma e depois removeu essa cópia como duplicata; confirmar diretamente banco, frontend publicado e VPS antes do smoke.
+- Diagnóstico atual: `hasRecentVideoActivity()` considerava `video.currentTime > 0` como uso ativo para sempre. Depois que o usuário reproduzia e pausava a prévia, o polling de 15 segundos nunca relia o clipe final concluído pelo worker; a UI mantinha `Aprovar e agendar` desativado e permitia novo clique, que a RPC rejeitava corretamente como duplicado.
+- Correção local: `src/lib/videoCuts.ts` contém a política pura de tolerância de dez segundos; `Cuts.tsx` consulta rerenders ativos e associa o estado ao clipe; `EditorialCutPreview.tsx` mostra fila/render, bloqueia duplicatas e libera o agendamento quando o final chega. Foram adicionados testes puros e de componente. Nenhum banco, worker, Edge Function, fila ou publicação foi alterado.
+- Validação concluída: typecheck, ESLint direcionado, 29 testes direcionados e build Vite aprovados; o CI completo também aprovou scanner de segredos em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, sintaxe do worker e gates editoriais/MCP. PR ainda pendente.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 - Implantação confirmada: o SQL aprovado foi renomeado pela plataforma sem mudança funcional; nenhum job, clipe, upload, agendamento ou publicação foi criado durante a implantação.
 
@@ -95,7 +98,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
 | Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
-| Worker VPS | HEAD `40a8c0e`; somente `feedbot-cuts` reiniciou. Deploy `SUCCEEDED`/`target_healthy`, 603 testes principais, 36 de deploy e 24 de reconciliação aprovados | não atualizar até o PR de cancelamento ser aprovado; depois usar somente `DEPLOY_PM2_SCOPE=cuts-only` |
+| Worker VPS | última implantação confirmada documentalmente em `40a8c0e`; logs de 2026-08-02 mostram `feedbot-cuts` online e rerenders concluídos | para cancelamento, confirmar SHA e usar somente `DEPLOY_PM2_SCOPE=cuts-only`; a correção de refresh não exige worker |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -605,11 +608,11 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. reler integralmente os cinco documentos no início da próxima etapa;
-2. aguardar o check do commit documental final, marcar o PR #68 como pronto e integrar somente após revisão;
-3. após merge, enviar prompt controlado à Lovable para aplicar apenas `20260802220000_cancel_video_cut_jobs.sql` e publicar o frontend;
-4. atualizar somente `feedbot-cuts` na VPS com `DEPLOY_PM2_SCOPE=cuts-only`;
-5. testar cancelamento de um job em fila e outro em processamento, confirmando isolamento, devolução de reserva, limpeza e botão `Excluir`;
+1. abrir um PR separado para a branch `codex/fix-editorial-final-refresh`, cujo CI e diff já foram revisados;
+2. após aprovação, publicar somente o frontend e testar um render final sem recarregar a página;
+3. confirmar que a UI mostra `na fila`, depois `renderizando`, muda para `Final revisado` e libera `Aprovar e agendar`;
+4. auditar separadamente a aplicação de `20260802220000_cancel_video_cut_jobs.sql` e o SHA do worker antes do smoke de cancelamento;
+5. atualizar somente `feedbot-cuts` com `DEPLOY_PM2_SCOPE=cuts-only` se o worker de cancelamento ainda não estiver no SHA aprovado;
 6. repetir o smoke editorial em Feed 4:5 como validação complementar;
 7. tratar o `SIGINT` do webhook, a recaptura da imagem e o replay do Piloto em trabalhos independentes.
 

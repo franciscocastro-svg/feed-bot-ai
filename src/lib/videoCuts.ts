@@ -1,6 +1,26 @@
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 export const CANCELLABLE_VIDEO_CUT_JOB_STATUSES = ["queued", "analyzing", "processing"] as const;
+export const VIDEO_CUT_REFRESH_GRACE_MS = 10_000;
+
+export function shouldDeferVideoCutRefresh(input: {
+  paused: boolean;
+  ended: boolean;
+  lastActivityAt?: number | null;
+  now?: number;
+  graceMs?: number;
+}) {
+  if (input.ended) return false;
+  if (!input.paused) return true;
+
+  const now = Number(input.now ?? Date.now());
+  const lastActivityAt = Number(input.lastActivityAt ?? 0);
+  const graceMs = Math.max(0, Number(input.graceMs ?? VIDEO_CUT_REFRESH_GRACE_MS));
+  return Number.isFinite(lastActivityAt)
+    && lastActivityAt > 0
+    && now - lastActivityAt >= 0
+    && now - lastActivityAt < graceMs;
+}
 
 export function canCancelVideoCutJob(status?: string | null) {
   return CANCELLABLE_VIDEO_CUT_JOB_STATUSES.includes(

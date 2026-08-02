@@ -33,6 +33,8 @@ type Props = {
   confidence?: number | null;
   reviewRequired?: boolean | null;
   reviewConfirmedAt?: string | null;
+  status?: string | null;
+  finalRenderStatus?: "queued" | "processing" | null;
   busy?: "text" | "render" | null;
   onRegenerateText: (clipId: string) => Promise<{ title: string; comment: string; confidence: number; reviewRequired: boolean } | null>;
   onRender: (clipId: string, draft: EditorialCutDraft) => Promise<boolean>;
@@ -66,6 +68,10 @@ export function EditorialCutPreview(props: Props) {
   }, [props.title, props.comment, props.startSeconds, props.endSeconds, props.transcriptText, props.subtitleStyle, props.config]);
 
   const finalReady = Boolean(props.videoUrl && props.reviewConfirmedAt);
+  const finalRenderQueued = props.finalRenderStatus === "queued";
+  const finalRenderProcessing = props.finalRenderStatus === "processing"
+    || (!finalReady && props.status === "rendering");
+  const finalRenderPending = finalRenderQueued || finalRenderProcessing;
   const mediaUrl = props.videoUrl || props.previewUrl;
 
   const regenerateText = async () => {
@@ -78,7 +84,17 @@ export function EditorialCutPreview(props: Props) {
       <div className="grid xl:grid-cols-[minmax(300px,0.8fr)_minmax(360px,1.2fr)]">
         <div className={`${isReels ? "aspect-[9/16]" : "aspect-[4/5]"} bg-black`}>
           {mediaUrl ? (
-            <video className="h-full w-full object-contain" src={mediaUrl} poster={props.thumbnailUrl || undefined} controls playsInline />
+            <video
+              className="h-full w-full object-contain"
+              src={mediaUrl}
+              poster={props.thumbnailUrl || undefined}
+              controls
+              playsInline
+              onPlay={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+              onPause={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+              onSeeking={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+              onTimeUpdate={(event) => { event.currentTarget.dataset.lastActivity = String(Date.now()); }}
+            />
           ) : props.thumbnailUrl ? (
             <img className="h-full w-full object-contain" src={props.thumbnailUrl} alt="Prévia do Corte Editorial" />
           ) : (
@@ -98,6 +114,12 @@ export function EditorialCutPreview(props: Props) {
             )}
             {props.reviewRequired && (
               <Badge variant="outline" className="border-amber-500/50 text-amber-600"><AlertTriangle className="mr-1 h-3 w-3" /> Revisão necessária</Badge>
+            )}
+            {finalRenderPending && (
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                {finalRenderQueued ? "Vídeo final na fila" : "Renderizando vídeo final"}
+              </Badge>
             )}
             {props.confidence != null && <span className="text-xs text-muted-foreground">Confiança do texto: {Math.round(props.confidence * 100)}%</span>}
           </div>
@@ -180,11 +202,15 @@ export function EditorialCutPreview(props: Props) {
               {props.busy === "text" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
               Regenerar somente o texto
             </Button>
-            <Button onClick={() => props.onRender(props.clipId, draft)} disabled={Boolean(props.busy)}>
+            <Button onClick={() => props.onRender(props.clipId, draft)} disabled={Boolean(props.busy) || finalRenderPending}>
               {props.busy === "render" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-1 h-4 w-4" />}
-              Revisar e gerar vídeo final
+              {finalRenderQueued
+                ? "Vídeo final na fila"
+                : finalRenderProcessing
+                  ? "Renderizando vídeo final"
+                  : "Revisar e gerar vídeo final"}
             </Button>
-            <Button variant="secondary" onClick={props.onSchedule} disabled={!finalReady || Boolean(props.busy)}>
+            <Button variant="secondary" onClick={props.onSchedule} disabled={!finalReady || Boolean(props.busy) || finalRenderPending}>
               <CheckCircle2 className="mr-1 h-4 w-4" /> Aprovar e agendar
             </Button>
             <Button variant="ghost" onClick={props.onDiscard} disabled={Boolean(props.busy)}>Descartar</Button>
