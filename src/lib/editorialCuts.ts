@@ -19,6 +19,8 @@ export type EditorialCutDraft = {
   config: EditorialCutConfig;
 };
 
+export const EDITORIAL_MIN_DURATION_SECONDS = 20;
+
 export const CUT_MODE_OPTIONS: Array<{
   value: CutMode;
   label: string;
@@ -37,7 +39,7 @@ export const CUT_MODE_OPTIONS: Array<{
   {
     value: "editorial",
     label: "Corte editorial",
-    description: "Layout 4:5 com identidade, título, comentário e vídeo central.",
+    description: "Layout 4:5 ou 9:16 com identidade, título, comentário e vídeo central.",
   },
 ];
 
@@ -77,7 +79,9 @@ export function validateEditorialDraft(draft: EditorialCutDraft) {
   if (comment.length < 10 || comment.length > 600) return "O comentário deve ter entre 10 e 600 caracteres.";
   if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0) return "Informe um trecho válido.";
   const duration = endSeconds - startSeconds;
-  if (duration < 3 || duration > 180) return "O trecho deve ter entre 3 e 180 segundos.";
+  if (duration < EDITORIAL_MIN_DURATION_SECONDS || duration > 180) {
+    return `O Corte Editorial deve ter entre ${EDITORIAL_MIN_DURATION_SECONDS} e 180 segundos.`;
+  }
   return null;
 }
 

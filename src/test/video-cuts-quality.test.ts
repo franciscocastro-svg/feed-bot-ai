@@ -115,6 +115,29 @@ describe("Cortes IA 2.0-B professional quality", () => {
     expect(Number.isInteger(result.clips[0].end_seconds)).toBe(true);
   });
 
+  it("expande um candidato editorial de 9 segundos para o mínimo de 20", () => {
+    const words = [
+      { word: "Começo", start: 58, end: 58.5 },
+      { word: "da", start: 65, end: 65.4 },
+      { word: "explicação", start: 76, end: 76.8 },
+      { word: "completa.", start: 77, end: 77.8 },
+    ];
+    const result = refineTranscriptCutCandidates([{
+      start_seconds: 58,
+      end_seconds: 67,
+      viral_score: 90,
+    }], words, {
+      requested: 1,
+      videoDuration: 120,
+      minDuration: 20,
+      maxDuration: 180,
+    });
+
+    expect(result.clips[0].duration_seconds).toBeGreaterThanOrEqual(20);
+    expect(result.clips[0].start_seconds).toBeGreaterThanOrEqual(0);
+    expect(result.clips[0].end_seconds).toBeLessThanOrEqual(120);
+  });
+
   it("does not invent duration when the entire source is shorter than the preferred minimum", () => {
     const result = refineTranscriptCutCandidates([{
       start_seconds: 0.2,

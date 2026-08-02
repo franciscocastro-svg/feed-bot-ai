@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_EDITORIAL_CONFIG,
+  EDITORIAL_MIN_DURATION_SECONDS,
   normalizeEditorialConfig,
   type EditorialCutConfig,
   type EditorialCutDraft,
@@ -121,9 +122,10 @@ export function EditorialCutPreview(props: Props) {
             </div>
             <div className="space-y-2">
               <Label>Fim (segundos)</Label>
-              <Input type="number" min={0} step={0.1} value={draft.endSeconds} onChange={(event) => setDraft({ ...draft, endSeconds: Number(event.target.value) })} />
+              <Input type="number" min={draft.startSeconds + EDITORIAL_MIN_DURATION_SECONDS} step={0.1} value={draft.endSeconds} onChange={(event) => setDraft({ ...draft, endSeconds: Number(event.target.value) })} />
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">O Corte Editorial precisa ter no mínimo {EDITORIAL_MIN_DURATION_SECONDS} segundos.</p>
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-2">

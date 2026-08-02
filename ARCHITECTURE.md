@@ -8,6 +8,10 @@ O PR #64/merge `5105bca` adicionou RPCs editoriais v2 com formato explícito, pr
 
 O PR #66/merge `bdd5c6d` integrou a estratégia Gemini para vídeos longos, a transcrição segmentada resiliente, a normalização de timestamps e o respeito ao formato editorial solicitado. A VPS recebeu exatamente `bdd5c6dd396709bae0e6001413f64aba424585b2` com `DEPLOY_PM2_SCOPE=cuts-only`: 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health passaram; apenas `feedbot-cuts` reiniciou. Nenhuma migration, Edge Function ou publicação de frontend fez parte desta implantação.
 
+Na branch local `codex/refine-editorial-cut-identity`, o mínimo editorial passa a 20 segundos em quatro camadas: prompt/seleção do worker, normalização temporal, validação do editor e trigger `trg_guard_editorial_cut_min_duration`. O trigger é aditivo e não reescreve clipes históricos. `worker/instagramProfileIdentity.js` abre a credencial protegida somente pelo RPC de `service_role`, consulta a Meta com timeout, valida que o username devolvido corresponde à conta do job, aceita foto apenas de HTTPS/domínios Meta e mantém cache de dez minutos sem armazenar token. Falha externa cai para o username da conta selecionada e logo nulo. O compositor recebe `accountVerified=true` somente quando a Meta devolve um campo de verificação booleano explícito.
+
+Validação local da branch: 31 testes direcionados, 603 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, typecheck, lints, sintaxe do worker, gates editoriais/MCP e build aprovados.
+
 ## Arquitetura geral
 
 ```mermaid

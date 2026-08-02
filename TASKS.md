@@ -201,6 +201,20 @@
 - [ ] Repetir o smoke com um vídeo curto e apenas um corte; depois repetir com o vídeo longo e validar 4:5/9:16 sem publicação.
 - [ ] Executar smoke autenticado 4:5 e 9:16 com fala real, sem agendar ou publicar.
 
+### Corte Editorial — mínimo e identidade pós-smoke
+
+- [x] Confirmar em captura real que o Reel 9:16 foi gerado, mas um candidato teve somente 9 segundos.
+- [x] Confirmar vazamento visual: job de `@chico.trader1` recebeu nome/@ “Fuxico Fala” de configuração anterior.
+- [x] Definir mínimo de 20 segundos exclusivamente para `cut_mode=editorial`, preservando o mínimo dos cortes tradicionais.
+- [x] Aplicar o mínimo no prompt, refinamento, fallback, editor e guarda aditiva do banco.
+- [x] Resolver identidade pela conta selecionada via Meta e bloquear nome/logo de outro username.
+- [x] Desenhar selo azul somente quando a Meta confirmar verificação real; token válido não concede selo.
+- [x] Adicionar testes de duração, correspondência de username, URL de foto confiável e selo condicional.
+- [x] Executar CI completo: scanner em 681 arquivos, 603 testes principais, 36 de deploy, 24 de reconciliação, worker, gates editoriais/MCP e build aprovados.
+- [x] Revisar o diff final e preparar commit separado.
+- [ ] Após aprovação, enviar ao GitHub, abrir PR e aplicar a migration pela Lovable.
+- [ ] Após merge e autorização, publicar frontend e atualizar somente `feedbot-cuts`; executar smoke 9:16/4:5 sem publicação.
+
 ## Próximas tarefas
 
 ### P0 — acesso Pix/manual
