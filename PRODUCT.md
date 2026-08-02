@@ -108,7 +108,7 @@ A correção passou por 31 testes direcionados e pelo CI completo com 603 testes
 
 O smoke autenticado final foi aprovado em 2026-08-02: a prévia Reel apresentou trecho de 52 segundos, texto factual com confiança 100%, nome/foto/@ da conta selecionada e nenhuma publicação automática. A etapa funcional seguinte é o cancelamento seguro da fila, sem alterar os formatos de corte existentes.
 
-O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos posteriores levaram a `main` a `a1d4d46`. A presença no Git não comprova que migration, frontend e worker estejam alinhados, portanto o rollout ainda exige verificação externa. A correção da atualização do vídeo final está isolada em `codex/fix-editorial-final-refresh` e não altera banco ou worker.
+O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos posteriores levaram a `main` a `a1d4d46`. A presença no Git não comprova que migration, frontend e worker estejam alinhados, portanto o rollout ainda exige verificação externa. A correção da atualização do vídeo final está em revisão no PR rascunho #69, branch `codex/fix-editorial-final-refresh`, e não altera banco ou worker.
 
 A correção do refresh foi validada pelo CI completo com 614 testes principais, 36 de deploy, 24 de reconciliação, scanner de segredos, typecheck, worker, gates e build. A publicação e o smoke autenticado continuam pendentes.
 

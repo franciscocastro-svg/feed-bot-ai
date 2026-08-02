@@ -18,7 +18,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### Trabalho atual — atualização do render final de Cortes IA
 
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-refresh`.
-- Branch atual: `codex/fix-editorial-final-refresh`, criada sobre `origin/main` em `a1d4d46`.
+- Branch atual: `codex/fix-editorial-final-refresh`, criada sobre `origin/main` em `a1d4d46`, enviada ao GitHub no PR rascunho [#69](https://github.com/franciscocastro-svg/feed-bot-ai/pull/69).
 - Implementação: commits `3f548a8` (`Fix Gemini cut transcription resilience`) e `3a9d38c` (`Optimize Gemini long video cuts`), integrados pelo PR #66.
 - Estado: o PR #64 integrou Bold/Clean e Reel 9:16 no merge `5105bca`; o PR #66 integrou Gemini/vídeos longos/timestamps/formato no merge `bdd5c6d`; o PR #67 integrou mínimo de 20 segundos e identidade segura no merge `40a8c0e`. O smoke autenticado 9:16 foi aprovado com trecho de 52 segundos, confiança 100%, identidade correta e nenhuma publicação automática.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
@@ -28,7 +28,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos da plataforma avançaram a `main` para `a1d4d46`. O histórico chegou a criar uma migration com timestamp de plataforma e depois removeu essa cópia como duplicata; confirmar diretamente banco, frontend publicado e VPS antes do smoke.
 - Diagnóstico atual: `hasRecentVideoActivity()` considerava `video.currentTime > 0` como uso ativo para sempre. Depois que o usuário reproduzia e pausava a prévia, o polling de 15 segundos nunca relia o clipe final concluído pelo worker; a UI mantinha `Aprovar e agendar` desativado e permitia novo clique, que a RPC rejeitava corretamente como duplicado.
 - Correção local: `src/lib/videoCuts.ts` contém a política pura de tolerância de dez segundos; `Cuts.tsx` consulta rerenders ativos e associa o estado ao clipe; `EditorialCutPreview.tsx` mostra fila/render, bloqueia duplicatas e libera o agendamento quando o final chega. Foram adicionados testes puros e de componente. Nenhum banco, worker, Edge Function, fila ou publicação foi alterado.
-- Validação concluída: typecheck, ESLint direcionado, 29 testes direcionados e build Vite aprovados; o CI completo também aprovou scanner de segredos em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, sintaxe do worker e gates editoriais/MCP. PR ainda pendente.
+- Validação concluída: typecheck, ESLint direcionado, 29 testes direcionados e build Vite aprovados; o CI completo também aprovou scanner de segredos em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, sintaxe do worker e gates editoriais/MCP. O commit funcional `de7eb90` está no PR rascunho #69; nenhum deploy foi realizado.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
 - Implantação confirmada: o SQL aprovado foi renomeado pela plataforma sem mudança funcional; nenhum job, clipe, upload, agendamento ou publicação foi criado durante a implantação.
 
@@ -608,8 +608,8 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. abrir um PR separado para a branch `codex/fix-editorial-final-refresh`, cujo CI e diff já foram revisados;
-2. após aprovação, publicar somente o frontend e testar um render final sem recarregar a página;
+1. revisar e aprovar o PR rascunho #69, cujo commit funcional `de7eb90` e CI local já foram revisados;
+2. após o merge aprovado, publicar somente o frontend e testar um render final sem recarregar a página;
 3. confirmar que a UI mostra `na fila`, depois `renderizando`, muda para `Final revisado` e libera `Aprovar e agendar`;
 4. auditar separadamente a aplicação de `20260802220000_cancel_video_cut_jobs.sql` e o SHA do worker antes do smoke de cancelamento;
 5. atualizar somente `feedbot-cuts` com `DEPLOY_PM2_SCOPE=cuts-only` se o worker de cancelamento ainda não estiver no SHA aprovado;

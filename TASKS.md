@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro foi integrado pelo PR #68; o rollout externo ainda deve ser confirmado. A correção da atualização do vídeo final está implementada localmente sem deploy.
+Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro foi integrado pelo PR #68; o rollout externo ainda deve ser confirmado. A correção da atualização do vídeo final está no PR rascunho #69, sem deploy.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -240,7 +240,7 @@
 - [x] Aprovar typecheck, lint direcionado, 29 testes direcionados e build de produção.
 - [x] Executar CI completo: scanner em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, worker, gates e build aprovados.
 - [x] Revisar o diff final e confirmar que banco, worker, Edge Functions e publicação não foram alterados.
-- [ ] Abrir PR separado.
+- [x] Enviar a branch e abrir o PR rascunho #69 contra `main`.
 - [ ] Publicar somente o frontend após aprovação e confirmar a transição completa em smoke autenticado.
 
 ## Próximas tarefas
