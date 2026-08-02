@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O PR #66/merge `bdd5c6d` integrou e implantou somente em `feedbot-cuts` as correções de transcrição Gemini, vídeos longos, timestamps inteiros e proporção 4:5/9:16. A VPS aprovou 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health; agora é preciso validar em smoke autenticado que o worker recupera texto real sem eliminar o fallback neutro seguro.
+Última atualização: **2026-08-02**. O PR #67/merge `40a8c0e` integrou e implantou o mínimo editorial de 20 segundos e a identidade segura da conta selecionada. A Lovable aplicou a migration e publicou o frontend; a VPS atualizou somente `feedbot-cuts` e aprovou 603 testes principais, 36 de deploy, 24 de reconciliação, nginx e health. Agora é preciso executar o smoke autenticado sem publicação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -212,8 +212,9 @@
 - [x] Adicionar testes de duração, correspondência de username, URL de foto confiável e selo condicional.
 - [x] Executar CI completo: scanner em 681 arquivos, 603 testes principais, 36 de deploy, 24 de reconciliação, worker, gates editoriais/MCP e build aprovados.
 - [x] Revisar o diff final e preparar commit separado.
-- [ ] Após aprovação, enviar ao GitHub, abrir PR e aplicar a migration pela Lovable.
-- [ ] Após merge e autorização, publicar frontend e atualizar somente `feedbot-cuts`; executar smoke 9:16/4:5 sem publicação.
+- [x] Enviar ao GitHub, integrar o PR #67 no merge `40a8c0e` e aplicar a migration pela Lovable sob o registro `20260802203258`.
+- [x] Publicar frontend e atualizar somente `feedbot-cuts` no SHA `40a8c0e`; 603 testes principais, 36 de deploy, 24 de reconciliação e health aprovados.
+- [ ] Executar smoke 9:16 e depois 4:5, um corte por vez e sem publicação.
 
 ## Próximas tarefas
 

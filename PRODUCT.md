@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com correção Bold/Clean e saída Reel 9:16 implantadas, aguardando smoke autenticado sem publicação.
+Atualizado em **2026-08-02** para o Corte Editorial com Bold/Clean, Reel 9:16, mínimo de 20 segundos e identidade segura implantados, aguardando smoke autenticado sem publicação.
 
 ## Visão de produto
 
@@ -99,7 +99,7 @@ Correção implantada após o primeiro smoke real: `Bold viral` e `Clean` eram a
 
 O smoke seguinte expôs três problemas independentes. Primeiro, a VPS tinha somente Gemini e o worker segmentava a fonte inteira em blocos de 600 segundos, causando respostas truncadas, timeouts e fila lenta. Depois, o refinamento de limites naturais devolveu `45.24` para colunas inteiras, encerrando o job com SQLSTATE `22P02`. Um novo teste iniciado às 15:12 concluiu a renderização de uma prévia de 35 segundos, mas sem transcrição: confiança 0%, conteúdo neutro e revisão necessária. Embora o job tenha sido solicitado como 9:16, a prévia foi rotulada/renderizada como Feed 1080 × 1350, confirmando a imposição 4:5. O PR #66/merge `bdd5c6d` resolveu os três pontos sem migration. A VPS instalou exatamente esse SHA com escopo `cuts-only`; 597 testes principais, 36 de deploy, 24 de reconciliação, nginx e health passaram, sem reiniciar mídia ou webhook. Resta o smoke autenticado 9:16/4:5 com fala real e sem publicação.
 
-O smoke de cinco cortes confirmou a saída Reel 1080 × 1920, mas revelou um candidato de 9 segundos e identidade incorreta: o job era de `@chico.trader1`, enquanto o cabeçalho usou “Fuxico Fala” de uma configuração anterior. A correção está somente na branch `codex/refine-editorial-cut-identity`; migration, frontend e worker ainda não foram publicados.
+O smoke de cinco cortes confirmou a saída Reel 1080 × 1920, mas revelou um candidato de 9 segundos e identidade incorreta: o job era de `@chico.trader1`, enquanto o cabeçalho usou “Fuxico Fala” de uma configuração anterior. O PR #67/merge `40a8c0e` corrigiu os dois pontos. A migration foi registrada como `20260802203258_da42777e-cf44-48e0-a74d-087248349ad8.sql`, o frontend foi publicado e a VPS recebeu exatamente o merge com reinício exclusivo de `feedbot-cuts` e health aprovado. Resta o smoke autenticado final.
 
 A correção passou por 31 testes direcionados e pelo CI completo com 603 testes principais, 36 de deploy, 24 de reconciliação e build. O próximo aceite continua sendo visual/autenticado depois da integração e implantação controlada.
 
