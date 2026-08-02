@@ -155,6 +155,27 @@ describe("Corte Editorial", () => {
     expect(migration).toContain("guard_unreviewed_editorial_cut_schedule");
   });
 
+  it("mantém a Beta editorial exclusiva para administradores na tela e no banco", () => {
+    const page = read("src/pages/dashboard/Cuts.tsx");
+    const migration = read("supabase/migrations/20260802090000_add_editorial_video_cuts.sql");
+    const edge = read("supabase/functions/regenerate-cut-editorial-text/index.ts");
+
+    expect(page).toContain('<TabsTrigger value="create">Criar corte</TabsTrigger>');
+    expect(page).toContain('<TabsTrigger value="history">Meus cortes</TabsTrigger>');
+    expect(page).toContain('option.value !== "editorial" || isAdmin');
+    expect(page).toContain("Beta admin");
+    expect(page).toMatch(/cutMode === "editorial" && !isAdmin/);
+
+    expect(migration).toContain("guard_editorial_cut_beta_access");
+    expect(migration).toContain("trg_guard_editorial_cut_beta_access");
+    expect(migration.match(/IF NOT public\.is_admin\(\) THEN/g)).toHaveLength(3);
+    expect(migration).toContain("USING ERRCODE = '42501'");
+
+    expect(edge).toContain('userClient.rpc("is_admin")');
+    expect(edge).toContain('editorial_beta_admin_only');
+    expect(edge).toContain("403");
+  });
+
   it("cria prévia sem video final e impede auto-publish no worker", () => {
     const worker = read("worker/index.js");
     expect(worker).toMatch(/previewOnly\s*\?\s*\{ editorial_preview_url: url, video_url: null \}/);

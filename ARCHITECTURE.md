@@ -2,7 +2,7 @@
 
 Atualizado em **2026-08-02** para o Corte Editorial local, ainda sem implantação externa.
 
-O código está isolado na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60); o check remoto passou para `5dee08a`. A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
+O Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`. A proteção temporária `Beta admin` está isolada na branch `codex/editorial-admin-beta`, criada sobre `fd79e5d`. A topologia implantada permanece inalterada: migration, Edge de texto, worker VPS e frontend ainda aguardam aprovação e execução controlada.
 
 ## Arquitetura geral
 
@@ -232,7 +232,8 @@ sequenceDiagram
     participant AI as Gemini/xAI fallback
     participant ST as Storage
 
-    U->>FE: escolhe Corte Editorial e envia vídeo
+    U->>FE: admin escolhe Corte Editorial Beta e envia vídeo
+    FE->>DB: valida papel admin
     FE->>DB: RPC editorial cria job 4:5 com auto_publish=false
     DB-->>W: worker reclama job
     W->>W: transcreve e escolhe trecho
@@ -249,7 +250,7 @@ sequenceDiagram
     U->>FE: aprova e agenda
 ```
 
-O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Um trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
+O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Durante a Beta, a UI consulta `user_roles`, as três RPCs verificam `is_admin()`, a Edge de regeneração repete a verificação com o JWT do usuário e `trg_guard_editorial_cut_beta_access` impede que uma atualização direta transforme um job comum em editorial. Um segundo trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
 
 O compositor usa Canvas apenas para textos/identidade e FFmpeg para a mídia. `blur_fit` e `contain` não ampliam o primeiro plano; `smart_crop` limita-o a 2×. A prévia e o final são codificados separadamente a partir do original, nunca um a partir do outro. Legendas ASS usam timestamps por palavra e são recalculadas do original quando o trecho muda. O áudio é normalizado e reamostrado explicitamente para AAC 48 kHz; essa fixação foi adicionada após o teste físico detectar que `loudnorm` sozinho produzia 96 kHz.
 

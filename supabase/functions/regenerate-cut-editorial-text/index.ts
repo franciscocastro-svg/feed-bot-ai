@@ -84,6 +84,10 @@ Deno.serve(async (request) => {
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: "unauthorized" }, 401);
 
+    const { data: isAdmin, error: adminError } = await userClient.rpc("is_admin");
+    if (adminError) throw adminError;
+    if (isAdmin !== true) return json({ error: "editorial_beta_admin_only" }, 403);
+
     const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: approved } = await adminClient.rpc("is_approved", { _uid: user.id });
     if (approved === false) return json({ error: "account_not_approved" }, 403);

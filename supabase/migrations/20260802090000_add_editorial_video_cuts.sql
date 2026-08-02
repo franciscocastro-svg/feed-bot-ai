@@ -44,6 +44,34 @@ ALTER TABLE public.video_cut_clips
     AND (editorial_comment IS NULL OR length(editorial_comment) <= 600)
   );
 
+CREATE OR REPLACE FUNCTION public.guard_editorial_cut_beta_access()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NEW.cut_mode <> 'editorial' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.cut_mode = 'editorial' THEN
+    RETURN NEW;
+  END IF;
+  IF COALESCE(auth.jwt()->>'role', '') <> 'service_role'
+     AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Corte Editorial em Beta: acesso exclusivo para administradores.'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.guard_editorial_cut_beta_access() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_guard_editorial_cut_beta_access ON public.video_cut_jobs;
+CREATE TRIGGER trg_guard_editorial_cut_beta_access
+  BEFORE INSERT OR UPDATE OF cut_mode ON public.video_cut_jobs
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_editorial_cut_beta_access();
+
 CREATE OR REPLACE FUNCTION public.create_editorial_video_cut_job(
   _instagram_account_id uuid,
   _youtube_url text,
@@ -60,6 +88,11 @@ DECLARE
     ELSE 'clean'
   END;
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Corte Editorial em Beta: acesso exclusivo para administradores.'
+      USING ERRCODE = '42501';
+  END IF;
+
   v_job := public.create_video_cut_job(
     _instagram_account_id,
     _youtube_url,
@@ -110,6 +143,11 @@ DECLARE
     ELSE 'clean'
   END;
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Corte Editorial em Beta: acesso exclusivo para administradores.'
+      USING ERRCODE = '42501';
+  END IF;
+
   v_job := public.create_video_cut_upload_job_v2(
     _instagram_account_id,
     _storage_path,
@@ -164,6 +202,10 @@ DECLARE
   v_config jsonb := COALESCE(_editorial_config, '{}'::jsonb);
 BEGIN
   IF v_user_id IS NULL THEN RAISE EXCEPTION 'login required'; END IF;
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Corte Editorial em Beta: acesso exclusivo para administradores.'
+      USING ERRCODE = '42501';
+  END IF;
 
   SELECT * INTO v_clip
   FROM public.video_cut_clips

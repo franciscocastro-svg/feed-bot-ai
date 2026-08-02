@@ -76,7 +76,8 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 
 ### Corte Editorial — implementado localmente, não publicado
 
-- nova opção ao lado de Corte tradicional e Corte com legendas; os formatos atuais permanecem disponíveis;
+- `Cortes IA` foi organizado em `Criar corte` e `Meus cortes`; na criação, a nova opção fica ao lado de Corte tradicional e Corte com legendas, sem remover os formatos atuais;
+- durante o teste inicial, Corte Editorial aparece como `Beta admin` apenas para administradores; a mesma regra é aplicada no banco, nas RPCs e na Edge Function, não somente na interface;
 - saída 1080 × 1350 com cabeçalho da conta, título, comentário, vídeo central, rodapé e fonte quando disponível;
 - transcrição como fonte factual principal e até quatro frames do próprio trecho apenas como contexto visual genérico;
 - nomes, datas e números sem evidência literal, evidência ausente ou confiança abaixo de 72% produzem texto neutro e `Revisão necessária`;
@@ -86,7 +87,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - vídeos pequenos usam primeiro plano sem ampliação no modo protegido; o recorte assistido limita ampliação a 2× e usa fundo desfocado para completar a área;
 - compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
-Esta entrega está na branch remota `codex/editorial-ai-cut` e no PR rascunho [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), com `Validate application` aprovado para `5dee08a`. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
+O Corte Editorial base foi integrado à `main` pelo PR [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), merge `acc8363`. A restrição temporária `Beta admin` está na branch `codex/editorial-admin-beta`, criada sobre a `main` atual. A demonstração visual foi aprovada pelo usuário; o teste com fala real permanece pendente. Migration, Edge Function, frontend e worker ainda não foram implantados, e nenhum conteúdo foi publicado durante os testes.
 
 ### Comercial
 
@@ -289,7 +290,7 @@ No Corte Editorial, o passo 4 gera primeiro `editorial_preview_url`, mantendo `v
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
-- obter o aceite visual dos três renders físicos já gerados e repetir a sincronia com um vídeo que contenha fala real, sem publicar;
+- repetir a sincronia com um vídeo que contenha fala real, sem publicar; os três renders físicos já receberam aceite visual;
 - após aceite, implantar seus quatro componentes em ordem controlada: migration, Edge de texto, worker e frontend;
 - corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 
