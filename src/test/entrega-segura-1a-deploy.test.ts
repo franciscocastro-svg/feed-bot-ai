@@ -164,6 +164,7 @@ async function runDeploy(options: {
   healthMode?: "always_fail" | "success" | "target_fail";
   mutateDistAfterCheck?: boolean;
   nginxFailure?: boolean;
+  pm2Scope?: string;
   targetSha?: string;
 }) {
   const root = temporaryDirectory("feedbot-deploy-test-");
@@ -246,6 +247,7 @@ esac
       FAKE_NGINX_FAILURE: options.nginxFailure ? "1" : "0",
       FAKE_TARGET_SHA: targetSha,
       FAKE_DIST_FILE: distFile,
+      DEPLOY_PM2_SCOPE: options.pm2Scope || "all",
       PATH: `${binDir}:/usr/local/bin:/usr/bin:/bin`,
     },
   });
@@ -465,6 +467,27 @@ describeDeliveryHarness("Entrega Segura 1A.2 - contrato do deploy", () => {
     expect(workerSyntaxIndex).toBeGreaterThan(checkIndex);
     expect(finalCleanGateIndex).toBeGreaterThan(workerSyntaxIndex);
     expect(pm2Index).toBeGreaterThan(finalCleanGateIndex);
+  }, 30_000);
+
+  it("permite reiniciar somente feedbot-media em uma recuperacao aprovada", async () => {
+    const result = await runDeploy({ pm2Scope: "media-only", targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("Restarting only feedbot-media");
+    expect(result.commandLog).toContain(
+      "pm2:startOrReload ecosystem.config.cjs --only feedbot-media --update-env",
+    );
+    expect(result.commandLog).not.toContain("pm2:startOrReload ecosystem.config.cjs --update-env");
+    expect(result.commandLog).toContain(`health:${expectedSha}`);
+  }, 30_000);
+
+  it("rejeita escopo PM2 desconhecido antes da primeira mutacao", async () => {
+    const result = await runDeploy({ pm2Scope: "webhook-only", targetSha: expectedSha });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(20);
+    expect(result.stdout).toContain("DEPLOY_RESULT_REASON=invalid_pm2_scope");
+    expect(result.stateExists).toBe(false);
+    expect(result.commandLog).not.toMatch(/git:|npm:|pm2:|health:|nginx:/);
   }, 30_000);
 
   it("preserva drift pos-check e interrompe antes de PM2, health ou rollback", async () => {

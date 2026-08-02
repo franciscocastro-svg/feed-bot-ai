@@ -6,7 +6,7 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 
 ## Estado confirmado desta árvore
 
-Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o frontend Agência/Pix publicados.
+Documentação reconciliada em **2026-08-01** com a `origin/main`, as publicações Lovable e o diagnóstico somente leitura da VPS.
 
 - Release funcional publicada confirmada: `6b362bf`, merge do PR [#45](https://github.com/franciscocastro-svg/feed-bot-ai/pull/45), com fluxo administrativo Pix sempre em `live`.
 - Correção Agência/financeiro publicada: `e163226`, merge do PR [#49](https://github.com/franciscocastro-svg/feed-bot-ai/pull/49), com check remoto verde.
@@ -39,9 +39,12 @@ Documentação reconciliada em **2026-08-01** com a `origin/main`, o banco e o f
 - O CI completo dessa correção passou: secret scan em 665 arquivos, typecheck, lints, 555 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, gates de migrations/MCP e build Vite.
 - A operação Lovable substituiu o nome da migration e ajustou somente o caminho do teste, criando o merge automático final `2b65b49` na `main`; o SQL permaneceu equivalente e 18/18 testes direcionados passaram.
 - O terceiro smoke autenticado passou em 2026-08-01: a proposta selecionou 7 fontes e 4 pautas; o resultado criou 4 fontes novas, 4 vínculos novos e 4 pautas, sem publicação. A verificação somente leitura confirmou 1 ledger, todas as 7 fontes resolvidas/vinculadas e as 4 pautas presentes, sem duplicação. O replay continua pendente.
-- A branch `codex/improve-news-image-quality` corrige a baixa resolução de imagens de notícia: reconhece miniaturas fracas, prioriza a imagem principal da própria matéria por metadados e resolução, preserva a miniatura como último recurso e limita sua ampliação no Canvas/worker. No caso real diagnosticado, a origem passou de uma miniatura Bing 100×100 para a imagem relacionada da matéria em 1200×747.
-- A correção de imagens passou em 38 testes direcionados, typecheck e no CI completo com 562 testes principais, 33 testes herméticos de deploy, 15 de reconciliação, worker, gates e build. Ainda não foi integrada nem implantada.
-- Edge Functions, catálogo Stripe, Meta e worker VPS continuam dependendo de auditoria separada.
+- O PR [#57](https://github.com/franciscocastro-svg/feed-bot-ai/pull/57) integrou a melhoria de imagens no merge `c4e703d`: miniaturas fracas são reconhecidas, a imagem principal da própria matéria é priorizada por metadados e resolução, a miniatura continua como último recurso e sua ampliação é limitada no Canvas/worker. No caso real, a origem passou de uma miniatura Bing 100×100 para a imagem relacionada de 1200×747.
+- O CI do PR #57 passou. A Lovable sincronizou `c4e703d`, publicou o frontend e republicou somente `fetch-rss`, `preview-source` e `discover-rss`; não aplicou migrations nem alterou dados, secrets ou configurações. Imagens já geradas não mudam sem nova captura/regeneração.
+- A auditoria somente leitura da VPS encontrou o worker ainda em `a2be3f5`, com PM2 saudável e `/deploy-health` em HTTP 200, mas com uma implantação interrompida por `SIGINT`, estado bloqueado e 42 itens acumulados na fila. `c4e703d` é o último item único e aprovado, sem resultado terminal.
+- O PR rascunho [#58](https://github.com/franciscocastro-svg/feed-bot-ai/pull/58), branch `codex/reconcile-vps-deploy-queue`, adiciona reconciliação em três fases — inspeção, execução com evidência/rollback e conclusão — e um deploy `media-only`. Ele não desbloqueia nem publica automaticamente; a mutação da VPS continua dependente de aprovação específica e do SHA integrado.
+- O CI completo dessa recuperação passou localmente e o check remoto `Validate application` do PR #58 aprovou o commit funcional `be8b44d` em 1m52s: secret scan em 668 arquivos, typecheck, lints, 571 testes principais, 35 testes herméticos de deploy, 24 testes de reconciliação, worker, gates e build Vite.
+- Catálogo Stripe e Meta continuam dependendo de auditoria separada.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` permanece intacta e contém mudanças locais que não devem ser incluídas ou apagadas sem autorização. Consulte `HANDOFF.md`.
 
 Use estas etiquetas na documentação:
@@ -201,4 +204,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Revisar e integrar a branch de qualidade de imagens. Após o merge, publicar de forma controlada `fetch-rss`, `preview-source` e `discover-rss`, implantar o worker no mesmo SHA e publicar o frontend para manter os renderizadores sincronizados. Em seguida, recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747; separadamente, ainda falta executar o replay idempotente do Piloto Editorial.
+Revisar e integrar a recuperação segura da fila. Depois, na VPS e com autorização específica: executar a inspeção imutável, reconciliar o estado interrompido preservando evidências, implantar somente `feedbot-media` no SHA final aprovado e concluir o estado apenas após CI/health/SHA coincidirem. Em seguida, recapturar/regenerar a matéria de teste e confirmar visualmente a imagem 1200×747. O replay idempotente do Piloto Editorial permanece uma atividade separada.
