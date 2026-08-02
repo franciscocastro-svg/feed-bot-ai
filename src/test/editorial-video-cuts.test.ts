@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   CUT_MODE_OPTIONS,
   DEFAULT_EDITORIAL_CONFIG,
+  EDITORIAL_MIN_DURATION_SECONDS,
   canScheduleEditorialCut,
   editorialDraftPayload,
   normalizeEditorialConfig,
@@ -69,7 +70,8 @@ describe("Corte Editorial", () => {
       _end_seconds: 45.2,
       _subtitle_style: "clean",
     });
-    expect(validateEditorialDraft({ ...draft, endSeconds: 13 })).toContain("entre 3 e 180");
+    expect(EDITORIAL_MIN_DURATION_SECONDS).toBe(20);
+    expect(validateEditorialDraft({ ...draft, startSeconds: 12, endSeconds: 31 })).toContain("entre 20 e 180");
   });
 
   it("aceita texto somente quando a evidência literal e números estão na transcrição", () => {
@@ -227,6 +229,20 @@ describe("Corte Editorial", () => {
     expect(worker).toContain('job?.cut_mode === "editorial"');
     expect(worker).toContain("source_encode_count: 1");
     expect(worker).toContain("loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]");
+  });
+
+  it("impõe 20 segundos e isola a identidade real da conta no Corte Editorial", () => {
+    const worker = read("worker/index.js");
+    const overlay = read("worker/editorialCut.js");
+    const migration = read("supabase/migrations/20260802200000_enforce_editorial_cut_identity_duration.sql");
+
+    expect(worker).toContain("const EDITORIAL_MIN_CUT_SECONDS = 20");
+    expect(worker).toContain("resolveInstagramEditorialIdentity");
+    expect(worker).toContain("instagram_profile_identity");
+    expect(overlay).toContain("accountVerified = false");
+    expect(overlay).toContain('ctx.fillStyle = "#1D9BF0"');
+    expect(migration).toContain("trg_guard_editorial_cut_min_duration");
+    expect(migration).toContain("v_duration < 20");
   });
 
   it("regenera somente texto sem persistir nem processar vídeo", () => {

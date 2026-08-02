@@ -38,6 +38,7 @@ import {
   CUT_MODE_OPTIONS,
   canScheduleEditorialCut,
   editorialDraftPayload,
+  EDITORIAL_MIN_DURATION_SECONDS,
   validateEditorialDraft,
   type CutMode,
   type EditorialCutConfig,
@@ -606,6 +607,12 @@ export default function Cuts() {
       const requestClips = Math.min(requestedClips, bounds.maxRequest);
       let createdJobId: string | null = null;
       if (inputMode === "upload") {
+        if (cutMode === "editorial" && videoFile) {
+          const duration = await readVideoDuration(videoFile);
+          if (duration < EDITORIAL_MIN_DURATION_SECONDS) {
+            throw new Error(`O Corte Editorial exige um vídeo com pelo menos ${EDITORIAL_MIN_DURATION_SECONDS} segundos.`);
+          }
+        }
         if (processingMode === "local_device" && cutMode !== "editorial") {
           await createLocalJob(requestClips);
           toast.success("Áudio extraído no dispositivo. A IA está analisando os melhores momentos.");

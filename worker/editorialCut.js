@@ -180,6 +180,7 @@ export async function writeEditorialOverlay({
   comment,
   accountName,
   accountHandle,
+  accountVerified = false,
   logoUrl,
   sourceLabel,
   format = "feed_portrait",
@@ -224,7 +225,30 @@ export async function writeEditorialOverlay({
   ctx.textBaseline = "top";
   ctx.fillStyle = color;
   ctx.font = `700 29px ${font}, Arial`;
-  ctx.fillText(cleanText(accountName || accountHandle, 48), layout.accountX, layout.accountNameY);
+  const renderedAccountName = cleanText(accountName || accountHandle, 48);
+  ctx.fillText(renderedAccountName, layout.accountX, layout.accountNameY);
+  if (accountVerified && renderedAccountName) {
+    const nameWidth = ctx.measureText(renderedAccountName).width;
+    const badgeRadius = 13 * layout.scale;
+    const badgeX = Math.min(
+      layout.width - layout.safeX - badgeRadius,
+      layout.accountX + nameWidth + 22 * layout.scale,
+    );
+    const badgeY = layout.accountNameY + 15 * layout.scale;
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "#1D9BF0";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = Math.max(2, 3 * layout.scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.moveTo(badgeX - 6 * layout.scale, badgeY);
+    ctx.lineTo(badgeX - 1 * layout.scale, badgeY + 5 * layout.scale);
+    ctx.lineTo(badgeX + 7 * layout.scale, badgeY - 6 * layout.scale);
+    ctx.stroke();
+  }
   ctx.fillStyle = "#6B7280";
   ctx.font = `400 22px ${font}, Arial`;
   const handle = cleanText(accountHandle, 60);

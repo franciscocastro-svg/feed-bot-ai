@@ -55,6 +55,7 @@ import {
   normalizeEditorialCarouselSlide,
 } from "./editorialCarousel.js";
 import { resolveAccountRenderSettings } from "./accountIdentity.js";
+import { resolveInstagramEditorialIdentity } from "./instagramProfileIdentity.js";
 import {
   buildEditorialAnalysisPrompt,
   buildEditorialVideoFilter,
@@ -67,6 +68,7 @@ const execAsync = promisify(exec);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
 const WORKER_POLL_INTERVAL_MS = 5_000;
 const MIN_NATURAL_CUT_SECONDS = 8;
+const EDITORIAL_MIN_CUT_SECONDS = 20;
 const IDEAL_NATURAL_CUT_SECONDS = 90;
 const MAX_NATURAL_CUT_SECONDS = 180;
 
@@ -1374,13 +1376,21 @@ function clampScore(value, fallback = null) {
   return Math.max(0, Math.min(100, Math.round(num)));
 }
 
-function clampClipSuggestion(clip, index, durationSeconds) {
+function minimumCutSeconds(job) {
+  return job?.cut_mode === "editorial" ? EDITORIAL_MIN_CUT_SECONDS : MIN_NATURAL_CUT_SECONDS;
+}
+
+function cutDurationPolicy(job) {
+  return `ai_flexible_${minimumCutSeconds(job)}_${MAX_NATURAL_CUT_SECONDS}`;
+}
+
+function clampClipSuggestion(clip, index, durationSeconds, minDuration = MIN_NATURAL_CUT_SECONDS) {
   const start = Math.max(0, toSeconds(clip?.start_seconds ?? clip?.start ?? clip?.inicio));
-  let end = Math.max(start + MIN_NATURAL_CUT_SECONDS, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
+  let end = Math.max(start + minDuration, toSeconds(clip?.end_seconds ?? clip?.end ?? clip?.fim));
   const videoDuration = Math.max(0, Number(durationSeconds || 0));
   if (videoDuration > 0) end = Math.min(end, videoDuration);
   if (end - start > MAX_NATURAL_CUT_SECONDS) end = start + MAX_NATURAL_CUT_SECONDS;
-  if (end - start < MIN_NATURAL_CUT_SECONDS) end = start + 20;
+  if (end - start < minDuration) end = start + minDuration;
 
   const hookScore = clampScore(clip?.hook_score ?? clip?.gancho_score, null);
   const emotionScore = clampScore(clip?.emotion_score ?? clip?.emocao_score, null);
@@ -1415,6 +1425,7 @@ function clampClipSuggestion(clip, index, durationSeconds) {
 
 function fallbackClipSuggestions(job, metadata) {
   const requested = Math.max(1, Math.min(5, Number(job.requested_clips || 1)));
+  const minDuration = minimumCutSeconds(job);
   const duration = Math.max(30, Number(metadata?.duration_seconds || 180));
   const safeWindow = Math.min(duration - 10, 90);
   const step = Math.max(25, Math.floor(safeWindow / requested));
@@ -1431,7 +1442,7 @@ function fallbackClipSuggestions(job, metadata) {
       reason: "Fallback automático para permitir revisão quando a IA não retorna timestamps confiáveis.",
       score: 60 - idx,
       hashtags: ["#cortes", "#reels", "#instagram"],
-    }, idx + 1, duration);
+    }, idx + 1, duration, minDuration);
   });
 }
 
@@ -1564,6 +1575,7 @@ async function probeYoutubeMetadata(youtubeUrl) {
 
 function buildGeminiVideoCutPrompt(job, candidateCount) {
   const wantsHook = job.hook_enabled !== false;
+  const minDuration = minimumCutSeconds(job);
   return `Você é editor sênior de vídeos curtos para Instagram. Analise o áudio e as imagens deste vídeo autorizado e escolha ${candidateCount} candidatos fortes para que o sistema selecione os ${Math.min(5, job.requested_clips || 1)} melhores cortes.
 
 Priorize trechos com:
@@ -1576,7 +1588,7 @@ Priorize trechos com:
 
 Regras:
 - Retorne APENAS JSON válido, sem markdown, sem comentários.
-- Use duração FLEXÍVEL. Mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos, mas preserve de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando isso for necessário para concluir a ideia.
+- Use duração FLEXÍVEL. Mire em ${minDuration} a ${IDEAL_NATURAL_CUT_SECONDS} segundos e nunca devolva menos de ${minDuration} segundos; preserve até ${MAX_NATURAL_CUT_SECONDS} segundos quando isso for necessário para concluir a ideia.
 - A coerência vence a duração: nunca encerre no meio de frase, raciocínio, resposta, demonstração ou revelação.
 - Dê para cada corte 3 notas separadas (0-100): hook_score (força do gancho), emotion_score (intensidade emocional), clarity_score (clareza da mensagem).
 - Calcule viral_score = round(hook_score*0.5 + emotion_score*0.3 + clarity_score*0.2).
@@ -1593,6 +1605,7 @@ async function analyzeGeminiVideoForCuts(job, metadata, videoFile) {
   if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada.");
   const requested = Math.max(1, Math.min(5, Number(job.requested_clips || 1)));
   const candidateCount = professionalCandidatePoolSize(requested);
+  const minDuration = minimumCutSeconds(job);
   const prompt = buildGeminiVideoCutPrompt(job, candidateCount);
 
   const res = await withTransientRetry(`Gemini video cuts ${job.id}`, async () => {
@@ -1632,7 +1645,7 @@ async function analyzeGeminiVideoForCuts(job, metadata, videoFile) {
   return {
     clips: clips
       .slice(0, candidateCount)
-      .map((clip, index) => clampClipSuggestion(clip, index + 1, metadata?.duration_seconds)),
+      .map((clip, index) => clampClipSuggestion(clip, index + 1, metadata?.duration_seconds, minDuration)),
     mode: "gemini_file_video",
     warning: null,
     provider: "gemini_video",
@@ -2075,6 +2088,7 @@ function timedTranscript(words) {
 }
 
 async function analyzeTranscriptForCuts(job, metadata, words) {
+  const minDuration = minimumCutSeconds(job);
   if (!words?.length) {
     return {
       clips: fallbackClipSuggestions(job, metadata),
@@ -2084,7 +2098,7 @@ async function analyzeTranscriptForCuts(job, metadata, words) {
         candidate_pool: 0,
         selected: Math.max(1, Math.min(5, Number(job.requested_clips || 1))),
         additional_ai_calls: 0,
-        duration_policy: "ai_flexible_8_180",
+        duration_policy: cutDurationPolicy(job),
       },
     };
   }
@@ -2096,7 +2110,7 @@ async function analyzeTranscriptForCuts(job, metadata, words) {
   const candidatePoolSize = professionalCandidatePoolSize(requested);
   const prompt = `Você é um editor sênior de vídeos curtos. Indique ${candidatePoolSize} candidatos fortes desta TRANSCRIÇÃO COM TIMESTAMPS; o sistema selecionará os ${requested} melhores e mais diversos.
 
-Use somente o que está na transcrição. Priorize começo que faça sentido sem contexto anterior, gancho forte nos primeiros segundos, emoção, clareza e uma entrega completa no final. Não comece nem termine no meio de frase. Evite candidatos que contem a mesma ideia ou se sobreponham muito. A duração é flexível: mire em 20 a ${IDEAL_NATURAL_CUT_SECONDS} segundos e use de ${MIN_NATURAL_CUT_SECONDS} até ${MAX_NATURAL_CUT_SECONDS} segundos quando a fala completa exigir. A coerência vence a duração. Não invente falas nem use clickbait que não seja sustentado pelo trecho.
+Use somente o que está na transcrição. Priorize começo que faça sentido sem contexto anterior, gancho forte nos primeiros segundos, emoção, clareza e uma entrega completa no final. Não comece nem termine no meio de frase. Evite candidatos que contem a mesma ideia ou se sobreponham muito. A duração é flexível: mire em ${minDuration} a ${IDEAL_NATURAL_CUT_SECONDS} segundos, nunca devolva menos de ${minDuration} segundos e use até ${MAX_NATURAL_CUT_SECONDS} segundos quando a fala completa exigir. A coerência vence a duração. Não invente falas nem use clickbait que não seja sustentado pelo trecho.
 
 PRESET DE EDIÇÃO (${preset.label}): ${preset.analysisInstruction}
 ${job.custom_prompt ? `ORIENTAÇÃO DO CLIENTE: ${String(job.custom_prompt).slice(0, 1200)}` : ""}
@@ -2117,12 +2131,12 @@ ${transcript}`;
     const clips = Array.isArray(parsed?.clips) ? parsed.clips : [];
     if (!clips.length) throw new Error("A IA não retornou trechos utilizáveis.");
     const quality = refineTranscriptCutCandidates(
-      clips.map((clip, index) => clampClipSuggestion(clip, index + 1, metadata.duration_seconds)),
+      clips.map((clip, index) => clampClipSuggestion(clip, index + 1, metadata.duration_seconds, minDuration)),
       words,
       {
         requested,
         videoDuration: metadata.duration_seconds,
-        minDuration: MIN_NATURAL_CUT_SECONDS,
+        minDuration,
         maxDuration: MAX_NATURAL_CUT_SECONDS,
       },
     );
@@ -2139,7 +2153,7 @@ ${transcript}`;
     const quality = refineTranscriptCutCandidates(fallbackClipSuggestions(job, metadata), words, {
       requested,
       videoDuration: metadata.duration_seconds,
-      minDuration: MIN_NATURAL_CUT_SECONDS,
+      minDuration,
       maxDuration: MAX_NATURAL_CUT_SECONDS,
     });
     return {
@@ -2665,6 +2679,7 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     subtitles_enabled: clip.editorial_config?.subtitles_enabled !== false,
   };
   const { createCanvas, loadImage } = await getCanvasRuntime();
+  const instagramIdentity = settings?.instagram_profile_identity || null;
   await writeEditorialOverlay({
     createCanvas,
     loadImage,
@@ -2672,9 +2687,10 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     outputPath: overlayPath,
     title: clip.title || "O ponto principal deste trecho",
     comment: clip.editorial_comment || clip.hook || clip.caption || "Revisão necessária.",
-    accountName: settings?.brand_name || settings?.brand_handle || "Flux & Feed",
-    accountHandle: settings?.brand_handle || settings?.brand_name || "",
-    logoUrl: settings?.brand_logo_url || null,
+    accountName: instagramIdentity?.name || instagramIdentity?.handle || settings?.brand_name || "Instagram",
+    accountHandle: instagramIdentity?.handle || settings?.brand_handle || "",
+    accountVerified: instagramIdentity?.verified === true,
+    logoUrl: instagramIdentity ? instagramIdentity.logoUrl : (settings?.brand_logo_url || null),
     sourceLabel: job.source_kind === "youtube" ? (job.source_title || "YouTube") : (job.source_title || job.source_file_name || "Vídeo enviado"),
     format,
     config,
@@ -3086,6 +3102,10 @@ async function processVideoCutJob(job) {
       }
     }
 
+    if (job.cut_mode === "editorial" && Number(metadata.duration_seconds || 0) < EDITORIAL_MIN_CUT_SECONDS) {
+      throw new Error(`O Corte Editorial exige um vídeo com pelo menos ${EDITORIAL_MIN_CUT_SECONDS} segundos.`);
+    }
+
     await supabase.from("video_cut_jobs")
       .update({
         source_title: metadata.title,
@@ -3158,7 +3178,7 @@ async function processVideoCutJob(job) {
         const quality = refineTranscriptCutCandidates(videoAnalysis.clips, transcriptWords, {
           requested,
           videoDuration: metadata.duration_seconds,
-          minDuration: MIN_NATURAL_CUT_SECONDS,
+          minDuration: minimumCutSeconds(job),
           maxDuration: MAX_NATURAL_CUT_SECONDS,
         });
         if (!quality.clips.length) throw new Error("Nenhum trecho longo passou pela avaliação de qualidade.");
@@ -3241,11 +3261,12 @@ async function processVideoCutJob(job) {
       console.warn(`[cuts:${job.id}] Falha ao limpar cortes antigos:`, staleClipsError.message || staleClipsError);
     }
 
+    const isEditorialCut = job.cut_mode === "editorial";
     const settings = await loadEffectivePostSettings({
       user_id: job.user_id,
       instagram_account_id: job.instagram_account_id,
     });
-    const [{ data: cutBrandProfile }, { data: creatorProfile }] = await Promise.all([
+    const [{ data: cutBrandProfile }, { data: creatorProfile }, instagramIdentity] = await Promise.all([
       supabase
         .from("video_cut_brand_profiles")
         .select("*")
@@ -3257,6 +3278,13 @@ async function processVideoCutJob(job) {
         .eq("instagram_account_id", job.instagram_account_id)
         .eq("user_id", job.user_id)
         .maybeSingle(),
+      isEditorialCut
+        ? resolveInstagramEditorialIdentity({
+          supabase,
+          accountId: job.instagram_account_id,
+          userId: job.user_id,
+        })
+        : Promise.resolve(null),
     ]);
     const cutSettings = {
       ...settings,
@@ -3264,6 +3292,7 @@ async function processVideoCutJob(job) {
         ? ""
         : (cutBrandProfile?.watermark_text || settings?.brand_handle),
       cut_brand_profile: cutBrandProfile || null,
+      instagram_profile_identity: instagramIdentity,
     };
 
     // Retry idempotente: se um processamento anterior deixou clips órfãos,
@@ -3277,7 +3306,6 @@ async function processVideoCutJob(job) {
     }
 
     // Multi-formato: cada sugestão × cada formato = 1 clip
-    const isEditorialCut = job.cut_mode === "editorial";
     const jobFormats = Array.isArray(job.formats) && job.formats.length
       ? job.formats.filter((f) => ["reels", "feed_square", "feed_portrait"].includes(f))
       : [job.format || "reels"];
@@ -3499,12 +3527,22 @@ async function processVideoCutRerenderRequests() {
       else await downloadYoutubeVideo(job.youtube_url, sourcePath);
 
       const settings = await loadEffectivePostSettings(job);
-      const { data: brand } = await supabase.from("video_cut_brand_profiles")
-        .select("*").eq("instagram_account_id", job.instagram_account_id).maybeSingle();
+      const [{ data: brand }, instagramIdentity] = await Promise.all([
+        supabase.from("video_cut_brand_profiles")
+          .select("*").eq("instagram_account_id", job.instagram_account_id).maybeSingle(),
+        job.cut_mode === "editorial"
+          ? resolveInstagramEditorialIdentity({
+            supabase,
+            accountId: job.instagram_account_id,
+            userId: job.user_id,
+          })
+          : Promise.resolve(null),
+      ]);
       const cutSettings = {
         ...settings,
         brand_handle: brand?.watermark_enabled === false ? "" : (brand?.watermark_text || settings?.brand_handle),
         cut_brand_profile: brand || null,
+        instagram_profile_identity: instagramIdentity,
       };
       clip.hook_enabled = job.hook_enabled !== false;
       if (job.cut_mode === "editorial") {
