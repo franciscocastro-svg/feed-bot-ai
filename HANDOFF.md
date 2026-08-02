@@ -31,6 +31,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - O PR #54 integrou a reconciliação no merge `47a6652c851ff3f3a0629f4677264d0d947b2894`; o PR #55 integrou a correção SQLSTATE `42702` no merge `d0dc3da2908a4623c334472ce35a67795ea4c05d`. A Lovable registrou a migration como `20260801194149` e avançou a `main` para `2b65b4941cc012896c4c6cc43fc5f25efaeade63`.
 - O PR #57 integrou a melhoria de imagens no merge `c4e703d777579bf057278eaa10bde8180c9e3c0b`; a Lovable publicou o frontend e as três Edge Functions dependentes de `source-capture.ts` nesse conteúdo.
 - A recuperação atual está isolada em `/private/tmp/fluxfeed-vps-recovery`, branch `codex/reconcile-vps-deploy-queue`, criada exatamente de `c4e703d`. A pasta original não foi alterada.
+- O PR rascunho [#58 — Recover interrupted VPS deploy queue safely](https://github.com/franciscocastro-svg/feed-bot-ai/pull/58) foi aberto com o commit funcional `be8b44d`; `Validate application` passou em 1m52s. O PR ainda não foi integrado.
 - Check remoto `Validate application` aprovado para o head final `401d849` em 2026-08-01.
 - Branch documental atual: `codex/record-editorial-pilot-merge`, commit `0098c25`, criada a partir do merge `ad39d3e`.
 - PR documental rascunho [#52 — Record editorial pilot merge](https://github.com/franciscocastro-svg/feed-bot-ai/pull/52), com `Validate application` aprovado para `0098c25`.

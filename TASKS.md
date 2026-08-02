@@ -98,7 +98,8 @@
 - [x] Adicionar `DEPLOY_PM2_SCOPE=media-only` sem reduzir checkout, testes, health ou rollback.
 - [x] Aprovar 9 testes de recuperação e 2 regressões do escopo de PM2; `check:queue-reconciliation` aprovou 24 testes.
 - [x] Executar o CI completo: 668 arquivos no secret scan, 571 testes principais, 35 de deploy, 24 de reconciliação, worker, gates e build aprovados.
-- [ ] Enviar a branch e obter aprovação do PR.
+- [x] Enviar a branch, abrir o PR rascunho #58 e confirmar `Validate application` verde para `be8b44d`.
+- [ ] Obter aprovação e integrar o PR #58.
 - [ ] Na VPS, executar inspect/execute com o SHA integrado, implantar somente `feedbot-media`, concluir a reconciliação e validar smoke.
 
 ### Reconciliação desta continuidade
