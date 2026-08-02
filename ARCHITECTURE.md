@@ -109,7 +109,11 @@ Responsabilidades:
 - armazenar arquivos finais;
 - fazer retry e registrar saúde/capacidades.
 
-`worker/aiProviders.js` ordena provedores de transcrição e análise. Groq/Gemini cobrem transcrição; Gemini e xAI opcional cobrem análise estruturada. OpenRouter ainda não está implementado.
+`worker/aiProviders.js` ordena provedores de transcrição e análise. Gemini é o transcritor padrão; Groq só entra quando `CUT_TRANSCRIPTION_PROVIDERS` o declara explicitamente. Gemini e xAI opcional cobrem análise estruturada. OpenRouter ainda não está implementado.
+
+Na correção local pendente de implantação, `worker/geminiFiles.js` implementa upload resumível privado, espera pelo estado `ACTIVE`, valida que URLs pertencem ao domínio oficial do Gemini e remove o arquivo temporário. Entradas com duração mínima padrão de 600 segundos ou tamanho mínimo de 100 MB usam uma chamada multimodal sobre o vídeo inteiro para localizar candidatos; o worker extrai com FFmpeg apenas esses intervalos e `transcribeSelectedCutCandidates` gera as palavras sincronizadas necessárias para seleção, legenda e texto editorial. Falha parcial de um candidato não invalida os demais. Se upload/análise não funcionar, a execução retorna à transcrição segmentada.
+
+Para vídeos curtos e para a contingência, `transcribeSourceForAnalysis` usa blocos padrão de 120 segundos (configuráveis entre 60 e 300), registra sucesso/vazio/falha por bloco e chama um callback de progresso. Cada chamada Gemini tem timeout padrão de 90 segundos (limitado entre 30 e 180 segundos), uma única repetição para falha transitória e `responseSchema`. `parseGeminiTimedWordsResponse` aceita o JSON íntegro e recupera somente objetos completos quando as extremidades vierem truncadas; dados incompletos nunca são inventados. Se nenhuma palavra for recuperada, o pipeline mantém a prévia neutra com revisão obrigatória; não transforma falta de evidência em texto factual nem autopublica. `worker/cutQuality.js` converte limites naturais decimais em segundos inteiros antes do upsert, usando piso no início e teto controlado no fim, limitado à duração física inteira do vídeo.
 
 ## Organização e padrões
 
@@ -238,8 +242,15 @@ sequenceDiagram
     FE->>DB: valida papel admin
     FE->>DB: RPC editorial v2 cria job 4:5 ou 9:16 com auto_publish=false
     DB-->>W: worker reclama job
-    W->>W: transcreve e escolhe trecho
-    W->>AI: transcrição + frames genéricos
+    alt vídeo com 10min+ ou 100MB+
+        W->>AI: upload resumível privado e análise integral
+        AI-->>W: candidatos com timestamps
+        W->>W: extrai e transcreve somente candidatos
+        W->>AI: remove arquivo temporário
+    else vídeo curto ou contingência
+        W->>W: transcreve blocos de 120s e atualiza progresso
+    end
+    W->>AI: transcrição selecionada + frames genéricos
     AI-->>W: JSON com texto, confiança e evidências
     W->>W: valida evidências; fallback neutro se necessário
     W->>ST: grava editorial_preview_url
@@ -253,6 +264,8 @@ sequenceDiagram
 ```
 
 O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Durante a Beta, a UI consulta `user_roles`, as três RPCs verificam `is_admin()`, a Edge de regeneração repete a verificação com o JWT do usuário e `trg_guard_editorial_cut_beta_access` impede que uma atualização direta transforme um job comum em editorial. Um segundo trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
+
+O schema atual mantém `start_seconds`, `end_seconds` e `duration_seconds` como `integer`. Essa é uma fronteira explícita: cálculos internos podem usar frações para localizar pausas, mas nenhum valor decimal cru pode chegar ao Supabase.
 
 Na migration registrada `20260802164442`, os criadores v2 aceitam somente `feed_portrait` ou `reels`. Como os criadores legados reconhecem apenas `none`, `classic`, `neon` e `karaoke`, `bold`/`clean` são passados temporariamente como `classic`; ainda na mesma transação, `subtitle_style` volta ao valor solicitado junto com `cut_mode=editorial`, formato e bloqueio de autopublicação. Assim, o worker nunca observa o estilo substituto nem um job editorial incompleto.
 
@@ -348,8 +361,8 @@ Creator, Pro e Business usam lookup keys; Agência usa contato comercial. O ambi
 
 ### Provedores de IA
 
-- Gemini: texto, vídeo, análise e fallback de transcrição;
-- Groq: texto e Whisper/transcrição;
+- Gemini: texto, vídeo, análise e transcrição padrão dos cortes;
+- Groq: compatibilidade opcional de Whisper/transcrição quando selecionado explicitamente;
 - Lovable: gateway em fluxos existentes;
 - xAI/Grok: análise opcional de cortes no worker;
 - OpenRouter: backlog, ainda ausente.

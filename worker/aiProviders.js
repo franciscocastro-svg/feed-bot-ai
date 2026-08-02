@@ -7,10 +7,77 @@ const parseProviderList = (value, fallback) => {
 };
 
 export function transcriptionProviderOrder() {
-  // Whisper/Groq entrega timestamps reais por palavra e por isso deve vir antes
-  // do fallback generativo. O Grok/xAI fica fora desta lista enquanto não
-  // disponibilizar uma API de transcrição com timestamps compatível.
-  return parseProviderList(process.env.CUT_TRANSCRIPTION_PROVIDERS, "groq,gemini");
+  // O ambiente atual usa o Gemini como transcritor único. A variável continua
+  // permitindo uma lista explícita para instalações que precisem de outro
+  // provedor, sem obrigar o worker a tentar serviços não configurados.
+  return parseProviderList(process.env.CUT_TRANSCRIPTION_PROVIDERS, "gemini");
+}
+
+export function transcriptionSegmentSeconds(env = process.env) {
+  const configured = Number(env.CUT_TRANSCRIPTION_SEGMENT_SECONDS || 120);
+  if (!Number.isFinite(configured)) return 120;
+  return Math.max(60, Math.min(300, Math.round(configured)));
+}
+
+export function geminiTranscriptionTimeoutMs(env = process.env) {
+  const configured = Number(env.GEMINI_TRANSCRIBE_TIMEOUT_MS || 90_000);
+  if (!Number.isFinite(configured)) return 90_000;
+  return Math.max(30_000, Math.min(180_000, Math.round(configured)));
+}
+
+function normalizeGeminiWordList(value) {
+  const source = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.words)
+      ? value.words
+      : [];
+  return source
+    .map((item) => ({
+      word: String(item?.word || "").replace(/\s+/g, " ").trim(),
+      start: Number(item?.start),
+      end: Number(item?.end),
+    }))
+    .filter((item) => item.word && Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start);
+}
+
+export function parseGeminiTimedWordsResponse(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { words: [], validJson: false, recovered: false };
+
+  const clean = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const candidates = [clean];
+  const arrayStart = clean.indexOf("[");
+  const arrayEnd = clean.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    candidates.push(clean.slice(arrayStart, arrayEnd + 1));
+  }
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return { words: normalizeGeminiWordList(parsed), validJson: true, recovered: candidate !== clean };
+    } catch {
+      // A recuperação por objetos completos abaixo preserva respostas truncadas.
+    }
+  }
+
+  const recoveredWords = [];
+  for (const fragment of clean.match(/\{[^{}]*\}/g) || []) {
+    try {
+      const parsed = JSON.parse(fragment);
+      recoveredWords.push(...normalizeGeminiWordList([parsed]));
+    } catch {
+      // Fragmentos incompletos nas extremidades são ignorados com segurança.
+    }
+  }
+  return {
+    words: recoveredWords,
+    validJson: false,
+    recovered: recoveredWords.length > 0,
+  };
 }
 
 export function analysisProviderOrder() {

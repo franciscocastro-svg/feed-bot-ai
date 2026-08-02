@@ -162,7 +162,20 @@ function refineCandidate(clip, words, originalIndex, options) {
     options.maxDuration,
     options.videoDuration,
   );
-  const bounds = ensureDurationBounds(startChoice.value, endChoice.value, words, options);
+  const naturalBounds = ensureDurationBounds(startChoice.value, endChoice.value, words, options);
+  // O banco armazena segundos inteiros. Arredondar o limite do vídeo para baixo
+  // evita gerar um fim que ultrapasse o arquivo quando o ffprobe retorna fração.
+  const integerVideoDuration = Math.max(1, Math.floor(options.videoDuration));
+  let integerStart = clamp(Math.floor(naturalBounds.start), 0, Math.max(0, integerVideoDuration - 1));
+  let integerEnd = clamp(Math.ceil(naturalBounds.end), integerStart, integerVideoDuration);
+  if (integerEnd - integerStart < options.minDuration) {
+    integerEnd = Math.min(integerVideoDuration, integerStart + Math.ceil(options.minDuration));
+    integerStart = Math.max(0, integerEnd - Math.ceil(options.minDuration));
+  }
+  if (integerEnd - integerStart > options.maxDuration) {
+    integerEnd = integerStart + Math.floor(options.maxDuration);
+  }
+  const bounds = { start: integerStart, end: Math.min(integerVideoDuration, Math.max(integerStart + 1, integerEnd)) };
   const selectedWords = words.filter((word) => word.end > bounds.start && word.start < bounds.end);
   const actualStartWord = words.findIndex((word) => word.end > bounds.start);
   let actualEndWord = -1;
@@ -186,9 +199,9 @@ function refineCandidate(clip, words, originalIndex, options) {
 
   return {
     ...clip,
-    start_seconds: Number(bounds.start.toFixed(3)),
-    end_seconds: Number(bounds.end.toFixed(3)),
-    duration_seconds: Number((bounds.end - bounds.start).toFixed(3)),
+    start_seconds: bounds.start,
+    end_seconds: bounds.end,
+    duration_seconds: bounds.end - bounds.start,
     score: professionalScore,
     professional_score: professionalScore,
     selection_quality: {
@@ -214,7 +227,10 @@ export function refineTranscriptCutCandidates(clips, words, options = {}) {
     ...(Array.isArray(words) ? words : []).map((word) => finiteNumber(word?.end)),
     minDuration,
   );
-  const videoDuration = Math.max(minDuration, finiteNumber(options.videoDuration, inferredDuration));
+  const providedVideoDuration = Number(options.videoDuration);
+  const videoDuration = Number.isFinite(providedVideoDuration) && providedVideoDuration > 0
+    ? Math.max(1, providedVideoDuration)
+    : Math.max(minDuration, inferredDuration);
   const normalizedWords = normalizeWords(words, videoDuration);
   const refined = candidates.map((clip, index) => refineCandidate(clip, normalizedWords, index, {
     minDuration,
