@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** para a melhoria de imagens em `c4e703d` e a recuperação controlada da fila VPS interrompida.
+Atualizado em **2026-08-02** para a recuperação concluída e o worker de mídia implantado em `93ae2a3`.
 
 ## Arquitetura geral
 
@@ -322,6 +322,8 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 3. `--complete` exige novamente CI, aprovação, health e SHAs iguais, registra o alvo como concluído e remove o bloqueio por último.
 
 Qualquer drift ou falha restaura byte a byte o estado anterior. A implantação de mídia usa `DEPLOY_PM2_SCOPE=media-only`, que executa `pm2 startOrReload ... --only feedbot-media`; checkout, dependências, testes, fingerprint, health e rollback continuam obrigatórios. O escopo padrão permanece `all`, e um valor desconhecido falha antes de qualquer mutação.
+
+Estado implantado em 2026-08-02: o plano validou 43 itens enfileirados mais o estado ativo interrompido; a reconciliação preservou evidência/backup, manteve apenas `93ae2a3`, executou o deploy `media-only` sob uma unidade transitória do systemd e concluiu somente após HEAD, `origin/main`, CI e health coincidirem. O resultado terminal é `succeeded`, a fila está vazia e o bloqueio foi removido por último.
 
 ## Decisões técnicas
 
