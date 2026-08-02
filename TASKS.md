@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. Correção Bold/Clean e saída Reel 9:16 do Corte Editorial implementadas localmente; migration, frontend e worker ainda não foram implantados.
+Última atualização: **2026-08-02**. Correção Bold/Clean e saída Reel 9:16 do Corte Editorial integradas e implantadas; falta somente o smoke autenticado com fala real, sem publicação.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,7 +147,7 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** base implantada no merge `67ced14`; correção local `20260802173000` resolve Bold/Clean e adiciona Reel 9:16. Faltam integrar/aplicar/publicar a correção e executar smoke com fala real sem publicação.
+- [ ] **Corte Editorial:** correção integrada no PR #64/merge `5105bca`, migration registrada como `20260802164442`, frontend publicado e `feedbot-cuts` atualizado isoladamente para `efc8d15`. Falta executar smoke 4:5/9:16 com fala real sem publicação.
 
 ### P1 — Corte Editorial
 
@@ -182,7 +182,7 @@
 - [x] Implantar somente `regenerate-cut-editorial-text` e confirmar HTTP 401 sem autenticação.
 - [x] Auditar os testes falhos: quatro jobs `failed`, zero clipes, zero agendamentos e zero publicações.
 - [x] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` no merge `67ced14`, sem reiniciar o webhook ou o worker de mídia.
-- [ ] Integrar e aplicar `20260802173000`, publicar o frontend e atualizar somente `feedbot-cuts` após autorização.
+- [x] Integrar pelo PR #64, aplicar a migration como `20260802164442`, publicar o frontend e atualizar somente `feedbot-cuts` no SHA `efc8d15`.
 - [ ] Executar smoke autenticado 4:5 e 9:16 com fala real, sem agendar ou publicar.
 
 ## Próximas tarefas

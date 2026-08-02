@@ -1,10 +1,10 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com compatibilidade Bold/Clean e composição Feed 4:5/Reel 9:16 preparadas localmente, ainda sem nova implantação.
+Atualizado em **2026-08-02** para o Corte Editorial com compatibilidade Bold/Clean e composição Feed 4:5/Reel 9:16 implantadas, ainda sob Beta administrativa e aguardando smoke autenticado.
 
 O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
 
-A correção append-only `20260802173000` ainda local adiciona RPCs editoriais v2 com formato explícito, preserva os wrappers 4:5 anteriores e resolve a incompatibilidade dos estilos `bold`/`clean` sem expor estado intermediário ao worker. O frontend e o compositor aceitam somente `feed_portrait` e `reels` no modo editorial; `feed_square` continua disponível apenas nos formatos antigos.
+O PR #64/merge `5105bca` adicionou RPCs editoriais v2 com formato explícito, preservou os wrappers 4:5 anteriores e resolveu a incompatibilidade dos estilos `bold`/`clean` sem expor estado intermediário ao worker. A Lovable registrou o SQL aprovado como `20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql`, recarregou o schema, publicou o frontend e reconciliou os tipos no merge `efc8d15`. A VPS recebeu exatamente `efc8d15` com escopo `cuts-only`; somente `feedbot-cuts` reiniciou e o health final foi aprovado.
 
 ## Arquitetura geral
 
@@ -254,7 +254,7 @@ sequenceDiagram
 
 O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Durante a Beta, a UI consulta `user_roles`, as três RPCs verificam `is_admin()`, a Edge de regeneração repete a verificação com o JWT do usuário e `trg_guard_editorial_cut_beta_access` impede que uma atualização direta transforme um job comum em editorial. Um segundo trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
 
-Na migration `20260802173000`, os criadores v2 aceitam somente `feed_portrait` ou `reels`. Como os criadores legados reconhecem apenas `none`, `classic`, `neon` e `karaoke`, `bold`/`clean` são passados temporariamente como `classic`; ainda na mesma transação, `subtitle_style` volta ao valor solicitado junto com `cut_mode=editorial`, formato e bloqueio de autopublicação. Assim, o worker nunca observa o estilo substituto nem um job editorial incompleto.
+Na migration registrada `20260802164442`, os criadores v2 aceitam somente `feed_portrait` ou `reels`. Como os criadores legados reconhecem apenas `none`, `classic`, `neon` e `karaoke`, `bold`/`clean` são passados temporariamente como `classic`; ainda na mesma transação, `subtitle_style` volta ao valor solicitado junto com `cut_mode=editorial`, formato e bloqueio de autopublicação. Assim, o worker nunca observa o estilo substituto nem um job editorial incompleto.
 
 O compositor usa Canvas apenas para textos/identidade e FFmpeg para a mídia. `blur_fit` e `contain` não ampliam o primeiro plano; `smart_crop` limita-o a 2×. A prévia e o final são codificados separadamente a partir do original, nunca um a partir do outro. Legendas ASS usam timestamps por palavra e são recalculadas do original quando o trecho muda. O áudio é normalizado e reamostrado explicitamente para AAC 48 kHz; essa fixação foi adicionada após o teste físico detectar que `loudnorm` sozinho produzia 96 kHz.
 
@@ -309,7 +309,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 182 migrations versionadas. As migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149` foram aplicadas e registradas no histórico do Supabase em 2026-08-01. A última não altera tabelas nem dados, apenas recria a RPC. Domínios representativos:
+A `main` contém 185 migrations versionadas. Além das migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149`, o Supabase registra a compatibilidade editorial 4:5/9:16 como `20260802164442`. Esta última recria as RPCs editoriais, sem criar jobs ou alterar dados de clientes. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|

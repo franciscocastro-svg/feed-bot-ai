@@ -18,13 +18,13 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### Trabalho atual — correção Bold/Clean e Reel do Corte Editorial
 
 - Worktree isolada: `/private/tmp/fluxfeed-editorial-resume`.
-- Branch atual: `codex/record-editorial-cuts-worker-deploy`.
-- Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
-- Estado: o Corte Editorial base e a Beta administrativa foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A Lovable aplicou a migration sob `20260802144135`, recarregou o schema e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` adicionou a migration registrada e os tipos gerados. O PR #62 integrou o escopo `cuts-only` no merge `67ced14`, implantado e validado no worker VPS. O Preview está sincronizado; resta confirmar o frontend de produção após o smoke autenticado.
+- Branch documental atual: `codex/record-editorial-styles-reels-deploy`.
+- Base: `efc8d15a9b1a5ff00f6fc0fa3c9bc7d906d30f9c` (`origin/main` após a implantação Lovable).
+- Estado: o PR #64 integrou Bold/Clean e Reel 9:16 no merge `5105bca`. A Lovable registrou a migration como `20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql`, recarregou o schema, publicou o frontend e reconciliou tipos/teste no merge automático `efc8d15`. A VPS recebeu exatamente `efc8d15` com `DEPLOY_PM2_SCOPE=cuts-only`; 588 testes principais, 36 de deploy, 24 de reconciliação, nginx e health passaram. Resta o smoke autenticado 4:5/9:16 com fala real e sem publicação.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
 - Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
-- Mudança local ainda não implantada: `20260802173000_fix_editorial_cut_styles_and_reels.sql`, frontend e worker corrigem Bold/Clean e permitem Feed 4:5 ou Reel 9:16. Nenhum banco, Lovable, VPS ou publicação foi alterado nesta etapa.
+- Implantação confirmada: o SQL aprovado foi renomeado pela plataforma sem mudança funcional; nenhum job, clipe, upload, agendamento ou publicação foi criado durante a implantação.
 
 ### `main` auditada
 
@@ -92,7 +92,7 @@ Não copiar, apagar, commitar ou sobrescrever esses itens sem autorização espe
 | Frontend Lovable | conteúdo de `c4e703d` sincronizado e publicado | melhoria de imagens presente; arquivos antigos exigem regeneração |
 | Piloto Editorial 2A | correção implantada; smoke principal aprovado com 7 fontes e 4 pautas | confirmar replay e decidir rollout |
 | Qualidade de imagens | frontend, três Edge Functions e worker de mídia publicados | recapturar/regenerar e fazer smoke visual |
-| Worker VPS | HEAD `67ced14`; `feedbot-cuts` reiniciado e saudável, outros processos preservados | executar smoke editorial; tratar bloqueio antigo separadamente |
+| Worker VPS | HEAD `efc8d15`; somente `feedbot-cuts` reiniciado e saudável, outros processos preservados | executar smoke editorial; tratar bloqueio antigo separadamente |
 | Correção Agência | `e163226` + migration `20260801144500` | integrada, aplicada e publicada |
 | Lovable pós-Agência | deployment `845c71ef-092d-4842-81c9-b0053fe25f9d` | smoke autenticado aprovado |
 | Serviços externos restantes | parcialmente auditados | verificar cada serviço separadamente |
@@ -111,7 +111,7 @@ Arquivos principais:
 - `worker/index.js` — transcrição/frames, prévia, render final e bloqueio de autopublish;
 - `worker/aiProviders.js` — análise multimodal Gemini com fallback textual;
 - `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs, trigger de agendamento e trigger de acesso administrativo aditivos;
-- `supabase/migrations/20260802173000_fix_editorial_cut_styles_and_reels.sql` — RPCs v2, compatibilidade Bold/Clean e formato editorial explícito;
+- `supabase/migrations/20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql` — versão registrada das RPCs v2, compatibilidade Bold/Clean e formato editorial explícito;
 - `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado, exclusivo para admin durante a Beta e sem escrita;
 - `src/test/editorial-video-cuts.test.ts` — 15 testes direcionados.
 
@@ -584,9 +584,9 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. revisar/integrar a migration `20260802173000` e a correção de frontend/worker;
-3. após autorização explícita, aplicar a migration, publicar o frontend e implantar somente `feedbot-cuts`;
-4. testar autenticado como administrador com vídeo real que contenha fala em 4:5 e 9:16, gerando somente a prévia, sem agendar ou publicar;
+2. confirmar a implantação já concluída da migration `20260802164442`, do frontend e do worker `feedbot-cuts` em `efc8d15`;
+3. testar autenticado como administrador com vídeo real que contenha fala em 4:5 e 9:16, gerando somente a prévia, sem confirmar render final, agendar ou publicar;
+4. registrar separadamente os resultados dos dois formatos;
 5. conferir título/comentário factuais, enquadramento, áudio, legendas, Bold/Clean e possibilidade de edição;
 6. após o aceite do smoke, remover a restrição temporária de administrador em mudança separada;
 7. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
