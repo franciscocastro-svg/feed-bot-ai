@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com correção local de Bold/Clean e saída Reel 9:16, ainda sem nova implantação.
+Atualizado em **2026-08-02** para o Corte Editorial com correção Bold/Clean e saída Reel 9:16 implantadas, aguardando smoke autenticado sem publicação.
 
 ## Visão de produto
 
@@ -89,7 +89,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 
 O Corte Editorial base e a restrição temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A migration foi aplicada no Supabase sob o registro `20260802144135`, o cache do schema foi recarregado e `regenerate-cut-editorial-text` foi implantada com teste anônimo HTTP 401. A Lovable registrou o estado no merge automático `ad273b4`. O PR #62 integrou o escopo operacional `cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02 com reinício exclusivo de `feedbot-cuts`, testes, nginx e health aprovados. `feedbot-media` e `feedbot-webhook` mantiveram os mesmos PIDs. Os primeiros testes, anteriores à implantação completa, não criaram clipes, agendamentos ou publicações; agora resta o smoke com fala real e a confirmação do frontend de produção.
 
-Correção preparada após o primeiro smoke real: `Bold viral` e `Clean` eram aceitos pela RPC editorial, mas rejeitados pelo criador legado chamado internamente. A migration aditiva `20260802173000` converte esses estilos para `classic` somente durante a criação e restaura o estilo solicitado na mesma transação, antes do claim do worker. As novas RPCs v2 também recebem `feed_portrait` ou `reels`; a interface permite escolher 4:5 ou 9:16, e o compositor adapta layout, áreas seguras, legendas e validação de resolução. O CI completo passou com 588 testes principais, e um smoke sintético confirmou a saída Reel H.264/AAC 48 kHz em 1080×1920. Essa correção ainda não foi aplicada no Supabase, publicada no frontend ou implantada na VPS.
+Correção implantada após o primeiro smoke real: `Bold viral` e `Clean` eram aceitos pela RPC editorial, mas rejeitados pelo criador legado chamado internamente. O PR #64/merge `5105bca` integrou a correção; a migration foi registrada como `20260802164442_2b52a212-51a9-42c0-ad0f-681037be48ea.sql`, o frontend foi publicado e a `main` reconciliada em `efc8d15`. As RPCs v2 recebem `feed_portrait` ou `reels`; o compositor adapta layout, áreas seguras, legendas e validação de resolução. O worker `feedbot-cuts` foi atualizado isoladamente para `efc8d15`, com 588 testes principais, 36 de deploy, 24 de reconciliação, nginx e health aprovados, sem reiniciar mídia ou webhook. Resta o smoke autenticado 4:5/9:16 com fala real e sem publicação.
 
 ### Comercial
 
@@ -294,7 +294,7 @@ No Corte Editorial, o usuário escolhe Feed 4:5 ou Reel 9:16 antes da criação.
 - manter a flag do Piloto desligada por padrão até aprovação de rollout.
 - repetir a sincronia com um vídeo que contenha fala real, sem publicar; os três renders físicos já receberam aceite visual;
 - [concluído] implantar migration, Edge de texto e somente o worker `feedbot-cuts` no merge `67ced14`, sem reiniciar os outros processos;
-- executar o smoke autenticado com fala real, sem agendar ou publicar, e depois confirmar o frontend de produção;
+- executar os smokes autenticados Feed 4:5 e Reel 9:16 com fala real, sem agendar ou publicar, e registrar o aceite visual;
 - corrigir em atividade separada o `SIGINT` do deploy quando o webhook reinicia o próprio processo.
 
 ### Depois — Piloto assistido
