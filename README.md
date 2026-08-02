@@ -9,6 +9,8 @@ Plataforma SaaS de automação editorial e publicação para Instagram. O Flux &
 Documentação reconciliada em **2026-08-02** com a `origin/main`, as publicações Lovable e o diagnóstico somente leitura da VPS.
 
 - **Corte Editorial pronto para smoke controlado:** os PRs [#60](https://github.com/franciscocastro-svg/feed-bot-ai/pull/60), [#61](https://github.com/franciscocastro-svg/feed-bot-ai/pull/61) e [#62](https://github.com/franciscocastro-svg/feed-bot-ai/pull/62) foram integrados. A Lovable aplicou a migration como `20260802144135_c24d0a10-3467-4111-9436-659f3143145c.sql`, recarregou o PostgREST e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` registrou migration e tipos. Em 2026-08-02, o worker `feedbot-cuts` foi implantado no merge `67ced14` usando `DEPLOY_PM2_SCOPE=cuts-only`: 586 testes principais, 36 testes de deploy, 24 de reconciliação, nginx e health passaram; `feedbot-media` e `feedbot-webhook` não foram reiniciados. O frontend de produção ainda não foi confirmado.
+- **Correção Bold/Clean e Reel preparada localmente, ainda não implantada:** a migration aditiva `20260802173000` mantém compatibilidade com os criadores legados, persiste o estilo solicitado atomicamente e adiciona RPCs v2 para escolher Feed 4:5 ou Reel 9:16. Frontend, prévia e worker foram ajustados para 1080×1350 e 1080×1920; formatos antigos permanecem intactos e o agendamento continua exigindo revisão explícita.
+- A validação dessa correção aprovou secret scan em 676 arquivos, typecheck, lints, 588 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, worker, gates de migrations/MCP e build Vite. Um smoke FFmpeg sintético adicional confirmou Reel 1080×1920, H.264/yuv420p e AAC 48 kHz, sem banco, Storage ou publicação.
 - Os dois erros do primeiro teste tiveram uma única causa: frontend novo contra schema antigo. A auditoria encontrou quatro jobs anteriores como `failed`/`Object not found`, sem clipes, agendamentos ou publicações; os arquivos de entrada correspondentes não existem mais no Storage.
 - A validação local desta branch aprovou secret scan em 674 arquivos, typecheck, lint sem regressão, 586 testes principais, 35 testes herméticos de deploy, 24 de reconciliação, worker, gates, MCP e build Vite. Três testes antigos excederam o timeout apenas durante execuções concorrentes e passaram quando repetidos isoladamente.
 - O `Validate application` do PR #61 passou antes do merge; a implantação do banco confirmou `cut_mode`, sete colunas `editorial_*`, três RPCs, dois triggers e ACL exclusiva de `authenticated`. A Edge respondeu 401 sem `Authorization`.
@@ -74,7 +76,7 @@ O Flux & Feed reduz o trabalho manual necessário para manter perfis de Instagra
 5. acompanha filas, limites, assinaturas e saúde operacional;
 6. transforma vídeos longos em cortes curtos com o worker e FFmpeg;
 7. propõe uma estratégia editorial por Instagram e, mediante confirmação, prepara fontes e pautas isoladas para a conta.
-8. prepara Cortes Editoriais em 4:5 com texto factual, identidade, vídeo central e revisão humana obrigatória antes do render final.
+8. prepara Cortes Editoriais em Feed 4:5 ou Reel 9:16 com texto factual, identidade, vídeo central e revisão humana obrigatória antes do render final.
 
 ## Tecnologias
 
@@ -214,4 +216,4 @@ Os valores reais do catálogo Stripe live precisam ser revalidados externamente 
 
 ## Próximo passo
 
-Executar um smoke autenticado como administrador com um vídeo real que contenha fala, gerando somente a prévia para revisão, sem agendar nem publicar. Confirmar título, comentário, enquadramento, áudio e legendas; somente após esse aceite confirmar o frontend de produção e preparar o rollout aos clientes. O bloqueio antigo da fila (`fbe6a2a`), a recaptura da matéria, o replay do Piloto e a correção definitiva do `SIGINT` permanecem atividades separadas.
+Revisar e integrar a correção `20260802173000`; depois aplicar a migration, publicar o frontend e atualizar somente `feedbot-cuts` mediante autorização explícita. Em seguida, executar dois smokes autenticados com fala real — Feed 4:5 e Reel 9:16 — gerando somente a prévia, sem agendar nem publicar. O bloqueio antigo da fila (`fbe6a2a`), a recaptura da matéria, o replay do Piloto e a correção definitiva do `SIGINT` permanecem atividades separadas.

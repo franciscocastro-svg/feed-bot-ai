@@ -284,7 +284,10 @@ export default function Cuts() {
   const deviceCapability = useMemo(() => localDeviceCapability(videoFile), [videoFile]);
 
   const toggleFormat = (value: CutFormat, checked: boolean) => {
-    if (cutMode === "editorial") return;
+    if (cutMode === "editorial") {
+      if (checked && value !== "feed_square") setFormats([value]);
+      return;
+    }
     setFormats((prev) => {
       if (checked) return prev.includes(value) ? prev : [...prev, value];
       return prev.length > 1 ? prev.filter((f) => f !== value) : prev;
@@ -306,7 +309,7 @@ export default function Cuts() {
       if (subtitleStyle === "none") setSubtitleStyle("bold");
       return;
     }
-    setFormats(["feed_portrait"]);
+    setFormats((current) => [current.includes("reels") ? "reels" : "feed_portrait"]);
     setProcessingMode("cloud");
     setSubtitleStyle(subtitleStyle === "none" ? "clean" : subtitleStyle);
     setHookEnabled(false);
@@ -612,13 +615,14 @@ export default function Cuts() {
         }
         uploadedPath = await uploadVideoFile();
         const { data, error } = cutMode === "editorial"
-          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_upload_job", {
+          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_upload_job_v2", {
             _instagram_account_id: accountId,
             _storage_path: uploadedPath,
             _requested_clips: requestClips,
             _rights_confirmed: rightsConfirmed,
             _source_title: videoFile?.name || "Vídeo enviado",
             _subtitle_style: subtitleStyle,
+            _format: formats[0],
           })
           : await db.rpc<{ id?: string }>("create_video_cut_upload_job_v2", {
             _instagram_account_id: accountId,
@@ -639,12 +643,13 @@ export default function Cuts() {
         createdJobId = data?.id || null;
       } else {
         const { data, error } = cutMode === "editorial"
-          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_job", {
+          ? await db.rpc<{ id?: string }>("create_editorial_video_cut_job_v2", {
             _instagram_account_id: accountId,
             _youtube_url: canonicalYoutubeUrl,
             _requested_clips: requestClips,
             _rights_confirmed: rightsConfirmed,
             _subtitle_style: subtitleStyle,
+            _format: formats[0],
           })
           : await db.rpc<{ id?: string }>("create_video_cut_job", {
             _instagram_account_id: accountId,
@@ -1230,7 +1235,7 @@ export default function Cuts() {
             </Tabs>
             {cutMode === "editorial" && (
               <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-                Saída fixa em 1080 × 1350. Primeiro será criada uma prévia editável; o vídeo final só será renderizado após sua confirmação e nunca será autopublicado.
+                Escolha Reel 1080 × 1920 ou Feed 1080 × 1350. Primeiro será criada uma prévia editável; o vídeo final só será renderizado após sua confirmação e nunca será autopublicado.
               </p>
             )}
           </div>
@@ -1256,7 +1261,7 @@ export default function Cuts() {
                       key={opt.value}
                       className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer transition ${checked ? "border-primary bg-primary/5" : "border-border"}`}
                     >
-                      <Checkbox disabled={cutMode === "editorial"} checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
+                      <Checkbox disabled={cutMode === "editorial" && opt.value === "feed_square"} checked={checked} onCheckedChange={(c) => toggleFormat(opt.value, c === true)} />
                       <span>
                         <span className="font-medium text-foreground block">{opt.label}</span>
                         <span className="text-xs text-muted-foreground">{opt.description}</span>
@@ -1454,7 +1459,7 @@ export default function Cuts() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
-                  {job.cut_mode === "editorial" && <Badge variant="outline">Corte editorial · 4:5</Badge>}
+                  {job.cut_mode === "editorial" && <Badge variant="outline">Corte editorial · {job.formats?.[0] === "reels" ? "9:16" : "4:5"}</Badge>}
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
                   {job.processing_mode === "local_device" ? (
                     <span className="text-sm text-primary inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Processamento local</span>
@@ -1528,6 +1533,7 @@ export default function Cuts() {
                       <EditorialCutPreview
                         clipId={clip.id}
                         accountHandle={job.instagram_accounts?.username || "conta"}
+                        format={clip.format === "reels" ? "reels" : "feed_portrait"}
                         previewUrl={clip.editorial_preview_url}
                         videoUrl={clip.video_url}
                         thumbnailUrl={clip.thumbnail_url}

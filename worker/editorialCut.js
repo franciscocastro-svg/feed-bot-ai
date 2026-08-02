@@ -1,21 +1,36 @@
 export const EDITORIAL_WIDTH = 1080;
 export const EDITORIAL_HEIGHT = 1350;
+export const EDITORIAL_REELS_HEIGHT = 1920;
+
+export function editorialDimensions(format = "feed_portrait") {
+  return format === "reels"
+    ? { width: EDITORIAL_WIDTH, height: EDITORIAL_REELS_HEIGHT, format: "reels" }
+    : { width: EDITORIAL_WIDTH, height: EDITORIAL_HEIGHT, format: "feed_portrait" };
+}
 
 export function editorialLayout(width = EDITORIAL_WIDTH, height = EDITORIAL_HEIGHT) {
   const scale = width / EDITORIAL_WIDTH;
+  const reels = height / width > 1.5;
   return {
     width,
     height,
     scale,
     safeX: Math.round(56 * scale),
-    headerY: Math.round(42 * scale),
+    avatarX: Math.round(76 * scale),
+    avatarY: Math.round((reels ? 140 : 70) * scale),
+    avatarSize: Math.round(72 * scale),
+    accountX: Math.round(174 * scale),
+    accountNameY: Math.round((reels ? 146 : 76) * scale),
+    accountHandleY: Math.round((reels ? 183 : 113) * scale),
+    titleY: Math.round((reels ? 270 : 185) * scale),
+    textWidth: Math.round(968 * scale),
     media: {
       x: Math.round(60 * scale),
-      y: Math.round(430 * scale),
+      y: Math.round((reels ? 540 : 430) * scale),
       width: Math.round(960 * scale),
-      height: Math.round(800 * scale),
+      height: Math.round((reels ? 1160 : 800) * scale),
     },
-    footerY: Math.round(1272 * scale),
+    footerY: Math.round((reels ? 1760 : 1272) * scale),
   };
 }
 
@@ -167,9 +182,11 @@ export async function writeEditorialOverlay({
   accountHandle,
   logoUrl,
   sourceLabel,
+  format = "feed_portrait",
   config = {},
 }) {
-  const layout = editorialLayout();
+  const dimensions = editorialDimensions(format);
+  const layout = editorialLayout(dimensions.width, dimensions.height);
   const canvas = createCanvas(layout.width, layout.height);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, layout.width, layout.height);
@@ -177,9 +194,7 @@ export async function writeEditorialOverlay({
   const color = safeHex(config.primary_color, "#111111");
   const accent = safeHex(config.accent_color, "#D92FA5");
   const font = cleanText(config.font_family, 80) || "Inter";
-  const avatarX = 76;
-  const avatarY = 70;
-  const avatarSize = 72;
+  const { avatarX, avatarY, avatarSize } = layout;
 
   let logo = null;
   if (logoUrl && typeof loadImage === "function") {
@@ -209,18 +224,18 @@ export async function writeEditorialOverlay({
   ctx.textBaseline = "top";
   ctx.fillStyle = color;
   ctx.font = `700 29px ${font}, Arial`;
-  ctx.fillText(cleanText(accountName || accountHandle, 48), 174, 76);
+  ctx.fillText(cleanText(accountName || accountHandle, 48), layout.accountX, layout.accountNameY);
   ctx.fillStyle = "#6B7280";
   ctx.font = `400 22px ${font}, Arial`;
   const handle = cleanText(accountHandle, 60);
-  ctx.fillText(handle ? (handle.startsWith("@") ? handle : `@${handle}`) : "", 174, 113);
+  ctx.fillText(handle ? (handle.startsWith("@") ? handle : `@${handle}`) : "", layout.accountX, layout.accountHandleY);
 
   ctx.fillStyle = color;
   ctx.font = `700 51px ${font}, Arial`;
-  const titleLines = drawWrappedText(ctx, title, layout.safeX, 185, 968, 58, 2);
-  const commentY = 185 + Math.max(2, titleLines) * 58 + 20;
+  const titleLines = drawWrappedText(ctx, title, layout.safeX, layout.titleY, layout.textWidth, 58, 2);
+  const commentY = layout.titleY + Math.max(2, titleLines) * 58 + 20;
   ctx.font = `400 28px ${font}, Arial`;
-  drawWrappedText(ctx, comment, layout.safeX, commentY, 968, 37, 3);
+  drawWrappedText(ctx, comment, layout.safeX, commentY, layout.textWidth, 37, 3);
 
   ctx.strokeStyle = "#E5E7EB";
   ctx.lineWidth = 2;
@@ -240,10 +255,11 @@ export async function writeEditorialOverlay({
   return layout;
 }
 
-export function buildEditorialVideoFilter({ duration, framing = "blur_fit", overlayInput = 1 }) {
-  const { media } = editorialLayout();
+export function buildEditorialVideoFilter({ duration, framing = "blur_fit", overlayInput = 1, format = "feed_portrait" }) {
+  const dimensions = editorialDimensions(format);
+  const { media } = editorialLayout(dimensions.width, dimensions.height);
   const safeDuration = Math.max(1, Number(duration) || 1).toFixed(3);
-  const canvas = `color=c=white:s=${EDITORIAL_WIDTH}x${EDITORIAL_HEIGHT}:r=30:d=${safeDuration}[canvas]`;
+  const canvas = `color=c=white:s=${dimensions.width}x${dimensions.height}:r=30:d=${safeDuration}[canvas]`;
   let mediaChain;
 
   if (framing === "contain") {

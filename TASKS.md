@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. Corte Editorial implementado, protegido como Beta administrativa e aprovado visualmente em três cenários; ainda sem deploy e aguardando teste com fala real.
+Última atualização: **2026-08-02**. Correção Bold/Clean e saída Reel 9:16 do Corte Editorial implementadas localmente; migration, frontend e worker ainda não foram implantados.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -147,14 +147,19 @@
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
-- [ ] **Corte Editorial:** PRs #60/#61/#62 integrados; migration, Edge e `feedbot-cuts` implantados e verificados no merge `67ced14`. Faltam executar o smoke com fala real e confirmar o frontend de produção.
+- [ ] **Corte Editorial:** base implantada no merge `67ced14`; correção local `20260802173000` resolve Bold/Clean e adiciona Reel 9:16. Faltam integrar/aplicar/publicar a correção e executar smoke com fala real sem publicação.
 
 ### P1 — Corte Editorial
 
 - [x] Adicionar Corte tradicional, Corte com legendas e Corte editorial sem remover os formatos atuais.
 - [x] Organizar Cortes IA nas subabas `Criar corte` e `Meus cortes`, com os três formatos como subabas de criação.
 - [x] Restringir temporariamente a Beta editorial a administradores na UI, RPCs, Edge Function e trigger anti-bypass.
-- [x] Fixar o Corte Editorial em 1080 × 1350 com cabeçalho, título, comentário, mídia e rodapé.
+- [x] Compor o Corte Editorial em Feed 1080 × 1350 ou Reel 1080 × 1920 com cabeçalho, título, comentário, mídia e rodapé.
+- [x] Corrigir a incompatibilidade de criação com os estilos Bold/Clean sem alterar os criadores legados.
+- [x] Persistir estilo, formato, `cut_mode` e bloqueio de autopublicação na mesma transação.
+- [x] Manter Feed quadrado e todos os formatos antigos inalterados.
+- [x] Aprovar CI completo: secret scan em 676 arquivos, 588 testes principais, 36 de deploy, 24 de reconciliação, worker, gates e build.
+- [x] Confirmar por smoke sintético Reel 1080×1920, H.264/yuv420p e AAC 48 kHz sem publicação.
 - [x] Usar transcrição como fonte principal e frames somente como complemento sem identificação facial.
 - [x] Validar evidência literal, números e confiança; usar fallback neutro com revisão necessária.
 - [x] Criar prévia separada do vídeo final e impedir autopublicação.
@@ -177,7 +182,8 @@
 - [x] Implantar somente `regenerate-cut-editorial-text` e confirmar HTTP 401 sem autenticação.
 - [x] Auditar os testes falhos: quatro jobs `failed`, zero clipes, zero agendamentos e zero publicações.
 - [x] Validar o escopo `cuts-only` no CI e implantar somente `feedbot-cuts` no merge `67ced14`, sem reiniciar o webhook ou o worker de mídia.
-- [ ] Executar smoke autenticado com fala real, sem agendar ou publicar.
+- [ ] Integrar e aplicar `20260802173000`, publicar o frontend e atualizar somente `feedbot-cuts` após autorização.
+- [ ] Executar smoke autenticado 4:5 e 9:16 com fala real, sem agendar ou publicar.
 
 ## Próximas tarefas
 

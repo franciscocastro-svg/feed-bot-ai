@@ -1,6 +1,6 @@
 # Produto — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com backend e worker implantados, aguardando smoke autenticado e confirmação do frontend de produção.
+Atualizado em **2026-08-02** para o Corte Editorial com correção local de Bold/Clean e saída Reel 9:16, ainda sem nova implantação.
 
 ## Visão de produto
 
@@ -78,7 +78,7 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 
 - `Cortes IA` foi organizado em `Criar corte` e `Meus cortes`; na criação, a nova opção fica ao lado de Corte tradicional e Corte com legendas, sem remover os formatos atuais;
 - durante o teste inicial, Corte Editorial aparece como `Beta admin` apenas para administradores; a mesma regra é aplicada no banco, nas RPCs e na Edge Function, não somente na interface;
-- saída 1080 × 1350 com cabeçalho da conta, título, comentário, vídeo central, rodapé e fonte quando disponível;
+- saída selecionável em Feed 1080 × 1350 (4:5) ou Reel 1080 × 1920 (9:16), com cabeçalho da conta, título, comentário, vídeo central, rodapé e fonte quando disponível;
 - transcrição como fonte factual principal e até quatro frames do próprio trecho apenas como contexto visual genérico;
 - nomes, datas e números sem evidência literal, evidência ausente ou confiança abaixo de 72% produzem texto neutro e `Revisão necessária`;
 - prévia em vídeo separada do arquivo final, com edição de título, comentário, trecho, enquadramento, fonte, cores e texto/ativação das legendas;
@@ -88,6 +88,8 @@ Direito, Saúde e Finanças exigem fontes confiáveis, linguagem educativa e rev
 - compositor lê o original para cada saída e produz H.264/AAC 48 kHz/yuv420p em uma codificação, evitando usar a prévia como fonte do vídeo final.
 
 O Corte Editorial base e a restrição temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A migration foi aplicada no Supabase sob o registro `20260802144135`, o cache do schema foi recarregado e `regenerate-cut-editorial-text` foi implantada com teste anônimo HTTP 401. A Lovable registrou o estado no merge automático `ad273b4`. O PR #62 integrou o escopo operacional `cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02 com reinício exclusivo de `feedbot-cuts`, testes, nginx e health aprovados. `feedbot-media` e `feedbot-webhook` mantiveram os mesmos PIDs. Os primeiros testes, anteriores à implantação completa, não criaram clipes, agendamentos ou publicações; agora resta o smoke com fala real e a confirmação do frontend de produção.
+
+Correção preparada após o primeiro smoke real: `Bold viral` e `Clean` eram aceitos pela RPC editorial, mas rejeitados pelo criador legado chamado internamente. A migration aditiva `20260802173000` converte esses estilos para `classic` somente durante a criação e restaura o estilo solicitado na mesma transação, antes do claim do worker. As novas RPCs v2 também recebem `feed_portrait` ou `reels`; a interface permite escolher 4:5 ou 9:16, e o compositor adapta layout, áreas seguras, legendas e validação de resolução. O CI completo passou com 588 testes principais, e um smoke sintético confirmou a saída Reel H.264/AAC 48 kHz em 1080×1920. Essa correção ainda não foi aplicada no Supabase, publicada no frontend ou implantada na VPS.
 
 ### Comercial
 
@@ -258,7 +260,7 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 4. worker executa FFmpeg e aplica legenda/branding;
 5. arquivos finais seguem para revisão e publicação.
 
-No Corte Editorial, o passo 4 gera primeiro `editorial_preview_url`, mantendo `video_url` vazio. O usuário revisa os campos e solicita o render final; só depois de `editorial_review_confirmed_at` e `video_url` existirem o agendamento é permitido.
+No Corte Editorial, o usuário escolhe Feed 4:5 ou Reel 9:16 antes da criação. O passo 4 gera primeiro `editorial_preview_url` na proporção escolhida, mantendo `video_url` vazio. O usuário revisa os campos e solicita o render final; só depois de `editorial_review_confirmed_at` e `video_url` existirem o agendamento como Reel é permitido.
 
 ### Piloto Editorial
 

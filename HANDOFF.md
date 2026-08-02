@@ -15,15 +15,16 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 ## Estado Git confirmado
 
-### Trabalho atual — Corte Editorial
+### Trabalho atual — correção Bold/Clean e Reel do Corte Editorial
 
-- Worktree isolada: `/private/tmp/fluxfeed-editorial-cut`.
-- Branch atual: `codex/editorial-admin-beta`.
+- Worktree isolada: `/private/tmp/fluxfeed-editorial-resume`.
+- Branch atual: `codex/record-editorial-cuts-worker-deploy`.
 - Base: `fd79e5d6a4e6b6a03ffcd20e40332243b56e0ec1` (`origin/main` reconciliada em 2026-08-02).
 - Estado: o Corte Editorial base e a Beta administrativa foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. A Lovable aplicou a migration sob `20260802144135`, recarregou o schema e implantou somente `regenerate-cut-editorial-text`; o merge automático `ad273b4` adicionou a migration registrada e os tipos gerados. O PR #62 integrou o escopo `cuts-only` no merge `67ced14`, implantado e validado no worker VPS. O Preview está sincronizado; resta confirmar o frontend de produção após o smoke autenticado.
 - Primeiro smoke integrado: quatro jobs antigos terminaram `failed`/`Object not found`, sem clipes, agendamentos ou publicações; o teste das 02:31 não criou job e o das 02:34 foi reivindicado uma vez antes de falhar. A causa foi frontend novo contra schema antigo, agora corrigido.
 - Deploy do worker: `DEPLOY_PM2_SCOPE=cuts-only` reiniciou somente `feedbot-cuts` no merge `67ced14`, mantendo instalação, testes, nginx, health e rollback. A implantação terminou `SUCCEEDED`/`target_healthy`; `feedbot-media` e `feedbot-webhook` conservaram os PIDs. Não usar o escopo `all` enquanto o incidente de `SIGINT` do webhook estiver pendente.
 - A pasta original `/Users/decastro/Downloads/feed-bot-ai-main` não foi alterada.
+- Mudança local ainda não implantada: `20260802173000_fix_editorial_cut_styles_and_reels.sql`, frontend e worker corrigem Bold/Clean e permitem Feed 4:5 ou Reel 9:16. Nenhum banco, Lovable, VPS ou publicação foi alterado nesta etapa.
 
 ### `main` auditada
 
@@ -103,19 +104,21 @@ Atualização posterior da VPS: a automação ficou bloqueada em `deploy_process
 Arquivos principais:
 
 - `src/pages/dashboard/Cuts.tsx` — subabas `Criar corte`/`Meus cortes`, seleção dos três formatos, visibilidade `Beta admin`, criação por RPC própria e gates de render/agendamento;
-- `src/components/cuts/EditorialCutPreview.tsx` — prévia 4:5 editável;
+- `src/components/cuts/EditorialCutPreview.tsx` — prévia 4:5/9:16 editável;
 - `src/lib/editorialCuts.ts` — contratos e validação do rascunho;
+- `src/integrations/supabase/types.ts` — contratos locais das duas RPCs editoriais v2;
 - `worker/editorialCut.js` — segurança factual, layout Canvas e filtros FFmpeg;
 - `worker/index.js` — transcrição/frames, prévia, render final e bloqueio de autopublish;
 - `worker/aiProviders.js` — análise multimodal Gemini com fallback textual;
 - `supabase/migrations/20260802090000_add_editorial_video_cuts.sql` — colunas, RPCs, trigger de agendamento e trigger de acesso administrativo aditivos;
+- `supabase/migrations/20260802173000_fix_editorial_cut_styles_and_reels.sql` — RPCs v2, compatibilidade Bold/Clean e formato editorial explícito;
 - `supabase/functions/regenerate-cut-editorial-text/index.ts` — texto somente, autenticado, exclusivo para admin durante a Beta e sem escrita;
 - `src/test/editorial-video-cuts.test.ts` — 15 testes direcionados.
 
 Decisões obrigatórias:
 
 1. `cut_mode=editorial` é gravado na mesma transação que cria o job; não usar update posterior como única marcação.
-2. Corte Editorial é cloud-only nesta primeira versão e sempre 4:5.
+2. Corte Editorial é cloud-only nesta primeira versão e aceita Feed 4:5 ou Reel 9:16; Feed quadrado permanece fora do modo editorial.
 3. A prévia ocupa `editorial_preview_url`; `video_url` continua nulo até a revisão.
 4. Regenerar texto devolve rascunho sem persistir nem processar vídeo.
 5. Texto só é aceito com confiança mínima de 72%, evidência literal e números presentes na transcrição; caso contrário, fallback neutro.
@@ -125,10 +128,14 @@ Decisões obrigatórias:
 9. Prévia e final leem o original; nunca recomprimir a prévia como fonte.
 10. Nenhum teste ou implantação pode publicar automaticamente.
 11. Durante a Beta inicial, somente administradores veem e acionam o Corte Editorial; UI, RPCs, Edge e trigger de `video_cut_jobs` devem concordar.
+12. Bold/Clean são convertidos para `classic` somente dentro da chamada legada e restaurados na mesma transação antes do claim do worker.
 
 Validação local concluída:
 
-- 15 testes direcionados do Corte Editorial;
+- 17 testes direcionados do Corte Editorial na correção atual;
+- typecheck, sintaxe do worker e build Vite aprovados após a correção 4:5/9:16;
+- CI completo aprovado após a correção: secret scan em 676 arquivos, 588 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, worker, gates de migrations/MCP e build;
+- smoke FFmpeg sintético gerou Reel 1080×1920, H.264/yuv420p e AAC 48 kHz em `/private/tmp/fluxfeed-editorial-reels-smoke/reel.mp4`, sem banco, Storage ou publicação;
 - 586 testes principais validados; um teste antigo de layout mobile excedeu o timeout sob carga e passou isoladamente;
 - 35 testes herméticos de deploy e 24 de reconciliação aprovados;
 - após os ajustes finais, typecheck, worker, os 15 testes direcionados e o build foram aprovados novamente;
@@ -577,11 +584,13 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 ## Próximo passo exato
 
 1. reler integralmente os cinco documentos no início da próxima etapa;
-2. testar autenticado como administrador com vídeo real que contenha fala, gerando somente a prévia, sem agendar ou publicar;
-3. conferir título/comentário factuais, enquadramento, áudio, legendas e possibilidade de edição;
-4. após o aceite do smoke, confirmar/publicar o frontend de produção e remover a restrição temporária de administrador em mudança separada;
-5. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
-6. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
+2. revisar/integrar a migration `20260802173000` e a correção de frontend/worker;
+3. após autorização explícita, aplicar a migration, publicar o frontend e implantar somente `feedbot-cuts`;
+4. testar autenticado como administrador com vídeo real que contenha fala em 4:5 e 9:16, gerando somente a prévia, sem agendar ou publicar;
+5. conferir título/comentário factuais, enquadramento, áudio, legendas, Bold/Clean e possibilidade de edição;
+6. após o aceite do smoke, remover a restrição temporária de administrador em mudança separada;
+7. tratar o `SIGINT` do webhook e o bloqueio de `fbe6a2a` em uma correção operacional independente;
+8. tratar separadamente a recaptura da imagem e o replay do Piloto Editorial.
 
 ## Checklist de manutenção
 

@@ -1,8 +1,10 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial com backend e worker implantados de forma controlada.
+Atualizado em **2026-08-02** para o Corte Editorial com compatibilidade Bold/Clean e composição Feed 4:5/Reel 9:16 preparadas localmente, ainda sem nova implantação.
 
 O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
+
+A correção append-only `20260802173000` ainda local adiciona RPCs editoriais v2 com formato explícito, preserva os wrappers 4:5 anteriores e resolve a incompatibilidade dos estilos `bold`/`clean` sem expor estado intermediário ao worker. O frontend e o compositor aceitam somente `feed_portrait` e `reels` no modo editorial; `feed_square` continua disponível apenas nos formatos antigos.
 
 ## Arquitetura geral
 
@@ -44,7 +46,7 @@ O frontend coordena a experiência e ações autenticadas. Edge Functions concen
 - `lib/subscriptionAccess.ts`: classificação pura e fail-closed do resultado de acesso;
 - `lib/editorial-pilot/`: schema e construção determinística da proposta;
 - `lib/editorialCuts.ts`: modos de corte, configuração visual, validação da revisão e payload do render editorial;
-- `components/cuts/EditorialCutPreview.tsx`: prévia 4:5 editável e comandos separados de texto, render final e agendamento;
+- `components/cuts/EditorialCutPreview.tsx`: prévia editável em 4:5 ou 9:16 e comandos separados de texto, render final e agendamento;
 - `test/`: regressões, contratos, segurança e operação.
 
 Rotas públicas cobrem autenticação, verificação/recuperação, preços, checkout, termos, privacidade, exclusão de dados e OAuth. Rotas protegidas cobrem notícias, fontes, pautas, Perfil de Criador, agendados, contas, templates, canais, insights, cortes, suporte e administração.
@@ -100,7 +102,7 @@ Responsabilidades:
 - executar FFmpeg/ffprobe e yt-dlp;
 - usar `@napi-rs/canvas` para layouts;
 - gerar Reels, cortes, legendas e overlays;
-- compor Corte Editorial 4:5 em `worker/editorialCut.js`, preservando proporção, áreas seguras e limite de ampliação;
+- compor Corte Editorial 4:5 ou 9:16 em `worker/editorialCut.js`, preservando proporção, áreas seguras e limite de ampliação;
 - selecionar/carregar imagens temáticas;
 - reutilizar artefatos quando seguro;
 - limitar a ampliação do primeiro plano quando somente uma miniatura pequena estiver disponível, mantendo-a sobre fundo editorial protegido;
@@ -234,7 +236,7 @@ sequenceDiagram
 
     U->>FE: admin escolhe Corte Editorial Beta e envia vídeo
     FE->>DB: valida papel admin
-    FE->>DB: RPC editorial cria job 4:5 com auto_publish=false
+    FE->>DB: RPC editorial v2 cria job 4:5 ou 9:16 com auto_publish=false
     DB-->>W: worker reclama job
     W->>W: transcreve e escolhe trecho
     W->>AI: transcrição + frames genéricos
@@ -246,11 +248,13 @@ sequenceDiagram
     FE->>DB: request_editorial_cut_render
     DB-->>W: fila de rerender
     W->>W: relê transcrição se o trecho mudou e renderiza do original
-    W->>ST: grava vídeo final 1080x1350
+    W->>ST: grava vídeo final 1080x1350 ou 1080x1920
     U->>FE: aprova e agenda
 ```
 
 O contrato de persistência é aditivo: `video_cut_jobs.cut_mode` distingue `traditional`, `subtitled` e `editorial`; colunas `editorial_*` em `video_cut_clips` guardam rascunho, configuração, confiança, prévia e confirmação. RPCs próprias eliminam a corrida entre criação e claim do worker. Durante a Beta, a UI consulta `user_roles`, as três RPCs verificam `is_admin()`, a Edge de regeneração repete a verificação com o JWT do usuário e `trg_guard_editorial_cut_beta_access` impede que uma atualização direta transforme um job comum em editorial. Um segundo trigger em `scheduled_posts`, uma verificação na UI e outra no worker impedem que um Corte Editorial sem revisão/vídeo final avance.
+
+Na migration `20260802173000`, os criadores v2 aceitam somente `feed_portrait` ou `reels`. Como os criadores legados reconhecem apenas `none`, `classic`, `neon` e `karaoke`, `bold`/`clean` são passados temporariamente como `classic`; ainda na mesma transação, `subtitle_style` volta ao valor solicitado junto com `cut_mode=editorial`, formato e bloqueio de autopublicação. Assim, o worker nunca observa o estilo substituto nem um job editorial incompleto.
 
 O compositor usa Canvas apenas para textos/identidade e FFmpeg para a mídia. `blur_fit` e `contain` não ampliam o primeiro plano; `smart_crop` limita-o a 2×. A prévia e o final são codificados separadamente a partir do original, nunca um a partir do outro. Legendas ASS usam timestamps por palavra e são recalculadas do original quando o trecho muda. O áudio é normalizado e reamostrado explicitamente para AAC 48 kHz; essa fixação foi adicionada após o teste físico detectar que `loudnorm` sozinho produzia 96 kHz.
 
@@ -387,6 +391,7 @@ Estado implantado em 2026-08-02: a recuperação anterior concluiu `93ae2a3`. Um
 | Prévia editorial separada do final | permitir edição sem publicar e sem recomprimir a prévia como origem |
 | Transcrição como evidência primária | impedir identificação visual ou contexto inventado |
 | RPCs editoriais próprias | gravar o modo antes que o worker possa reclamar o job |
+| Formato editorial explícito na RPC v2 | criar 4:5 ou 9:16 atomicamente sem update tardio nem corrida |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 

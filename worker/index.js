@@ -46,10 +46,9 @@ import {
 } from "./editorialCarousel.js";
 import { resolveAccountRenderSettings } from "./accountIdentity.js";
 import {
-  EDITORIAL_HEIGHT,
-  EDITORIAL_WIDTH,
   buildEditorialAnalysisPrompt,
   buildEditorialVideoFilter,
+  editorialDimensions,
   normalizeEditorialDraft,
   writeEditorialOverlay,
 } from "./editorialCut.js";
@@ -2528,6 +2527,8 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
   const thumbPath = path.join(tempDir, `${clip.id}-editorial.jpg`);
   const startSeconds = Math.max(0, Number(clip.start_seconds) || 0);
   const duration = Math.max(3, Number(clip.duration_seconds) || (Number(clip.end_seconds) - startSeconds));
+  const format = clip.format === "reels" ? "reels" : "feed_portrait";
+  const dimensions = editorialDimensions(format);
   const config = {
     framing: ["blur_fit", "smart_crop", "contain"].includes(clip.editorial_config?.framing)
       ? clip.editorial_config.framing
@@ -2549,6 +2550,7 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     accountHandle: settings?.brand_handle || settings?.brand_name || "",
     logoUrl: settings?.brand_logo_url || null,
     sourceLabel: job.source_kind === "youtube" ? (job.source_title || "YouTube") : (job.source_title || job.source_file_name || "Vídeo enviado"),
+    format,
     config,
   });
 
@@ -2562,9 +2564,9 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     words = applyManualTranscript(words, clip.transcript_text);
   }
   if (config.subtitles_enabled && clip.subtitle_style !== "none" && words.length) {
-    const ass = buildAssSubtitleFile(words, clip.subtitle_style || "clean", "feed_portrait", {
-      width: EDITORIAL_WIDTH,
-      height: EDITORIAL_HEIGHT,
+    const ass = buildAssSubtitleFile(words, clip.subtitle_style || "clean", format, {
+      width: dimensions.width,
+      height: dimensions.height,
     }, duration, {
       maxWordsPerGroup: 5,
       maxCharsPerGroup: 34,
@@ -2577,7 +2579,7 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
     await fs.promises.writeFile(subtitlePath, ass, "utf8");
   }
 
-  const baseFilter = buildEditorialVideoFilter({ duration, framing: config.framing, overlayInput: 1 });
+  const baseFilter = buildEditorialVideoFilter({ duration, framing: config.framing, overlayInput: 1, format });
   const videoFilter = fs.existsSync(subtitlePath)
     ? `${baseFilter};[vbase]ass=${shellQuote(subtitlePath).replace(/^'|'$/g, "").replace(/:/g, "\\:")}[v]`
     : `${baseFilter};[vbase]copy[v]`;
@@ -2606,8 +2608,8 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
   }
 
   const qualityReport = await validateAiCutOutput(outputPath, {
-    width: EDITORIAL_WIDTH,
-    height: EDITORIAL_HEIGHT,
+    width: dimensions.width,
+    height: dimensions.height,
     duration,
   });
   await execAsync(
@@ -2641,6 +2643,7 @@ async function generateEditorialVideoCutClip(job, clip, sourcePath, settings, te
       ...(clip.provider_trace || {}),
       render: previewOnly ? "editorial_preview" : "editorial_final",
       framing: config.framing,
+      format,
       source_encode_count: 1,
     },
     subtitle_error: config.subtitles_enabled && !words.length,
