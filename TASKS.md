@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-01**. O smoke do Piloto Editorial passou após a correção SQLSTATE `42702`; a melhoria de qualidade de imagens está concluída localmente e aguarda integração/implantação.
+Última atualização: **2026-08-01**. A melhoria de imagens foi integrada em `c4e703d` e publicada no frontend/Edge Functions; o worker aguarda a reconciliação segura da fila VPS interrompida.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -74,7 +74,7 @@
 - [x] Aprovar o smoke principal: 7 fontes resolvidas/vinculadas, 4 pautas, 1 ledger e nenhuma publicação.
 - [ ] Repetir a mesma proposta para confirmar `replayed=true` antes de decidir a flag de produção.
 
-### Qualidade de imagens — concluída localmente
+### Qualidade de imagens — integrada, implantação parcial
 
 - [x] Diagnosticar a matéria real: miniatura Bing 100×100 ampliada para 1080×1920.
 - [x] Classificar miniaturas e candidatos da própria matéria por metadados, origem e resolução declarada.
@@ -84,7 +84,22 @@
 - [x] Limitar a ampliação do fallback pequeno no navegador e no worker, com fundo protegido e suavização alta.
 - [x] Confirmar no caso real a imagem relacionada de 1200×747.
 - [x] Aprovar 38 testes direcionados, typecheck e CI completo com 562 testes principais, 33 de deploy, 15 de reconciliação e build.
-- [ ] Integrar a branch, republicar `fetch-rss`, `preview-source` e `discover-rss`, implantar worker/frontend no mesmo SHA e executar smoke visual.
+- [x] Integrar a branch pelo PR #57 no merge `c4e703d`.
+- [x] Publicar o frontend e republicar `fetch-rss`, `preview-source` e `discover-rss` pelo Lovable no conteúdo de `c4e703d`.
+- [ ] Implantar o worker de mídia no SHA final aprovado após reconciliar a fila VPS.
+- [ ] Recapturar/regenerar a matéria e executar o smoke visual da imagem 1200×747.
+
+### Recuperação da fila VPS interrompida
+
+- [x] Auditar a VPS somente leitura: HEAD `a2be3f5`, PM2 online, health HTTP 200 e nenhum PID antigo em execução.
+- [x] Confirmar causa: deploy interrompido por `SIGINT`, bloqueio `deploy_process_exit_unobserved`, estado ativo órfão e 42 itens na fila.
+- [x] Confirmar `c4e703d` como último item único, aprovado e sem resultado terminal; preservar arquivos não rastreados da VPS.
+- [x] Implementar inspeção imutável, plano com hash, evidência/backup, supersessão dos ancestrais, conclusão com validação exata e restauração integral em falha.
+- [x] Adicionar `DEPLOY_PM2_SCOPE=media-only` sem reduzir checkout, testes, health ou rollback.
+- [x] Aprovar 9 testes de recuperação e 2 regressões do escopo de PM2; `check:queue-reconciliation` aprovou 24 testes.
+- [x] Executar o CI completo: 668 arquivos no secret scan, 571 testes principais, 35 de deploy, 24 de reconciliação, worker, gates e build aprovados.
+- [ ] Enviar a branch e obter aprovação do PR.
+- [ ] Na VPS, executar inspect/execute com o SHA integrado, implantar somente `feedbot-media`, concluir a reconciliação e validar smoke.
 
 ### Reconciliação desta continuidade
 
@@ -128,7 +143,8 @@
 - [x] **Perfil do Criador:** auditoria concluída e primeiro recorte funcional implementado localmente.
 - [ ] **Prontidão comercial:** confirmar frontend live, catálogo Stripe, Edge Functions, webhooks, banco, Meta e VPS.
 - [ ] **Piloto Editorial:** executar o replay idempotente e decidir rollout/publicação do frontend de produção.
-- [ ] **Qualidade de imagens:** integrar e implantar Edge Functions, worker e frontend no mesmo SHA; regenerar o caso de teste.
+- [ ] **Qualidade de imagens:** frontend e Edge Functions publicados; reconciliar a VPS, implantar o worker de mídia no SHA final e regenerar o caso de teste.
+- [ ] **Fila VPS:** integrar a recuperação, preservar evidências do `SIGINT` e substituir os 42 itens pelo release final sem execução sequencial.
 
 ## Próximas tarefas
 
@@ -260,6 +276,7 @@
 - [x] **Agência degradada para Business nos limites:** corrigido e validado em produção.
 - [x] **Receita Agência zerada:** corrigido e validado em produção com o valor Pix registrado.
 - [ ] **Estado externo parcialmente confirmado:** o release Pix funcional está em `6b362bf`, mas isso não comprova todas as migrations, preços, Edge Functions, Meta ou VPS.
+- [ ] **Fila VPS bloqueada após interrupção:** serviços estão saudáveis, mas o worker permanece em `a2be3f5`; não apagar `BLOCKED.json` nem executar a fila manualmente antes da reconciliação versionada.
 - [ ] **Fase 2A parcialmente implantada:** migration e `discover-rss` aplicadas e verificadas; frontend ainda não publicado, e a flag continua desligada por padrão.
 - [x] **Confirmação bloqueada por drift de schema:** compatibilidade registrada como `20260801185731`, backfill verificado e Edge corrigida publicada; a etapa posterior avançou até revelar e corrigir o SQLSTATE `42702`.
 - [x] **Confirmação bloqueada por variável ambígua:** SQLSTATE `42702` corrigido e registrado em `20260801194149`; smoke autenticado aprovado.

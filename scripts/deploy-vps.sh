@@ -10,6 +10,7 @@ HEALTH_SCRIPT_SOURCE="${DEPLOY_HEALTH_SCRIPT_SOURCE:-$APP_DIR/scripts/health-che
 HEALTH_SCRIPT_SNAPSHOT="$DEPLOY_STATE_DIR/health-check-vps.sh"
 PREPARE_FAILURE_REASON=""
 FRONTEND_ARTIFACT_BASELINE=""
+PM2_SCOPE="${DEPLOY_PM2_SCOPE:-all}"
 
 # Exit contract consumed by the queue runner.
 EXIT_SUCCEEDED=0
@@ -46,6 +47,14 @@ if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
   emit_result "FAILED_PREFLIGHT" "invalid_target_sha"
   exit "$EXIT_FAILED_PREFLIGHT"
 fi
+
+case "$PM2_SCOPE" in
+  all|media-only)
+    ;;
+  *)
+    fail_preflight "invalid_pm2_scope"
+    ;;
+esac
 
 cd "$APP_DIR" || {
   emit_result "FAILED_PREFLIGHT" "app_dir_unavailable"
@@ -269,8 +278,13 @@ prepare_release() {
 activate_release() {
   local sha="$1"
 
-  echo "==> Restarting the three PM2 services for $sha"
-  pm2 startOrReload ecosystem.config.cjs --update-env || return 1
+  if [ "$PM2_SCOPE" = "media-only" ]; then
+    echo "==> Restarting only feedbot-media for $sha"
+    pm2 startOrReload ecosystem.config.cjs --only feedbot-media --update-env || return 1
+  else
+    echo "==> Restarting the three PM2 services for $sha"
+    pm2 startOrReload ecosystem.config.cjs --update-env || return 1
+  fi
   pm2 save || return 1
 
   test_nginx_configuration || return 1

@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-01** para a correção Agência/financeiro publicada em `e163226`.
+Atualizado em **2026-08-01** para a melhoria de imagens em `c4e703d` e a recuperação controlada da fila VPS interrompida.
 
 ## Arquitetura geral
 
@@ -315,6 +315,14 @@ Creator, Pro e Business usam lookup keys; Agência usa contato comercial. O ambi
 
 PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHAs aprovados, health checks e rollback. Estado interrompido deve ser reconciliado pelos scripts versionados; nunca editar arquivos operacionais manualmente.
 
+`scripts/reconcile-interrupted-deploy.cjs` separa a recuperação em três comandos:
+
+1. `--inspect` é somente leitura, valida locks/PIDs, hashes do estado, ordem e ancestralidade da fila, SHA de `origin/main` e ausência de resultados terminais; o resultado inclui um hash do plano;
+2. `--execute` exige alvo e hash exatos, cria backup/evidência privados, marca releases ancestrais como `superseded`, mantém somente o alvo final e conserva a VPS bloqueada como pendente de deploy manual;
+3. `--complete` exige novamente CI, aprovação, health e SHAs iguais, registra o alvo como concluído e remove o bloqueio por último.
+
+Qualquer drift ou falha restaura byte a byte o estado anterior. A implantação de mídia usa `DEPLOY_PM2_SCOPE=media-only`, que executa `pm2 startOrReload ... --only feedbot-media`; checkout, dependências, testes, fingerprint, health e rollback continuam obrigatórios. O escopo padrão permanece `all`, e um valor desconhecido falha antes de qualquer mutação.
+
 ## Decisões técnicas
 
 | Decisão | Motivo |
@@ -333,6 +341,8 @@ PM2 mantém processos de webhook, mídia e cortes. Deploy usa fila durável, SHA
 | Chaves de plano separadas dos nomes públicos | preservar compatibilidade `starter` no banco/Stripe e mostrar Creator na interface |
 | Imagem principal limitada à própria matéria | melhorar resolução sem trocar o assunto por uma busca visual genérica |
 | Miniatura preservada como último recurso | evitar perder completamente a mídia quando o veículo não expõe alternativa melhor |
+| Reconciliação em fases e bloqueio conservado | impedir perda de evidência ou execução acidental dos 42 releases acumulados |
+| Deploy `media-only` após a reconciliação | atualizar o renderizador sem reiniciar webhook e cortes que já estão saudáveis |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 
