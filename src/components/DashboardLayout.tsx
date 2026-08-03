@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2, Scissors } from "lucide-react";
+import { LayoutDashboard, Newspaper, Rss, Instagram, Calendar, Settings, ScrollText, LogOut, BarChart3, Palette, Menu, Shield, Image as ImageIcon, Camera, Film, CreditCard, LifeBuoy, BookOpen, UserCircle2, Scissors, Link2 } from "lucide-react";
 import { ReleaseNotesBell } from "@/components/ReleaseNotes";
 import { BrandLogo } from "@/components/BrandLogo";
 import { PlanUsageCard } from "@/components/PlanUsageCard";
@@ -37,13 +37,15 @@ const nav = [
   { to: "/pricing", icon: CreditCard, label: "Planos" },
 ];
 
-function SidebarContent({ onNavigate, user, onSignOut, isAdmin, adminUnread }: { onNavigate?: () => void; user: any; onSignOut: () => void; isAdmin: boolean; adminUnread: number }) {
+function SidebarContent({ onNavigate, user, onSignOut, isAdmin, isAffiliate, adminUnread }: { onNavigate?: () => void; user: any; onSignOut: () => void; isAdmin: boolean; isAffiliate: boolean; adminUnread: number }) {
   const { t } = useLanguage();
   // Esconde itens em rollout gradual de quem não é admin (ver src/config/featureFlags.ts)
   const visibleNav = nav.filter(item => isPathVisible(item.to, { isAdmin, userId: user?.id }));
+  const referralItem = { to: "/dashboard/indicacoes", icon: Link2, label: "Indicações" };
+  const customerItems = isAffiliate ? [...visibleNav, referralItem] : visibleNav;
   const items = isAdmin
-    ? [...visibleNav, { to: "/dashboard/admin", icon: Shield, label: "Painel Admin", badge: adminUnread }]
-    : visibleNav;
+    ? [...customerItems, { to: "/dashboard/admin", icon: Shield, label: "Painel Admin", badge: adminUnread }]
+    : customerItems;
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar pb-[env(safe-area-inset-bottom)]">
       <div className="p-6 border-b border-border flex items-center justify-between gap-2">
@@ -106,8 +108,24 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [adminUnread, setAdminUnread] = useState(0);
+  const [isAffiliate, setIsAffiliate] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   useReelVideoGenerator();
+
+  useEffect(() => {
+    if (!user?.id) { setIsAffiliate(false); return; }
+    let cancelled = false;
+    supabase.rpc("get_my_affiliate_dashboard").then(({ data, error }) => {
+      if (cancelled) return;
+      const eligible = !error
+        && !!data
+        && typeof data === "object"
+        && !Array.isArray(data)
+        && data.eligible === true;
+      setIsAffiliate(eligible);
+    });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // Polling-based unread support tickets counter for admins (Realtime removed for security)
   useEffect(() => {
@@ -149,7 +167,7 @@ export default function DashboardLayout() {
       <Helmet><meta name="robots" content="noindex,nofollow" /></Helmet>
       {/* Desktop sidebar */}
       <aside className="hidden h-full w-64 shrink-0 flex-col border-r border-border md:flex">
-        <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} />
+        <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} isAffiliate={isAffiliate} adminUnread={adminUnread} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -166,7 +184,7 @@ export default function DashboardLayout() {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-[min(18rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden p-0">
-              <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} adminUnread={adminUnread} onNavigate={() => setOpen(false)} />
+              <SidebarContent user={user} onSignOut={handleSignOut} isAdmin={isAdmin} isAffiliate={isAffiliate} adminUnread={adminUnread} onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
           <NavLink to="/dashboard">

@@ -108,7 +108,7 @@ A correção passou por 31 testes direcionados e pelo CI completo com 603 testes
 
 O smoke autenticado final foi aprovado em 2026-08-02: a prévia Reel apresentou trecho de 52 segundos, texto factual com confiança 100%, nome/foto/@ da conta selecionada e nenhuma publicação automática. A etapa funcional seguinte é o cancelamento seguro da fila, sem alterar os formatos de corte existentes.
 
-O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos posteriores levaram a `main` a `a1d4d46`. A presença no Git não comprova que migration, frontend e worker estejam alinhados, portanto o rollout ainda exige verificação externa. A correção da atualização do vídeo final está em revisão no PR rascunho #69, branch `codex/fix-editorial-final-refresh`, e não altera banco ou worker.
+O cancelamento seguro foi integrado pelo PR #68 no merge `9c0775c`; commits automáticos posteriores levaram a `main` a `a1d4d46`. A presença no Git não comprova que migration, frontend e worker estejam alinhados, portanto o rollout ainda exige verificação externa. A correção da atualização do vídeo final foi integrada pelo PR #69 no merge `a3ce6fe` e não altera banco ou worker.
 
 A correção do refresh foi validada pelo CI completo com 614 testes principais, 36 de deploy, 24 de reconciliação, scanner de segredos, typecheck, worker, gates e build. A publicação e o smoke autenticado continuam pendentes.
 
@@ -128,6 +128,18 @@ A correção do refresh foi validada pelo CI completo com 614 testes principais,
 - limites e preços-base armazenados no banco.
 
 Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somente a assinatura `live` não terminal mais recente, o financeiro prioriza o valor Pix registrado e a UI não expõe a chave técnica `starter`. O smoke autenticado confirmou plano Agência, limites e receita manual corretos.
+
+### Programa de afiliados — implementado localmente
+
+- somente um administrador com acesso à área de clientes pode habilitar ou pausar um afiliado;
+- cada afiliado ativo recebe um código e um link exclusivo de cadastro;
+- um novo usuário pode ser atribuído uma única vez e nunca pode indicar a própria conta;
+- a atribuição aceita apenas conta criada nas últimas 24 horas, evitando converter login de cliente antigo em novo cadastro indicado;
+- o afiliado vê totais de cadastros, clientes pagos ativos, conversão, últimos 30 dias e série mensal, sem e-mail ou dados financeiros dos indicados;
+- o admin vê afiliados, status e métricas, pode copiar o link e pausar novas atribuições;
+- pagamentos, planos, Stripe, Pix e comissões não são alterados nesta primeira fase.
+
+Estado: código e migration `20260802230000_affiliate_referrals.sql` preparados na branch `codex/affiliate-referrals`; banco e frontend de produção permanecem inalterados até aprovação.
 
 ### Piloto Editorial Inteligente — Fase 1
 
@@ -235,6 +247,16 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 - UI usa somente chave publicável; secrets ficam no backend;
 - mudanças de preço não alteram assinaturas existentes sem autorização.
 
+### Afiliados e indicações
+
+- habilitação e pausa são exclusivas do admin;
+- cada `referred_user_id` pertence a no máximo um afiliado e a atribuição não pode ser trocada;
+- código pausado não aceita novos cadastros, mas preserva o histórico já atribuído;
+- autoindicação é rejeitada;
+- o painel do afiliado usa apenas agregados e não expõe PII, plano individual ou pagamento dos indicados;
+- “cliente pago ativo” exige assinatura `live`, paga, ativa, aprovada, vigente e sem bloqueio ou reembolso integral;
+- esta fase mede indicação e conversão; comissão, saldo e pagamento ao afiliado exigem regra comercial e implementação separadas.
+
 ## Fluxos principais
 
 ### Novo cliente
@@ -255,6 +277,15 @@ O worker já possui xAI/Grok opcional para análise estruturada de cortes. Isso 
 4. a RPC cria ou renova a assinatura por um mês, sem cartão e sem IDs Stripe;
 5. o gate recalcula o acesso usando o ambiente `live`;
 6. no mês seguinte, uma nova confirmação Pix acrescenta a próxima competência.
+
+### Cadastro por indicação
+
+1. admin habilita um cliente como afiliado e o sistema gera o código exclusivo;
+2. visitante abre `/auth?ref=codigo` e o navegador guarda o código por até 24 horas;
+3. após criar e autenticar a nova conta, a RPC valida código ativo, janela de cadastro e autoindicação;
+4. a atribuição é gravada uma única vez e não modifica assinatura ou cobrança;
+5. o afiliado passa a ver o novo cadastro apenas como parte das métricas agregadas;
+6. o admin acompanha o resultado e pode pausar futuras atribuições sem apagar o histórico.
 
 ### Conteúdo por notícia
 
@@ -309,6 +340,7 @@ No Corte Editorial, o usuário escolhe Feed 4:5 ou Reel 9:16 antes da criação.
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
 - [integrado e publicado] substituir miniaturas fracas pela imagem principal relacionada da matéria e proteger o fallback pequeno; frontend, Edge Functions e worker publicados, smoke visual pendente;
 - [concluído] reconciliar a fila interrompida e implantar somente o worker de mídia no SHA final aprovado;
+- [implementado localmente] revisar, integrar e implantar o MVP de afiliados; validar uma conta nova pelo link antes de definir comissão;
 - validar o preview e concluir de forma controlada a publicação do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;

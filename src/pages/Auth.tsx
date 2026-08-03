@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SEO } from "@/components/SEO";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { trackMetaEvent } from "@/lib/metaPixel";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { resolvePostAuthRedirect } from "@/lib/safeRedirect";
+import { storeAffiliateReferralCode } from "@/lib/affiliateReferrals";
 
 const schemas = (t: (source: string) => string) => {
   const schema = z.object({
@@ -99,6 +100,10 @@ export default function Auth() {
   const [city, setCity] = useState("");
   const [stateUf, setStateUf] = useState("");
   const [country, setCountry] = useState("Brasil");
+
+  useEffect(() => {
+    storeAffiliateReferralCode(searchParams.get("ref"));
+  }, [searchParams]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
