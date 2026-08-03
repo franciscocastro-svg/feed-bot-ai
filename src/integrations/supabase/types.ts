@@ -325,6 +325,69 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_expenses: {
+        Row: {
+          amount_brl: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          notes: string | null
+          recurring: boolean
+          spent_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount_brl: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_brl?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          notes?: string | null
+          recurring?: boolean
+          spent_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_permissions: {
+        Row: {
+          created_at: string
+          full_access: boolean
+          sections: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_access?: boolean
+          sections?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_access?: boolean
+          sections?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       affiliate_accounts: {
         Row: {
           activated_at: string
@@ -398,69 +461,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      admin_expenses: {
-        Row: {
-          amount_brl: number
-          category: string
-          created_at: string
-          created_by: string | null
-          description: string
-          id: string
-          notes: string | null
-          recurring: boolean
-          spent_at: string
-          updated_at: string
-        }
-        Insert: {
-          amount_brl: number
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description: string
-          id?: string
-          notes?: string | null
-          recurring?: boolean
-          spent_at?: string
-          updated_at?: string
-        }
-        Update: {
-          amount_brl?: number
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          id?: string
-          notes?: string | null
-          recurring?: boolean
-          spent_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      admin_permissions: {
-        Row: {
-          created_at: string
-          full_access: boolean
-          sections: string[]
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          full_access?: boolean
-          sections?: string[]
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          full_access?: boolean
-          sections?: string[]
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
       }
       ai_rewrite_cache: {
         Row: {
@@ -3070,6 +3070,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      admin_set_affiliate: {
+        Args: {
+          _active: boolean
+          _notes?: string
+          _referral_code?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
       admin_subscription_overview: {
         Args: never
         Returns: {
@@ -3097,15 +3106,6 @@ export type Database = {
           subscription_id: string
           user_id: string
         }[]
-      }
-      admin_set_affiliate: {
-        Args: {
-          _active: boolean
-          _notes?: string
-          _referral_code?: string
-          _user_id: string
-        }
-        Returns: Json
       }
       admin_upsert_pix_subscription: {
         Args: {
@@ -3152,10 +3152,6 @@ export type Database = {
           subscription_id: string
         }[]
       }
-      claim_affiliate_referral: {
-        Args: { _referral_code: string }
-        Returns: Json
-      }
       begin_payment_reconcile_run: {
         Args: {
           p_edge_request_id: string
@@ -3172,6 +3168,10 @@ export type Database = {
       cancel_video_cut_job: { Args: { _job_id: string }; Returns: Json }
       check_and_increment_usage: {
         Args: { _resource: string; _user_id: string }
+        Returns: Json
+      }
+      claim_affiliate_referral: {
+        Args: { _referral_code: string }
         Returns: Json
       }
       claim_editorial_render_jobs: {
@@ -4618,12 +4618,12 @@ export type Database = {
         }
         Returns: number
       }
-      normalize_dedupe_text: { Args: { _value: string }; Returns: string }
-      normalize_dedupe_url: { Args: { _value: string }; Returns: string }
       normalize_affiliate_referral_code: {
         Args: { _code: string }
         Returns: string
       }
+      normalize_dedupe_text: { Args: { _value: string }; Returns: string }
+      normalize_dedupe_url: { Args: { _value: string }; Returns: string }
       normalize_youtube_video_url: { Args: { _url: string }; Returns: string }
       publish_account_template_draft: {
         Args: { _account_id: string; _format: string }
