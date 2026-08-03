@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O PR #69 foi integrado no merge `a3ce6fe`; publicação e smoke continuam verificações externas separadas. O MVP de afiliados está implementado e validado localmente na branch `codex/affiliate-referrals`, sem migration aplicada ou frontend publicado.
+Última atualização: **2026-08-02**. O PR #69 foi integrado no merge `a3ce6fe`; publicação e smoke continuam verificações externas separadas. O MVP de afiliados está implementado, validado e enviado no PR rascunho #70, commit `fbc7153`, sem migration aplicada ou frontend publicado.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -163,7 +163,7 @@
 - [x] Sincronizar contratos TypeScript e adicionar 9 testes de regressão.
 - [x] Aprovar `npm run ci` completo: secret scan, lint ratchet, typecheck, 9 testes direcionados, suíte principal com 623 testes, 36 testes do deploy seguro, 24 testes de reconciliação e build Vite.
 - [x] Atualizar `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`, `TASKS.md` e `HANDOFF.md`.
-- [ ] Revisar diff, criar commit separado, enviar ao GitHub e abrir PR após aprovação do usuário.
+- [x] Revisar diff, criar o commit separado `fbc7153`, enviar ao GitHub e abrir o PR rascunho #70.
 - [ ] Após merge aprovado, aplicar somente `20260802230000_affiliate_referrals.sql` e publicar somente o frontend.
 - [ ] Smoke autenticado: ativar cliente de teste, cadastrar nova conta pelo link, confirmar uma atribuição, métricas e ausência de alteração em assinatura.
 - [ ] Definir regras comerciais antes de implementar comissão, saldo ou pagamento ao afiliado.

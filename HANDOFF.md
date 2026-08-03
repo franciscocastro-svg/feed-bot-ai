@@ -18,7 +18,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 ### Trabalho atual — programa de afiliados
 
 - Worktree isolada: `/private/tmp/fluxfeed-affiliate-referrals`.
-- Branch: `codex/affiliate-referrals`, criada sobre `origin/main` em `a3ce6fe` (merge do PR #69).
+- Branch: `codex/affiliate-referrals`, criada sobre `origin/main` em `a3ce6fe` (merge do PR #69), enviada no commit `fbc7153` e aberta como PR rascunho [#70](https://github.com/franciscocastro-svg/feed-bot-ai/pull/70).
 - Escopo local: ativação/pausa pelo admin, link exclusivo, captura `?ref=`, atribuição imutável de cadastro novo, painel privado e métricas agregadas.
 - Banco: `20260802230000_affiliate_referrals.sql` cria `affiliate_accounts` e `affiliate_referrals`; ambas são RPC-only, com RLS ativo, grants diretos revogados e sem policies permissivas.
 - RPCs: `admin_set_affiliate`, `admin_affiliate_overview`, `claim_affiliate_referral` e `get_my_affiliate_dashboard`; todas validam JWT/identidade, e as administrativas exigem `is_admin()` + permissão `users`.
@@ -27,7 +27,7 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 - Cobrança preservada: a migration somente lê `user_subscriptions` para calcular “pago ativo”; não grava plano, Stripe, Pix, comissão ou pagamento.
 - Validação atual: `npm run ci` completo aprovado, incluindo secret scan, lint ratchet, typecheck, 9 testes direcionados, suíte principal com 623 testes, 36 testes do deploy seguro, 24 testes de reconciliação e build Vite. O lint direto dos arquivos legados continua mostrando somente a dívida já documentada em `Admin.tsx`/`DashboardLayout.tsx` e os dois warnings preexistentes de `AuthContext.tsx`.
 - Estado externo: nada aplicado ou publicado; nenhuma Edge Function, VPS, Stripe, Meta, dado de cliente ou configuração foi alterada.
-- Próximo passo: revisar o diff final, criar commit separado e abrir PR somente após autorização; depois do merge, aplicar a migration e publicar o frontend em etapas separadas.
+- Próximo passo: revisar e aprovar o PR #70; depois do merge, aplicar a migration e publicar o frontend em etapas separadas.
 
 ### Trabalho anterior — atualização do render final de Cortes IA
 
@@ -626,8 +626,8 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. revisar o diff final do programa de afiliados; o CI completo já está aprovado;
-2. após autorização, criar commit separado, enviar `codex/affiliate-referrals` e abrir PR rascunho;
+1. revisar e aprovar o PR rascunho #70; o CI completo já está aprovado;
+2. confirmar que o merge entrou na `main` antes de qualquer implantação;
 3. depois do merge aprovado, pedir à Lovable para aplicar somente `20260802230000_affiliate_referrals.sql`, verificar tabelas/RPCs/ACLs e então publicar somente o frontend;
 4. fazer smoke com um afiliado e uma conta nova, confirmando uma única atribuição, métricas agregadas e zero mudança em assinatura;
 5. manter comissão/saldo/pagamento fora do escopo até existir regra comercial aprovada;

@@ -129,7 +129,7 @@ A correção do refresh foi validada pelo CI completo com 614 testes principais,
 
 Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somente a assinatura `live` não terminal mais recente, o financeiro prioriza o valor Pix registrado e a UI não expõe a chave técnica `starter`. O smoke autenticado confirmou plano Agência, limites e receita manual corretos.
 
-### Programa de afiliados — implementado localmente
+### Programa de afiliados — em revisão no PR #70
 
 - somente um administrador com acesso à área de clientes pode habilitar ou pausar um afiliado;
 - cada afiliado ativo recebe um código e um link exclusivo de cadastro;
@@ -139,7 +139,7 @@ Correção publicada em 2026-08-01: o resolvedor legado de limites escolhe somen
 - o admin vê afiliados, status e métricas, pode copiar o link e pausar novas atribuições;
 - pagamentos, planos, Stripe, Pix e comissões não são alterados nesta primeira fase.
 
-Estado: código e migration `20260802230000_affiliate_referrals.sql` preparados na branch `codex/affiliate-referrals`; banco e frontend de produção permanecem inalterados até aprovação.
+Estado: código e migration `20260802230000_affiliate_referrals.sql` enviados no PR rascunho #70, commit `fbc7153`; banco e frontend de produção permanecem inalterados até aprovação e merge.
 
 ### Piloto Editorial Inteligente — Fase 1
 
