@@ -325,80 +325,6 @@ export type Database = {
         }
         Relationships: []
       }
-      affiliate_accounts: {
-        Row: {
-          activated_at: string
-          activated_by: string | null
-          created_at: string
-          id: string
-          notes: string | null
-          paused_at: string | null
-          referral_code: string
-          status: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          activated_at?: string
-          activated_by?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          paused_at?: string | null
-          referral_code: string
-          status?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          activated_at?: string
-          activated_by?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          paused_at?: string | null
-          referral_code?: string
-          status?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      affiliate_referrals: {
-        Row: {
-          affiliate_id: string
-          claimed_at: string
-          id: string
-          referral_code_snapshot: string
-          referred_user_id: string
-          registered_at: string
-        }
-        Insert: {
-          affiliate_id: string
-          claimed_at?: string
-          id?: string
-          referral_code_snapshot: string
-          referred_user_id: string
-          registered_at: string
-        }
-        Update: {
-          affiliate_id?: string
-          claimed_at?: string
-          id?: string
-          referral_code_snapshot?: string
-          referred_user_id?: string
-          registered_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_id_fkey"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       admin_expenses: {
         Row: {
           amount_brl: number
@@ -3029,23 +2955,6 @@ export type Database = {
       }
     }
     Functions: {
-      admin_affiliate_overview: {
-        Args: never
-        Returns: {
-          activated_at: string
-          affiliate_id: string
-          conversion_rate: number
-          display_name: string
-          email: string
-          last_referral_at: string
-          not_active_count: number
-          paid_active_count: number
-          referral_code: string
-          registered_count: number
-          status: string
-          user_id: string
-        }[]
-      }
       admin_get_user_details: { Args: { _uid: string }; Returns: Json }
       admin_has_permission: { Args: { _section: string }; Returns: boolean }
       admin_overview: {
@@ -3098,15 +3007,6 @@ export type Database = {
           user_id: string
         }[]
       }
-      admin_set_affiliate: {
-        Args: {
-          _active: boolean
-          _notes?: string
-          _referral_code?: string
-          _user_id: string
-        }
-        Returns: Json
-      }
       admin_upsert_pix_subscription: {
         Args: {
           _amount_paid_brl: number
@@ -3151,10 +3051,6 @@ export type Database = {
           action: string
           subscription_id: string
         }[]
-      }
-      claim_affiliate_referral: {
-        Args: { _referral_code: string }
-        Returns: Json
       }
       begin_payment_reconcile_run: {
         Args: {
@@ -4507,7 +4403,6 @@ export type Database = {
           version: string
         }[]
       }
-      get_my_affiliate_dashboard: { Args: never; Returns: Json }
       get_subscription_status: {
         Args: { _user_id: string }
         Returns: {
@@ -4620,10 +4515,6 @@ export type Database = {
       }
       normalize_dedupe_text: { Args: { _value: string }; Returns: string }
       normalize_dedupe_url: { Args: { _value: string }; Returns: string }
-      normalize_affiliate_referral_code: {
-        Args: { _code: string }
-        Returns: string
-      }
       normalize_youtube_video_url: { Args: { _url: string }; Returns: string }
       publish_account_template_draft: {
         Args: { _account_id: string; _format: string }
