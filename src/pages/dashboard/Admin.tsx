@@ -16,11 +16,13 @@ import {
   Activity, Clock, Check, X, ArrowUpDown, Rss, Instagram, Calendar, Zap, TrendingUp,
   LogIn, Settings2, UserCog, ShieldCheck, Gauge, Megaphone, LifeBuoy, Map as MapIcon, Mail,
   Server, Radio, ListChecks, Database, Plus, Trash2,
+  Link2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AlertsCard } from "@/components/admin/AlertsCard";
 import { PlanLimitsEditor } from "@/components/admin/PlanLimitsEditor";
 import { AdminManager } from "@/components/admin/AdminManager";
+import { AffiliateManager } from "@/components/admin/AffiliateManager";
 import { RoadmapCard } from "@/components/admin/RoadmapCard";
 import { statusLabelPt } from "@/lib/statusLabels";
 import { planLabel, subscriptionMonthlyValue } from "@/lib/billing";
@@ -61,8 +63,9 @@ const PLANS = ["free", "starter", "pro", "business", "agency"];
 const PIX_PLANS = ["starter", "pro", "business", "agency"];
 const STATUSES = ["active", "trialing", "past_due", "canceled", "blocked"];
 const EXPENSE_CATEGORIES = ["IA", "Servidor", "Tráfego pago", "Ferramentas", "Equipe", "Outros"];
-const ADMIN_TABS = [
+const ADMIN_TABS: Array<{ value: string; label: string; icon: typeof Users; permission?: string }> = [
   { value: "users", label: "Usuários", icon: Users },
+  { value: "affiliates", label: "Afiliados", icon: Link2, permission: "users" },
   { value: "system", label: "Saúde", icon: Activity },
   { value: "finance", label: "Financeiro", icon: DollarSign },
   { value: "plans", label: "Planos", icon: Settings2 },
@@ -731,7 +734,7 @@ export default function Admin() {
     notation: "compact",
     maximumFractionDigits: 1,
   });
-  const visibleAdminTabs = ADMIN_TABS.filter((tab) => hasAdminPermission(tab.value));
+  const visibleAdminTabs = ADMIN_TABS.filter((tab) => hasAdminPermission(tab.permission || tab.value));
   const visibleTabKeys = visibleAdminTabs.map((tab) => tab.value).join("|");
 
   useEffect(() => {
@@ -891,7 +894,11 @@ export default function Admin() {
           </CardContent>
         </Card>
       ) : (
-      <Tabs value={activeTab} orientation="vertical" onValueChange={(v) => { if (!hasAdminPermission(v)) return; setActiveTab(v); }} className="flex flex-col lg:flex-row gap-4">
+      <Tabs value={activeTab} orientation="vertical" onValueChange={(v) => {
+        const target = ADMIN_TABS.find((tab) => tab.value === v);
+        if (!target || !hasAdminPermission(target.permission || target.value)) return;
+        setActiveTab(v);
+      }} className="flex flex-col lg:flex-row gap-4">
         <TabsList className="lg:flex-col lg:h-auto lg:items-stretch lg:justify-start lg:w-56 lg:shrink-0 lg:p-2 lg:bg-card lg:border lg:border-border lg:rounded-xl flex-wrap h-auto">
           {visibleAdminTabs.map(t => (
             <TabsTrigger
@@ -1057,6 +1064,11 @@ export default function Admin() {
               </table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ====== AFILIADOS ====== */}
+        <TabsContent value="affiliates" className="mt-4">
+          <AffiliateManager allUsers={rows} />
         </TabsContent>
 
         {/* ====== SISTEMA ====== */}

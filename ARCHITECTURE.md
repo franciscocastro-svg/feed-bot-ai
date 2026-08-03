@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial aprovado em smoke autenticado, o cancelamento integrado e a atualização local do estado do render final.
+Atualizado em **2026-08-02** para o Corte Editorial, o cancelamento integrado, o refresh final mesclado em `a3ce6fe` e o MVP de afiliados em revisão no PR rascunho #70, ainda não implantado.
 
 O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
 
@@ -14,7 +14,7 @@ O smoke posterior confirmou Reel 1080 × 1920, trecho de 52 segundos, identidade
 
 Esse contrato foi integrado pelo PR #68 no merge `9c0775c`; a plataforma avançou depois a `main` até `a1d4d46`. A arquitetura só deve ser considerada ativa depois da confirmação separada do Supabase, frontend publicado e `feedbot-cuts` na VPS.
 
-A atualização da tela do vídeo final permanece responsabilidade do frontend e está em revisão no PR rascunho #69. `Cuts.tsx` lê os rerenders ativos do usuário, associa `queued`/`processing` ao clipe e mantém polling de 15 segundos enquanto houver job ou clipe ativo. A reprodução só adia a consulta enquanto o vídeo está tocando ou por uma tolerância de dez segundos após a última interação; um vídeo pausado que já avançou não pode bloquear o polling indefinidamente. `EditorialCutPreview` usa esse estado para impedir requisições duplicadas e só libera o agendamento quando `video_url` e `editorial_review_confirmed_at` estiverem presentes.
+A atualização da tela do vídeo final permanece responsabilidade do frontend e foi integrada pelo PR #69 no merge `a3ce6fe`. `Cuts.tsx` lê os rerenders ativos do usuário, associa `queued`/`processing` ao clipe e mantém polling de 15 segundos enquanto houver job ou clipe ativo. A reprodução só adia a consulta enquanto o vídeo está tocando ou por uma tolerância de dez segundos após a última interação; um vídeo pausado que já avançou não pode bloquear o polling indefinidamente. `EditorialCutPreview` usa esse estado para impedir requisições duplicadas e só libera o agendamento quando `video_url` e `editorial_review_confirmed_at` estiverem presentes. Publicação e smoke continuam estados externos a confirmar.
 
 Validação local do cancelamento: 31 testes direcionados, 603 testes principais, 36 testes herméticos de deploy, 24 de reconciliação, typecheck, lints, sintaxe do worker, gates editoriais/MCP e build aprovados. A correção posterior do refresh aprovou 614 testes principais, 36 de deploy, 24 de reconciliação, scanner de segredos em 685 arquivos, typecheck, lints, worker, gates e build.
 
@@ -60,9 +60,12 @@ O frontend coordena a experiência e ações autenticadas. Edge Functions concen
 - `lib/editorialCuts.ts`: modos de corte, configuração visual, validação da revisão e payload do render editorial;
 - `lib/videoCuts.ts`: limites, opções e política pura que decide quando a reprodução pode adiar a atualização da fila;
 - `components/cuts/EditorialCutPreview.tsx`: prévia editável em 4:5 ou 9:16 e comandos separados de texto, render final e agendamento;
+- `lib/affiliateReferrals.ts`: normalização, persistência first-party por 24 horas e claim autenticado do código de indicação;
+- `pages/dashboard/Affiliates.tsx`: painel privado com link e métricas agregadas;
+- `components/admin/AffiliateManager.tsx`: ativação, pausa e visão administrativa dos afiliados;
 - `test/`: regressões, contratos, segurança e operação.
 
-Rotas públicas cobrem autenticação, verificação/recuperação, preços, checkout, termos, privacidade, exclusão de dados e OAuth. Rotas protegidas cobrem notícias, fontes, pautas, Perfil de Criador, agendados, contas, templates, canais, insights, cortes, suporte e administração.
+Rotas públicas cobrem autenticação, verificação/recuperação, preços, checkout, termos, privacidade, exclusão de dados e OAuth. Rotas protegidas cobrem notícias, fontes, pautas, Perfil de Criador, agendados, contas, templates, canais, insights, cortes, indicações habilitadas, suporte e administração.
 
 ### Edge Functions — `supabase/functions/`
 
@@ -230,6 +233,19 @@ Desde `e163226`, `get_user_plan()` filtra `environment='live'`, ignora linhas te
 
 Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera conteúdo; falha de RPC e demais motivos são apresentados separadamente, sem sugerir cartão indevidamente. A auditoria de 2026-08-01 mostrou que o cliente afetado tinha `has_access=true` apenas em sandbox e `no_subscription` em live, comprovando que a liberação anterior ocorreu no ambiente errado.
 
+### Afiliados e atribuição de cadastro
+
+1. `Auth.tsx` reconhece `?ref=` e `affiliateReferrals.ts` guarda apenas um código normalizado por até 24 horas;
+2. após a autenticação, `AuthContext` chama `claim_affiliate_referral` sem enviar `user_id`;
+3. a RPC usa `auth.uid()`, lock por usuário e a data real de `auth.users` para aceitar somente conta recém-criada;
+4. código precisa pertencer a afiliado ativo, autoindicação é bloqueada e `referred_user_id` único torna a atribuição imutável;
+5. `get_my_affiliate_dashboard` retorna somente código próprio e agregados; nenhuma PII dos indicados é retornada;
+6. `admin_affiliate_overview` e `admin_set_affiliate` exigem admin com permissão `users`;
+7. pausar um afiliado impede novos claims, mas preserva o histórico;
+8. os cálculos apenas leem `user_subscriptions`; nenhuma assinatura, plano, Pix ou Stripe é modificado.
+
+Não há Edge Function nesse MVP. As tabelas são RPC-only: RLS fica ativo, acesso direto é revogado de `anon`/`authenticated` e não existe policy permissiva. As funções `SECURITY DEFINER` fixam o `search_path` e validam a identidade no servidor.
+
 ### Cortes de vídeo
 
 1. URL ou arquivo cria job;
@@ -339,7 +355,7 @@ Entradas carregam fonte, conta, perfil e tarefa. Saídas críticas usam JSON est
 
 ## Banco de dados
 
-A `main` contém 185 migrations versionadas. Além das migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149`, o Supabase registra a compatibilidade editorial 4:5/9:16 como `20260802164442`. Esta última recria as RPCs editoriais, sem criar jobs ou alterar dados de clientes. Domínios representativos:
+Esta árvore contém 188 migrations versionadas. Além das migrations Pix `20260801134000`, Agência `20260801144500`, Piloto Editorial `20260801170000`, compatibilidade `20260801185731` e correção da RPC `20260801194149`, o Supabase registra a compatibilidade editorial 4:5/9:16 como `20260802164442`. A migration local `20260802230000_affiliate_referrals.sql` ainda não foi aplicada e não comprova estado externo. Domínios representativos:
 
 | Domínio | Tabelas/contratos representativos |
 |---|---|
@@ -348,6 +364,7 @@ A `main` contém 185 migrations versionadas. Além das migrations Pix `202608011
 | Conteúdo | `news_sources`, vínculos de fontes, `news_items`, `content_topics`, `scheduled_posts` |
 | Observabilidade | logs, fetch runs, worker health, uso Meta/IA |
 | Pagamentos | `plan_limits`, `user_subscriptions`, origem/valor Pix, eventos/efeitos/reconciliação |
+| Afiliados | `affiliate_accounts`, `affiliate_referrals` e quatro RPCs de gestão/claim/métricas |
 | Cortes | jobs, clips, perfis, rerender e uso diário |
 | Operação | releases, permissões, suporte, e-mail e despesas |
 
@@ -360,6 +377,7 @@ Migrations são append-only. Presença no Git não comprova aplicação no banco
 - service role existe apenas em Edge Functions e worker;
 - RLS e RPCs protegem dados por usuário;
 - funções administrativas validam JWT e permissão;
+- indicação valida `auth.uid()`, janela de cadastro, afiliado ativo, unicidade e autoindicação no banco;
 - tokens Instagram e secrets passam por rotas controladas;
 - webhook Stripe valida assinatura;
 - redirects usam allowlist;
@@ -422,6 +440,8 @@ Estado implantado em 2026-08-02: a recuperação anterior concluiu `93ae2a3`. Um
 | Transcrição como evidência primária | impedir identificação visual ou contexto inventado |
 | RPCs editoriais próprias | gravar o modo antes que o worker possa reclamar o job |
 | Formato editorial explícito na RPC v2 | criar 4:5 ou 9:16 atomicamente sem update tardio nem corrida |
+| Atribuição de afiliado imutável e RPC-only | impedir troca posterior, autoindicação e exposição de dados pessoais |
+| Métricas de afiliado derivadas da assinatura | medir conversão sem duplicar ou alterar dados de cobrança |
 | Logs sanitizados | observabilidade sem exposição de dados |
 | Docs raiz obrigatórios | continuidade sem depender de chats |
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { claimStoredAffiliateReferral } from "@/lib/affiliateReferrals";
 
 interface AuthCtx {
   user: User | null;
@@ -34,6 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [adminFullAccess, setAdminFullAccess] = useState(false);
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const resolvedPermissionUserId = useRef<string | null>(null);
+  const affiliateClaimUserId = useRef<string | null>(null);
 
   useEffect(() => {
     // Fix: usar APENAS onAuthStateChange (evita race condition com getSession)
@@ -117,6 +119,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     })();
 
     return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    const userId = session?.user?.id || null;
+    if (!userId) {
+      affiliateClaimUserId.current = null;
+      return;
+    }
+    if (affiliateClaimUserId.current === userId) return;
+
+    affiliateClaimUserId.current = userId;
+    claimStoredAffiliateReferral().catch(() => {
+      // Keep the first-party referral pending on a transient failure so a
+      // later session refresh or page load can retry without losing it.
+      if (affiliateClaimUserId.current === userId) {
+        affiliateClaimUserId.current = null;
+      }
+    });
   }, [session?.user?.id]);
 
   const hasAdminPermission = (section: string) =>

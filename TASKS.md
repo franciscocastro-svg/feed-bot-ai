@@ -1,6 +1,6 @@
 # Tarefas — Flux & Feed
 
-Última atualização: **2026-08-02**. O smoke autenticado do PR #67/merge `40a8c0e` foi aprovado com Reel 9:16, trecho de 52 segundos, identidade correta, confiança 100% e nenhuma publicação automática. O cancelamento seguro foi integrado pelo PR #68; o rollout externo ainda deve ser confirmado. A correção da atualização do vídeo final está no PR rascunho #69, sem deploy.
+Última atualização: **2026-08-02**. O PR #69 foi integrado no merge `a3ce6fe`; publicação e smoke continuam verificações externas separadas. O MVP de afiliados está implementado, validado e enviado no PR rascunho #70, commit `fbc7153`, sem migration aplicada ou frontend publicado.
 
 > Não mover uma tarefa para “Concluído” apenas porque existe em uma branch. Confirmar ancestralidade na `main`, testes e, quando aplicável, deployment.
 
@@ -148,6 +148,25 @@
 - [ ] **Qualidade de imagens:** frontend, Edge Functions e worker publicados; regenerar o caso de teste e confirmar visualmente a origem 1200×747.
 - [x] **Fila VPS:** recuperação integrada e executada; evidências preservadas, releases intermediários não executados, fila vazia e health aprovado.
 - [x] **Corte Editorial:** base, formato, Gemini, duração e identidade implantados; smoke autenticado 9:16 aprovado sem publicação. A validação 4:5 continua recomendada, mas não bloqueia o cancelamento de fila.
+- [x] **Programa de afiliados:** MVP implementado localmente com ativação admin, link exclusivo, atribuição imutável, painel privado e métricas agregadas; migration e frontend ainda não foram implantados.
+
+### P1 — Programa de afiliados
+
+- [x] Criar `affiliate_accounts` e `affiliate_referrals` sem copiar nem alterar dados financeiros.
+- [x] Ativar RLS, revogar acesso direto e expor somente RPCs autenticadas com `search_path` fixo.
+- [x] Permitir habilitar/pausar afiliado somente para admin com permissão de usuários.
+- [x] Gerar código exclusivo e aceitar código personalizado normalizado.
+- [x] Capturar `?ref=` por até 24 horas e fazer claim após autenticação por senha ou OAuth.
+- [x] Bloquear conta antiga, código pausado/inválido, autoindicação e troca de atribuição.
+- [x] Mostrar ao afiliado link, cadastros, clientes pagos ativos, conversão, últimos 30 dias e série de seis meses sem PII.
+- [x] Mostrar ao admin afiliados, status, métricas, link e ações de pausa/reativação.
+- [x] Sincronizar contratos TypeScript e adicionar 9 testes de regressão.
+- [x] Aprovar `npm run ci` completo: secret scan, lint ratchet, typecheck, 9 testes direcionados, suíte principal com 623 testes, 36 testes do deploy seguro, 24 testes de reconciliação e build Vite.
+- [x] Atualizar `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`, `TASKS.md` e `HANDOFF.md`.
+- [x] Revisar diff, criar o commit separado `fbc7153`, enviar ao GitHub e abrir o PR rascunho #70.
+- [ ] Após merge aprovado, aplicar somente `20260802230000_affiliate_referrals.sql` e publicar somente o frontend.
+- [ ] Smoke autenticado: ativar cliente de teste, cadastrar nova conta pelo link, confirmar uma atribuição, métricas e ausência de alteração em assinatura.
+- [ ] Definir regras comerciais antes de implementar comissão, saldo ou pagamento ao afiliado.
 
 ### P1 — Corte Editorial
 
@@ -241,7 +260,8 @@
 - [x] Executar CI completo: scanner em 685 arquivos, 614 testes principais, 36 de deploy, 24 de reconciliação, worker, gates e build aprovados.
 - [x] Revisar o diff final e confirmar que banco, worker, Edge Functions e publicação não foram alterados.
 - [x] Enviar a branch e abrir o PR rascunho #69 contra `main`.
-- [ ] Publicar somente o frontend após aprovação e confirmar a transição completa em smoke autenticado.
+- [x] Integrar o PR #69 na `main` pelo merge `a3ce6fe`.
+- [ ] Confirmar separadamente a publicação do frontend e a transição completa em smoke autenticado.
 
 ## Próximas tarefas
 
