@@ -1,6 +1,6 @@
 # Arquitetura — Flux & Feed
 
-Atualizado em **2026-08-02** para o Corte Editorial, o cancelamento integrado, o refresh final mesclado em `a3ce6fe` e o MVP de afiliados em revisão no PR rascunho #70, ainda não implantado.
+Atualizado em **2026-08-03** para o Corte Editorial, o cancelamento integrado, o refresh final mesclado em `a3ce6fe` e o MVP de afiliados implantado pelo merge `c26dd9e` (PR #70), com a migration `20260802230000_affiliate_referrals.sql` registrada como `20260803032658` e somente o frontend publicado.
 
 O Corte Editorial base e a proteção temporária `Beta admin` foram integrados pelos PRs #60/#61 nos merges `acc8363`/`e433493`. O Supabase contém a migration registrada como `20260802144135`, as RPCs/triggers e a Edge `regenerate-cut-editorial-text`; o merge automático `ad273b4` registra schema e tipos. O PR #62 integrou `DEPLOY_PM2_SCOPE=cuts-only` no merge `67ced14`, implantado na VPS em 2026-08-02. O checkout, dependências, testes, nginx e health permaneceram completos, mas somente `feedbot-cuts` foi reiniciado; `feedbot-media` e `feedbot-webhook` mantiveram os PIDs anteriores. O bloqueio operacional antigo de `fbe6a2a` foi preservado para tratamento separado.
 
