@@ -164,7 +164,9 @@
 - [x] Aprovar `npm run ci` completo: secret scan, lint ratchet, typecheck, 9 testes direcionados, suíte principal com 623 testes, 36 testes do deploy seguro, 24 testes de reconciliação e build Vite.
 - [x] Atualizar `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`, `TASKS.md` e `HANDOFF.md`.
 - [x] Revisar diff, criar o commit separado `fbc7153`, enviar ao GitHub e abrir o PR rascunho #70.
-- [ ] Após merge aprovado, aplicar somente `20260802230000_affiliate_referrals.sql` e publicar somente o frontend.
+- [x] Merge `c26dd9e` (PR #70) sincronizado e migration `20260802230000_affiliate_referrals.sql` aplicada, registrada como `20260803032658`; somente o frontend da `main` foi publicado.
+- [x] Verificado após a implantação: RLS ativo em `affiliate_accounts` e `affiliate_referrals`, zero policies, acesso direto revogado para `anon`/`authenticated`, as quatro RPCs presentes com `is_admin()` + permissão `users` nas administrativas, PostgREST recarregado e nenhuma assinatura, plano ou pagamento alterado (28 assinaturas e 6 planos antes e depois).
+- [ ] Ativar o primeiro afiliado real pelo painel administrativo quando houver decisão comercial; nenhum afiliado, indicação ou cadastro de teste foi criado.
 - [ ] Smoke autenticado: ativar cliente de teste, cadastrar nova conta pelo link, confirmar uma atribuição, métricas e ausência de alteração em assinatura.
 - [ ] Definir regras comerciais antes de implementar comissão, saldo ou pagamento ao afiliado.
 
