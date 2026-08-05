@@ -246,6 +246,8 @@ Desde o PR #42, somente `has_access=true` ou o bypass administrativo libera cont
 
 Não há Edge Function nesse MVP. As tabelas são RPC-only: RLS fica ativo, acesso direto é revogado de `anon`/`authenticated` e não existe policy permissiva. As funções `SECURITY DEFINER` fixam o `search_path` e validam a identidade no servidor.
 
+Estado em produção (2026-08-03): migration `20260802230000_affiliate_referrals.sql` aplicada e registrada como `20260803032658`, PostgREST recarregado e verificação confirmando RLS ativo, `policies = 0`, `SELECT`/`INSERT` negados a `anon` e `authenticated`, `EXECUTE` negado a `anon` nas quatro RPCs e concedido a `authenticated`, e guardas `is_admin()` + `admin_has_permission('users')` presentes em `admin_set_affiliate` e `admin_affiliate_overview`. As tabelas estão vazias: nenhum afiliado ou indicação de teste foi criado.
+
 ### Cortes de vídeo
 
 1. URL ou arquivo cria job;
