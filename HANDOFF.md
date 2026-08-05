@@ -626,13 +626,12 @@ Nenhuma dessas verificações deve ser inferida apenas pelo Git.
 
 ## Próximo passo exato
 
-1. revisar e aprovar o PR rascunho #70; o CI completo já está aprovado;
-2. confirmar que o merge entrou na `main` antes de qualquer implantação;
-3. depois do merge aprovado, pedir à Lovable para aplicar somente `20260802230000_affiliate_referrals.sql`, verificar tabelas/RPCs/ACLs e então publicar somente o frontend;
-4. fazer smoke com um afiliado e uma conta nova, confirmando uma única atribuição, métricas agregadas e zero mudança em assinatura;
-5. manter comissão/saldo/pagamento fora do escopo até existir regra comercial aprovada;
-6. em trabalho separado, confirmar a publicação do PR #69 e o rollout do cancelamento `20260802220000`/worker;
-7. repetir o smoke editorial em Feed 4:5 e tratar `SIGINT`, recaptura de imagem e replay do Piloto independentemente.
+1. programa de afiliados implantado: merge `c26dd9e` sincronizado, migration `20260802230000_affiliate_referrals.sql` aplicada como `20260803032658` e frontend da `main` publicado;
+2. quando houver decisão comercial, ativar o primeiro afiliado real pelo painel administrativo e validar a primeira atribuição em uso normal;
+3. manter comissão, saldo e pagamento fora do escopo até existir regra comercial aprovada;
+4. em trabalho separado, confirmar a publicação do PR #69 e o rollout do cancelamento `20260802220000`/worker;
+5. repetir o smoke editorial em Feed 4:5 e tratar `SIGINT`, recaptura de imagem e replay do Piloto independentemente.
+
 
 ## Checklist de manutenção
 
