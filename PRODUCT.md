@@ -340,7 +340,7 @@ No Corte Editorial, o usuário escolhe Feed 4:5 ou Reel 9:16 antes da criação.
 - [concluído em produção] contabilizar no financeiro o valor manual do Pix quando o catálogo for negociável;
 - [integrado e publicado] substituir miniaturas fracas pela imagem principal relacionada da matéria e proteger o fallback pequeno; frontend, Edge Functions e worker publicados, smoke visual pendente;
 - [concluído] reconciliar a fila interrompida e implantar somente o worker de mídia no SHA final aprovado;
-- [implementado localmente] revisar, integrar e implantar o MVP de afiliados; validar uma conta nova pelo link antes de definir comissão;
+- [implantado] MVP de afiliados no merge `c26dd9e`: migration `20260802230000_affiliate_referrals.sql` aplicada como `20260803032658` e frontend publicado, sem afiliado de teste e sem alterar assinatura, plano ou pagamento; ativar o primeiro afiliado real e medir conversão antes de definir comissão;
 - validar o preview e concluir de forma controlada a publicação do frontend da Fase 2A do Perfil do Criador;
 - revalidar frontend live, Stripe, webhooks, Supabase, Meta e VPS;
 - confirmar SHAs e migrations efetivamente implantados;
