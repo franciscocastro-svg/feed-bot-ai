@@ -15,19 +15,19 @@ Objetivo: permitir continuidade sem depender do histórico de conversas.
 
 ## Estado Git confirmado
 
-### Trabalho atual — programa de afiliados
+### Trabalho atual — programa de afiliados (implantado)
 
-- Worktree isolada: `/private/tmp/fluxfeed-affiliate-referrals`.
-- Branch: `codex/affiliate-referrals`, criada sobre `origin/main` em `a3ce6fe` (merge do PR #69), enviada no commit `fbc7153` e aberta como PR rascunho [#70](https://github.com/franciscocastro-svg/feed-bot-ai/pull/70).
-- Escopo local: ativação/pausa pelo admin, link exclusivo, captura `?ref=`, atribuição imutável de cadastro novo, painel privado e métricas agregadas.
-- Banco: `20260802230000_affiliate_referrals.sql` cria `affiliate_accounts` e `affiliate_referrals`; ambas são RPC-only, com RLS ativo, grants diretos revogados e sem policies permissivas.
-- RPCs: `admin_set_affiliate`, `admin_affiliate_overview`, `claim_affiliate_referral` e `get_my_affiliate_dashboard`; todas validam JWT/identidade, e as administrativas exigem `is_admin()` + permissão `users`.
+- Merge na `main`: [PR #70](https://github.com/franciscocastro-svg/feed-bot-ai/pull/70), commit `c26dd9e01ef4540af3e2dbc28e798539d8b2a494`, branch `codex/affiliate-referrals`.
+- Escopo: ativação/pausa pelo admin, link exclusivo, captura `?ref=`, atribuição imutável de cadastro novo, painel privado e métricas agregadas.
+- Banco aplicado: `20260802230000_affiliate_referrals.sql`, registrada no projeto como `20260803032658`. Criou `affiliate_accounts` e `affiliate_referrals`; ambas RPC-only, com RLS ativo, zero policies e grants diretos revogados para `public`, `anon` e `authenticated`.
+- RPCs ativas: `admin_set_affiliate`, `admin_affiliate_overview`, `claim_affiliate_referral` e `get_my_affiliate_dashboard`; todas `SECURITY DEFINER` com `search_path` fixo, `EXECUTE` negado a `anon` e concedido a `authenticated`. As duas administrativas exigem `is_admin()` + `admin_has_permission('users')`.
 - Segurança: um usuário só pode ser atribuído uma vez; conta com mais de 24 horas, autoindicação, código inválido/pausado e tentativa de troca são rejeitados. Afiliado recebe somente agregados, sem e-mail, plano individual ou pagamento dos indicados.
 - Frontend: `Auth.tsx` captura o código; `AuthContext.tsx` tenta o claim após autenticação; `DashboardLayout.tsx` mostra “Indicações” apenas para afiliado ativo; `Affiliates.tsx` exibe o painel; `AffiliateManager.tsx` adiciona a gestão ao admin.
-- Cobrança preservada: a migration somente lê `user_subscriptions` para calcular “pago ativo”; não grava plano, Stripe, Pix, comissão ou pagamento.
-- Validação atual: `npm run ci` completo aprovado, incluindo secret scan, lint ratchet, typecheck, 9 testes direcionados, suíte principal com 623 testes, 36 testes do deploy seguro, 24 testes de reconciliação e build Vite. O lint direto dos arquivos legados continua mostrando somente a dívida já documentada em `Admin.tsx`/`DashboardLayout.tsx` e os dois warnings preexistentes de `AuthContext.tsx`.
-- Estado externo: nada aplicado ou publicado; nenhuma Edge Function, VPS, Stripe, Meta, dado de cliente ou configuração foi alterada.
-- Próximo passo: revisar e aprovar o PR #70; depois do merge, aplicar a migration e publicar o frontend em etapas separadas.
+- Cobrança preservada: a migration somente lê `user_subscriptions` para calcular “pago ativo”. Snapshot antes e depois idêntico: 28 assinaturas e 6 planos, sem gravação em Stripe, Pix, plano, comissão ou pagamento.
+- Validação pós-implantação: RLS ativo nas duas tabelas, `policies = 0`, `SELECT`/`INSERT` negados a `anon` e `authenticated`, quatro RPCs presentes com guardas confirmadas, PostgREST recarregado, 9 testes de `affiliate-referrals` aprovados e typecheck limpo.
+- Estado externo: nenhuma Edge Function, worker, VPS, Stripe, Meta ou dado de cliente alterado. Nenhum afiliado, indicação ou cadastro de teste criado.
+- Próximo passo: quando houver decisão comercial, ativar o primeiro afiliado real pelo painel administrativo e acompanhar a primeira atribuição.
+
 
 ### Trabalho anterior — atualização do render final de Cortes IA
 
