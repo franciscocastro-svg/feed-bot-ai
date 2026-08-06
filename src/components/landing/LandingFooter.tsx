@@ -49,7 +49,7 @@ export function LandingFooter({ whatsappUrl, instagramUrl }: LandingFooterProps)
         rel="noopener noreferrer"
         aria-label="Falar com a equipe do Flux & Feed pelo WhatsApp"
         title="Falar com a equipe pelo WhatsApp"
-        className="group fixed bottom-4 right-4 z-[70] inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-emerald-400/30 bg-[#0d1712]/95 p-2 shadow-[0_16px_45px_rgba(0,0,0,0.45),0_0_28px_rgba(37,211,102,0.16)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-emerald-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:bottom-6 sm:right-6 sm:pr-5"
+        className="landing-whatsapp-fab group fixed bottom-4 right-4 z-[70] inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-emerald-400/30 bg-[#0d1712]/95 p-2 shadow-[0_16px_45px_rgba(0,0,0,0.45),0_0_28px_rgba(37,211,102,0.16)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-emerald-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:bottom-6 sm:right-6 sm:pr-5"
       >
         <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg shadow-emerald-950/40">
           <MessageCircle className="h-6 w-6" strokeWidth={2.4} aria-hidden="true" />
