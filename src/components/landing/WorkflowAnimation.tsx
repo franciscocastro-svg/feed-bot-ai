@@ -48,13 +48,15 @@ export function WorkflowAnimation() {
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="relative grid grid-cols-5 gap-2" aria-label="Etapas da demonstração">
-              <div className="absolute left-[8%] right-[8%] top-6 h-px bg-white/10" aria-hidden="true" />
+              <div className="pointer-events-none absolute left-[10%] right-[10%] top-[28px] h-0.5 -translate-y-1/2 rounded-full bg-white/10" aria-hidden="true" />
               <motion.div
-                className="absolute left-[8%] top-6 h-px origin-left bg-gradient-brand"
-                animate={{ width: `${(activeStep / (workflowSteps.length - 1)) * 84}%` }}
-                transition={{ duration: reduceMotion ? 0 : 0.5 }}
+                className="pointer-events-none absolute left-[10%] top-[28px] h-0.5 -translate-y-1/2 rounded-full bg-gradient-brand"
+                initial={false}
+                animate={{ width: `${(activeStep / (workflowSteps.length - 1)) * 80}%` }}
+                transition={{ duration: reduceMotion ? 0 : 0.5, ease: "easeInOut" }}
                 aria-hidden="true"
               />
+
               {workflowSteps.map((step, index) => {
                 const Icon = step.icon;
                 const isActive = index === activeStep;
