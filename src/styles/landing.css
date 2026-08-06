@@ -143,3 +143,14 @@
     animation: none;
   }
 }
+
+/* Evita sobreposição entre o banner de consentimento e o botão do WhatsApp */
+body[data-consent-open="true"] .landing-whatsapp-fab {
+  bottom: 8.5rem;
+}
+
+@media (min-width: 640px) {
+  body[data-consent-open="true"] .landing-whatsapp-fab {
+    bottom: 7rem;
+  }
+}
