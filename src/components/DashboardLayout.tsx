@@ -70,14 +70,17 @@ function SidebarContent({ onNavigate, user, onSignOut, isAdmin, isAffiliate, adm
             )}
           </NavLink>
         ))}
+        <div className="pt-3">
+          <PlanUsageCard />
+        </div>
       </nav>
-      <div className="p-3 border-t border-border space-y-2">
-        <PlanUsageCard />
-        <div className="px-3 py-2 text-xs text-muted-foreground truncate">{user?.email}</div>
+      <div className="shrink-0 p-3 border-t border-border space-y-1">
+        <div className="px-3 py-1 text-xs text-muted-foreground truncate">{user?.email}</div>
         <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onSignOut}>
           <LogOut className="h-4 w-4 mr-2" /> {t("Sair")}
         </Button>
       </div>
+
     </div>
   );
 }
