@@ -3,7 +3,36 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, Pause, Play, Sparkles } from "lucide-react";
 import { workflowSteps } from "./landingContent";
 
+const previewStates = [
+  {
+    status: "Captura da fonte",
+    headline: "Nova pauta detectada no feed monitorado",
+    caption: "Fonte confiável identificada · 12s atrás",
+  },
+  {
+    status: "IA escrevendo",
+    headline: "Como a tecnologia está mudando o jeito de criar conteúdo",
+    caption: "Título, legenda e hashtags gerados",
+  },
+  {
+    status: "Aplicando template",
+    headline: "Como a tecnologia está mudando o jeito de criar conteúdo",
+    caption: "Cores, fonte e logo da sua conta",
+  },
+  {
+    status: "Na fila",
+    headline: "Arte pronta para publicar",
+    caption: "Agendado para hoje às 18:30",
+  },
+  {
+    status: "Publicado",
+    headline: "Post no ar no Instagram",
+    caption: "Enviado pela API oficial da Meta",
+  },
+];
+
 export function WorkflowAnimation() {
+
   const reduceMotion = useReducedMotion();
   const [activeStep, setActiveStep] = useState(0);
   const [playing, setPlaying] = useState(!reduceMotion);
@@ -21,6 +50,8 @@ export function WorkflowAnimation() {
   }, [playing]);
 
   const active = workflowSteps[activeStep];
+  const preview = previewStates[activeStep] ?? previewStates[0];
+
   const ActiveIcon = active.icon;
 
   return (
@@ -117,9 +148,20 @@ export function WorkflowAnimation() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-[#0b0910]/90 p-4 sm:p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-muted-foreground">Conteúdo em processamento</span>
-              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">Automação ativa</span>
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={preview.status}
+                  initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                  transition={{ duration: 0.25 }}
+                  className="whitespace-nowrap rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary"
+                >
+                  {preview.status}
+                </motion.span>
+              </AnimatePresence>
             </div>
             <div className="mt-5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.035]">
               <div className="aspect-[4/3] bg-[linear-gradient(135deg,hsl(var(--primary)/0.16),transparent_45%),linear-gradient(315deg,hsl(var(--accent)/0.13),transparent_50%)] p-5">
@@ -127,13 +169,28 @@ export function WorkflowAnimation() {
                   <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                   Flux &amp; Feed
                 </div>
-                <div className="mt-8 max-w-[15rem] font-display text-xl font-bold leading-tight text-foreground sm:text-2xl">
-                  Como a tecnologia está mudando o jeito de criar conteúdo
-                </div>
-                <div className="mt-5 h-2 w-3/4 rounded-full bg-white/10" />
-                <div className="mt-2 h-2 w-1/2 rounded-full bg-white/[0.08]" />
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={preview.headline}
+                    initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <div className="mt-8 max-w-[15rem] font-display text-xl font-bold leading-tight text-foreground sm:text-2xl">
+                      {preview.headline}
+                    </div>
+                    <div className="mt-5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                      {preview.caption}
+                    </div>
+                    <div className="mt-3 h-2 w-3/4 rounded-full bg-white/10" />
+                    <div className="mt-2 h-2 w-1/2 rounded-full bg-white/[0.08]" />
+                  </motion.div>
+                </AnimatePresence>
               </div>
             </div>
+
             <div className="mt-4">
               <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                 <span>Progresso do fluxo</span>
