@@ -63,10 +63,10 @@ export function AnalyticsConsentBanner() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button size="sm" variant="outline" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("denied")}>
+          <Button size="sm" variant="outline" aria-label="Recusar opcionais" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("denied")}>
             Recusar
           </Button>
-          <Button size="sm" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("granted")}>
+          <Button size="sm" aria-label="Aceitar analíticos" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("granted")}>
             Aceitar
           </Button>
         </div>
