@@ -50,6 +50,8 @@ export function WorkflowAnimation() {
   }, [playing]);
 
   const active = workflowSteps[activeStep];
+  const preview = previewStates[activeStep] ?? previewStates[0];
+
   const ActiveIcon = active.icon;
 
   return (
