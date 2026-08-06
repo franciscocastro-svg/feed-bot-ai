@@ -90,7 +90,7 @@ export function WorkflowAnimation() {
               })}
             </div>
 
-            <div className="mt-7 min-h-[190px] rounded-2xl border border-white/10 bg-background/65 p-5 sm:p-6">
+            <div className="mt-7 rounded-2xl border border-white/10 bg-background/65 p-5 sm:p-6 lg:min-h-[190px]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={active.title}
