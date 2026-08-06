@@ -29,28 +29,46 @@ export function AnalyticsConsentBanner() {
     };
   }, []);
 
-  if (!shouldOfferAnalyticsConsent(location.pathname) || (consent !== null && !preferencesOpen)) return null;
+  const visible = shouldOfferAnalyticsConsent(location.pathname) && (consent === null || preferencesOpen);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (visible) {
+      document.body.dataset.consentOpen = "true";
+    } else {
+      delete document.body.dataset.consentOpen;
+    }
+    return () => {
+      if (typeof document !== "undefined") delete document.body.dataset.consentOpen;
+    };
+  }, [visible]);
+
+  if (!visible) return null;
 
   return (
     <section
       role="dialog"
       aria-labelledby="analytics-consent-title"
       aria-describedby="analytics-consent-description"
-      className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-h-[calc(100vh-1.5rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-background/95 p-4 shadow-2xl backdrop-blur supports-[height:100dvh]:max-h-[calc(100dvh-1.5rem)] supports-[padding:max(0px)]:bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5"
+      className="fixed inset-x-0 bottom-0 z-[100] border-t border-border bg-background/95 px-4 py-3 shadow-2xl backdrop-blur supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
     >
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1.5">
-          <h2 id="analytics-consent-title" className="font-semibold text-foreground">Sua privacidade importa</h2>
-          <p id="analytics-consent-description" className="text-sm leading-relaxed text-muted-foreground">
-            Usamos Google Analytics e Meta Pixel somente com sua autorização para medir páginas públicas e melhorar nossas campanhas. Cookies essenciais continuam funcionando normalmente.
+      <div className="container flex flex-col gap-3 px-0 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 id="analytics-consent-title" className="text-sm font-semibold text-foreground">Sua privacidade importa</h2>
+          <p id="analytics-consent-description" className="text-xs leading-relaxed text-muted-foreground">
+            Usamos analíticos só com sua autorização.{" "}
+            <Link className="font-medium text-primary underline underline-offset-4" to="/privacy">
+              Política de Privacidade
+            </Link>
           </p>
-          <Link className="inline-block text-xs font-medium text-primary underline underline-offset-4" to="/privacy">
-            Ver Política de Privacidade
-          </Link>
         </div>
-        <div className="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2">
-          <Button variant="outline" onClick={() => setAnalyticsConsent("denied")}>Recusar opcionais</Button>
-          <Button onClick={() => setAnalyticsConsent("granted")}>Aceitar analíticos</Button>
+        <div className="flex shrink-0 gap-2">
+          <Button size="sm" variant="outline" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("denied")}>
+            Recusar
+          </Button>
+          <Button size="sm" className="flex-1 sm:flex-none" onClick={() => setAnalyticsConsent("granted")}>
+            Aceitar
+          </Button>
         </div>
       </div>
     </section>
