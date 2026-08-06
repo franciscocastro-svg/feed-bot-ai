@@ -3,7 +3,36 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, Pause, Play, Sparkles } from "lucide-react";
 import { workflowSteps } from "./landingContent";
 
+const previewStates = [
+  {
+    status: "Captura da fonte",
+    headline: "Nova pauta detectada no feed monitorado",
+    caption: "Fonte confiável identificada · 12s atrás",
+  },
+  {
+    status: "IA escrevendo",
+    headline: "Como a tecnologia está mudando o jeito de criar conteúdo",
+    caption: "Título, legenda e hashtags gerados",
+  },
+  {
+    status: "Aplicando template",
+    headline: "Como a tecnologia está mudando o jeito de criar conteúdo",
+    caption: "Cores, fonte e logo da sua conta",
+  },
+  {
+    status: "Na fila",
+    headline: "Arte pronta para publicar",
+    caption: "Agendado para hoje às 18:30",
+  },
+  {
+    status: "Publicado",
+    headline: "Post no ar no Instagram",
+    caption: "Enviado pela API oficial da Meta",
+  },
+];
+
 export function WorkflowAnimation() {
+
   const reduceMotion = useReducedMotion();
   const [activeStep, setActiveStep] = useState(0);
   const [playing, setPlaying] = useState(!reduceMotion);
