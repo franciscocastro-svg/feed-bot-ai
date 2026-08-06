@@ -18,13 +18,14 @@ export function LandingFooter({ whatsappUrl, instagramUrl }: LandingFooterProps)
               Fontes, IA, criação, aprovação, agenda e publicação para operações de conteúdo no Instagram.
             </p>
           </div>
-          <nav aria-label="Links institucionais" className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-muted-foreground">
-            <Link to="/terms" className="transition-colors hover:text-foreground">Termos</Link>
-            <Link to="/privacy" className="transition-colors hover:text-foreground">Privacidade</Link>
-            <a href="#faq" className="transition-colors hover:text-foreground">Ajuda</a>
-            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">
+          <nav aria-label="Links institucionais" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <Link to="/terms" className="inline-flex min-h-11 items-center px-1 transition-colors hover:text-foreground">Termos</Link>
+            <Link to="/privacy" className="inline-flex min-h-11 items-center px-1 transition-colors hover:text-foreground">Privacidade</Link>
+            <a href="#faq" className="inline-flex min-h-11 items-center px-1 transition-colors hover:text-foreground">Ajuda</a>
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center px-1 transition-colors hover:text-foreground">
               Contato
             </a>
+
             <a
               href={instagramUrl}
               target="_blank"
