@@ -27,5 +27,8 @@ export function resolveBooleanFeatureFlag(value: string | boolean | undefined): 
 }
 
 export function isEditorialPilotPreviewEnabled(): boolean {
-  return resolveBooleanFeatureFlag(import.meta.env.VITE_FEATURE_EDITORIAL_PILOT_PREVIEW);
+  // Liberado por padrão; só desliga com VITE_FEATURE_EDITORIAL_PILOT_PREVIEW="false".
+  const raw = import.meta.env.VITE_FEATURE_EDITORIAL_PILOT_PREVIEW;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return true;
+  return resolveBooleanFeatureFlag(raw);
 }
