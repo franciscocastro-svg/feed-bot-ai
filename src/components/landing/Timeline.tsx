@@ -10,7 +10,7 @@ export function Timeline({ steps }: TimelineProps) {
 
   return (
     <ol className="relative grid gap-5 lg:grid-cols-4">
-      <div className="absolute left-[12.5%] right-[12.5%] top-7 hidden h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent lg:block" aria-hidden="true" />
+      <div className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-[52px] hidden h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-primary/50 to-transparent lg:block" aria-hidden="true" />
       {steps.map((step, index) => {
         const Icon = step.icon;
         return (
@@ -20,7 +20,7 @@ export function Timeline({ steps }: TimelineProps) {
             whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.4, delay: Math.min(index * 0.08, 0.24) }}
-            className="relative rounded-3xl border border-white/10 bg-card/65 p-6"
+            className="relative z-10 rounded-3xl border border-white/10 bg-card p-6"
           >
             <div className="mb-5 flex items-center justify-between">
               <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-glow">
