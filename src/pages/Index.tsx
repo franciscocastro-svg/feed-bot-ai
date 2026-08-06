@@ -116,7 +116,7 @@ export default function Index() {
       <HeroSection isAuthenticated={isAuthenticated} />
 
       <main>
-        <section id="problema" className="landing-section landing-content-auto container scroll-mt-24" aria-labelledby="problem-title">
+        <section id="problema" className="landing-section container scroll-mt-24" aria-labelledby="problem-title">
           <div className="landing-heading">
             <span className="landing-eyebrow">
               <Zap className="h-3.5 w-3.5" aria-hidden="true" />
