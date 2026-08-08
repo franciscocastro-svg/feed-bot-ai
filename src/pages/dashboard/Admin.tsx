@@ -1070,9 +1070,15 @@ export default function Admin() {
                           {r.has_live_subscription && (
                             <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(r)}>Plano</Button>
                           )}
+                          {r.approval_status === "rejected" ? (
+                            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setBan(r, false)}>Desbanir</Button>
+                          ) : (
+                            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => setBan(r, true)}>Banir</Button>
+                          )}
                           <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => impersonate(r.user_id)} title="Logar como (gera link mágico)">
                             <LogIn className="h-3 w-3"/>
                           </Button>
+
                         </div>
                       </td>
                     </tr>
