@@ -530,6 +530,26 @@ export default function Admin() {
     }
   };
 
+  const setBan = async (row: Row, ban: boolean) => {
+    const { data, error } = await supabase.from("user_subscriptions")
+      .update(ban
+        ? { approval_status: "rejected", status: "canceled", access_frozen: true }
+        : { approval_status: "approved", status: "active", access_frozen: false })
+      .eq("user_id", row.user_id)
+      .select("id");
+    if (error) { toast.error(error.message); return; }
+    if (!data?.length && ban) {
+      const { error: insErr } = await supabase.from("user_subscriptions").insert({
+        user_id: row.user_id, plan: "free", status: "canceled",
+        approval_status: "rejected", access_frozen: true, environment: "live",
+      });
+      if (insErr) { toast.error(insErr.message); return; }
+    }
+    toast.success(ban ? "Usuário banido" : "Banimento removido");
+    load();
+  };
+
+
   const bulkApprove = async (status: "approved" | "rejected") => {
     if (selected.size === 0) return;
     const ids = [...selected];
@@ -1050,9 +1070,15 @@ export default function Admin() {
                           {r.has_live_subscription && (
                             <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(r)}>Plano</Button>
                           )}
+                          {r.approval_status === "rejected" ? (
+                            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setBan(r, false)}>Desbanir</Button>
+                          ) : (
+                            <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => setBan(r, true)}>Banir</Button>
+                          )}
                           <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => impersonate(r.user_id)} title="Logar como (gera link mágico)">
                             <LogIn className="h-3 w-3"/>
                           </Button>
+
                         </div>
                       </td>
                     </tr>
