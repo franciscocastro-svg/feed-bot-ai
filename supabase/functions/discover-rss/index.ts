@@ -110,7 +110,151 @@ Deno.serve(async (req) => {
         { name: "Quem", url: "https://revistaquem.globo.com/rss/quem" },
         { name: "Metrópoles - Entretenimento", url: "https://www.metropoles.com/entretenimento/feed" },
       ],
+      // -----------------------------------------------------------------
+      // Catálogo universal (aditivo). Todas as chaves acima permanecem
+      // inalteradas. Cada feed abaixo foi verificado: HTTP 200 + itens.
+      // -----------------------------------------------------------------
+      viagem: [
+        { name: "G1 Turismo e Viagem", url: "https://g1.globo.com/rss/g1/turismo-e-viagem/" },
+        { name: "Melhores Destinos", url: "https://www.melhoresdestinos.com.br/feed" },
+        { name: "Viaje na Viagem", url: "https://viajenaviagem.com/feed/" },
+        { name: "360meridianos", url: "https://www.360meridianos.com/feed" },
+      ],
+      gastronomia: [
+        { name: "Estadão Paladar", url: "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/paladar/?outputType=xml" },
+        { name: "Guia da Cozinha", url: "https://guiadacozinha.com.br/feed/" },
+        { name: "Receiteria", url: "https://www.receiteria.com.br/feed/" },
+        { name: "Cozinha Legal", url: "https://cozinhalegal.com.br/feed/" },
+      ],
+      pets: [
+        { name: "Patas da Casa", url: "https://www.patasdacasa.com.br/rss.xml" },
+        { name: "Tudo Sobre Cachorros", url: "https://www.tudosobrecachorros.com.br/feed" },
+      ],
+      moda: [
+        { name: "Glamour", url: "https://glamour.globo.com/rss/glamour/" },
+        { name: "Vogue Brasil", url: "https://vogue.globo.com/rss/vogue/" },
+        { name: "Steal the Look", url: "https://stealthelook.com.br/feed/" },
+        { name: "FFW", url: "https://ffw.uol.com.br/feed/" },
+      ],
+      automoveis: [
+        { name: "Autoesporte", url: "https://autoesporte.globo.com/rss/autoesporte/" },
+        { name: "Quatro Rodas", url: "https://quatrorodas.abril.com.br/feed/" },
+      ],
+      games: [
+        { name: "IGN Brasil", url: "https://br.ign.com/feed.xml" },
+        { name: "Adrenaline", url: "https://www.adrenaline.com.br/feed/" },
+      ],
+      cinema: [
+        { name: "G1 Cinema", url: "https://g1.globo.com/rss/g1/pop-arte/cinema/" },
+        { name: "Cinepop", url: "https://cinepop.com.br/feed/" },
+        { name: "Cinema com Rapadura", url: "https://cinemacomrapadura.com.br/feed/" },
+        { name: "Observatório do Cinema", url: "https://observatoriodocinema.com.br/feed/" },
+      ],
+      musica: [
+        { name: "Rolling Stone Brasil", url: "https://rollingstone.com.br/feed/" },
+        { name: "Tenho Mais Discos Que Amigos", url: "https://www.tenhomaisdiscosqueamigos.com/feed/" },
+      ],
+      educacao: [
+        { name: "G1 Educação", url: "https://g1.globo.com/rss/g1/educacao/" },
+        { name: "Guia do Estudante", url: "https://guiadoestudante.abril.com.br/feed/" },
+      ],
+      carreira: [
+        { name: "Exame", url: "https://exame.com/feed/" },
+        { name: "Você RH", url: "https://vocerh.abril.com.br/feed/" },
+        { name: "Catho Carreira & Sucesso", url: "https://www.catho.com.br/carreira-sucesso/feed/" },
+      ],
+      imoveis: [
+        { name: "QuintoAndar Conteúdos", url: "https://conteudos.quintoandar.com.br/feed/" },
+        { name: "Estadão Economia", url: "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/?outputType=xml" },
+      ],
+      agro: [
+        { name: "Canal Rural", url: "https://www.canalrural.com.br/feed/" },
+        { name: "Agrolink", url: "https://www.agrolink.com.br/rss/noticias.xml" },
+      ],
+      ciencia: [
+        { name: "G1 Ciência e Saúde", url: "https://g1.globo.com/rss/g1/ciencia-e-saude/" },
+        { name: "Galileu", url: "https://revistagalileu.globo.com/rss/galileu/" },
+        { name: "Super Interessante", url: "https://super.abril.com.br/feed/" },
+      ],
+      "meio-ambiente": [
+        { name: "G1 Natureza", url: "https://g1.globo.com/rss/g1/natureza/" },
+        { name: "Um Só Planeta", url: "https://umsoplaneta.globo.com/rss/umsoplaneta/" },
+      ],
+      empreendedorismo: [
+        { name: "Pequenas Empresas & Grandes Negócios", url: "https://revistapegn.globo.com/rss/pegn/" },
+        { name: "Startups.com.br", url: "https://startups.com.br/feed/" },
+      ],
+      marketing: [
+        { name: "Meio & Mensagem", url: "https://www.meioemensagem.com.br/feed" },
+        { name: "Adnews", url: "https://adnews.com.br/feed/" },
+      ],
+      religiao: [
+        { name: "Canção Nova Notícias", url: "https://noticias.cancaonova.com/feed/" },
+        { name: "Gospel Prime", url: "https://www.gospelprime.com.br/feed/" },
+      ],
+      maternidade: [
+        { name: "Crescer", url: "https://revistacrescer.globo.com/rss/crescer/" },
+        { name: "Tempojunto", url: "https://www.tempojunto.com.br/feed/" },
+      ],
+      decoracao: [
+        { name: "Homify", url: "https://www.homify.com.br/livros_de_ideias.rss" },
+        { name: "Casa Abril", url: "https://casa.abril.com.br/feed/" },
+        { name: "Tua Casa", url: "https://www.tuacasa.com.br/feed/" },
+      ],
+      odontologia: [
+        { name: "CFO Notícias", url: "https://website.cfo.org.br/feed/" },
+      ],
+      psicologia: [
+        { name: "Vittude", url: "https://www.vittude.com/blog/feed/" },
+        { name: "Psicologias do Brasil", url: "https://www.psicologiasdobrasil.com.br/feed/" },
+      ],
+      seguros: [
+        { name: "CQCS", url: "https://cqcs.com.br/feed/" },
+        { name: "Sonho Seguro", url: "https://sonhoseguro.com.br/feed/" },
+        { name: "Revista Apólice", url: "https://www.revistaapolice.com.br/feed/" },
+      ],
+      construcao: [
+        { name: "Mapa da Obra", url: "https://www.mapadaobra.com.br/feed/" },
+        { name: "Cimento Itambé", url: "https://www.cimentoitambe.com.br/feed/" },
+      ],
+      energia: [
+        { name: "MegaWhat", url: "https://megawhat.energy/feed" },
+        { name: "Agência Brasil Economia", url: "https://agenciabrasil.ebc.com.br/rss/economia/feed.xml" },
+      ],
+      varejo: [
+        { name: "Mercado&Consumo", url: "https://mercadoeconsumo.com.br/feed/" },
+        { name: "Consumidor Moderno", url: "https://www.consumidormoderno.com.br/feed/" },
+      ],
+      logistica: [
+        { name: "Logweb", url: "https://www.logweb.com.br/feed/" },
+      ],
+      "seguranca-publica": [
+        { name: "G1 São Paulo", url: "https://g1.globo.com/rss/g1/sao-paulo/" },
+        { name: "Metrópoles - Distrito Federal", url: "https://www.metropoles.com/distrito-federal/feed" },
+      ],
+      "cultura-pop": [
+        { name: "Legião dos Heróis", url: "https://www.legiaodosherois.com.br/feed" },
+        { name: "IGN Brasil", url: "https://br.ign.com/feed.xml" },
+        { name: "Cinepop", url: "https://cinepop.com.br/feed/" },
+      ],
+      fitness: [
+        { name: "Sport Life", url: "https://sportlife.com.br/feed/" },
+        { name: "Veja Saúde", url: "https://saude.abril.com.br/feed/" },
+      ],
+      beleza: [
+        { name: "Dicas de Mulher", url: "https://www.dicasdemulher.com.br/feed/" },
+        { name: "Glamour", url: "https://glamour.globo.com/rss/glamour/" },
+      ],
+      direito: [
+        { name: "Conjur", url: "https://www.conjur.com.br/rss.xml" },
+        { name: "JOTA", url: "https://www.jota.info/feed" },
+      ],
+      forex: [
+        { name: "Money Times", url: "https://www.moneytimes.com.br/feed/" },
+        { name: "Seu Dinheiro", url: "https://www.seudinheiro.com/feed/" },
+      ],
     };
+
 
     function curatedFeeds(): FeedSuggestion[] {
       return (FALLBACK_FEEDS[profile.key] || []).map((feed) => ({
