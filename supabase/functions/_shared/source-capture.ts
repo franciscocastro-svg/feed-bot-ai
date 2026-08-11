@@ -665,20 +665,36 @@ function isSearchSource(source: SourceLike): boolean {
   return kind === "person" || kind === "topic" || kind === "google_news";
 }
 
+// Nichos de cadência semanal: sem esse piso, a janela padrão de poucas horas
+// rejeita conteúdo legítimo (foi o caso das fontes de viagem/turismo).
+// Aplica-se APENAS quando a fonte não tem max_age_hours configurado.
+const SLOW_NICHE_MIN_WINDOW_HOURS = 168;
+const SLOW_NICHE_PATTERN =
+  /(viagem|viagens|turismo|moda|fashion|decorac|interiores|arquitetura|imovel|imoveis|imobiliar|religi|gospel|igreja|maternidade|bebe|odontolog|dentist|psicolog|saude mental|seguro|previdencia|construc|obra|logistic|transporte|frete|gastronom|receita|culinar|pet|pets|educacao|carreira|emprego|agro|agronegocio|energia|varejo|ecommerce|e-commerce)/;
+
+function slowNicheWindowHours(source: SourceLike): number {
+  const text = normalizedText(`${source.niche || ""} ${source.name || ""}`);
+  return SLOW_NICHE_PATTERN.test(text) ? SLOW_NICHE_MIN_WINDOW_HOURS : 0;
+}
+
 function freshnessWindowHours(
   source: SourceLike,
   profile: RelevanceProfile,
   options: SourceCaptureOptions = {},
 ): number {
   const configured = Number(source.source_config?.max_age_hours);
-  const sourceWindow = Number.isFinite(configured) && configured > 0
+  const baseWindow = Number.isFinite(configured) && configured > 0
     ? configured
     : isSearchSource(source) ? Math.max(profile.maxAgeH, 168) : profile.maxAgeH;
+  const sourceWindow = Number.isFinite(configured) && configured > 0
+    ? baseWindow
+    : Math.max(baseWindow, slowNicheWindowHours(source));
   const enforcedMaximum = Number(options.maxAgeHours);
   return Number.isFinite(enforcedMaximum) && enforcedMaximum > 0
     ? Math.min(sourceWindow, enforcedMaximum)
     : sourceWindow;
 }
+
 
 function relevanceScore(item: ParsedSourceItem, profile: RelevanceProfile): number {
   const text = normalizedText(`${item.title} ${item.description || ""}`);
