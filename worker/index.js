@@ -545,22 +545,49 @@ async function drawConfiguredTemplate(ctx, item, settings, template, width, heig
   }
 
   ctx.fillStyle = cfg.titleColor;
-  ctx.font = `900 ${cfg.titleSize}px ${brandFontStack(cfg.titleFontFamily, true)}`;
   ctx.textAlign = cfg.titleAlign;
   const titleX = textXForBox(cfg.titleX, cfg.titleW, cfg.titleAlign);
-  wrapText(ctx, title, cfg.titleW, cfg.titleMaxChars).slice(0, cfg.titleMaxLines).forEach((line, i) => {
-    ctx.fillText(line, titleX, cfg.titleY + i * Math.round(cfg.titleSize * 1.05));
+  const titleTop = cfg.titleY - Math.round(cfg.titleSize * 0.8);
+  const titleBottom = subtitle
+    ? cfg.subtitleY - Math.round(cfg.subtitleSize * 0.9)
+    : (cfg.showBadge && cfg.badgeY > cfg.titleY ? cfg.badgeY - 24 : height - 50);
+  const titleLayout = layoutTemplateTextBlock({
+    text: title,
+    measure: (t) => ctx.measureText(t).width,
+    setFontSize: (size) => { ctx.font = `900 ${size}px ${brandFontStack(cfg.titleFontFamily, true)}`; },
+    width: cfg.titleW,
+    maxChars: cfg.titleMaxChars,
+    maxLines: cfg.titleMaxLines,
+    fontSize: cfg.titleSize,
+    lineHeightRatio: 1.05,
+    availableHeight: Math.max(cfg.titleSize, titleBottom - titleTop),
+  });
+  titleLayout.lines.forEach((line, i) => {
+    ctx.fillText(line, titleX, cfg.titleY + i * titleLayout.lineHeight);
   });
 
   if (subtitle) {
     ctx.fillStyle = cfg.subtitleColor;
-    ctx.font = `500 ${cfg.subtitleSize}px ${brandFontStack(cfg.subtitleFontFamily)}`;
     ctx.textAlign = cfg.subtitleAlign;
     const subtitleX = textXForBox(cfg.subtitleX, cfg.subtitleW, cfg.subtitleAlign);
-    wrapText(ctx, subtitle, cfg.subtitleW, Math.floor(cfg.titleMaxChars * 2.2)).slice(0, cfg.subtitleMaxLines).forEach((line, i) => {
-      ctx.fillText(line, subtitleX, cfg.subtitleY + i * Math.round(cfg.subtitleSize * 1.3));
+    const subtitleTop = cfg.subtitleY - Math.round(cfg.subtitleSize * 0.8);
+    const subtitleBottom = cfg.showBadge && cfg.badgeY > cfg.subtitleY ? cfg.badgeY - 24 : height - 50;
+    const subtitleLayout = layoutTemplateTextBlock({
+      text: subtitle,
+      measure: (t) => ctx.measureText(t).width,
+      setFontSize: (size) => { ctx.font = `500 ${size}px ${brandFontStack(cfg.subtitleFontFamily)}`; },
+      width: cfg.subtitleW,
+      maxChars: Math.floor(cfg.titleMaxChars * 2.2),
+      maxLines: cfg.subtitleMaxLines,
+      fontSize: cfg.subtitleSize,
+      lineHeightRatio: 1.3,
+      availableHeight: Math.max(cfg.subtitleSize, subtitleBottom - subtitleTop),
+    });
+    subtitleLayout.lines.forEach((line, i) => {
+      ctx.fillText(line, subtitleX, cfg.subtitleY + i * subtitleLayout.lineHeight);
     });
   }
+
 
   if (cfg.showBadge && cfg.badgeText) {
     ctx.fillStyle = cfg.badgeBg;
