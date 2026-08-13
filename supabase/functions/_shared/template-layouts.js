@@ -251,3 +251,64 @@ export function textAnchorForAlign(align) {
 export function textXForBox(x, width, align) {
   return align === "center" ? x + width / 2 : align === "right" ? x + width : x;
 }
+
+function wrapTemplateLine(measure, text, maxWidth, maxChars) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? `${cur} ${word}` : word;
+    if ((test.length > maxChars || measure(test) > maxWidth) && cur) {
+      lines.push(cur);
+      cur = word;
+    } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/**
+ * Encaixa o bloco de texto na área livre do template: reduz a fonte antes de
+ * cortar linhas, garantindo que título e subtítulo nunca invadam um ao outro
+ * nem a faixa de marca da moldura.
+ */
+export function layoutTemplateTextBlock(options) {
+  const {
+    text,
+    measure,
+    setFontSize,
+    width,
+    maxChars = Number.POSITIVE_INFINITY,
+    maxLines = 5,
+    fontSize,
+    minFontSize = Math.max(14, Math.round(fontSize * 0.6)),
+    lineHeightRatio = 1.05,
+    availableHeight = Number.POSITIVE_INFINITY,
+  } = options || {};
+
+  const clean = String(text || "").trim();
+  if (!clean) return { lines: [], fontSize, lineHeight: Math.round(fontSize * lineHeightRatio) };
+
+  let best = null;
+  for (let size = fontSize; size >= minFontSize; size -= 2) {
+    setFontSize(size);
+    const scaledChars = Number.isFinite(maxChars)
+      ? Math.max(8, Math.round(maxChars * (fontSize / size)))
+      : maxChars;
+    const lines = wrapTemplateLine(measure, clean, width, scaledChars);
+    const lineHeight = Math.round(size * lineHeightRatio);
+    best = { lines, fontSize: size, lineHeight };
+    if (lines.length <= maxLines && lines.length * lineHeight <= availableHeight) {
+      return best;
+    }
+  }
+
+  const lineHeight = best.lineHeight;
+  const fitCount = Math.max(1, Math.min(maxLines, Math.floor(availableHeight / lineHeight) || 1));
+  const lines = best.lines.slice(0, fitCount);
+  if (best.lines.length > fitCount && lines.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/[\s.,;:-]+$/, "")}…`;
+  }
+  setFontSize(best.fontSize);
+  return { lines, fontSize: best.fontSize, lineHeight };
+}

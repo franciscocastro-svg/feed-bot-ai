@@ -22,3 +22,15 @@ export function getPresetTemplateConfig(presetKey: string | null, format?: Templ
 export function normalizeTemplateConfig(config: TemplateConfig | null | undefined, format?: TemplateFormat): TemplateConfig;
 export function textAnchorForAlign(align: TemplateTextAlign): "start" | "middle" | "end";
 export function textXForBox(x: number, width: number, align: TemplateTextAlign): number;
+export function layoutTemplateTextBlock(options: {
+  text: string;
+  measure: (text: string) => number;
+  setFontSize: (size: number) => void;
+  width: number;
+  maxChars?: number;
+  maxLines?: number;
+  fontSize: number;
+  minFontSize?: number;
+  lineHeightRatio?: number;
+  availableHeight?: number;
+}): { lines: string[]; fontSize: number; lineHeight: number };
