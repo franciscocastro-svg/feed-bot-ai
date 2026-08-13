@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import WebSocket from "ws";
 import { drawTemplateGradient } from "../supabase/functions/_shared/template-gradients.js";
-import { normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
+import { layoutTemplateTextBlock, normalizeTemplateConfig, textXForBox } from "../supabase/functions/_shared/template-layouts.js";
 import { containDestinationRect, coverSourceRect, qualityAwareContainDestinationRect } from "../supabase/functions/_shared/image-framing.js";
 import { loadPublishedTemplate } from "../supabase/functions/_shared/template-versioning.js";
 import { brandFontStack } from "../supabase/functions/_shared/brand-kit.js";
