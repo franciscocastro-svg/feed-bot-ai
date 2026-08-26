@@ -172,14 +172,110 @@ export function scorePixabayHit(hit, query) {
   return { score, matchedTerms };
 }
 
-function selectRelevantHit(hits, excludedIds, query) {
+function selectRelevantHit(hits, excludedIds, query, minDimension = MIN_PIXABAY_DIMENSION) {
   const ranked = hits
-    .filter((hit) => isEligibleHit(hit, excludedIds))
+    .filter((hit) => isEligibleHit(hit, excludedIds, minDimension))
     .map((hit) => ({ hit, ...scorePixabayHit(hit, query) }))
     .filter((candidate) => candidate.score >= MIN_STOCK_RELEVANCE_SCORE)
     .sort((left, right) => right.score - left.score);
   return ranked[0] || null;
 }
+
+export function buildOpenverseSearchUrl(query) {
+  const url = new URL(OPENVERSE_SEARCH_URL);
+  url.searchParams.set("q", query);
+  url.searchParams.set("page_size", "30");
+  url.searchParams.set("mature", "false");
+  url.searchParams.set("license_type", "all-cc");
+  return url;
+}
+
+export function buildGoogleImageSearchUrl(query, apiKey, cx, rights) {
+  const url = new URL(GOOGLE_CSE_SEARCH_URL);
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("cx", cx);
+  url.searchParams.set("q", query);
+  url.searchParams.set("searchType", "image");
+  url.searchParams.set("imgSize", "large");
+  url.searchParams.set("safe", "active");
+  url.searchParams.set("num", "10");
+  if (rights) url.searchParams.set("rights", rights);
+  return url;
+}
+
+export function buildBingImageSearchUrl(query, license) {
+  const url = new URL(BING_IMAGE_SEARCH_URL);
+  url.searchParams.set("q", query);
+  url.searchParams.set("count", "30");
+  url.searchParams.set("safeSearch", "Strict");
+  url.searchParams.set("size", "Large");
+  if (license) url.searchParams.set("license", license);
+  return url;
+}
+
+export function normalizeOpenverseHits(payload) {
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  return results.map((entry) => ({
+    id: stableAssetId(entry?.id || entry?.url),
+    tags: [entry?.title, ...(Array.isArray(entry?.tags) ? entry.tags.map((tag) => tag?.name) : [])]
+      .filter(Boolean).join(" "),
+    pageURL: entry?.foreign_landing_url || entry?.url,
+    largeImageURL: entry?.url,
+    imageWidth: Number(entry?.width || 0),
+    imageHeight: Number(entry?.height || 0),
+    user: entry?.creator || null,
+    licenseUrl: entry?.license_url
+      || (entry?.license ? `https://creativecommons.org/licenses/${entry.license}/${entry.license_version || "4.0"}/` : null),
+  }));
+}
+
+export function normalizeGoogleHits(payload) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items.map((entry) => ({
+    id: stableAssetId(entry?.link),
+    tags: [entry?.title, entry?.snippet, entry?.image?.contextLink].filter(Boolean).join(" "),
+    pageURL: entry?.image?.contextLink || entry?.link,
+    largeImageURL: entry?.link,
+    imageWidth: Number(entry?.image?.width || 0),
+    imageHeight: Number(entry?.image?.height || 0),
+    user: entry?.displayLink || null,
+    licenseUrl: null,
+  }));
+}
+
+export function normalizeBingHits(payload) {
+  const values = Array.isArray(payload?.value) ? payload.value : [];
+  return values.map((entry) => ({
+    id: stableAssetId(entry?.contentUrl),
+    tags: [entry?.name, entry?.hostPageDisplayUrl].filter(Boolean).join(" "),
+    pageURL: entry?.hostPageUrl || entry?.contentUrl,
+    largeImageURL: entry?.contentUrl,
+    imageWidth: Number(entry?.width || 0),
+    imageHeight: Number(entry?.height || 0),
+    user: entry?.hostPageDisplayUrl || null,
+    licenseUrl: entry?.licenseUrl || null,
+  }));
+}
+
+async function fetchJson(fetchImpl, url, headers, providerLabel) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { Accept: "application/json", ...headers },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    throw new Error(`${providerLabel} indisponível para o carrossel (HTTP ${response.status}).`);
+  }
+  return response.json();
+}
+
 
 function safeReadCache(cacheFile) {
   try {
