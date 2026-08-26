@@ -108,17 +108,44 @@ export function buildPixabaySearchUrl(query, apiKey) {
   return url;
 }
 
-function isEligibleHit(hit, excludedIds) {
+export const OPENVERSE_SEARCH_URL = "https://api.openverse.org/v1/images/";
+export const GOOGLE_CSE_SEARCH_URL = "https://www.googleapis.com/customsearch/v1";
+export const BING_IMAGE_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/images/search";
+const WEB_PROVIDERS = new Set(["openverse", "google", "bing"]);
+const MIN_WEB_IMAGE_DIMENSION = 800;
+const MIN_PIXABAY_DIMENSION = 1000;
+
+export function resolveProviderChain(value) {
+  const raw = String(value || "").trim();
+  const list = (raw || "pixabay,openverse")
+    .split(/[,\s]+/)
+    .map((entry) => entry.trim().toLocaleLowerCase("en-US"))
+    .filter((entry) => entry === "pixabay" || WEB_PROVIDERS.has(entry));
+  return Array.from(new Set(list));
+}
+
+export function stableAssetId(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash | 0);
+}
+
+function isEligibleHit(hit, excludedIds, minDimension = MIN_PIXABAY_DIMENSION) {
   const id = Number(hit?.id);
   const width = Number(hit?.imageWidth || hit?.webformatWidth || 0);
   const height = Number(hit?.imageHeight || hit?.webformatHeight || 0);
   return Number.isInteger(id)
     && !excludedIds.has(id)
-    && width >= 1000
-    && height >= 1000
+    && width >= minDimension
+    && height >= minDimension
     && Boolean(hit?.largeImageURL || hit?.webformatURL)
     && Boolean(hit?.pageURL);
 }
+
 
 export function scorePixabayHit(hit, query) {
   const queryTokens = meaningfulQueryTokens(query);
