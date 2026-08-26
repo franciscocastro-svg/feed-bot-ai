@@ -305,77 +305,143 @@ function cachedEntry(cache, key, now) {
   return { found: true, result: entry.result || null };
 }
 
+async function searchProvider({ providerName, query, fetchImpl, env }) {
+  if (providerName === "pixabay") {
+    const apiKey = env.pixabayKey;
+    if (!apiKey) return null;
+    const payload = await fetchJson(fetchImpl, buildPixabaySearchUrl(query, apiKey), {}, "Pixabay");
+    return {
+      hits: Array.isArray(payload?.hits) ? payload.hits : [],
+      minDimension: MIN_PIXABAY_DIMENSION,
+      defaultLicenseUrl: PIXABAY_LICENSE_URL,
+    };
+  }
+  if (providerName === "openverse") {
+    const payload = await fetchJson(fetchImpl, buildOpenverseSearchUrl(query), {}, "Openverse");
+    return {
+      hits: normalizeOpenverseHits(payload),
+      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      defaultLicenseUrl: null,
+    };
+  }
+  if (providerName === "google") {
+    if (!env.googleKey || !env.googleCx) return null;
+    const url = buildGoogleImageSearchUrl(query, env.googleKey, env.googleCx, env.googleRights);
+    const payload = await fetchJson(fetchImpl, url, {}, "Google Imagens");
+    return {
+      hits: normalizeGoogleHits(payload),
+      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      defaultLicenseUrl: null,
+    };
+  }
+  if (providerName === "bing") {
+    if (!env.bingKey) return null;
+    const payload = await fetchJson(
+      fetchImpl,
+      buildBingImageSearchUrl(query, env.bingLicense),
+      { "Ocp-Apim-Subscription-Key": env.bingKey },
+      "Bing Imagens",
+    );
+    return {
+      hits: normalizeBingHits(payload),
+      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      defaultLicenseUrl: null,
+    };
+  }
+  return null;
+}
+
 export async function resolveCarouselStockImage({
   query,
   queries = [],
   excludedIds = new Set(),
   apiKey = process.env.PIXABAY_API_KEY,
   provider = process.env.CAROUSEL_IMAGE_PROVIDER || "pixabay",
+  providers = process.env.CAROUSEL_IMAGE_PROVIDERS || "",
+  googleApiKey = process.env.GOOGLE_IMAGE_API_KEY,
+  googleCx = process.env.GOOGLE_IMAGE_CX,
+  googleRights = process.env.GOOGLE_IMAGE_RIGHTS ?? "cc_publicdomain|cc_attribute|cc_sharealike",
+  bingApiKey = process.env.BING_IMAGE_API_KEY,
+  bingLicense = process.env.BING_IMAGE_LICENSE ?? "ShareCommercially",
   cacheFile = path.join(process.cwd(), "worker", "temp", "carousel-stock-cache.json"),
   fetchImpl = fetch,
   now = Date.now(),
 } = {}) {
   const queryCandidates = normalizeStockImageQueries(query, queries);
-  if (provider !== "pixabay" || !apiKey || !queryCandidates.length) return null;
+  if (!queryCandidates.length) return null;
+
+  const chain = providers
+    ? resolveProviderChain(providers)
+    : resolveProviderChain(provider);
+  if (!chain.length) return null;
+
+  const env = {
+    pixabayKey: apiKey,
+    googleKey: googleApiKey,
+    googleCx,
+    googleRights,
+    bingKey: bingApiKey,
+    bingLicense,
+  };
 
   const cache = safeReadCache(cacheFile);
-  for (const normalizedQuery of queryCandidates) {
-    const cacheKey = `pixabay:${STOCK_CACHE_VERSION}:${normalizedQuery.toLocaleLowerCase("en-US")}`;
-    const cached = cachedEntry(cache, cacheKey, now);
-    if (cached.found) {
-      if (cached.result && !excludedIds.has(Number(cached.result.audit?.asset_id))) {
-        return cached.result;
+  let firstError = null;
+
+  for (const providerName of chain) {
+    for (const normalizedQuery of queryCandidates) {
+      const cacheKey = `${providerName}:${STOCK_CACHE_VERSION}:${normalizedQuery.toLocaleLowerCase("en-US")}`;
+      const cached = cachedEntry(cache, cacheKey, now);
+      if (cached.found) {
+        if (cached.result && !excludedIds.has(Number(cached.result.audit?.asset_id))) {
+          return cached.result;
+        }
+        continue;
       }
-      continue;
-    }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
-    let response;
-    try {
-      response = await fetchImpl(buildPixabaySearchUrl(normalizedQuery, apiKey), {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (!response.ok) {
-      throw new Error(`Pixabay indisponível para o carrossel (HTTP ${response.status}).`);
-    }
+      let search;
+      try {
+        search = await searchProvider({ providerName, query: normalizedQuery, fetchImpl, env });
+      } catch (error) {
+        firstError = firstError || error;
+        break;
+      }
+      if (!search) break;
 
-    const payload = await response.json();
-    const selected = selectRelevantHit(
-      Array.isArray(payload?.hits) ? payload.hits : [],
-      excludedIds,
-      normalizedQuery,
-    );
-    if (!selected) {
-      cache[cacheKey] = { saved_at: now, result: null };
+      const selected = selectRelevantHit(
+        search.hits,
+        excludedIds,
+        normalizedQuery,
+        search.minDimension,
+      );
+      if (!selected) {
+        cache[cacheKey] = { saved_at: now, result: null };
+        safeWriteCache(cacheFile, cache);
+        continue;
+      }
+
+      const hit = selected.hit;
+      const result = {
+        downloadUrl: String(hit.largeImageURL || hit.webformatURL),
+        audit: {
+          provider: providerName,
+          asset_id: Number(hit.id),
+          page_url: String(hit.pageURL),
+          contributor: String(hit.user || "").trim() || null,
+          query: normalizedQuery,
+          license_url: hit.licenseUrl || search.defaultLicenseUrl || null,
+          selected_at: new Date(now).toISOString(),
+          relevance_score: selected.score,
+          matched_terms: selected.matchedTerms,
+          cache_version: STOCK_CACHE_VERSION,
+        },
+      };
+      cache[cacheKey] = { saved_at: now, result };
       safeWriteCache(cacheFile, cache);
-      continue;
+      return result;
     }
-
-    const hit = selected.hit;
-    const result = {
-      downloadUrl: String(hit.largeImageURL || hit.webformatURL),
-      audit: {
-        provider: "pixabay",
-        asset_id: Number(hit.id),
-        page_url: String(hit.pageURL),
-        contributor: String(hit.user || "").trim() || null,
-        query: normalizedQuery,
-        license_url: PIXABAY_LICENSE_URL,
-        selected_at: new Date(now).toISOString(),
-        relevance_score: selected.score,
-        matched_terms: selected.matchedTerms,
-        cache_version: STOCK_CACHE_VERSION,
-      },
-    };
-    cache[cacheKey] = { saved_at: now, result };
-    safeWriteCache(cacheFile, cache);
-    return result;
   }
+
+  if (firstError && chain.length === 1) throw firstError;
   return null;
 }
+
