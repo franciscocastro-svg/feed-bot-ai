@@ -47,7 +47,7 @@ import {
   professionalCandidatePoolSize,
   refineTranscriptCutCandidates,
 } from "./cutQuality.js";
-import { resolveCarouselStockImage } from "./carouselStockImages.js";
+import { buildNewsImageQuery, resolveCarouselStockImage } from "./carouselStockImages.js";
 import {
   drawEditorialCarouselSlide,
   EDITORIAL_CAROUSEL_HEIGHT,
@@ -815,9 +815,17 @@ async function composeAndUploadCarouselNode(item, settings) {
     }
     if (!image && slide.image_mode === "stock" && resolvedStockImages < maxStockImages) {
       try {
+        // Consulta derivada da manchete/resumo entra como reforço das
+        // sugestões visuais da IA, priorizando nomes próprios da notícia.
+        const newsQuery = item.content_type === "topic"
+          ? null
+          : buildNewsImageQuery(
+            item.rewritten_title || item.original_title,
+            item.rewritten_summary,
+          );
         stockImage = await resolveCarouselStockImage({
-          query: slide.image_query,
-          queries: slide.image_queries,
+          query: slide.image_query || newsQuery,
+          queries: [...(slide.image_queries || []), newsQuery].filter(Boolean),
           excludedIds: usedStockAssetIds,
           cacheFile: path.join(TEMP_DIR, "carousel-stock-cache.json"),
         });
