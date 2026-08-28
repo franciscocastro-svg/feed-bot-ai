@@ -200,6 +200,85 @@ function selectRelevantHit(hits, excludedIds, query, limits) {
   return ranked[0] || null;
 }
 
+const WEB_IMAGE_LIMITS = {
+  minWidth: MIN_WEB_IMAGE_WIDTH,
+  minHeight: MIN_WEB_IMAGE_HEIGHT,
+  allowUnknownDimensions: false,
+};
+
+const SERPAPI_LIMITS = {
+  minWidth: MIN_WEB_IMAGE_WIDTH,
+  minHeight: MIN_WEB_IMAGE_HEIGHT,
+  allowUnknownDimensions: true,
+};
+
+/**
+ * Monta uma consulta visual específica a partir da manchete e do resumo,
+ * priorizando nomes próprios (pessoas, lugares, clubes, empresas, eventos)
+ * e descartando palavras genéricas de noticiário.
+ */
+export function buildNewsImageQuery(headline, summary = "", maxWords = 6) {
+  const rawHeadline = String(headline || "").replace(/\s+/g, " ").trim();
+  const rawSummary = String(summary || "").replace(/\s+/g, " ").trim();
+  const source = `${rawHeadline} ${rawSummary}`.trim();
+  if (!source) return null;
+
+  const words = source
+    .replace(/["'“”‘’(){}\[\]]/g, " ")
+    .split(/[\s,;:!?.\-–—/]+/)
+    .filter(Boolean);
+
+  const seen = new Set();
+  const proper = [];
+  const common = [];
+  for (const word of words) {
+    const plain = word.replace(/[^\p{L}\p{N}]/gu, "");
+    if (plain.length < 3) continue;
+    const key = normalizedToken(plain);
+    if (!key || seen.has(key) || GENERIC_NEWS_TERMS.has(key) || QUERY_STOP_WORDS.has(key)) continue;
+    seen.add(key);
+    const isProper = /^\p{Lu}/u.test(plain);
+    (isProper ? proper : common).push(plain);
+  }
+
+  const picked = [...proper, ...common].slice(0, Math.max(2, maxWords));
+  if (!picked.length) return null;
+  return normalizeStockImageQuery(picked.join(" "));
+}
+
+export function buildSerpapiImageSearchUrl(query, apiKey, { hl = "pt-br", gl = "br" } = {}) {
+  const url = new URL(SERPAPI_SEARCH_URL);
+  url.searchParams.set("engine", "google_images");
+  url.searchParams.set("q", query);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("safe", "active");
+  url.searchParams.set("hl", hl);
+  url.searchParams.set("gl", gl);
+  return url;
+}
+
+export function normalizeSerpapiHits(payload) {
+  const results = Array.isArray(payload?.images_results) ? payload.images_results : [];
+  return results.map((entry) => {
+    // Evita thumbnails sempre que existir a URL original de maior resolução.
+    const original = entry?.original || entry?.image || null;
+    const thumbnail = entry?.thumbnail || null;
+    const chosen = original && !THUMBNAIL_URL_PATTERN.test(String(original))
+      ? original
+      : (original || thumbnail);
+    return {
+      id: stableAssetId(chosen || entry?.link),
+      tags: [entry?.title, entry?.source, entry?.snippet, entry?.link].filter(Boolean).join(" "),
+      pageURL: entry?.link || entry?.source_logo || chosen,
+      largeImageURL: chosen,
+      imageWidth: Number(entry?.original_width || 0),
+      imageHeight: Number(entry?.original_height || 0),
+      user: entry?.source || null,
+      licenseUrl: null,
+    };
+  }).filter((hit) => Boolean(hit.largeImageURL));
+}
+
 export function buildOpenverseSearchUrl(query) {
   const url = new URL(OPENVERSE_SEARCH_URL);
   url.searchParams.set("q", query);
@@ -335,6 +414,20 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
       defaultLicenseUrl: PIXABAY_LICENSE_URL,
     };
   }
+  if (providerName === "serpapi") {
+    if (!env.serpapiKey) return null;
+    const payload = await fetchJson(
+      fetchImpl,
+      buildSerpapiImageSearchUrl(query, env.serpapiKey),
+      {},
+      "Google Imagens (SerpApi)",
+    );
+    return {
+      hits: normalizeSerpapiHits(payload),
+      limits: SERPAPI_LIMITS,
+      defaultLicenseUrl: null,
+    };
+  }
   if (providerName === "openverse") {
     const payload = await fetchJson(fetchImpl, buildOpenverseSearchUrl(query), {}, "Openverse");
     return {
@@ -370,12 +463,23 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
   return null;
 }
 
+function logImageSearchSelection(result, { cached = false } = {}) {
+  const audit = result?.audit;
+  if (!audit) return;
+  // Nunca registrar chave de API: apenas provedor, consulta e imagem escolhida.
+  console.log(
+    `[image-search] provider=${audit.provider} query="${audit.query}" source="${audit.page_url}" `
+    + `image="${result.downloadUrl}" score=${audit.relevance_score ?? "n/a"}${cached ? " cache=hit" : ""}`,
+  );
+}
+
 export async function resolveCarouselStockImage({
   query,
   queries = [],
   excludedIds = new Set(),
   apiKey = process.env.PIXABAY_API_KEY,
   provider = process.env.CAROUSEL_IMAGE_PROVIDER || "pixabay",
+  serpapiKey = process.env.SERPAPI_API_KEY,
   providers = process.env.CAROUSEL_IMAGE_PROVIDERS || "",
   googleApiKey = process.env.GOOGLE_IMAGE_API_KEY,
   googleCx = process.env.GOOGLE_IMAGE_CX,
@@ -396,6 +500,7 @@ export async function resolveCarouselStockImage({
 
   const env = {
     pixabayKey: apiKey,
+    serpapiKey,
     googleKey: googleApiKey,
     googleCx,
     googleRights,
@@ -412,6 +517,7 @@ export async function resolveCarouselStockImage({
       const cached = cachedEntry(cache, cacheKey, now);
       if (cached.found) {
         if (cached.result && !excludedIds.has(Number(cached.result.audit?.asset_id))) {
+          logImageSearchSelection(cached.result, { cached: true });
           return cached.result;
         }
         continue;
@@ -456,6 +562,7 @@ export async function resolveCarouselStockImage({
       };
       cache[cacheKey] = { saved_at: now, result };
       safeWriteCache(cacheFile, cache);
+      logImageSearchSelection(result);
       return result;
     }
   }
