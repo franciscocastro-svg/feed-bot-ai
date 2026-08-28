@@ -111,13 +111,24 @@ export function buildPixabaySearchUrl(query, apiKey) {
 export const OPENVERSE_SEARCH_URL = "https://api.openverse.org/v1/images/";
 export const GOOGLE_CSE_SEARCH_URL = "https://www.googleapis.com/customsearch/v1";
 export const BING_IMAGE_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/images/search";
-const WEB_PROVIDERS = new Set(["openverse", "google", "bing"]);
-const MIN_WEB_IMAGE_DIMENSION = 800;
+export const SERPAPI_SEARCH_URL = "https://serpapi.com/search.json";
+const WEB_PROVIDERS = new Set(["openverse", "google", "bing", "serpapi"]);
+const MIN_WEB_IMAGE_WIDTH = 800;
+const MIN_WEB_IMAGE_HEIGHT = 600;
 const MIN_PIXABAY_DIMENSION = 1000;
+const THUMBNAIL_URL_PATTERN = /(thumb|thumbnail|_tn\b|=w\d{2,3}|small|preview)/i;
+
+// Palavras que não descrevem nada visual e atrapalham a busca por foto real.
+const GENERIC_NEWS_TERMS = new Set([
+  "noticia", "noticias", "news", "atualizacao", "atualizacoes", "update", "imagem",
+  "imagens", "foto", "fotos", "brasil", "brasileiro", "brasileira", "hoje", "ontem",
+  "agora", "ultima", "ultimas", "urgente", "veja", "confira", "saiba", "sobre",
+  "apos", "durante", "entenda", "reportagem", "materia", "video", "assista",
+]);
 
 export function resolveProviderChain(value) {
   const raw = String(value || "").trim();
-  const list = (raw || "pixabay,openverse")
+  const list = (raw || "serpapi,pixabay,openverse")
     .split(/[,\s]+/)
     .map((entry) => entry.trim().toLocaleLowerCase("en-US"))
     .filter((entry) => entry === "pixabay" || WEB_PROVIDERS.has(entry));
@@ -134,14 +145,22 @@ export function stableAssetId(value) {
   return Math.abs(hash | 0);
 }
 
-function isEligibleHit(hit, excludedIds, minDimension = MIN_PIXABAY_DIMENSION) {
+function isEligibleHit(hit, excludedIds, limits = {}) {
+  const {
+    minWidth = MIN_PIXABAY_DIMENSION,
+    minHeight = MIN_PIXABAY_DIMENSION,
+    allowUnknownDimensions = false,
+  } = limits;
   const id = Number(hit?.id);
   const width = Number(hit?.imageWidth || hit?.webformatWidth || 0);
   const height = Number(hit?.imageHeight || hit?.webformatHeight || 0);
+  const hasDimensions = width > 0 && height > 0;
+  const dimensionsOk = hasDimensions
+    ? (width >= minWidth && height >= minHeight)
+    : allowUnknownDimensions;
   return Number.isInteger(id)
     && !excludedIds.has(id)
-    && width >= minDimension
-    && height >= minDimension
+    && dimensionsOk
     && Boolean(hit?.largeImageURL || hit?.webformatURL)
     && Boolean(hit?.pageURL);
 }
@@ -172,9 +191,9 @@ export function scorePixabayHit(hit, query) {
   return { score, matchedTerms };
 }
 
-function selectRelevantHit(hits, excludedIds, query, minDimension = MIN_PIXABAY_DIMENSION) {
+function selectRelevantHit(hits, excludedIds, query, limits) {
   const ranked = hits
-    .filter((hit) => isEligibleHit(hit, excludedIds, minDimension))
+    .filter((hit) => isEligibleHit(hit, excludedIds, limits))
     .map((hit) => ({ hit, ...scorePixabayHit(hit, query) }))
     .filter((candidate) => candidate.score >= MIN_STOCK_RELEVANCE_SCORE)
     .sort((left, right) => right.score - left.score);
@@ -312,7 +331,7 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
     const payload = await fetchJson(fetchImpl, buildPixabaySearchUrl(query, apiKey), {}, "Pixabay");
     return {
       hits: Array.isArray(payload?.hits) ? payload.hits : [],
-      minDimension: MIN_PIXABAY_DIMENSION,
+      limits: { minWidth: MIN_PIXABAY_DIMENSION, minHeight: MIN_PIXABAY_DIMENSION },
       defaultLicenseUrl: PIXABAY_LICENSE_URL,
     };
   }
@@ -320,7 +339,7 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
     const payload = await fetchJson(fetchImpl, buildOpenverseSearchUrl(query), {}, "Openverse");
     return {
       hits: normalizeOpenverseHits(payload),
-      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      limits: WEB_IMAGE_LIMITS,
       defaultLicenseUrl: null,
     };
   }
@@ -330,7 +349,7 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
     const payload = await fetchJson(fetchImpl, url, {}, "Google Imagens");
     return {
       hits: normalizeGoogleHits(payload),
-      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      limits: WEB_IMAGE_LIMITS,
       defaultLicenseUrl: null,
     };
   }
@@ -344,7 +363,7 @@ async function searchProvider({ providerName, query, fetchImpl, env }) {
     );
     return {
       hits: normalizeBingHits(payload),
-      minDimension: MIN_WEB_IMAGE_DIMENSION,
+      limits: WEB_IMAGE_LIMITS,
       defaultLicenseUrl: null,
     };
   }
@@ -411,7 +430,7 @@ export async function resolveCarouselStockImage({
         search.hits,
         excludedIds,
         normalizedQuery,
-        search.minDimension,
+        search.limits,
       );
       if (!selected) {
         cache[cacheKey] = { saved_at: now, result: null };
