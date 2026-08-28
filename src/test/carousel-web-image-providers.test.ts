@@ -20,7 +20,7 @@ function cacheFile() {
 describe("provedores de imagem da web", () => {
   it("resolve a cadeia de provedores ignorando valores inválidos", () => {
     expect(resolveProviderChain("pixabay, google , nope,bing")).toEqual(["pixabay", "google", "bing"]);
-    expect(resolveProviderChain("")).toEqual(["pixabay", "openverse"]);
+    expect(resolveProviderChain("")).toEqual(["serpapi", "pixabay", "openverse"]);
   });
 
   it("aplica filtro de licença nas URLs de busca", () => {
