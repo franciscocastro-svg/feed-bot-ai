@@ -292,7 +292,8 @@ function isRateLimitError(data: any) {
 // Também: erros de rede (fetch failed, ECONN, timeout).
 const MAX_TRANSIENT_RETRIES = 4;
 function isTransientMediaError(message: string): boolean {
-  return /2207082|2207001|media upload has failed|temporarily unavailable|service.*unavail|an unknown error|please try again|fetch failed|network error|timeout|demorou|processar (o vídeo|a mídia)|ETIMEDOUT|ECONNRESET|EAI_AGAIN/i.test(message);
+  if (/TOKEN_EXPIRED|token.*expirou/i.test(message)) return false;
+  return /2207082|2207001|media upload has failed|temporarily unavailable|service.*unavail|an unknown error|an unexpected error|unexpected error has occurred|retry your request later|\(código 2[)/]|please try again|fetch failed|network error|timeout|demorou|processar (o vídeo|a mídia)|ETIMEDOUT|ECONNRESET|EAI_AGAIN/i.test(message);
 }
 
 function isAppRateLimitMessage(message: string): boolean {
