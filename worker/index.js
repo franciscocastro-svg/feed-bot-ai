@@ -758,18 +758,22 @@ function normalizeCarouselSlidesForWorker(value) {
     if (!title || (index > 0 && !body)) {
       throw new Error(`Slide ${index + 1} do carrossel está incompleto.`);
     }
-    const imageQueries = index === 0
-      ? (visualQueries(slide).length ? visualQueries(slide) : visualQueries(requestedCoverImage))
-      : [];
+    const isLast = index === value.length - 1;
+    // Capa e slides de conteúdo buscam foto; o último slide (CTA) fica só com texto.
+    const ownQueries = visualQueries(slide);
+    const fallbackQueries = index === 0 ? visualQueries(requestedCoverImage) : [];
+    const imageQueries = isLast
+      ? []
+      : (ownQueries.length ? ownQueries : fallbackQueries);
     return normalizeEditorialCarouselSlide({
       ...slide,
       title,
       body,
-      image_mode: index === 0 && imageQueries.length ? "stock" : "text",
+      image_mode: imageQueries.length ? "stock" : "text",
       image_query: imageQueries[0] || null,
       image_queries: imageQueries,
-      image_alt: index === 0
-        ? String(slide?.image_alt || requestedCoverImage?.image_alt || "").trim() || null
+      image_alt: imageQueries.length
+        ? String(slide?.image_alt || (index === 0 ? requestedCoverImage?.image_alt : "") || "").trim() || null
         : null,
     }, index, value.length);
   });
@@ -780,7 +784,7 @@ async function composeAndUploadCarouselNode(item, settings) {
   const urls = [];
   const resolvedSlides = [];
   const usedStockAssetIds = new Set();
-  const maxStockImages = 1;
+  const maxStockImages = Math.max(1, Number(process.env.CAROUSEL_MAX_STOCK_IMAGES || slides.length));
   let resolvedStockImages = 0;
   const handle = (settings?.brand_handle || settings?.brand_name || "").replace(/^@/, "").trim();
   const brandName = String(settings?.brand_name || handle || "Flux & Feed").trim();
