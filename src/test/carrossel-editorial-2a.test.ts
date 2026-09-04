@@ -300,7 +300,7 @@ describe("Carrossel Editorial 2A", () => {
     expect(existsSync(verifiedBadgePath)).toBe(true);
     expect(statSync(verifiedBadgePath).size).toBeGreaterThan(1_000);
     expect(worker).not.toContain("caption: resolvedSlides");
-    expect(worker).toContain("const maxStockImages = 1");
+    expect(worker).toContain("const maxStockImages = Math.max(1, Number(process.env.CAROUSEL_MAX_STOCK_IMAGES || slides.length));");
     expect(worker).toContain("nenhuma imagem temática segura foi encontrada; usando capa tipográfica");
     expect(worker).not.toContain("A capa do carrossel precisa de uma imagem relevante");
     expect(worker).toContain("const WORKER_POLL_INTERVAL_MS = 5_000");

@@ -3,8 +3,29 @@ import path from "node:path";
 
 export const PIXABAY_LICENSE_URL = "https://pixabay.com/service/license-summary/";
 export const STOCK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-export const STOCK_CACHE_VERSION = "v2";
+// v3: passou a bloquear domínios de rede social e a validar o download.
+export const STOCK_CACHE_VERSION = "v3";
 export const MIN_STOCK_RELEVANCE_SCORE = 10;
+
+// Domínios que quase nunca entregam a imagem para o servidor (login, hotlink
+// bloqueado, expiração de assinatura) — não adianta escolher e falhar depois.
+export const BLOCKED_IMAGE_HOSTS = [
+  "instagram.com", "cdninstagram.com", "fbcdn.net", "facebook.com",
+  "tiktok.com", "tiktokcdn.com", "pinterest.com", "pinimg.com",
+  "youtube.com", "youtu.be", "ytimg.com", "x.com", "twitter.com", "twimg.com",
+];
+
+export function isBlockedImageUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  let host = "";
+  try {
+    host = new URL(raw).hostname.toLocaleLowerCase("en-US");
+  } catch {
+    return false;
+  }
+  return BLOCKED_IMAGE_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+}
 
 const MAX_QUERY_CANDIDATES = 3;
 const QUERY_STOP_WORDS = new Set([
@@ -158,11 +179,14 @@ function isEligibleHit(hit, excludedIds, limits = {}) {
   const dimensionsOk = hasDimensions
     ? (width >= minWidth && height >= minHeight)
     : allowUnknownDimensions;
+  const downloadUrl = hit?.largeImageURL || hit?.webformatURL;
   return Number.isInteger(id)
     && !excludedIds.has(id)
     && dimensionsOk
-    && Boolean(hit?.largeImageURL || hit?.webformatURL)
-    && Boolean(hit?.pageURL);
+    && Boolean(downloadUrl)
+    && Boolean(hit?.pageURL)
+    && !isBlockedImageUrl(downloadUrl)
+    && !isBlockedImageUrl(hit?.pageURL);
 }
 
 
@@ -191,13 +215,39 @@ export function scorePixabayHit(hit, query) {
   return { score, matchedTerms };
 }
 
-function selectRelevantHit(hits, excludedIds, query, limits) {
-  const ranked = hits
+function rankRelevantHits(hits, excludedIds, query, limits) {
+  return hits
     .filter((hit) => isEligibleHit(hit, excludedIds, limits))
     .map((hit) => ({ hit, ...scorePixabayHit(hit, query) }))
     .filter((candidate) => candidate.score >= MIN_STOCK_RELEVANCE_SCORE)
     .sort((left, right) => right.score - left.score);
-  return ranked[0] || null;
+}
+
+function selectRelevantHit(hits, excludedIds, query, limits) {
+  return rankRelevantHits(hits, excludedIds, query, limits)[0] || null;
+}
+
+/**
+ * Confirma que a imagem escolhida realmente pode ser baixada.
+ * Fail-open: só rejeita quando o servidor responde explicitamente com erro
+ * ou com um conteúdo que não é imagem.
+ */
+async function canDownloadImage(fetchImpl, url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetchImpl(url, { method: "HEAD", signal: controller.signal });
+    if (!response || typeof response.status !== "number") return true;
+    if (response.status === 405 || response.status === 501) return true;
+    if (!response.ok) return false;
+    const type = response.headers?.get?.("content-type");
+    if (type && !/^image\//i.test(type)) return false;
+    return true;
+  } catch {
+    return true;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 const WEB_IMAGE_LIMITS = {
@@ -488,6 +538,7 @@ export async function resolveCarouselStockImage({
   bingLicense = process.env.BING_IMAGE_LICENSE ?? "ShareCommercially",
   cacheFile = path.join(process.cwd(), "worker", "temp", "carousel-stock-cache.json"),
   fetchImpl = fetch,
+  validateDownload = process.env.CAROUSEL_VALIDATE_IMAGE_DOWNLOAD === "1",
   now = Date.now(),
 } = {}) {
   const queryCandidates = normalizeStockImageQueries(query, queries);
@@ -532,34 +583,49 @@ export async function resolveCarouselStockImage({
       }
       if (!search) break;
 
-      const selected = selectRelevantHit(
+      const ranked = rankRelevantHits(
         search.hits,
         excludedIds,
         normalizedQuery,
         search.limits,
       );
-      if (!selected) {
+      if (!ranked.length) {
         cache[cacheKey] = { saved_at: now, result: null };
         safeWriteCache(cacheFile, cache);
         continue;
       }
 
-      const hit = selected.hit;
-      const result = {
-        downloadUrl: String(hit.largeImageURL || hit.webformatURL),
-        audit: {
-          provider: providerName,
-          asset_id: Number(hit.id),
-          page_url: String(hit.pageURL),
-          contributor: String(hit.user || "").trim() || null,
-          query: normalizedQuery,
-          license_url: hit.licenseUrl || search.defaultLicenseUrl || null,
-          selected_at: new Date(now).toISOString(),
-          relevance_score: selected.score,
-          matched_terms: selected.matchedTerms,
-          cache_version: STOCK_CACHE_VERSION,
-        },
-      };
+      let result = null;
+      // Testa os melhores candidatos em ordem: se a imagem não baixa, cai para o próximo.
+      for (const selected of ranked.slice(0, 5)) {
+        const hit = selected.hit;
+        const downloadUrl = String(hit.largeImageURL || hit.webformatURL);
+        if (validateDownload && !(await canDownloadImage(fetchImpl, downloadUrl))) {
+          console.warn(`[image-search] descartada (download falhou) provider=${providerName} query="${normalizedQuery}"`);
+          continue;
+        }
+        result = {
+          downloadUrl,
+          audit: {
+            provider: providerName,
+            asset_id: Number(hit.id),
+            page_url: String(hit.pageURL),
+            contributor: String(hit.user || "").trim() || null,
+            query: normalizedQuery,
+            license_url: hit.licenseUrl || search.defaultLicenseUrl || null,
+            selected_at: new Date(now).toISOString(),
+            relevance_score: selected.score,
+            matched_terms: selected.matchedTerms,
+            cache_version: STOCK_CACHE_VERSION,
+          },
+        };
+        break;
+      }
+      if (!result) {
+        cache[cacheKey] = { saved_at: now, result: null };
+        safeWriteCache(cacheFile, cache);
+        continue;
+      }
       cache[cacheKey] = { saved_at: now, result };
       safeWriteCache(cacheFile, cache);
       logImageSearchSelection(result);
