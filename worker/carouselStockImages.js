@@ -582,34 +582,49 @@ export async function resolveCarouselStockImage({
       }
       if (!search) break;
 
-      const selected = selectRelevantHit(
+      const ranked = rankRelevantHits(
         search.hits,
         excludedIds,
         normalizedQuery,
         search.limits,
       );
-      if (!selected) {
+      if (!ranked.length) {
         cache[cacheKey] = { saved_at: now, result: null };
         safeWriteCache(cacheFile, cache);
         continue;
       }
 
-      const hit = selected.hit;
-      const result = {
-        downloadUrl: String(hit.largeImageURL || hit.webformatURL),
-        audit: {
-          provider: providerName,
-          asset_id: Number(hit.id),
-          page_url: String(hit.pageURL),
-          contributor: String(hit.user || "").trim() || null,
-          query: normalizedQuery,
-          license_url: hit.licenseUrl || search.defaultLicenseUrl || null,
-          selected_at: new Date(now).toISOString(),
-          relevance_score: selected.score,
-          matched_terms: selected.matchedTerms,
-          cache_version: STOCK_CACHE_VERSION,
-        },
-      };
+      let result = null;
+      // Testa os melhores candidatos em ordem: se a imagem não baixa, cai para o próximo.
+      for (const selected of ranked.slice(0, 5)) {
+        const hit = selected.hit;
+        const downloadUrl = String(hit.largeImageURL || hit.webformatURL);
+        if (validateDownload && !(await canDownloadImage(fetchImpl, downloadUrl))) {
+          console.warn(`[image-search] descartada (download falhou) provider=${providerName} query="${normalizedQuery}"`);
+          continue;
+        }
+        result = {
+          downloadUrl,
+          audit: {
+            provider: providerName,
+            asset_id: Number(hit.id),
+            page_url: String(hit.pageURL),
+            contributor: String(hit.user || "").trim() || null,
+            query: normalizedQuery,
+            license_url: hit.licenseUrl || search.defaultLicenseUrl || null,
+            selected_at: new Date(now).toISOString(),
+            relevance_score: selected.score,
+            matched_terms: selected.matchedTerms,
+            cache_version: STOCK_CACHE_VERSION,
+          },
+        };
+        break;
+      }
+      if (!result) {
+        cache[cacheKey] = { saved_at: now, result: null };
+        safeWriteCache(cacheFile, cache);
+        continue;
+      }
       cache[cacheKey] = { saved_at: now, result };
       safeWriteCache(cacheFile, cache);
       logImageSearchSelection(result);
