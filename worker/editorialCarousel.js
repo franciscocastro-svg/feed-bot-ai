@@ -44,7 +44,8 @@ export function normalizeEditorialCarouselSlide(slide, index, total) {
     title,
     body,
     emphasis: validEmphasis(slide?.emphasis, title, body),
-    image_mode: role === "cover" && slide?.image_mode === "stock" && hasVisualQuery
+    // Capa e slides de conteúdo podem ter foto; o slide final (CTA) segue só texto.
+    image_mode: role !== "cta" && slide?.image_mode === "stock" && hasVisualQuery
       ? "stock"
       : "text",
   };
