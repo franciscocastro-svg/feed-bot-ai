@@ -285,6 +285,8 @@ describe("isTransientMediaError", () => {
     "ETIMEDOUT",
     "ECONNRESET",
     "EAI_AGAIN",
+    "Erro ao publicar no Instagram: An unexpected error has occurred. Please retry your request later. (código 2)",
+    "An unexpected error has occurred",
   ];
 
   transientMessages.forEach((msg) => {
