@@ -485,7 +485,15 @@ function getInstagramErrorMessage(prefix: string, data: any) {
     return "TOKEN_EXPIRED: Token do Instagram expirou. Atualize o Access Token em Contas Instagram e clique em Verificar token antes de publicar novamente.";
   }
 
-  return `${prefix}: ${rawMessage}${code ? ` (código ${code}${subcode ? `/${subcode}` : ""})` : ""}`;
+  // Detalhe real enviado pela Meta — sem isso, causas diferentes viram a mesma
+  // mensagem genérica ("An unexpected error has occurred").
+  const userTitle = data?.error?.error_user_title;
+  const userMsg = data?.error?.error_user_msg;
+  const trace = data?.error?.fbtrace_id;
+  const detail = [userTitle, userMsg].filter(Boolean).join(" — ");
+
+  return `${prefix}: ${rawMessage}${code ? ` (código ${code}${subcode ? `/${subcode}` : ""}${errorType ? `/${errorType}` : ""})` : ""}` +
+    `${detail ? ` | Meta: ${detail}` : ""}${trace ? ` | trace ${trace}` : ""}`;
 }
 
 class ContainerStillProcessingError extends Error {
