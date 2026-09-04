@@ -215,13 +215,39 @@ export function scorePixabayHit(hit, query) {
   return { score, matchedTerms };
 }
 
-function selectRelevantHit(hits, excludedIds, query, limits) {
-  const ranked = hits
+function rankRelevantHits(hits, excludedIds, query, limits) {
+  return hits
     .filter((hit) => isEligibleHit(hit, excludedIds, limits))
     .map((hit) => ({ hit, ...scorePixabayHit(hit, query) }))
     .filter((candidate) => candidate.score >= MIN_STOCK_RELEVANCE_SCORE)
     .sort((left, right) => right.score - left.score);
-  return ranked[0] || null;
+}
+
+function selectRelevantHit(hits, excludedIds, query, limits) {
+  return rankRelevantHits(hits, excludedIds, query, limits)[0] || null;
+}
+
+/**
+ * Confirma que a imagem escolhida realmente pode ser baixada.
+ * Fail-open: só rejeita quando o servidor responde explicitamente com erro
+ * ou com um conteúdo que não é imagem.
+ */
+async function canDownloadImage(fetchImpl, url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetchImpl(url, { method: "HEAD", signal: controller.signal });
+    if (!response || typeof response.status !== "number") return true;
+    if (response.status === 405 || response.status === 501) return true;
+    if (!response.ok) return false;
+    const type = response.headers?.get?.("content-type");
+    if (type && !/^image\//i.test(type)) return false;
+    return true;
+  } catch {
+    return true;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 const WEB_IMAGE_LIMITS = {
