@@ -179,11 +179,14 @@ function isEligibleHit(hit, excludedIds, limits = {}) {
   const dimensionsOk = hasDimensions
     ? (width >= minWidth && height >= minHeight)
     : allowUnknownDimensions;
+  const downloadUrl = hit?.largeImageURL || hit?.webformatURL;
   return Number.isInteger(id)
     && !excludedIds.has(id)
     && dimensionsOk
-    && Boolean(hit?.largeImageURL || hit?.webformatURL)
-    && Boolean(hit?.pageURL);
+    && Boolean(downloadUrl)
+    && Boolean(hit?.pageURL)
+    && !isBlockedImageUrl(downloadUrl)
+    && !isBlockedImageUrl(hit?.pageURL);
 }
 
 
