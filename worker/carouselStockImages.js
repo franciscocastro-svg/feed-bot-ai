@@ -538,7 +538,7 @@ export async function resolveCarouselStockImage({
   bingLicense = process.env.BING_IMAGE_LICENSE ?? "ShareCommercially",
   cacheFile = path.join(process.cwd(), "worker", "temp", "carousel-stock-cache.json"),
   fetchImpl = fetch,
-  validateDownload = process.env.CAROUSEL_VALIDATE_IMAGE_DOWNLOAD !== "0",
+  validateDownload = process.env.CAROUSEL_VALIDATE_IMAGE_DOWNLOAD === "1",
   now = Date.now(),
 } = {}) {
   const queryCandidates = normalizeStockImageQueries(query, queries);

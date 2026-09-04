@@ -831,6 +831,7 @@ async function composeAndUploadCarouselNode(item, settings) {
           query: slide.image_query || newsQuery,
           queries: [...(slide.image_queries || []), newsQuery].filter(Boolean),
           excludedIds: usedStockAssetIds,
+          validateDownload: process.env.CAROUSEL_VALIDATE_IMAGE_DOWNLOAD !== "0",
           cacheFile: path.join(TEMP_DIR, "carousel-stock-cache.json"),
         });
       } catch (error) {
