@@ -3,8 +3,29 @@ import path from "node:path";
 
 export const PIXABAY_LICENSE_URL = "https://pixabay.com/service/license-summary/";
 export const STOCK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-export const STOCK_CACHE_VERSION = "v2";
+// v3: passou a bloquear domínios de rede social e a validar o download.
+export const STOCK_CACHE_VERSION = "v3";
 export const MIN_STOCK_RELEVANCE_SCORE = 10;
+
+// Domínios que quase nunca entregam a imagem para o servidor (login, hotlink
+// bloqueado, expiração de assinatura) — não adianta escolher e falhar depois.
+export const BLOCKED_IMAGE_HOSTS = [
+  "instagram.com", "cdninstagram.com", "fbcdn.net", "facebook.com",
+  "tiktok.com", "tiktokcdn.com", "pinterest.com", "pinimg.com",
+  "youtube.com", "youtu.be", "ytimg.com", "x.com", "twitter.com", "twimg.com",
+];
+
+export function isBlockedImageUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  let host = "";
+  try {
+    host = new URL(raw).hostname.toLocaleLowerCase("en-US");
+  } catch {
+    return false;
+  }
+  return BLOCKED_IMAGE_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+}
 
 const MAX_QUERY_CANDIDATES = 3;
 const QUERY_STOP_WORDS = new Set([
