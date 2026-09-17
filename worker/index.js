@@ -1632,8 +1632,10 @@ Regras:
 - A coerência vence a duração: nunca encerre no meio de frase, raciocínio, resposta, demonstração ou revelação.
 - Dê para cada corte 3 notas separadas (0-100): hook_score (força do gancho), emotion_score (intensidade emocional), clarity_score (clareza da mensagem).
 - Calcule viral_score = round(hook_score*0.5 + emotion_score*0.3 + clarity_score*0.2).
-${wantsHook ? '- Escreva um hook_text CURTO (máximo 6 palavras, MAIÚSCULAS, sem pontuação final) que aparecerá em texto grande sobreposto nos primeiros 3s. Exemplos: "VOCÊ NÃO VAI ACREDITAR", "OLHA ISSO", "3 COISAS QUE MUDAM TUDO".' : '- Deixe hook_text como string vazia "".'}
-- Legenda em português brasileiro, curta, sem prometer viralização enganosa.
+${wantsHook ? '- Escreva um hook_text CURTO (no máximo 5 palavras, MAIÚSCULAS, sem pontuação final) baseado no que é realmente dito no trecho, para aparecer em texto grande nos primeiros 3s. Exemplos: "VOCÊ NÃO VAI ACREDITAR", "OLHA ISSO", "3 COISAS QUE MUDAM TUDO".' : '- Deixe hook_text como string vazia "".'}
+- A primeira frase falada do corte precisa funcionar sozinha como gancho: nunca comece em "e", "mas", "aí", "então", "porque" nem no meio de uma resposta.
+- Legenda (caption) em português brasileiro: 1 a 2 linhas fiéis ao trecho + uma pergunta ou chamada para comentar, sem prometer viralização enganosa.
+- Devolva de 4 a 6 hashtags relevantes ao tema do vídeo (nada de hashtags genéricas repetidas em todos os cortes).
 - Use segundos inteiros em start_seconds e end_seconds.
 - Não identifique pessoas apenas pela aparência e não invente nomes, fatos ou contexto.
 
@@ -2263,8 +2265,8 @@ async function detectPrimarySubjectFocus(videoPath, durationSeconds, tempDir) {
   if (!GEMINI_API_KEY) return fallback;
   const contactSheetPath = path.join(tempDir, `${path.basename(videoPath, path.extname(videoPath))}-faces.jpg`);
   try {
-    const interval = Math.max(1, Number(durationSeconds || 1) / 6);
-    const filter = `fps=1/${interval.toFixed(3)},scale=320:-2,tile=3x2:padding=4:margin=4`;
+    const interval = Math.max(0.8, Number(durationSeconds || 1) / 12);
+    const filter = `fps=1/${interval.toFixed(3)},scale=320:-2,tile=4x3:padding=4:margin=4`;
     await execAsync(
       `ffmpeg -y -i ${shellQuote(videoPath)} -vf ${shellQuote(filter)} -frames:v 1 -q:v 4 ${shellQuote(contactSheetPath)}`,
       { maxBuffer: 12 * 1024 * 1024 },
@@ -2272,7 +2274,7 @@ async function detectPrimarySubjectFocus(videoPath, durationSeconds, tempDir) {
     if (!fs.existsSync(contactSheetPath)) return fallback;
     const image = (await fs.promises.readFile(contactSheetPath)).toString("base64");
     const model = process.env.GEMINI_FACE_MODEL || GEMINI_TEXT_MODEL;
-    const prompt = `Observe esta grade 3x2 com até seis quadros consecutivos de um vídeo curto, da esquerda para a direita e de cima para baixo. Identifique a pessoa principal que fala ou conduz a cena em cada quadro. Retorne APENAS JSON: {"frames":[{"x":0.5,"y":0.42,"confidence":0.9},{"x":0.52,"y":0.41,"confidence":0.9}],"focus_x":0.5,"focus_y":0.44,"confidence":0.9}. x/y ficam entre 0 e 1 e apontam para o centro do rosto/torso principal. Inclua um item por quadro visível. Se a pessoa desaparecer em um quadro, repita a última posição confiável; se não houver pessoa em nenhum quadro, use centro e confidence 0.`;
+    const prompt = `Observe esta grade 4x3 com até doze quadros consecutivos de um vídeo curto, da esquerda para a direita e de cima para baixo. Identifique a pessoa principal que fala ou conduz a cena em cada quadro. Retorne APENAS JSON: {"frames":[{"x":0.5,"y":0.42,"confidence":0.9},{"x":0.52,"y":0.41,"confidence":0.9}],"focus_x":0.5,"focus_y":0.44,"confidence":0.9}. x/y ficam entre 0 e 1 e apontam para o centro do rosto/torso principal. Inclua um item por quadro visível. Se a pessoa desaparecer em um quadro, repita a última posição confiável; se não houver pessoa em nenhum quadro, use centro e confidence 0.`;
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2289,11 +2291,12 @@ async function detectPrimarySubjectFocus(videoPath, durationSeconds, tempDir) {
     const payload = await response.json();
     const parsed = parseJsonFromText(payload?.candidates?.[0]?.content?.parts?.[0]?.text || "") || {};
     const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value)));
-    const rawFrames = Array.isArray(parsed.frames) ? parsed.frames.slice(0, 6) : [];
+    const rawFrames = Array.isArray(parsed.frames) ? parsed.frames.slice(0, 12) : [];
     const points = rawFrames.map((frame, index) => ({
       time: rawFrames.length <= 1 ? 0 : (index / (rawFrames.length - 1)) * Number(durationSeconds || 0),
       x: clamp(frame?.x ?? parsed.focus_x ?? 0.5, 0.08, 0.92),
-      y: clamp(frame?.y ?? parsed.focus_y ?? 0.44, 0.08, 0.92),
+      // Um pouco acima do centro do rosto deixa espaço de cabeça e evita corte no topo.
+      y: clamp(Number(frame?.y ?? parsed.focus_y ?? 0.44) - 0.03, 0.08, 0.9),
       confidence: clamp(frame?.confidence ?? parsed.confidence ?? 0, 0, 1),
     }));
     // Suavização simples evita que pequenas variações da detecção produzam um
