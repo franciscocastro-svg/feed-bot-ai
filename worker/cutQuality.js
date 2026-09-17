@@ -141,6 +141,32 @@ function aiScore(clip) {
   return scoreValue(clip?.viral_score, scoreValue(clip?.score, componentScore));
 }
 
+const WEAK_OPENERS = new Set([
+  "e", "mas", "aí", "ai", "então", "entao", "porque", "porém", "porem", "que",
+  "ou", "pois", "daí", "dai", "tipo", "né", "ne", "aliás", "alias", "enfim",
+]);
+
+const STRONG_OPENERS = new Set([
+  "você", "voce", "olha", "imagina", "atenção", "atencao", "ninguém", "ninguem",
+  "nunca", "sempre", "isso", "existe", "tem", "sabe", "por", "o", "a", "quando",
+]);
+
+// Mede se o corte já começa com um gancho compreensível, como fazem as
+// ferramentas de referência do mercado.
+function hookOpeningScore(words) {
+  if (!words.length) return 50;
+  const opening = words.slice(0, 12).map((word) => wordText(word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""));
+  const first = opening[0] || "";
+  let score = 62;
+  if (WEAK_OPENERS.has(first)) score -= 26;
+  if (STRONG_OPENERS.has(first)) score += 12;
+  const openingText = opening.join(" ");
+  if (/\d/.test(words.slice(0, 12).map(wordText).join(" "))) score += 8;
+  if (/\?/.test(words.slice(0, 12).map(wordText).join(" "))) score += 10;
+  if (/\b(voc[êe]|ningu[ée]m|nunca|segredo|erro|verdade|por que|porqu[eê])\b/.test(openingText)) score += 10;
+  return clamp(Math.round(score), 0, 100);
+}
+
 function speechScore(words, duration) {
   if (!words.length || duration <= 0) return 40;
   const wordsPerSecond = words.length / duration;
