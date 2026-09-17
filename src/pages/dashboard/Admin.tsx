@@ -33,10 +33,17 @@ const AdminReleases = lazy(() => import("./AdminReleases"));
 const AdminEmailCampaigns = lazy(() => import("./AdminEmailCampaigns"));
 const AdminSupport = lazy(() => import("./AdminSupport"));
 
+function waLink(raw: string) {
+  const digits = (raw || "").replace(/\D/g, "");
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${full}`;
+}
+
 type Row = {
   user_id: string;
   email: string;
   display_name: string | null;
+  whatsapp: string | null;
   created_at: string;
   plan: string;
   sub_status: string;
@@ -347,6 +354,7 @@ export default function Admin() {
     if (q) arr = arr.filter(r =>
       r.email.toLowerCase().includes(q) ||
       (r.display_name || "").toLowerCase().includes(q) ||
+      (r.whatsapp || "").toLowerCase().includes(q) ||
       r.plan.toLowerCase().includes(q)
     );
     switch (quickFilter) {
@@ -1016,7 +1024,21 @@ export default function Admin() {
                       </td>
                       <td className="p-2">
                         <div className="font-medium">{r.display_name || "—"}</div>
-                        <div className="text-xs text-muted-foreground">{r.email}</div>
+                         <div className="text-xs text-muted-foreground">{r.email}</div>
+                         <div className="text-xs" onClick={(e) => e.stopPropagation()}>
+                           {r.whatsapp ? (
+                             <a
+                               href={waLink(r.whatsapp)}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               className="text-emerald-500 hover:underline"
+                             >
+                               WhatsApp: {r.whatsapp}
+                             </a>
+                           ) : (
+                             <span className="text-muted-foreground">Sem WhatsApp</span>
+                           )}
+                         </div>
                         <div className="text-[10px] text-muted-foreground">Cadastro: {new Date(r.created_at).toLocaleDateString("pt-BR")}</div>
                       </td>
                       <td className="p-2">{healthBadge(customerHealth(r))}</td>
@@ -1826,6 +1848,15 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
             )}
             <div className="text-xs text-muted-foreground">
               {row.email} · cadastro {new Date(row.created_at).toLocaleDateString("pt-BR")}
+            </div>
+            <div className="text-xs">
+              {row.whatsapp ? (
+                <a href={waLink(row.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">
+                  WhatsApp: {row.whatsapp}
+                </a>
+              ) : (
+                <span className="text-muted-foreground">Sem WhatsApp cadastrado</span>
+              )}
             </div>
 
             <section>

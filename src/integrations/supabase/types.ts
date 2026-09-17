@@ -3105,6 +3105,7 @@ export type Database = {
           subscription_environment: string
           subscription_id: string
           user_id: string
+          whatsapp: string
         }[]
       }
       admin_upsert_pix_subscription: {
