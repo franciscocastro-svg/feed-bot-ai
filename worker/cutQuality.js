@@ -217,9 +217,11 @@ function refineCandidate(clip, words, originalIndex, options) {
   const naturalEnd = endStrength >= 2;
   const completeness = naturalStart && naturalEnd ? 100 : naturalStart || naturalEnd ? 78 : 55;
   const baseScore = aiScore(clip);
+  const openingScore = hookOpeningScore(selectedWords);
   const professionalScore = clamp(Math.round(
-    baseScore * 0.72
-    + completeness * 0.22
+    baseScore * 0.62
+    + completeness * 0.2
+    + openingScore * 0.12
     + speechScore(selectedWords, bounds.end - bounds.start) * 0.06,
   ), 0, 100);
 
