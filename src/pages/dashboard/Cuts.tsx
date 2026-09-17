@@ -1394,7 +1394,7 @@ export default function Cuts() {
                       className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
                     >
                       <span className="block text-sm font-medium">Na nuvem · recomendado</span>
-                      <span className="block text-xs text-muted-foreground mt-1">Mais estável para vídeos longos.</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Mais estável e não depende do acesso do servidor ao YouTube.</span>
                     </button>
                   </div>
                 </div>
