@@ -1488,7 +1488,7 @@ export default function Cuts() {
           <h2 className="font-semibold text-lg">Como funciona</h2>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p><span className="text-foreground font-medium">1.</span> Envie o vídeo.</p>
-            <p><span className="text-foreground font-medium">2.</span> A IA escolhe os melhores trechos.</p>
+            <p><span className="text-foreground font-medium">2.</span> A IA escolhe os melhores trechos, sem depender da captura do YouTube.</p>
             <p><span className="text-foreground font-medium">3.</span> Você revisa e agenda. Nada sai sozinho.</p>
           </div>
           {brandProfile && (
