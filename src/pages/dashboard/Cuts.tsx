@@ -1319,7 +1319,7 @@ export default function Cuts() {
           </div>
           <div className="grid md:grid-cols-2 gap-3">
             <div className="space-y-2 md:col-span-2">
-              <Label>Preset de edição</Label>
+              <Label>4 · Estilo pronto</Label>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                 {CUT_PRESET_OPTIONS.map((preset) => (
                   <button
