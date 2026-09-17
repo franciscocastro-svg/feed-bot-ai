@@ -224,7 +224,45 @@ function humanVideoCutError(message?: string | null) {
   if (/private video|video unavailable|members-only/i.test(text)) return "Esse vídeo não está público ou não está disponível para captura.";
   if (/live event|is live|transmissão ao vivo/i.test(text)) return "Aguarde a transmissão terminar e tente novamente com o vídeo gravado.";
   if (/copyright|geo.?restricted|not available in your country/i.test(text)) return "O YouTube restringiu esse vídeo por região ou direitos. Use o MP4 autorizado.";
-  return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+  if (/resource_exhausted|prepayment|quota|billing|429/i.test(text)) {
+    return "A inteligência artificial ficou sem saldo para analisar a fala do vídeo. O corte foi feito no modo básico (por tempo). Recarregue o saldo da IA e use \"Tentar de novo\" para ter a análise completa.";
+  }
+  if (/api key|unauthorized|invalid.*key|401|403/i.test(text)) {
+    return "A chave de acesso da inteligência artificial está inválida ou expirada. Atualize a chave e tente de novo.";
+  }
+  if (/worker_resource_limit|cpu time|memory limit|out of memory/i.test(text)) {
+    return "O vídeo é muito pesado para o processamento automático. Tente um arquivo menor ou divida o vídeo em partes.";
+  }
+  if (/timeout|timed out|etimedout|deadline exceeded/i.test(text)) {
+    return "O processamento demorou mais do que o permitido e foi interrompido. Tente de novo — costuma funcionar na segunda tentativa.";
+  }
+  if (/network|econn|fetch failed|socket hang up/i.test(text)) {
+    return "A conexão com o servidor de vídeo falhou no meio do processo. Tente de novo em alguns minutos.";
+  }
+  if (/no suitable|nenhum trecho|no candidates/i.test(text)) {
+    return "A IA não encontrou trechos bons o suficiente nesse vídeo. Tente um vídeo com mais fala ou peça menos cortes.";
+  }
+  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+const JOB_STAGE_HINTS: Record<string, string> = {
+  queued: "Na fila — começa em instantes",
+  analyzing: "Analisando a fala do vídeo",
+  processing: "Montando os cortes com legenda",
+  rendering: "Finalizando o vídeo",
+};
+
+function jobStageHint(job: VideoCutJob) {
+  return JOB_STAGE_HINTS[job.status] || "Processando";
+}
+
+type JobFilter = "all" | "active" | "ready" | "problem";
+
+function matchesJobFilter(job: VideoCutJob, filter: JobFilter) {
+  if (filter === "all") return true;
+  if (filter === "ready") return job.status === "ready";
+  if (filter === "problem") return ["failed", "cancelled"].includes(job.status);
+  return !["failed", "cancelled", "ready", "discarded"].includes(job.status);
 }
 
 function databaseErrorMessage(error: unknown, fallback: string) {
@@ -300,6 +338,7 @@ export default function Cuts() {
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [savingBrand, setSavingBrand] = useState(false);
   const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
+  const [jobFilter, setJobFilter] = useState<JobFilter>("all");
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
   const [editorialBusy, setEditorialBusy] = useState<{ clipId: string; action: "text" | "render" } | null>(null);
@@ -1561,45 +1600,70 @@ export default function Cuts() {
                 {accounts.map((account) => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
               </SelectContent>
             </Select>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">{jobs.length} job(s)</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">{jobs.length} vídeo(s)</span>
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            { value: "all", label: "Todos" },
+            { value: "active", label: "Em andamento" },
+            { value: "ready", label: "Prontos" },
+            { value: "problem", label: "Com problema" },
+          ] as Array<{ value: JobFilter; label: string }>).map((option) => {
+            const count = jobs.filter((job) => matchesJobFilter(job, option.value)).length;
+            return (
+              <Button
+                key={option.value}
+                size="sm"
+                variant={jobFilter === option.value ? "default" : "outline"}
+                onClick={() => setJobFilter(option.value)}
+              >
+                {option.label} ({count})
+              </Button>
+            );
+          })}
         </div>
         {loading ? (
           <Card className="p-8 text-center text-muted-foreground">Carregando cortes...</Card>
-        ) : jobs.length === 0 ? (
+        ) : jobs.filter((job) => matchesJobFilter(job, jobFilter)).length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">
             <PlayCircle className="h-10 w-10 mx-auto mb-3 opacity-60" />
-            Nenhum corte criado ainda.
+            {jobs.length === 0 ? "Nenhum corte criado ainda." : "Nenhum vídeo nesse filtro."}
           </Card>
-        ) : jobs.map((job) => (
+        ) : jobs
+          .filter((job) => matchesJobFilter(job, jobFilter))
+          .slice()
+          .sort((a, b) => Number(isJobActive(b)) - Number(isJobActive(a)))
+          .map((job) => (
           <Card key={job.id} className="p-5 space-y-4">
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
-                  {job.cut_mode === "editorial" && <Badge variant="outline">Corte editorial · {job.formats?.[0] === "reels" ? "9:16" : "4:5"}</Badge>}
+                  {job.cut_mode === "editorial" && <Badge variant="outline">Editorial · {job.formats?.[0] === "reels" ? "9:16" : "4:5"}</Badge>}
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
+                </div>
+                <p className="text-sm font-medium mt-2 truncate">
+                  {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  </span>
                   {job.processing_mode === "local_device" ? (
-                    <span className="text-sm text-primary inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Processamento local</span>
+                    <span className="inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Neste dispositivo</span>
                   ) : job.source_kind === "upload" ? (
-                    <span className="text-sm text-muted-foreground inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
+                    <span className="inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
                   ) : (
-                    <a className="text-sm text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
+                    <a className="text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
                       YouTube <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
-                  {job.analysis_mode?.startsWith("transcript_ai") && <Badge variant="outline">Análise pela fala</Badge>}
-                  {job.analysis_mode === "timeline_fallback" && <Badge variant="secondary">Modo básico</Badge>}
+                  {job.analysis_mode === "timeline_fallback" && <span>Modo básico (sem análise da fala)</span>}
                 </div>
-                <p className="text-sm text-muted-foreground mt-2 truncate">
-                  {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-                </div>
                 {job.processing_mode === "local_device" && job.video_cut_clips?.some((clip) => !clip.video_url) && (
                   <Button size="sm" onClick={() => {
                     setLocalJobId(job.id);
@@ -1608,6 +1672,12 @@ export default function Cuts() {
                   }} disabled={!videoFile || localRendering}>
                     {localRendering ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1" />}
                     {videoFile ? "Concluir neste dispositivo" : "Selecione o original acima"}
+                  </Button>
+                )}
+                {job.status === "failed" && job.processing_mode !== "local_device" && !job.fallback_required && (
+                  <Button size="sm" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
+                    {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    Tentar de novo
                   </Button>
                 )}
                 {job.status === "ready" && job.processing_mode !== "local_device" && job.cut_mode !== "editorial" && (
@@ -1636,7 +1706,14 @@ export default function Cuts() {
                 )}
               </div>
             </div>
-            {isJobActive(job) && <Progress value={job.progress || 0} />}
+            {isJobActive(job) && (
+              <div className="space-y-1">
+                <Progress value={job.progress || 0} />
+                <p className="text-xs text-muted-foreground">
+                  {jobStageHint(job)}{job.progress ? ` · ${Math.round(job.progress)}%` : ""}
+                </p>
+              </div>
+            )}
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
@@ -1652,9 +1729,10 @@ export default function Cuts() {
             )}
             {job.analysis_warning && job.status !== "failed" && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
-                {job.analysis_warning}
+                {humanVideoCutError(job.analysis_warning)}
               </div>
             )}
+
 
             {(job.video_cut_clips?.length ?? 0) > 0 && (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
