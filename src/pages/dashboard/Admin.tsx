@@ -37,6 +37,7 @@ type Row = {
   user_id: string;
   email: string;
   display_name: string | null;
+  whatsapp: string | null;
   created_at: string;
   plan: string;
   sub_status: string;
@@ -347,6 +348,7 @@ export default function Admin() {
     if (q) arr = arr.filter(r =>
       r.email.toLowerCase().includes(q) ||
       (r.display_name || "").toLowerCase().includes(q) ||
+      (r.whatsapp || "").toLowerCase().includes(q) ||
       r.plan.toLowerCase().includes(q)
     );
     switch (quickFilter) {
