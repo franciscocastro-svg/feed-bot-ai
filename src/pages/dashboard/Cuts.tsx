@@ -1339,68 +1339,128 @@ export default function Cuts() {
                 />
               )}
             </div>
-            <div className="space-y-2">
-              <Label>Estilo da legenda</Label>
-              <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="classic">Clássica · branco/preto</SelectItem>
-                  <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
-                  <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
-                  <SelectItem value="bold">Bold viral · impacto e destaque</SelectItem>
-                  <SelectItem value="clean">Clean · discreta e profissional</SelectItem>
-                  <SelectItem value="none">Sem legenda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
-              <p><span className="text-foreground font-medium">{limitText}</span></p>
-              <p>Máximo por vídeo: {bounds.maxPerJob || 0} · Cada corte × {formats.length} formato(s) = {formats.length} crédito(s). Duração máxima: {usage?.max_cut_video_minutes || 60} min.</p>
-            </div>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Hook chamativo</span>
-                <span className="block text-xs text-muted-foreground">Texto grande gerado pela IA nos primeiros 3s.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Aperto de ritmo</span>
-                <span className="block text-xs text-muted-foreground">Remove pausas mortas maiores que 0,7s.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Zoom sutil</span>
-                <span className="block text-xs text-muted-foreground">Efeito Ken Burns (+5% ao longo do corte).</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Enquadrar pessoa</span>
-                <span className="block text-xs text-muted-foreground">Detecta o assunto principal e reposiciona o recorte.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox
-                checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
-                disabled={cutMode === "editorial" || (inputMode === "upload" && processingMode === "local_device")}
-                onCheckedChange={(c) => setAutoPublish(c === true)}
-              />
-              <span>
-                <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
-                <span className="block text-xs text-muted-foreground">
-                  {cutMode === "editorial" ? "Sempre bloqueado: exige revisão e confirmação." : inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
-                </span>
-              </span>
-            </label>
+
+          <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+            <p><span className="text-foreground font-medium">{limitText}</span></p>
+            <p className="text-xs">Cada corte usa 1 crédito por formato escolhido.</p>
           </div>
+
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border px-4 py-3 text-sm font-medium hover:bg-muted/40">
+              <span>Opções avançadas</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-3">
+              <div className="space-y-2">
+                <Label>Origem do vídeo</Label>
+                <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("upload")}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Enviar MP4 · recomendado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("youtube")}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Link do YouTube · experimental
+                  </button>
+                </div>
+              </div>
+
+              {inputMode === "upload" && (
+                <div className="space-y-2">
+                  <Label>Onde processar</Label>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={cutMode === "editorial"}
+                      onClick={() => setProcessingMode("local_device")}
+                      className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Neste dispositivo</span>
+                      <span className="block text-xs text-muted-foreground mt-1">{cutMode === "editorial" ? "O layout editorial é composto na nuvem." : "Privado e econômico."}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProcessingMode("cloud")}
+                      className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Na nuvem · recomendado</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Mais estável para vídeos longos.</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Estilo da legenda</Label>
+                <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="classic">Clássica · branco/preto</SelectItem>
+                    <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
+                    <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
+                    <SelectItem value="bold">Bold viral · impacto e destaque</SelectItem>
+                    <SelectItem value="clean">Clean · discreta e profissional</SelectItem>
+                    <SelectItem value="none">Sem legenda</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-2">
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Hook chamativo</span>
+                    <span className="block text-xs text-muted-foreground">Texto grande nos primeiros 3s.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Aperto de ritmo</span>
+                    <span className="block text-xs text-muted-foreground">Remove pausas longas.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Zoom sutil</span>
+                    <span className="block text-xs text-muted-foreground">Leve aproximação ao longo do corte.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Enquadrar pessoa</span>
+                    <span className="block text-xs text-muted-foreground">Centraliza quem está falando.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer md:col-span-2">
+                  <Checkbox
+                    checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
+                    disabled={cutMode === "editorial" || (inputMode === "upload" && processingMode === "local_device")}
+                    onCheckedChange={(c) => setAutoPublish(c === true)}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {cutMode === "editorial" ? "Sempre bloqueado: exige revisão e confirmação." : inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Máximo por vídeo: {bounds.maxPerJob || 0} cortes · duração máxima do vídeo: {usage?.max_cut_video_minutes || 60} min.
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
           <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
             <Checkbox checked={rightsConfirmed} onCheckedChange={(checked) => setRightsConfirmed(checked === true)} />
             <span>Confirmo que tenho direito/autorização para usar este vídeo e gerar cortes para publicação.</span>
