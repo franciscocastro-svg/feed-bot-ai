@@ -285,6 +285,8 @@ export default function Cuts() {
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
   const [cutMode, setCutMode] = useState<CutMode>("subtitled");
   const [workspaceTab, setWorkspaceTab] = useState<CutsWorkspaceTab>("create");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke" | "clean" | "bold">("bold");
   const [presetKey, setPresetKey] = useState<CutPresetKey>("viral");
