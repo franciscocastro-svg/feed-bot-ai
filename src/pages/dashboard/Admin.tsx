@@ -33,6 +33,12 @@ const AdminReleases = lazy(() => import("./AdminReleases"));
 const AdminEmailCampaigns = lazy(() => import("./AdminEmailCampaigns"));
 const AdminSupport = lazy(() => import("./AdminSupport"));
 
+function waLink(raw: string) {
+  const digits = (raw || "").replace(/\D/g, "");
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${full}`;
+}
+
 type Row = {
   user_id: string;
   email: string;
