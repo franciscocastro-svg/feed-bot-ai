@@ -215,6 +215,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     );
   }
 
+  // Estilo "palavra viva": a palavra falada no instante ganha cor de destaque e
+  // um leve pop de escala, como nos cortes de referência do mercado.
+  const wordPop = options.wordPop !== false && styleName !== "clean";
+
   for (const group of groups) {
     if (!group.length) continue;
     const groupStart = group[0].start;
@@ -222,13 +226,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if (groupEnd <= groupStart) continue;
     if (groupStart >= clipDurationSeconds) continue;
     const safeEnd = Math.min(groupEnd, clipDurationSeconds);
-    const parts = group.map((w) => {
-      const durCs = Math.max(1, Math.round((w.end - w.start) * 100));
-      const txt = escapeAssText(w.word);
-      return `{\\kf${durCs}\\1c${preset.primary}\\2c${preset.highlightColor}}${txt} `;
+
+    if (!wordPop) {
+      const parts = group.map((w) => {
+        const durCs = Math.max(1, Math.round((w.end - w.start) * 100));
+        return `{\\kf${durCs}\\1c${preset.primary}\\2c${preset.highlightColor}}${escapeAssText(w.word)} `;
+      });
+      events.push(`Dialogue: 0,${secondsToAssTime(groupStart)},${secondsToAssTime(safeEnd)},Default,,0,0,0,,${parts.join("").trimEnd()}`);
+      continue;
+    }
+
+    group.forEach((active, activeIndex) => {
+      const start = Math.max(groupStart, Math.min(active.start, clipDurationSeconds));
+      const isLast = activeIndex === group.length - 1;
+      const rawEnd = isLast ? groupEnd : group[activeIndex + 1].start;
+      const end = Math.min(Math.max(start + 0.05, rawEnd), safeEnd);
+      if (end <= start) return;
+      const text = group
+        .map((w, index) => {
+          const txt = escapeAssText(w.word);
+          if (index !== activeIndex) return `{\\1c${preset.primary}\\fscx100\\fscy100}${txt}`;
+          return `{\\1c${preset.highlightColor}\\fscx108\\fscy108}${txt}{\\1c${preset.primary}\\fscx100\\fscy100}`;
+        })
+        .join(" ");
+      const intro = activeIndex === 0 ? "{\\fad(90,0)}" : "";
+      events.push(`Dialogue: 0,${secondsToAssTime(start)},${secondsToAssTime(end)},Default,,0,0,0,,${intro}${text}`);
     });
-    const text = parts.join("").trimEnd();
-    events.push(`Dialogue: 0,${secondsToAssTime(groupStart)},${secondsToAssTime(safeEnd)},Default,,0,0,0,,${text}`);
   }
 
   return header + events.join("\n") + "\n";
