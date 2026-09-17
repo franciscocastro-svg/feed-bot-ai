@@ -3,6 +3,8 @@ import path from "node:path";
 
 export const PIXABAY_LICENSE_URL = "https://pixabay.com/service/license-summary/";
 export const STOCK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Resultado vazio por falha transitória (download recusado) expira rápido.
+export const TRANSIENT_STOCK_CACHE_TTL_MS = 10 * 60 * 1000;
 // v3: passou a bloquear domínios de rede social e a validar o download.
 export const STOCK_CACHE_VERSION = "v3";
 export const MIN_STOCK_RELEVANCE_SCORE = 10;
@@ -447,7 +449,11 @@ function safeWriteCache(cacheFile, cache) {
 
 function cachedEntry(cache, key, now) {
   const entry = cache[key];
-  if (!entry || now - Number(entry.saved_at || 0) > STOCK_CACHE_TTL_MS) {
+  if (!entry) return { found: false, result: null };
+  const ttl = (!entry.result && entry.transient)
+    ? TRANSIENT_STOCK_CACHE_TTL_MS
+    : STOCK_CACHE_TTL_MS;
+  if (now - Number(entry.saved_at || 0) > ttl) {
     return { found: false, result: null };
   }
   return { found: true, result: entry.result || null };
@@ -622,7 +628,9 @@ export async function resolveCarouselStockImage({
         break;
       }
       if (!result) {
-        cache[cacheKey] = { saved_at: now, result: null };
+        // Falha de download é transitória: não gravar vazio no cache longo,
+        // senão o tema ficaria sem foto por 24h.
+        cache[cacheKey] = { saved_at: now, result: null, transient: true };
         safeWriteCache(cacheFile, cache);
         continue;
       }
