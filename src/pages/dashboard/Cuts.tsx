@@ -1600,45 +1600,70 @@ export default function Cuts() {
                 {accounts.map((account) => <SelectItem key={account.id} value={account.id}>@{account.username}</SelectItem>)}
               </SelectContent>
             </Select>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">{jobs.length} job(s)</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">{jobs.length} vídeo(s)</span>
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            { value: "all", label: "Todos" },
+            { value: "active", label: "Em andamento" },
+            { value: "ready", label: "Prontos" },
+            { value: "problem", label: "Com problema" },
+          ] as Array<{ value: JobFilter; label: string }>).map((option) => {
+            const count = jobs.filter((job) => matchesJobFilter(job, option.value)).length;
+            return (
+              <Button
+                key={option.value}
+                size="sm"
+                variant={jobFilter === option.value ? "default" : "outline"}
+                onClick={() => setJobFilter(option.value)}
+              >
+                {option.label} ({count})
+              </Button>
+            );
+          })}
         </div>
         {loading ? (
           <Card className="p-8 text-center text-muted-foreground">Carregando cortes...</Card>
-        ) : jobs.length === 0 ? (
+        ) : jobs.filter((job) => matchesJobFilter(job, jobFilter)).length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">
             <PlayCircle className="h-10 w-10 mx-auto mb-3 opacity-60" />
-            Nenhum corte criado ainda.
+            {jobs.length === 0 ? "Nenhum corte criado ainda." : "Nenhum vídeo nesse filtro."}
           </Card>
-        ) : jobs.map((job) => (
+        ) : jobs
+          .filter((job) => matchesJobFilter(job, jobFilter))
+          .slice()
+          .sort((a, b) => Number(isJobActive(b)) - Number(isJobActive(a)))
+          .map((job) => (
           <Card key={job.id} className="p-5 space-y-4">
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(job.status)}>{statusLabel(job.status)}</Badge>
-                  {job.cut_mode === "editorial" && <Badge variant="outline">Corte editorial · {job.formats?.[0] === "reels" ? "9:16" : "4:5"}</Badge>}
+                  {job.cut_mode === "editorial" && <Badge variant="outline">Editorial · {job.formats?.[0] === "reels" ? "9:16" : "4:5"}</Badge>}
                   <span className="text-sm text-muted-foreground">@{job.instagram_accounts?.username || "conta"}</span>
+                </div>
+                <p className="text-sm font-medium mt-2 truncate">
+                  {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  </span>
                   {job.processing_mode === "local_device" ? (
-                    <span className="text-sm text-primary inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Processamento local</span>
+                    <span className="inline-flex items-center gap-1"><Scissors className="h-3 w-3" /> Neste dispositivo</span>
                   ) : job.source_kind === "upload" ? (
-                    <span className="text-sm text-muted-foreground inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
+                    <span className="inline-flex items-center gap-1"><Upload className="h-3 w-3" /> MP4 privado</span>
                   ) : (
-                    <a className="text-sm text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
+                    <a className="text-primary inline-flex items-center gap-1" href={job.youtube_url} target="_blank" rel="noreferrer">
                       YouTube <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
-                  {job.analysis_mode?.startsWith("transcript_ai") && <Badge variant="outline">Análise pela fala</Badge>}
-                  {job.analysis_mode === "timeline_fallback" && <Badge variant="secondary">Modo básico</Badge>}
+                  {job.analysis_mode === "timeline_fallback" && <span>Modo básico (sem análise da fala)</span>}
                 </div>
-                <p className="text-sm text-muted-foreground mt-2 truncate">
-                  {job.source_title || job.source_file_name || job.source_video_url || job.youtube_url}
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  {new Date(job.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-                </div>
                 {job.processing_mode === "local_device" && job.video_cut_clips?.some((clip) => !clip.video_url) && (
                   <Button size="sm" onClick={() => {
                     setLocalJobId(job.id);
@@ -1647,6 +1672,12 @@ export default function Cuts() {
                   }} disabled={!videoFile || localRendering}>
                     {localRendering ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1" />}
                     {videoFile ? "Concluir neste dispositivo" : "Selecione o original acima"}
+                  </Button>
+                )}
+                {job.status === "failed" && job.processing_mode !== "local_device" && !job.fallback_required && (
+                  <Button size="sm" onClick={() => regenerateJob(job)} disabled={regeneratingJobId === job.id}>
+                    {regeneratingJobId === job.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    Tentar de novo
                   </Button>
                 )}
                 {job.status === "ready" && job.processing_mode !== "local_device" && job.cut_mode !== "editorial" && (
@@ -1675,7 +1706,14 @@ export default function Cuts() {
                 )}
               </div>
             </div>
-            {isJobActive(job) && <Progress value={job.progress || 0} />}
+            {isJobActive(job) && (
+              <div className="space-y-1">
+                <Progress value={job.progress || 0} />
+                <p className="text-xs text-muted-foreground">
+                  {jobStageHint(job)}{job.progress ? ` · ${Math.round(job.progress)}%` : ""}
+                </p>
+              </div>
+            )}
             {job.error_message && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {humanVideoCutError(job.error_message)}
@@ -1691,9 +1729,10 @@ export default function Cuts() {
             )}
             {job.analysis_warning && job.status !== "failed" && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
-                {job.analysis_warning}
+                {humanVideoCutError(job.analysis_warning)}
               </div>
             )}
+
 
             {(job.video_cut_clips?.length ?? 0) > 0 && (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
