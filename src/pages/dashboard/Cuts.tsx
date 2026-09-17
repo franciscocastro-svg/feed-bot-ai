@@ -338,6 +338,7 @@ export default function Cuts() {
   const [editingClip, setEditingClip] = useState<VideoCutClip | null>(null);
   const [savingBrand, setSavingBrand] = useState(false);
   const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
+  const [jobFilter, setJobFilter] = useState<JobFilter>("all");
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
   const [editorialBusy, setEditorialBusy] = useState<{ clipId: string; action: "text" | "render" } | null>(null);
