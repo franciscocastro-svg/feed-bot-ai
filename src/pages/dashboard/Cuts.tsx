@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Ban, CheckCircle2, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, ChevronDown, Clock, ExternalLink, Loader2, PlayCircle, RefreshCw, Scissors, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePlanUsage, isUnlimited } from "@/hooks/usePlanUsage";
@@ -28,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { statusLabelPt } from "@/lib/statusLabels";
 import {
   LocalVideoCutSession,
@@ -285,6 +286,8 @@ export default function Cuts() {
   const [formats, setFormats] = useState<CutFormat[]>(["reels"]);
   const [cutMode, setCutMode] = useState<CutMode>("subtitled");
   const [workspaceTab, setWorkspaceTab] = useState<CutsWorkspaceTab>("create");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [subtitleStyle, setSubtitleStyle] = useState<"none" | "classic" | "neon" | "karaoke" | "clean" | "bold">("bold");
   const [presetKey, setPresetKey] = useState<CutPresetKey>("viral");
@@ -1219,68 +1222,29 @@ export default function Cuts() {
 
         <TabsContent value="create" className="mt-0">
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4">
-        <Card className="p-5 space-y-4">
+        <Card className="p-5 space-y-5">
           <div>
             <h2 className="font-semibold text-lg">Criar novo corte</h2>
-            <p className="text-sm text-muted-foreground">O resultado entra como rascunho, sem publicação automática.</p>
+            <p className="text-sm text-muted-foreground">Envie o vídeo, escolha o estilo e revise antes de publicar.</p>
           </div>
-          <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
-            <button
-              type="button"
-              onClick={() => setInputMode("upload")}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Enviar MP4 · recomendado
-            </button>
-            <button
-              type="button"
-              onClick={() => setInputMode("youtube")}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Link do YouTube · experimental
-            </button>
-          </div>
+
           <div className="grid md:grid-cols-[1fr_220px] gap-3">
             <div className="space-y-2">
               {inputMode === "youtube" ? (
                 <>
-                  <Label>Link do YouTube</Label>
+                  <Label>1 · Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-muted-foreground">
-                    O YouTube pode bloquear capturas automáticas mesmo quando o link é válido. Para maior confiabilidade, baixe o vídeo autorizado e use <strong className="text-foreground">Enviar MP4</strong>.
-                  </div>
-                  <p className="text-xs text-muted-foreground">Aceita vídeo, Short e live já encerrada. A duração do corte é flexível: a IA preserva a ideia completa, sem encerrar no meio da fala.</p>
+                  <p className="text-xs text-muted-foreground">O YouTube pode bloquear capturas automáticas. Enviar o MP4 é mais confiável.</p>
                 </>
               ) : (
                 <>
-                  <Label>Arquivo MP4 autorizado</Label>
+                  <Label>1 · Vídeo (MP4 até 1 GB)</Label>
                   <Input
                     type="file"
                     accept="video/mp4,.mp4"
                     onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Baixe o vídeo de uma fonte em que você tenha direito de uso e envie o arquivo MP4 de até 1 GB. A nuvem é o modo recomendado e não depende do acesso do servidor ao YouTube.
-                  </p>
-                  <div className="grid sm:grid-cols-2 gap-2 pt-2">
-                    <button
-                      type="button"
-                      disabled={cutMode === "editorial"}
-                      onClick={() => setProcessingMode("local_device")}
-                      className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
-                    >
-                      <span className="block text-sm font-medium">Neste dispositivo</span>
-                      <span className="block text-xs text-muted-foreground mt-1">{cutMode === "editorial" ? "O layout editorial é composto no worker da nuvem." : "Privado e econômico. Recomendado para computadores recentes."}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProcessingMode("cloud")}
-                      className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
-                    >
-                      <span className="block text-sm font-medium">Na nuvem · recomendado</span>
-                      <span className="block text-xs text-muted-foreground mt-1">Envia o MP4 completo e usa o worker do servidor, sem depender do YouTube.</span>
-                    </button>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Use um vídeo que você tenha direito de usar.</p>
                   {processingMode === "local_device" && videoFile && (
                     <p className={`text-xs ${deviceCapability.recommended ? "text-green-600" : "text-amber-600"}`}>
                       {deviceCapability.reason}
@@ -1300,7 +1264,7 @@ export default function Cuts() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Tipo de corte</Label>
+            <Label>2 · Tipo de corte</Label>
             <Tabs value={cutMode} onValueChange={(value) => selectCutMode(value as CutMode)}>
               <TabsList className={`grid h-auto w-full ${isAdmin ? "md:grid-cols-3" : "grid-cols-2"}`}>
                 {CUT_MODE_OPTIONS.filter((option) => option.value !== "editorial" || isAdmin).map((option) => (
@@ -1322,7 +1286,7 @@ export default function Cuts() {
           </div>
           <div className="grid md:grid-cols-[180px_1fr] gap-3 items-start">
             <div className="space-y-2">
-              <Label>Quantidade</Label>
+              <Label>3 · Quantidade</Label>
               <Input
                 type="number"
                 min={1}
@@ -1333,7 +1297,7 @@ export default function Cuts() {
               <p className="text-xs text-muted-foreground">Cada formato conta 1 crédito por corte.</p>
             </div>
             <div className="space-y-2">
-              <Label>{cutMode === "editorial" ? "Formato de saída" : "Formatos de saída (1 ou mais)"}</Label>
+              <Label>{cutMode === "editorial" ? "Formato de saída" : "Formato"}</Label>
               <div className="grid sm:grid-cols-3 gap-2">
                 {CUT_FORMAT_OPTIONS.map((opt) => {
                   const checked = formats.includes(opt.value);
@@ -1355,7 +1319,7 @@ export default function Cuts() {
           </div>
           <div className="grid md:grid-cols-2 gap-3">
             <div className="space-y-2 md:col-span-2">
-              <Label>Preset de edição</Label>
+              <Label>4 · Estilo pronto</Label>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                 {CUT_PRESET_OPTIONS.map((preset) => (
                   <button
@@ -1378,68 +1342,128 @@ export default function Cuts() {
                 />
               )}
             </div>
-            <div className="space-y-2">
-              <Label>Estilo da legenda</Label>
-              <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="classic">Clássica · branco/preto</SelectItem>
-                  <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
-                  <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
-                  <SelectItem value="bold">Bold viral · impacto e destaque</SelectItem>
-                  <SelectItem value="clean">Clean · discreta e profissional</SelectItem>
-                  <SelectItem value="none">Sem legenda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
-              <p><span className="text-foreground font-medium">{limitText}</span></p>
-              <p>Máximo por vídeo: {bounds.maxPerJob || 0} · Cada corte × {formats.length} formato(s) = {formats.length} crédito(s). Duração máxima: {usage?.max_cut_video_minutes || 60} min.</p>
-            </div>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Hook chamativo</span>
-                <span className="block text-xs text-muted-foreground">Texto grande gerado pela IA nos primeiros 3s.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Aperto de ritmo</span>
-                <span className="block text-xs text-muted-foreground">Remove pausas mortas maiores que 0,7s.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Zoom sutil</span>
-                <span className="block text-xs text-muted-foreground">Efeito Ken Burns (+5% ao longo do corte).</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox disabled={cutMode === "editorial"} checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
-              <span>
-                <span className="font-medium text-foreground">Enquadrar pessoa</span>
-                <span className="block text-xs text-muted-foreground">Detecta o assunto principal e reposiciona o recorte.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
-              <Checkbox
-                checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
-                disabled={cutMode === "editorial" || (inputMode === "upload" && processingMode === "local_device")}
-                onCheckedChange={(c) => setAutoPublish(c === true)}
-              />
-              <span>
-                <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
-                <span className="block text-xs text-muted-foreground">
-                  {cutMode === "editorial" ? "Sempre bloqueado: exige revisão e confirmação." : inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
-                </span>
-              </span>
-            </label>
+
+          <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+            <p><span className="text-foreground font-medium">{limitText}</span></p>
+            <p className="text-xs">Cada corte usa 1 crédito por formato escolhido.</p>
           </div>
+
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border px-4 py-3 text-sm font-medium hover:bg-muted/40">
+              <span>Opções avançadas</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-3">
+              <div className="space-y-2">
+                <Label>Origem do vídeo</Label>
+                <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("upload")}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Enviar MP4 · recomendado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("youtube")}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Link do YouTube · experimental
+                  </button>
+                </div>
+              </div>
+
+              {inputMode === "upload" && (
+                <div className="space-y-2">
+                  <Label>Onde processar</Label>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={cutMode === "editorial"}
+                      onClick={() => setProcessingMode("local_device")}
+                      className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Neste dispositivo</span>
+                      <span className="block text-xs text-muted-foreground mt-1">{cutMode === "editorial" ? "O layout editorial é composto na nuvem." : "Privado e econômico."}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProcessingMode("cloud")}
+                      className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
+                    >
+                      <span className="block text-sm font-medium">Na nuvem · recomendado</span>
+                      <span className="block text-xs text-muted-foreground mt-1">Mais estável e não depende do acesso do servidor ao YouTube.</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Estilo da legenda</Label>
+                <Select value={subtitleStyle} onValueChange={(v) => setSubtitleStyle(v as typeof subtitleStyle)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="classic">Clássica · branco/preto</SelectItem>
+                    <SelectItem value="neon">Neon · amarelo destacando</SelectItem>
+                    <SelectItem value="karaoke">Karaokê · verde progressivo</SelectItem>
+                    <SelectItem value="bold">Bold viral · impacto e destaque</SelectItem>
+                    <SelectItem value="clean">Clean · discreta e profissional</SelectItem>
+                    <SelectItem value="none">Sem legenda</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-2">
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : hookEnabled} onCheckedChange={(c) => setHookEnabled(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Hook chamativo</span>
+                    <span className="block text-xs text-muted-foreground">Texto grande nos primeiros 3s.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={removeSilences} onCheckedChange={(c) => setRemoveSilences(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Aperto de ritmo</span>
+                    <span className="block text-xs text-muted-foreground">Remove pausas longas.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={cutMode === "editorial" ? false : zoomEffect} onCheckedChange={(c) => setZoomEffect(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Zoom sutil</span>
+                    <span className="block text-xs text-muted-foreground">Leve aproximação ao longo do corte.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer">
+                  <Checkbox disabled={cutMode === "editorial"} checked={smartCrop} onCheckedChange={(c) => setSmartCrop(c === true)} />
+                  <span>
+                    <span className="font-medium text-foreground">Enquadrar pessoa</span>
+                    <span className="block text-xs text-muted-foreground">Centraliza quem está falando.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm cursor-pointer md:col-span-2">
+                  <Checkbox
+                    checked={inputMode === "upload" && processingMode === "local_device" ? false : autoPublish}
+                    disabled={cutMode === "editorial" || (inputMode === "upload" && processingMode === "local_device")}
+                    onCheckedChange={(c) => setAutoPublish(c === true)}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Auto-publicar no Instagram</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {cutMode === "editorial" ? "Sempre bloqueado: exige revisão e confirmação." : inputMode === "upload" && processingMode === "local_device" ? "Disponível depois da renderização local." : "Agenda para +10min sem revisão manual."}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Máximo por vídeo: {bounds.maxPerJob || 0} cortes · duração máxima do vídeo: {usage?.max_cut_video_minutes || 60} min.
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
           <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
             <Checkbox checked={rightsConfirmed} onCheckedChange={(checked) => setRightsConfirmed(checked === true)} />
             <span>Confirmo que tenho direito/autorização para usar este vídeo e gerar cortes para publicação.</span>
@@ -1462,17 +1486,21 @@ export default function Cuts() {
 
         <Card className="p-5 space-y-4">
           <h2 className="font-semibold text-lg">Como funciona</h2>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p><span className="text-foreground font-medium">1.</span> Baixe o vídeo que você tem autorização para reutilizar e envie o MP4.</p>
-            <p><span className="text-foreground font-medium">2.</span> A IA encontra trechos com gancho, contexto e potencial sem depender da captura do YouTube.</p>
-            <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p><span className="text-foreground font-medium">1.</span> Envie o vídeo.</p>
+            <p><span className="text-foreground font-medium">2.</span> A IA escolhe os melhores trechos, sem depender da captura do YouTube.</p>
+            <p><span className="text-foreground font-medium">3.</span> Você revisa e agenda. Nada sai sozinho.</p>
           </div>
           {brandProfile && (
-            <div className="border-t border-border pt-4 space-y-3">
-              <div>
-                <h3 className="font-semibold">Identidade desta conta</h3>
-                <p className="text-xs text-muted-foreground">Aplicada apenas aos cortes de @{accounts.find((account) => account.id === accountId)?.username || "Instagram"}.</p>
-              </div>
+            <Collapsible open={identityOpen} onOpenChange={setIdentityOpen} className="border-t border-border pt-4 space-y-3">
+              <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
+                <span>
+                  <span className="block font-semibold text-foreground">Identidade desta conta</span>
+                  <span className="block text-xs text-muted-foreground">Cores, marca d'água e preset de @{accounts.find((account) => account.id === accountId)?.username || "Instagram"}.</span>
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${identityOpen ? "rotate-180" : ""}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
               <div className="grid grid-cols-3 gap-2">
                 <label className="space-y-1 text-xs text-muted-foreground">
                   Texto
@@ -1515,7 +1543,8 @@ export default function Cuts() {
                 {savingBrand && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Salvar identidade
               </Button>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </Card>
       </div>
