@@ -1219,68 +1219,29 @@ export default function Cuts() {
 
         <TabsContent value="create" className="mt-0">
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4">
-        <Card className="p-5 space-y-4">
+        <Card className="p-5 space-y-5">
           <div>
             <h2 className="font-semibold text-lg">Criar novo corte</h2>
-            <p className="text-sm text-muted-foreground">O resultado entra como rascunho, sem publicação automática.</p>
+            <p className="text-sm text-muted-foreground">Envie o vídeo, escolha o estilo e revise antes de publicar.</p>
           </div>
-          <div className="grid grid-cols-2 rounded-xl border border-border bg-muted/20 p-1">
-            <button
-              type="button"
-              onClick={() => setInputMode("upload")}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Enviar MP4 · recomendado
-            </button>
-            <button
-              type="button"
-              onClick={() => setInputMode("youtube")}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${inputMode === "youtube" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Link do YouTube · experimental
-            </button>
-          </div>
+
           <div className="grid md:grid-cols-[1fr_220px] gap-3">
             <div className="space-y-2">
               {inputMode === "youtube" ? (
                 <>
-                  <Label>Link do YouTube</Label>
+                  <Label>1 · Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-muted-foreground">
-                    O YouTube pode bloquear capturas automáticas mesmo quando o link é válido. Para maior confiabilidade, baixe o vídeo autorizado e use <strong className="text-foreground">Enviar MP4</strong>.
-                  </div>
-                  <p className="text-xs text-muted-foreground">Aceita vídeo, Short e live já encerrada. A duração do corte é flexível: a IA preserva a ideia completa, sem encerrar no meio da fala.</p>
+                  <p className="text-xs text-muted-foreground">Modo experimental: o YouTube pode bloquear a captura. Enviar o MP4 é mais confiável.</p>
                 </>
               ) : (
                 <>
-                  <Label>Arquivo MP4 autorizado</Label>
+                  <Label>1 · Vídeo (MP4 até 1 GB)</Label>
                   <Input
                     type="file"
                     accept="video/mp4,.mp4"
                     onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Baixe o vídeo de uma fonte em que você tenha direito de uso e envie o arquivo MP4 de até 1 GB. A nuvem é o modo recomendado e não depende do acesso do servidor ao YouTube.
-                  </p>
-                  <div className="grid sm:grid-cols-2 gap-2 pt-2">
-                    <button
-                      type="button"
-                      disabled={cutMode === "editorial"}
-                      onClick={() => setProcessingMode("local_device")}
-                      className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${processingMode === "local_device" ? "border-primary bg-primary/5" : "border-border"}`}
-                    >
-                      <span className="block text-sm font-medium">Neste dispositivo</span>
-                      <span className="block text-xs text-muted-foreground mt-1">{cutMode === "editorial" ? "O layout editorial é composto no worker da nuvem." : "Privado e econômico. Recomendado para computadores recentes."}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProcessingMode("cloud")}
-                      className={`rounded-xl border p-3 text-left transition ${processingMode === "cloud" ? "border-primary bg-primary/5" : "border-border"}`}
-                    >
-                      <span className="block text-sm font-medium">Na nuvem · recomendado</span>
-                      <span className="block text-xs text-muted-foreground mt-1">Envia o MP4 completo e usa o worker do servidor, sem depender do YouTube.</span>
-                    </button>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Use um vídeo que você tenha direito de usar.</p>
                   {processingMode === "local_device" && videoFile && (
                     <p className={`text-xs ${deviceCapability.recommended ? "text-green-600" : "text-amber-600"}`}>
                       {deviceCapability.reason}
