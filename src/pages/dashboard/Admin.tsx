@@ -1018,7 +1018,21 @@ export default function Admin() {
                       </td>
                       <td className="p-2">
                         <div className="font-medium">{r.display_name || "—"}</div>
-                        <div className="text-xs text-muted-foreground">{r.email}</div>
+                         <div className="text-xs text-muted-foreground">{r.email}</div>
+                         <div className="text-xs" onClick={(e) => e.stopPropagation()}>
+                           {r.whatsapp ? (
+                             <a
+                               href={waLink(r.whatsapp)}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               className="text-emerald-500 hover:underline"
+                             >
+                               WhatsApp: {r.whatsapp}
+                             </a>
+                           ) : (
+                             <span className="text-muted-foreground">Sem WhatsApp</span>
+                           )}
+                         </div>
                         <div className="text-[10px] text-muted-foreground">Cadastro: {new Date(r.created_at).toLocaleDateString("pt-BR")}</div>
                       </td>
                       <td className="p-2">{healthBadge(customerHealth(r))}</td>
@@ -1828,6 +1842,15 @@ function UserDetailDrawer({ row, onClose, onEdit, onImpersonate }: { row: Row | 
             )}
             <div className="text-xs text-muted-foreground">
               {row.email} · cadastro {new Date(row.created_at).toLocaleDateString("pt-BR")}
+            </div>
+            <div className="text-xs">
+              {row.whatsapp ? (
+                <a href={waLink(row.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">
+                  WhatsApp: {row.whatsapp}
+                </a>
+              ) : (
+                <span className="text-muted-foreground">Sem WhatsApp cadastrado</span>
+              )}
             </div>
 
             <section>
