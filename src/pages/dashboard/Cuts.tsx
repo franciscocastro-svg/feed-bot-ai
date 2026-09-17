@@ -1297,7 +1297,7 @@ export default function Cuts() {
               <p className="text-xs text-muted-foreground">Cada formato conta 1 crédito por corte.</p>
             </div>
             <div className="space-y-2">
-              <Label>{cutMode === "editorial" ? "Formato de saída" : "Formatos de saída (1 ou mais)"}</Label>
+              <Label>{cutMode === "editorial" ? "Formato de saída" : "Formato"}</Label>
               <div className="grid sm:grid-cols-3 gap-2">
                 {CUT_FORMAT_OPTIONS.map((opt) => {
                   const checked = formats.includes(opt.value);
