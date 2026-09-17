@@ -1234,7 +1234,7 @@ export default function Cuts() {
                 <>
                   <Label>1 · Link do YouTube</Label>
                   <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-                  <p className="text-xs text-muted-foreground">Modo experimental: o YouTube pode bloquear a captura. Enviar o MP4 é mais confiável.</p>
+                  <p className="text-xs text-muted-foreground">O YouTube pode bloquear capturas automáticas. Enviar o MP4 é mais confiável.</p>
                 </>
               ) : (
                 <>
