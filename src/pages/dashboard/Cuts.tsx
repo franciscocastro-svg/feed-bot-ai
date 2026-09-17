@@ -1486,10 +1486,10 @@ export default function Cuts() {
 
         <Card className="p-5 space-y-4">
           <h2 className="font-semibold text-lg">Como funciona</h2>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p><span className="text-foreground font-medium">1.</span> Baixe o vídeo que você tem autorização para reutilizar e envie o MP4.</p>
-            <p><span className="text-foreground font-medium">2.</span> A IA encontra trechos com gancho, contexto e potencial sem depender da captura do YouTube.</p>
-            <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p><span className="text-foreground font-medium">1.</span> Envie o vídeo.</p>
+            <p><span className="text-foreground font-medium">2.</span> A IA escolhe os melhores trechos.</p>
+            <p><span className="text-foreground font-medium">3.</span> Você revisa e agenda. Nada sai sozinho.</p>
           </div>
           {brandProfile && (
             <Collapsible open={identityOpen} onOpenChange={setIdentityOpen} className="border-t border-border pt-4 space-y-3">
