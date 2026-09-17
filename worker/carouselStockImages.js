@@ -622,7 +622,9 @@ export async function resolveCarouselStockImage({
         break;
       }
       if (!result) {
-        cache[cacheKey] = { saved_at: now, result: null };
+        // Falha de download é transitória: não gravar vazio no cache longo,
+        // senão o tema ficaria sem foto por 24h.
+        cache[cacheKey] = { saved_at: now, result: null, transient: true };
         safeWriteCache(cacheFile, cache);
         continue;
       }
