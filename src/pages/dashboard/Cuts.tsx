@@ -1492,11 +1492,15 @@ export default function Cuts() {
             <p><span className="text-foreground font-medium">3.</span> Você revisa, edita legenda e agenda. Nada é publicado sozinho.</p>
           </div>
           {brandProfile && (
-            <div className="border-t border-border pt-4 space-y-3">
-              <div>
-                <h3 className="font-semibold">Identidade desta conta</h3>
-                <p className="text-xs text-muted-foreground">Aplicada apenas aos cortes de @{accounts.find((account) => account.id === accountId)?.username || "Instagram"}.</p>
-              </div>
+            <Collapsible open={identityOpen} onOpenChange={setIdentityOpen} className="border-t border-border pt-4 space-y-3">
+              <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
+                <span>
+                  <span className="block font-semibold text-foreground">Identidade desta conta</span>
+                  <span className="block text-xs text-muted-foreground">Cores, marca d'água e preset de @{accounts.find((account) => account.id === accountId)?.username || "Instagram"}.</span>
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${identityOpen ? "rotate-180" : ""}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
               <div className="grid grid-cols-3 gap-2">
                 <label className="space-y-1 text-xs text-muted-foreground">
                   Texto
