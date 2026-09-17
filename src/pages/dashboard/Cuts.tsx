@@ -1286,7 +1286,7 @@ export default function Cuts() {
           </div>
           <div className="grid md:grid-cols-[180px_1fr] gap-3 items-start">
             <div className="space-y-2">
-              <Label>Quantidade</Label>
+              <Label>3 · Quantidade</Label>
               <Input
                 type="number"
                 min={1}
