@@ -447,7 +447,11 @@ function safeWriteCache(cacheFile, cache) {
 
 function cachedEntry(cache, key, now) {
   const entry = cache[key];
-  if (!entry || now - Number(entry.saved_at || 0) > STOCK_CACHE_TTL_MS) {
+  if (!entry) return { found: false, result: null };
+  const ttl = (!entry.result && entry.transient)
+    ? TRANSIENT_STOCK_CACHE_TTL_MS
+    : STOCK_CACHE_TTL_MS;
+  if (now - Number(entry.saved_at || 0) > ttl) {
     return { found: false, result: null };
   }
   return { found: true, result: entry.result || null };
