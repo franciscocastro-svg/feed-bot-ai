@@ -1264,7 +1264,7 @@ export default function Cuts() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Tipo de corte</Label>
+            <Label>2 · Tipo de corte</Label>
             <Tabs value={cutMode} onValueChange={(value) => selectCutMode(value as CutMode)}>
               <TabsList className={`grid h-auto w-full ${isAdmin ? "md:grid-cols-3" : "grid-cols-2"}`}>
                 {CUT_MODE_OPTIONS.filter((option) => option.value !== "editorial" || isAdmin).map((option) => (
