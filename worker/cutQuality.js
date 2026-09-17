@@ -236,6 +236,7 @@ function refineCandidate(clip, words, originalIndex, options) {
       professional_score: professionalScore,
       ai_score: baseScore,
       completeness_score: completeness,
+      hook_opening_score: openingScore,
       natural_start: naturalStart,
       natural_end: naturalEnd,
       transcript_words: selectedWords.length,
