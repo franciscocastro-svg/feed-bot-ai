@@ -224,7 +224,45 @@ function humanVideoCutError(message?: string | null) {
   if (/private video|video unavailable|members-only/i.test(text)) return "Esse vídeo não está público ou não está disponível para captura.";
   if (/live event|is live|transmissão ao vivo/i.test(text)) return "Aguarde a transmissão terminar e tente novamente com o vídeo gravado.";
   if (/copyright|geo.?restricted|not available in your country/i.test(text)) return "O YouTube restringiu esse vídeo por região ou direitos. Use o MP4 autorizado.";
-  return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+  if (/resource_exhausted|prepayment|quota|billing|429/i.test(text)) {
+    return "A inteligência artificial ficou sem saldo para analisar a fala do vídeo. O corte foi feito no modo básico (por tempo). Recarregue o saldo da IA e use \"Tentar de novo\" para ter a análise completa.";
+  }
+  if (/api key|unauthorized|invalid.*key|401|403/i.test(text)) {
+    return "A chave de acesso da inteligência artificial está inválida ou expirada. Atualize a chave e tente de novo.";
+  }
+  if (/worker_resource_limit|cpu time|memory limit|out of memory/i.test(text)) {
+    return "O vídeo é muito pesado para o processamento automático. Tente um arquivo menor ou divida o vídeo em partes.";
+  }
+  if (/timeout|timed out|etimedout|deadline exceeded/i.test(text)) {
+    return "O processamento demorou mais do que o permitido e foi interrompido. Tente de novo — costuma funcionar na segunda tentativa.";
+  }
+  if (/network|econn|fetch failed|socket hang up/i.test(text)) {
+    return "A conexão com o servidor de vídeo falhou no meio do processo. Tente de novo em alguns minutos.";
+  }
+  if (/no suitable|nenhum trecho|no candidates/i.test(text)) {
+    return "A IA não encontrou trechos bons o suficiente nesse vídeo. Tente um vídeo com mais fala ou peça menos cortes.";
+  }
+  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+const JOB_STAGE_HINTS: Record<string, string> = {
+  queued: "Na fila — começa em instantes",
+  analyzing: "Analisando a fala do vídeo",
+  processing: "Montando os cortes com legenda",
+  rendering: "Finalizando o vídeo",
+};
+
+function jobStageHint(job: VideoCutJob) {
+  return JOB_STAGE_HINTS[job.status] || "Processando";
+}
+
+type JobFilter = "all" | "active" | "ready" | "problem";
+
+function matchesJobFilter(job: VideoCutJob, filter: JobFilter) {
+  if (filter === "all") return true;
+  if (filter === "ready") return job.status === "ready";
+  if (filter === "problem") return ["failed", "cancelled"].includes(job.status);
+  return !["failed", "cancelled", "ready", "discarded"].includes(job.status);
 }
 
 function databaseErrorMessage(error: unknown, fallback: string) {
