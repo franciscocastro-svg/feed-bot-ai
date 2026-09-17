@@ -3,6 +3,8 @@ import path from "node:path";
 
 export const PIXABAY_LICENSE_URL = "https://pixabay.com/service/license-summary/";
 export const STOCK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Resultado vazio por falha transitória (download recusado) expira rápido.
+export const TRANSIENT_STOCK_CACHE_TTL_MS = 10 * 60 * 1000;
 // v3: passou a bloquear domínios de rede social e a validar o download.
 export const STOCK_CACHE_VERSION = "v3";
 export const MIN_STOCK_RELEVANCE_SCORE = 10;
