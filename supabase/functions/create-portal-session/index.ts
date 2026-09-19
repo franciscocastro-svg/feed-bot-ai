@@ -41,9 +41,10 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { returnUrl, environment } = await req.json();
+    const { returnUrl, environment, flow } = await req.json();
     const env: StripeEnv = environment === "live" ? "live" : "sandbox";
     const portalReturnUrl = safeReturnUrl(returnUrl);
+    const wantsCardUpdate = flow === "payment_method_update";
 
     const { data: sub } = await supabase
       .from("user_subscriptions")
