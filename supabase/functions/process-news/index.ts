@@ -50,7 +50,9 @@ const GEMINI_CIRCUIT_BREAKER_MS = 60_000;
 let geminiUnavailableUntil = 0;
 let groqUnavailableUntil = 0;
 const GROQ_AUTH_CIRCUIT_BREAKER_MS = 6 * 60 * 60_000;
-const AI_PROVIDER_TIMEOUT_MS = 25_000;
+// 25s cortava ~50% das respostas do modelo no meio: a chamada era cobrada mesmo
+// assim e ainda gerava nova tentativa (custo dobrado). 75s deixa concluir.
+const AI_PROVIDER_TIMEOUT_MS = 75_000;
 
 type NewsCarouselOptions = {
   enabled: boolean;
