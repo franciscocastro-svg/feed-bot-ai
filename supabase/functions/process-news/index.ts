@@ -53,6 +53,9 @@ const GROQ_AUTH_CIRCUIT_BREAKER_MS = 6 * 60 * 60_000;
 // 25s cortava ~50% das respostas do modelo no meio: a chamada era cobrada mesmo
 // assim e ainda gerava nova tentativa (custo dobrado). 75s deixa concluir.
 const AI_PROVIDER_TIMEOUT_MS = 75_000;
+// Modelo usado quando o fallback (chaves próprias) não está disponível.
+// Flash custa ~10x menos que o Pro por reescrita.
+const LOVABLE_TEXT_MODEL = Deno.env.get("LOVABLE_TEXT_MODEL") || "google/gemini-3.8-flash";
 
 type NewsCarouselOptions = {
   enabled: boolean;
