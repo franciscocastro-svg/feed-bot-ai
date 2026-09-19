@@ -245,7 +245,7 @@ function getTextAiModel(): string {
   const provider = getTextAiProvider();
   if (provider === "gemini") return Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
   if (provider === "groq") return Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant";
-  return "google/gemini-2.5-pro";
+  return LOVABLE_TEXT_MODEL;
 }
 
 function extractJsonObject(text: string): any {
