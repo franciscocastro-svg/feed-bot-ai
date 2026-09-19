@@ -32,16 +32,24 @@ export function PlanUsageCard() {
 
   const isStripeManaged = ["starter", "pro", "business"].includes(usage.plan);
 
-  const openPortal = async () => {
+  const openPortal = async (flow?: "payment_method_update") => {
     setOpening(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-portal-session", {
-        body: { returnUrl: window.location.origin + "/dashboard", environment: getStripeEnvironment() },
+        body: {
+          returnUrl: window.location.origin + "/dashboard",
+          environment: getStripeEnvironment(),
+          ...(flow ? { flow } : {}),
+        },
       });
       if (error || !data?.url) throw new Error(error?.message || "Erro");
       window.open(data.url, "_blank");
     } catch (e: any) {
-      toast.error(e.message || "Não foi possível abrir o portal");
+      toast.error(
+        e.message === "No subscription found"
+          ? "Não encontramos um cartão cadastrado nesta conta."
+          : e.message || "Não foi possível abrir o portal",
+      );
     } finally { setOpening(false); }
   };
 
@@ -82,9 +90,20 @@ export function PlanUsageCard() {
         </Button>
       )}
       {isStripeManaged && (
-        <Button size="sm" variant="ghost" className="w-full" onClick={openPortal} disabled={opening}>
-          <CreditCard className="h-3.5 w-3.5 mr-1" /> Gerenciar assinatura
-        </Button>
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={() => openPortal("payment_method_update")}
+            disabled={opening}
+          >
+            <CreditCard className="h-3.5 w-3.5 mr-1" /> Trocar cartão
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => openPortal()} disabled={opening}>
+            <CreditCard className="h-3.5 w-3.5 mr-1" /> Gerenciar assinatura
+          </Button>
+        </>
       )}
     </Card>
   );

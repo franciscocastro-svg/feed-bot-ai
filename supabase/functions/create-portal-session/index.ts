@@ -41,9 +41,10 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { returnUrl, environment } = await req.json();
+    const { returnUrl, environment, flow } = await req.json();
     const env: StripeEnv = environment === "live" ? "live" : "sandbox";
     const portalReturnUrl = safeReturnUrl(returnUrl);
+    const wantsCardUpdate = flow === "payment_method_update";
 
     const { data: sub } = await supabase
       .from("user_subscriptions")
@@ -57,10 +58,31 @@ Deno.serve(async (req) => {
     if (!sub?.stripe_customer_id) throw new Error("No subscription found");
 
     const stripe = createStripeClient(env);
-    const portal = await stripe.billingPortal.sessions.create({
+    const baseParams = {
       customer: sub.stripe_customer_id,
       ...(portalReturnUrl && { return_url: portalReturnUrl }),
-    });
+    };
+    // Abre direto na tela de troca de cartão quando solicitado; se a conta
+    // Stripe não suportar o fluxo, cai para o portal completo.
+    let portal;
+    if (wantsCardUpdate) {
+      try {
+        portal = await stripe.billingPortal.sessions.create({
+          ...baseParams,
+          flow_data: {
+            type: "payment_method_update",
+            ...(portalReturnUrl && {
+              after_completion: { type: "redirect", redirect: { return_url: portalReturnUrl } },
+            }),
+          },
+        });
+      } catch (flowError) {
+        console.warn("portal_flow_fallback", { scope: "create-portal-session" });
+        portal = await stripe.billingPortal.sessions.create(baseParams);
+      }
+    } else {
+      portal = await stripe.billingPortal.sessions.create(baseParams);
+    }
     return new Response(JSON.stringify({ url: portal.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
