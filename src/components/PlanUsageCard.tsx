@@ -90,9 +90,20 @@ export function PlanUsageCard() {
         </Button>
       )}
       {isStripeManaged && (
-        <Button size="sm" variant="ghost" className="w-full" onClick={openPortal} disabled={opening}>
-          <CreditCard className="h-3.5 w-3.5 mr-1" /> Gerenciar assinatura
-        </Button>
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={() => openPortal("payment_method_update")}
+            disabled={opening}
+          >
+            <CreditCard className="h-3.5 w-3.5 mr-1" /> Trocar cartão
+          </Button>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => openPortal()} disabled={opening}>
+            <CreditCard className="h-3.5 w-3.5 mr-1" /> Gerenciar assinatura
+          </Button>
+        </>
       )}
     </Card>
   );
