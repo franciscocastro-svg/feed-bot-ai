@@ -53,6 +53,9 @@ const GROQ_AUTH_CIRCUIT_BREAKER_MS = 6 * 60 * 60_000;
 // 25s cortava ~50% das respostas do modelo no meio: a chamada era cobrada mesmo
 // assim e ainda gerava nova tentativa (custo dobrado). 75s deixa concluir.
 const AI_PROVIDER_TIMEOUT_MS = 75_000;
+// Modelo usado quando o fallback (chaves próprias) não está disponível.
+// Flash custa ~10x menos que o Pro por reescrita.
+const LOVABLE_TEXT_MODEL = Deno.env.get("LOVABLE_TEXT_MODEL") || "google/gemini-3.8-flash";
 
 type NewsCarouselOptions = {
   enabled: boolean;
@@ -245,7 +248,7 @@ function getTextAiModel(): string {
   const provider = getTextAiProvider();
   if (provider === "gemini") return Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash-lite";
   if (provider === "groq") return Deno.env.get("GROQ_TEXT_MODEL") || "llama-3.1-8b-instant";
-  return "google/gemini-2.5-pro";
+  return LOVABLE_TEXT_MODEL;
 }
 
 function extractJsonObject(text: string): any {
@@ -567,7 +570,7 @@ async function rewriteWithLovableFactLocked(
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
+      model: LOVABLE_TEXT_MODEL,
       messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt, carouselOptions),
       temperature: 0.25,
       max_tokens: 5000,
