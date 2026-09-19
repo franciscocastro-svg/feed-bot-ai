@@ -32,16 +32,24 @@ export function PlanUsageCard() {
 
   const isStripeManaged = ["starter", "pro", "business"].includes(usage.plan);
 
-  const openPortal = async () => {
+  const openPortal = async (flow?: "payment_method_update") => {
     setOpening(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-portal-session", {
-        body: { returnUrl: window.location.origin + "/dashboard", environment: getStripeEnvironment() },
+        body: {
+          returnUrl: window.location.origin + "/dashboard",
+          environment: getStripeEnvironment(),
+          ...(flow ? { flow } : {}),
+        },
       });
       if (error || !data?.url) throw new Error(error?.message || "Erro");
       window.open(data.url, "_blank");
     } catch (e: any) {
-      toast.error(e.message || "Não foi possível abrir o portal");
+      toast.error(
+        e.message === "No subscription found"
+          ? "Não encontramos um cartão cadastrado nesta conta."
+          : e.message || "Não foi possível abrir o portal",
+      );
     } finally { setOpening(false); }
   };
 
