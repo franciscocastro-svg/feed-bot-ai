@@ -567,7 +567,7 @@ async function rewriteWithLovableFactLocked(
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
+      model: LOVABLE_TEXT_MODEL,
       messages: buildGroqRewriteMessages(item, tone, srcOpts, attempt, carouselOptions),
       temperature: 0.25,
       max_tokens: 5000,
